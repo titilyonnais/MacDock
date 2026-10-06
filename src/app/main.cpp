@@ -3,6 +3,7 @@
 //   MacDock.exe --quit           ferme le Dock en cours d'exécution
 //   MacDock.exe --trace-windows  journalise le suivi des fenêtres (diagnostic)
 //   MacDock.exe --snapshot f.png [--hover x]  rendu hors écran du Dock (x : curseur en points depuis le centre)
+//               [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
@@ -46,6 +47,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         for (int i = 1; i + 1 < argc; ++i) {
             if (wcscmp(argv[i], L"--snapshot") == 0) options.snapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--hover") == 0) options.hover = _wtof(argv[i + 1]);
+            if (wcscmp(argv[i], L"--wallpaper") == 0) options.wallpaper = argv[i + 1];
+            if (wcscmp(argv[i], L"--reference") == 0) options.reference = argv[i + 1];
+            if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
         }
         LocalFree(argv);
         md::DockApp app;

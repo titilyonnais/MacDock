@@ -18,6 +18,7 @@ D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g
 
 bool DockRenderer::createDevices(bool warpOnly) {
     bitmaps_.clear();
+    overlayBitmap_.Reset();
     geometries_.clear();
     surface_.Reset();
     shadow_.Reset();
@@ -285,6 +286,24 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
     }
 
     drawTooltip(dc, f, m, fontFamily);
+    drawOverlay(dc, f);
+}
+
+void DockRenderer::drawOverlay(ID2D1DeviceContext* dc, const RenderFrame& f) {
+    if (!f.overlay || f.overlay->bgra.size() < size_t(f.overlay->w) * f.overlay->h * 4 || f.overlayOpacity <= 0) return;
+    if (overlayOwner_.lock() != f.overlay || !overlayBitmap_) {
+        overlayBitmap_.Reset();
+        auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,
+                                             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        if (FAILED(dc->CreateBitmap(D2D1::SizeU(f.overlay->w, f.overlay->h), f.overlay->bgra.data(), f.overlay->w * 4,
+                                    props, &overlayBitmap_)))
+            return;
+        overlayOwner_ = f.overlay;
+    }
+    float w = f.overlay->w * f.overlayScale, h = f.overlay->h * f.overlayScale;
+    float left = (float(width_) - w) / 2, bottom = float(height_);
+    dc->DrawBitmap(overlayBitmap_.Get(), D2D1::RectF(left, bottom - h, left + w, bottom), f.overlayOpacity,
+                   D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
 }
 
 std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const Metrics& m,
@@ -304,8 +323,9 @@ std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const
                                  &wall)))
         return {};
 
-    const UINT savedW = width_;
+    const UINT savedW = width_, savedH = height_;
     width_ = w;
+    height_ = h;
     dc_->SetTarget(target.Get());
     dc_->BeginDraw();
     dc_->SetDpi(96, 96);
@@ -327,6 +347,7 @@ std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const
     HRESULT hr = dc_->EndDraw();
     dc_->SetTarget(nullptr);
     width_ = savedW;
+    height_ = savedH;
     if (FAILED(hr) || FAILED(readback->CopyFromBitmap(nullptr, target.Get(), nullptr))) return {};
 
     D2D1_MAPPED_RECT mapped{};

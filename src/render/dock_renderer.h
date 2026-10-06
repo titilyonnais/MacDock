@@ -36,6 +36,11 @@ struct RenderTooltip {
     float cx = 0, bottom = 0, opacity = 0;
 };
 
+struct OverlayImage {          // image de référence superposée (calibration)
+    UINT w = 0, h = 0;
+    std::vector<std::uint8_t> bgra;   // BGRA prémultiplié
+};
+
 struct RenderFrame {
     float bgLeft = 0, bgTop = 0, bgRight = 0, bgBottom = 0;
     float cornerRadius = 0, scale = 1;
@@ -43,6 +48,9 @@ struct RenderFrame {
     std::vector<RenderIcon> icons;
     RenderTooltip tooltip;
     DockPosition position = DockPosition::Bottom;
+    // Superposition de calibration : calée en bas et au centre, à l'échelle overlayScale, par-dessus tout.
+    std::shared_ptr<const OverlayImage> overlay;
+    float overlayOpacity = 0.5f, overlayScale = 1;
 };
 
 class DockRenderer {
@@ -70,6 +78,7 @@ private:
     void drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m);
     void drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
     void drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
+    void drawOverlay(ID2D1DeviceContext* dc, const RenderFrame& f);
 
     template <class T> using Com = Microsoft::WRL::ComPtr<T>;
     HWND hwnd_ = nullptr;
@@ -88,6 +97,8 @@ private:
     std::map<const IconProvider::Image*, CachedBitmap> bitmaps_;
     struct CachedGeometry { std::array<long, 5> key{}; Com<ID2D1PathGeometry> geometry; };
     std::vector<CachedGeometry> geometries_;   // quelques formes par image (fond, infobulle)
+    std::weak_ptr<const OverlayImage> overlayOwner_;
+    Com<ID2D1Bitmap1> overlayBitmap_;
     std::wstring fontWanted_, fontResolved_;
 };
 

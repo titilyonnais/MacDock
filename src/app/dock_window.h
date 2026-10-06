@@ -24,6 +24,9 @@ public:
         bool trace = false;
         std::wstring snapshot;           // chemin PNG : rendu hors écran puis sortie
         std::optional<double> hover;     // position simulée du curseur (points depuis le centre)
+        std::wstring wallpaper;          // PNG de fond pour la capture (redimensionné à la fenêtre)
+        std::wstring reference;          // PNG de référence (capture de macOS) à comparer
+        std::wstring diff;               // carte de différence (PNG) ; diff.txt écrit à côté
     };
     int run(HINSTANCE instance, const Options& options);
 
@@ -46,6 +49,8 @@ private:
     void requestFrame();
     void startMouseThread();
     void startConfigWatcher();
+    int runSnapshot(const Options& options);
+    void onHotKey(int id);
     static bool systemDarkMode();
 
     HINSTANCE instance_ = nullptr;
@@ -75,6 +80,8 @@ private:
     std::atomic<bool> wakePosted_{false};
     std::atomic<ULONGLONG> lastUiBeat_{0};
     int renderFailures_ = 0;
+    std::shared_ptr<const OverlayImage> overlay_;   // superposition de calibration (Ctrl+Alt+Maj+O)
+    float overlayOpacity_ = 0.5f;
     int exitCode_ = 0;
 
     std::thread mouseThread_;

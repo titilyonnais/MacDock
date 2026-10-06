@@ -8,6 +8,8 @@
 #include <cmath>
 #include <map>
 
+#include "../calib/image_diff.h"
+#include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "../shell/default_pins.h"
@@ -27,6 +29,8 @@ constexpr UINT WM_APP_MOUSE = WM_APP + 4;
 constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
+// Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
+constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
 enum MenuId : UINT {
     kMenuOpen = 1, kMenuShowAll, kMenuPin, kMenuUnpin, kMenuReveal, kMenuQuitApp, kMenuSettings, kMenuQuitDock
@@ -282,6 +286,9 @@ void DockApp::requestFrame() {
 
 void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    frame.overlay = overlay_;
+    frame.overlayOpacity = overlayOpacity_;
+    frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -438,6 +445,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 removeAppBar();
             }
             return 0;
+        case WM_HOTKEY:
+            onHotKey(int(wp));
+            return 0;
         case WM_CLOSE:
             running_ = false;
             PostQuitMessage(0);
@@ -445,6 +455,82 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         default: break;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
+}
+
+int DockApp::runSnapshot(const Options& options) {
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    UINT w = UINT(rc.right - rc.left), h = UINT(rc.bottom - rc.top);
+    if (options.hover) {
+        double bgBottom = h - metrics_.dockScreenMargin * scale_;
+        POINT p{LONG(w / 2.0 + *options.hover * scale_), LONG(bgBottom - 10 * scale_)};
+        controller_.setCursor(p);
+    }
+    for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+
+    std::vector<std::uint8_t> wallpaper;
+    if (!options.wallpaper.empty()) {
+        UINT ww = 0, wh = 0;
+        auto img = readPng(options.wallpaper, ww, wh);
+        if (img.empty()) log::warn(L"Fond illisible : %s", options.wallpaper.c_str());
+        else wallpaper = resizeBgra(img, ww, wh, w, h);
+    }
+    auto px = renderer_.renderToBgra(frame, metrics_, settings_.font, w, h, wallpaper);
+    bool ok = !px.empty() && writePng(options.snapshot, px.data(), w, h);
+    log::info(L"Capture %s : %s", ok ? L"écrite" : L"impossible", options.snapshot.c_str());
+    if (!ok || options.reference.empty()) return ok ? 0 : 1;
+
+    // Comparaison : la référence est mise à la largeur du rendu, puis on compare sa bande du bas.
+    UINT rw = 0, rh = 0;
+    auto ref = readPng(options.reference, rw, rh);
+    if (ref.empty()) {
+        log::error(L"Référence illisible : %s", options.reference.c_str());
+        return 1;
+    }
+    UINT sh = UINT(std::lround(double(rh) * w / rw));
+    ref = resizeBgra(ref, rw, rh, w, sh);
+    if (sh < h) {
+        log::error(L"Référence trop basse (%u px) pour une fenêtre de %u px", sh, h);
+        return 1;
+    }
+    const std::uint8_t* band = ref.data() + size_t(sh - h) * w * 4;
+    DiffStats s = diffImages(px.data(), band, int(w), int(h), 24);
+    log::info(L"Comparaison : écart moyen %.2f, max %d, pixels > 24 : %.2f %%", s.meanAbs, s.maxAbs,
+              s.fractionAbove * 100);
+    if (!options.diff.empty()) {
+        auto heat = diffHeatmap(px.data(), band, int(w), int(h));
+        writePng(options.diff, heat.data(), w, h);
+        std::wstring txt = options.diff + L".txt";
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, txt.c_str(), L"w") == 0 && f) {
+            fprintf(f, "meanAbs %.4f\nmaxAbs %d\nfractionAbove24 %.6f\n", s.meanAbs, s.maxAbs, s.fractionAbove);
+            fclose(f);
+        }
+    }
+    return 0;
+}
+
+void DockApp::onHotKey(int id) {
+    if (id == kHotOverlay) {
+        if (overlay_) {
+            overlay_.reset();
+            log::info(L"Superposition de calibration masquée");
+        } else {
+            std::wstring path = dataDir_ + L"\\reference\\overlay.png";
+            auto img = std::make_shared<OverlayImage>();
+            img->bgra = readPng(path, img->w, img->h);
+            if (img->bgra.empty()) {
+                log::warn(L"Superposition introuvable : %s", path.c_str());
+                return;
+            }
+            overlay_ = img;
+            log::info(L"Superposition de calibration affichée (%ux%u)", img->w, img->h);
+        }
+    } else if (id == kHotOpacityUp || id == kHotOpacityDown) {
+        overlayOpacity_ = std::clamp(overlayOpacity_ + (id == kHotOpacityUp ? 0.1f : -0.1f), 0.1f, 1.0f);
+    }
+    requestFrame();
 }
 
 int DockApp::run(HINSTANCE instance, const Options& options) {
@@ -512,22 +598,14 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     tracker_.start(hwnd_, ev);
 
     if (snapshot_) {
-        RECT rc;
-        GetWindowRect(hwnd_, &rc);
-        UINT w = UINT(rc.right - rc.left), h = UINT(rc.bottom - rc.top);
-        if (options.hover) {
-            double bgBottom = h - metrics_.dockScreenMargin * scale_;
-            POINT p{LONG(w / 2.0 + *options.hover * scale_), LONG(bgBottom - 10 * scale_)};
-            controller_.setCursor(p);
-        }
-        for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
-        RenderFrame frame = controller_.buildFrame(dark_, icons_);
-        bool ok = renderer_.renderToFile(frame, metrics_, settings_.font, w, h, options.snapshot);
-        log::info(L"Capture %s : %s", ok ? L"écrite" : L"impossible", options.snapshot.c_str());
+        int code = runSnapshot(options);
         tracker_.stop();
         DestroyWindow(hwnd_);
-        return ok ? 0 : 1;
+        return code;
     }
+    RegisterHotKey(hwnd_, kHotOverlay, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, 'O');
+    RegisterHotKey(hwnd_, kHotOpacityUp, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_UP);
+    RegisterHotKey(hwnd_, kHotOpacityDown, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_DOWN);
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);
