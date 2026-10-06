@@ -16,5 +16,14 @@ void openFolder(const std::wstring& path);
 void openStartMenu();
 std::wstring downloadsFolder();
 bool forceForeground(HWND hwnd);
+void revealInExplorer(const std::wstring& path);
+
+// « Ouvrir à la connexion » : valeur « MacDock: <nom> » de HKCU\…\CurrentVersion\Run.
+bool isOpenAtLogin(const std::wstring& exePath);
+bool runCommandLaunches(const std::wstring& command, const std::wstring& exePath);   // casse ignorée
+bool setOpenAtLogin(const std::wstring& exePath, const std::wstring& name, bool on);
+
+bool recycleBinHasItems();
+void emptyRecycleBin(HWND owner);   // avec la confirmation de l'Explorateur
 
 } // namespace md

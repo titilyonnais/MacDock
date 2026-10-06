@@ -114,6 +114,18 @@ std::optional<std::size_t> DockController::hitTest(POINT p) const {
     return std::nullopt;
 }
 
+std::optional<std::size_t> DockController::hitTestAny(POINT p) const {
+    if (auto hit = hitTest(p)) return hit;
+    if (!isInsideInteractiveZone(p)) return std::nullopt;
+    Laid l = layout();
+    double x = toPoints(p.x);
+    // Le séparateur occupe son trait et ses marges.
+    double half = metrics_.separatorWidth / 2 + metrics_.separatorMargin;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].kind == ItemKind::Separator && std::fabs(x - l.r.items[l.slot[i]].center) <= half) return i;
+    return std::nullopt;
+}
+
 const DockItem* DockController::itemAt(std::size_t index) const {
     return index < items_.size() ? &items_[index] : nullptr;
 }

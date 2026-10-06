@@ -55,8 +55,7 @@ struct Panel {
     Com<IDCompositionTarget> target;
     Com<IDCompositionVisual2> visual;
     Com<IDCompositionSurface> surface;
-    BackdropCapture capture;
-    Com<ID3D11Texture2D> backdrop;
+    Com<ID3D11Texture2D> backdrop;   // portion de Session::screen sous le panneau
     Com<ID3D11ShaderResourceView> backdropSrv;
     bool hasBackdrop = false, scRgb = false;
     float white = 1;
@@ -68,7 +67,6 @@ struct Panel {
     UINT width() const { return UINT(rc.right - rc.left); }
     UINT height() const { return UINT(rc.bottom - rc.top); }
     ~Panel() {
-        capture.stop();
         if (hwnd) DestroyWindow(hwnd);
     }
 };
@@ -83,6 +81,13 @@ struct Session {
     Com<IDWriteTextFormat> format, symbolFormat;
     GlassRenderer glass;
     bool glassReady = false;
+    // Une seule duplication de l'écran par processus et par sortie (une seconde échoue avec E_INVALIDARG) :
+    // la session capture tout l'écran du menu, chaque panneau en copie sa portion.
+    BackdropCapture capture;
+    RECT captureRc{};
+    Com<ID3D11Texture2D> screen;
+    bool screenScRgb = false;
+    float screenWhite = 1;
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
@@ -135,6 +140,8 @@ struct Session {
     Panel* open(const MenuModel& model, POINT anchor, bool above, const RECT* parentItem,
                 std::unique_ptr<MenuModel> owned = nullptr);
     void render(Panel& p);
+    void onBackdrop();
+    void copyBackdrop(Panel& p);
     void renderAll() {
         for (auto& p : panels) render(*p);
     }
@@ -227,17 +234,21 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->visual->SetContent(p->surface.Get());
     p->target->SetRoot(p->visual.Get());
 
-    if (glassReady) p->capture.start(p->hwnd, WM_MENU_BACKDROP, mon, {left, top, left + w, top + h});
+    if (glassReady && panels.empty()) {
+        captureRc = m;
+        capture.start(p->hwnd, WM_MENU_BACKDROP, mon, {m.left, m.top, m.right, m.bottom});
+    }
     panels.push_back(std::move(p));
     Panel* raw = panels.back().get();
+    copyBackdrop(*raw);   // sous-menu : l'écran est déjà capturé
 
     // Attendre brièvement la première image de l'arrière-plan : le menu apparaît directement en verre.
     const double deadline = now() + 0.15;
     while (glassReady && !raw->hasBackdrop && now() < deadline &&
-           raw->capture.status() != BackdropCapture::Status::Unavailable &&
-           raw->capture.status() != BackdropCapture::Status::Failed) {
+           capture.status() != BackdropCapture::Status::Unavailable &&
+           capture.status() != BackdropCapture::Status::Failed) {
         MSG msg;
-        if (PeekMessageW(&msg, raw->hwnd, WM_MENU_BACKDROP, WM_MENU_BACKDROP, PM_REMOVE)) DispatchMessageW(&msg);
+        if (PeekMessageW(&msg, panels.front()->hwnd, WM_MENU_BACKDROP, WM_MENU_BACKDROP, PM_REMOVE)) DispatchMessageW(&msg);
         else MsgWaitForMultipleObjects(0, nullptr, FALSE, 5, QS_POSTMESSAGE);
     }
     raw->shownAt = now();
@@ -257,6 +268,76 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         SetFocus(raw->hwnd);
     }
     return raw;
+}
+
+void Session::onBackdrop() {
+    bool scRgb = false;
+    float white = 1;
+    Com<ID3D11DeviceContext> ctx;
+    env.device->GetImmediateContext(&ctx);
+    bool got = capture.takeLatest(env.device, ctx.Get(),
+                                  [&](UINT w, UINT h, bool hdr) -> ID3D11Texture2D* {
+                                      D3D11_TEXTURE2D_DESC d{};
+                                      if (screen) screen->GetDesc(&d);
+                                      if (!screen || d.Width != w || d.Height != h || screenScRgb != hdr) {
+                                          screen.Reset();
+                                          D3D11_TEXTURE2D_DESC n{};
+                                          n.Width = w;
+                                          n.Height = h;
+                                          n.MipLevels = n.ArraySize = 1;
+                                          n.Format = hdr ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM;
+                                          n.SampleDesc.Count = 1;
+                                          n.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                                          if (FAILED(env.device->CreateTexture2D(&n, nullptr, &screen))) return nullptr;
+                                          screenScRgb = hdr;
+                                      }
+                                      return screen.Get();
+                                  },
+                                  scRgb, white);
+    if (!got) return;
+    screenWhite = white;
+    for (auto& p : panels) {
+        copyBackdrop(*p);
+        if (p->shownAt >= 0) render(*p);
+    }
+}
+
+// Copie dans p.backdrop la portion de l'écran capturé située sous le panneau.
+void Session::copyBackdrop(Panel& p) {
+    if (!screen) return;
+    D3D11_TEXTURE2D_DESC sd{};
+    screen->GetDesc(&sd);
+    D3D11_TEXTURE2D_DESC d{};
+    if (p.backdrop) p.backdrop->GetDesc(&d);
+    if (!p.backdrop || d.Width != p.width() || d.Height != p.height() || d.Format != sd.Format) {
+        p.backdrop.Reset();
+        p.backdropSrv.Reset();
+        p.hasBackdrop = false;
+        D3D11_TEXTURE2D_DESC n{};
+        n.Width = p.width();
+        n.Height = p.height();
+        n.MipLevels = n.ArraySize = 1;
+        n.Format = sd.Format;
+        n.SampleDesc.Count = 1;
+        n.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(env.device->CreateTexture2D(&n, nullptr, &p.backdrop)) ||
+            FAILED(env.device->CreateShaderResourceView(p.backdrop.Get(), nullptr, &p.backdropSrv))) {
+            p.backdrop.Reset();
+            return;
+        }
+    }
+    // La marge d'ombre peut déborder de l'écran : seule l'intersection est copiée.
+    const LONG l = std::max(p.rc.left, captureRc.left), t = std::max(p.rc.top, captureRc.top);
+    const LONG r = std::min({p.rc.right, captureRc.right, captureRc.left + LONG(sd.Width)});
+    const LONG b = std::min({p.rc.bottom, captureRc.bottom, captureRc.top + LONG(sd.Height)});
+    if (r <= l || b <= t) return;
+    D3D11_BOX box{UINT(l - captureRc.left), UINT(t - captureRc.top), 0, UINT(r - captureRc.left), UINT(b - captureRc.top), 1};
+    Com<ID3D11DeviceContext> ctx;
+    env.device->GetImmediateContext(&ctx);
+    ctx->CopySubresourceRegion(p.backdrop.Get(), 0, UINT(l - p.rc.left), UINT(t - p.rc.top), 0, screen.Get(), 0, &box);
+    p.scRgb = screenScRgb;
+    p.white = screenWhite;
+    p.hasBackdrop = true;
 }
 
 void Session::render(Panel& p) {
@@ -480,43 +561,9 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ACTIVATE:
             if (LOWORD(wp) == WA_INACTIVE && !panelOf(reinterpret_cast<HWND>(lp))) done = true;   // clic ailleurs
             return 0;
-        case WM_MENU_BACKDROP: {
-            bool scRgb = false;
-            float white = 1;
-            Com<ID3D11DeviceContext> ctx;
-            env.device->GetImmediateContext(&ctx);
-            bool got = p.capture.takeLatest(env.device, ctx.Get(),
-                                            [&](UINT w, UINT h, bool hdr) -> ID3D11Texture2D* {
-                                                D3D11_TEXTURE2D_DESC d{};
-                                                if (p.backdrop) p.backdrop->GetDesc(&d);
-                                                if (!p.backdrop || d.Width != w || d.Height != h || p.scRgb != hdr) {
-                                                    p.backdrop.Reset();
-                                                    p.backdropSrv.Reset();
-                                                    D3D11_TEXTURE2D_DESC n{};
-                                                    n.Width = w;
-                                                    n.Height = h;
-                                                    n.MipLevels = n.ArraySize = 1;
-                                                    n.Format = hdr ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM;
-                                                    n.SampleDesc.Count = 1;
-                                                    n.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-                                                    if (FAILED(env.device->CreateTexture2D(&n, nullptr, &p.backdrop)) ||
-                                                        FAILED(env.device->CreateShaderResourceView(p.backdrop.Get(), nullptr,
-                                                                                                    &p.backdropSrv)))
-                                                        return nullptr;
-                                                    p.scRgb = hdr;
-                                                }
-                                                return p.backdrop.Get();
-                                            },
-                                            scRgb, white);
-            if (got) {
-                D3D11_TEXTURE2D_DESC d{};
-                p.backdrop->GetDesc(&d);
-                p.hasBackdrop = d.Width == p.width() && d.Height == p.height();
-                p.white = white;
-                if (p.shownAt >= 0) render(p);
-            }
+        case WM_MENU_BACKDROP:
+            onBackdrop();
             return 0;
-        }
         default: break;
     }
     return DefWindowProcW(p.hwnd, msg, wp, lp);
@@ -582,6 +629,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor) {
         DispatchMessageW(&msg);
     }
     int result = session.result;
+    session.capture.stop();
     session.panels.clear();
     if (env.trace) log::info(L"[trace] menu : choix %d", result);
     return result;

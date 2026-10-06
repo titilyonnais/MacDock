@@ -60,6 +60,7 @@ void AppModel::windowOpened(WindowId id, const AppIdentity& original) {
         a.openSeq = ++seq_;
     }
     a.windows.push_back(id);
+    a.hidden = false;
     std::erase_if(recents_, [&](auto& r) { return r.appId == app.appId; });
     touch();
 }
@@ -89,7 +90,21 @@ void AppModel::windowMinimized(WindowId id, bool minimized) {
     if (w == windows_.end() || w->second.minimized == minimized) return;
     w->second.minimized = minimized;
     w->second.minimizedSeq = minimized ? ++seq_ : 0;
+    if (!minimized)
+        if (auto a = apps_.find(w->second.appId); a != apps_.end()) a->second.hidden = false;
     touch();
+}
+
+void AppModel::setHidden(const std::wstring& appId, bool hidden) {
+    auto a = apps_.find(appId);
+    if (a == apps_.end() || a->second.hidden == hidden) return;
+    a->second.hidden = hidden;
+    touch();
+}
+
+bool AppModel::isHidden(const std::wstring& appId) const {
+    auto a = apps_.find(appId);
+    return a != apps_.end() && a->second.hidden;
 }
 
 void AppModel::windowTitle(WindowId id, const std::wstring& title) {
@@ -103,7 +118,7 @@ bool AppModel::pin(const std::wstring& appId, std::size_t index) {
     if (isPinned(appId)) return false;
     auto identity = identityOf(appId);
     if (!identity) return false;
-    PinnedEntry e{PinKind::App, appId, identity->launch, identity->displayName};
+    PinnedEntry e{PinKind::App, appId, identity->launch, identity->displayName, identity->exePath};
     index = std::min(index, pinned_.size());
     pinned_.insert(pinned_.begin() + std::ptrdiff_t(index), std::move(e));
     std::erase_if(recents_, [&](auto& r) { return r.appId == appId; });
@@ -145,7 +160,7 @@ std::optional<AppIdentity> AppModel::identityOf(const std::wstring& appId) const
     for (auto& r : recents_)
         if (r.appId == appId) return r;
     for (auto& p : pinned_)
-        if (p.kind == PinKind::App && p.appId == appId) return AppIdentity{p.appId, {}, {}, p.name, p.launch};
+        if (p.kind == PinKind::App && p.appId == appId) return AppIdentity{p.appId, p.exePath, {}, p.name, p.launch};
     return std::nullopt;
 }
 
@@ -240,7 +255,7 @@ std::vector<DockItem> AppModel::items() const {
 
     std::vector<std::pair<std::uint64_t, WindowId>> minimized;
     for (auto& [id, w] : windows_)
-        if (w.minimized) minimized.emplace_back(w.minimizedSeq, id);
+        if (w.minimized && !isHidden(w.appId)) minimized.emplace_back(w.minimizedSeq, id);
     std::sort(minimized.begin(), minimized.end());
     for (auto& [seq, id] : minimized) {
         auto& w = windows_.at(id);

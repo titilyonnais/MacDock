@@ -12,9 +12,11 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "../popup/menu_window.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
+#include "dock_menus.h"
 
 namespace md {
 
@@ -32,10 +34,6 @@ constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
-
-enum MenuId : UINT {
-    kMenuOpen = 1, kMenuShowAll, kMenuPin, kMenuUnpin, kMenuReveal, kMenuQuitApp, kMenuSettings, kMenuQuitDock
-};
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -111,7 +109,7 @@ void DockApp::applySettings() {
 
 void DockApp::savePinned() {
     settings_.pinned = model_.pinnedEntries();
-    saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+    saveSettings();
 }
 
 void DockApp::registerAppBar() {
@@ -207,6 +205,7 @@ void DockApp::updateGlass() {
 void DockApp::restartCapture() {
     capture_.stop();
     glassLive_ = false;
+    capturePaused_ = false;
     if (!excluded_) return;
     RECT rc;
     GetWindowRect(hwnd_, &rc);
@@ -215,7 +214,24 @@ void DockApp::restartCapture() {
     requestFrame();
 }
 
+void DockApp::pauseCapture() {
+    if (capture_.status() != BackdropCapture::Status::Running) return;
+    capturePaused_ = true;
+    capture_.stop();
+}
+
+void DockApp::resumeCapture() {
+    if (!capturePaused_) return;
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
+                   {rc.left, rc.top, rc.right, rc.bottom});
+    requestFrame();
+}
+
 void DockApp::onBackdrop() {
+    auto status = capture_.status();
+    if (status == BackdropCapture::Status::Unavailable || status == BackdropCapture::Status::Failed) capturePaused_ = false;
     if (capture_.status() == BackdropCapture::Status::Failed) {
         // Échec définitif : on rend le Dock aux captures d'écran ; nouvel essai au prochain changement d'affichage.
         captureFailed_ = true;
@@ -231,6 +247,7 @@ void DockApp::onBackdrop() {
         if (capture_.takeLatest(dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); },
                                 scRgb, white)) {
             renderer_.setBackdropWhite(white);
+            capturePaused_ = false;
             if (!glassLive_) log::info(L"Verre : arrière-plan réel reçu (%s)", scRgb ? L"HDR" : L"SDR");
             glassLive_ = true;
             ++capturesTaken_;
@@ -358,74 +375,118 @@ void DockApp::onClick(std::size_t index) {
     requestFrame();
 }
 
-void DockApp::showContextMenu(POINT screen, std::optional<std::size_t> index) {
+void DockApp::saveSettings() {
+    saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+}
+
+void DockApp::showContextMenu(std::optional<std::size_t> index) {
     const DockItem* p = index ? controller_.itemAt(*index) : nullptr;
-    DockItem item = p ? *p : DockItem{ItemKind::Separator};
-    HMENU menu = CreatePopupMenu();
+    MenuContext ctx;
+    ctx.item = p ? *p : DockItem{ItemKind::Separator};
+    ctx.settings = settings_;
+    const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
-        AppendMenuW(menu, MF_STRING, item.running ? kMenuShowAll : kMenuOpen,
-                    item.running ? L"Afficher toutes les fenêtres" : L"Ouvrir");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, item.pinned ? kMenuUnpin : kMenuPin,
-                    item.pinned ? L"Retirer du Dock" : L"Garder dans le Dock");
-        AppendMenuW(menu, MF_STRING, kMenuReveal, L"Afficher dans l'Explorateur");
-        if (item.running) {
-            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-            AppendMenuW(menu, MF_STRING, kMenuQuitApp, L"Quitter");
-        }
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    } else if (item.kind == ItemKind::Stack) {
-        AppendMenuW(menu, MF_STRING, kMenuUnpin, L"Retirer du Dock");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        if (auto id = model_.identityOf(item.appId)) ctx.exePath = id->exePath;
+        ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        for (WindowId w : model_.windowsOf(item.appId)) ctx.windows.emplace_back(w, model_.titleOf(w));
+    } else if (item.kind == ItemKind::Trash) {
+        ctx.trashFull = recycleBinHasItems();
     }
-    AppendMenuW(menu, MF_STRING, kMenuSettings, L"Réglages du Dock…");
-    AppendMenuW(menu, MF_STRING, kMenuQuitDock, L"Quitter MacDock");
 
-    SetForegroundWindow(hwnd_);
-    UINT cmd = UINT(TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_BOTTOMALIGN | TPM_CENTERALIGN | TPM_NONOTIFY,
-                                     screen.x, screen.y, hwnd_, nullptr));
-    PostMessageW(hwnd_, WM_NULL, 0, 0);
-    DestroyMenu(menu);
+    // Ancrage : centré au-dessus de l'icône (ou du curseur, hors icône), juste au-dessus du Dock.
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    POINT cursor;
+    GetCursorPos(&cursor);
+    float top = frame.bgTop;
+    LONG x = cursor.x;
+    if (index && *index < frame.icons.size()) {
+        const RenderIcon& icon = frame.icons[*index];
+        x = origin_.x + LONG(std::lround(icon.cx));
+        if (!icon.separator) top = std::min(top, icon.cy - icon.size / 2);
+    }
+    POINT anchor{x, origin_.y + LONG(std::lround(top - 6 * scale_))};
 
+    MenuWindow::Env env;
+    env.instance = instance_;
+    env.device = renderer_.device();
+    env.dark = dark_;
+    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
+    env.scale = scale_;
+    env.font = renderer_.fontName(settings_.font);
+    env.metrics = metrics_;
+    env.trace = trace_;
+    controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant le menu, comme sur macOS
+    requestFrame();
+    // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
+    pauseCapture();
+    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor);
+    resumeCapture();
+    if (trace_) log::info(L"[trace] menu %s : commande %d", item.key.c_str(), cmd);
+
+    if (cmd >= kCmdWindowBase && std::size_t(cmd - kCmdWindowBase) < ctx.windows.size()) {
+        restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(ctx.windows[cmd - kCmdWindowBase].first)));
+        requestFrame();
+        return;
+    }
     switch (cmd) {
-        case kMenuOpen:
-        case kMenuShowAll:
+        case kCmdOpen:
+        case kCmdShowAll:
             if (index) onClick(*index);
             break;
-        case kMenuPin: {
-            std::size_t at = 0;
-            for (auto& e : model_.pinnedEntries()) at += e.kind != PinKind::Stack;
-            if (model_.pin(item.appId, at)) {
-                auto entries = model_.pinnedEntries();
-                auto id = model_.identityOf(item.appId);
-                for (auto& e : entries)
-                    if (e.appId == item.appId && id) e.exePath = id->exePath;
-                model_.loadPinned(entries);
-                savePinned();
+        case kCmdKeep:
+            if (item.pinned) {
+                if (model_.unpin(item.key)) savePinned();
+            } else {
+                std::size_t at = 0;   // après la dernière app épinglée (avant les piles)
+                for (auto& e : model_.pinnedEntries()) at += e.kind != PinKind::Stack;
+                if (model_.pin(item.appId, at)) savePinned();
             }
             break;
-        }
-        case kMenuUnpin:
-            if (model_.unpin(item.key)) savePinned();
+        case kCmdLogin:
+            setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
             break;
-        case kMenuReveal: {
-            auto id = model_.identityOf(item.appId);
-            std::wstring path = id ? id->exePath : L"";
-            if (!path.empty()) {
-                std::wstring args = L"/select,\"" + path + L"\"";
-                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
-            }
+        case kCmdReveal:
+            if (item.kind == ItemKind::Stack) openFolder(item.launch);
+            else revealInExplorer(ctx.exePath);
             break;
-        }
-        case kMenuQuitApp:
+        case kCmdHide:
+            model_.setHidden(item.appId, true);
+            minimizeAll(toHwnds(item.windows));
+            break;
+        case kCmdQuit:
             for (HWND h : toHwnds(item.windows)) PostMessageW(h, WM_CLOSE, 0, 0);
             break;
-        case kMenuSettings: {
+        case kCmdAutohide:
+            settings_.autohide = !settings_.autohide;
+            saveSettings();
+            applySettings();
+            break;
+        case kCmdMagnify:
+            settings_.magnification = !settings_.magnification;
+            saveSettings();
+            applySettings();
+            break;
+        case kCmdPosLeft:
+        case kCmdPosBottom:
+        case kCmdPosRight:
+            break;   // Gauche et Droite : plan 4
+        case kCmdSettings: {
             std::wstring path = L"\"" + dataDir_ + L"\\settings.json\"";
             ShellExecuteW(nullptr, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
             break;
         }
-        case kMenuQuitDock:
+        case kCmdTrashOpen: openRecycleBin(); break;
+        case kCmdTrashEmpty: emptyRecycleBin(hwnd_); break;
+        case kCmdRemove:
+            if (model_.unpin(item.key)) savePinned();
+            break;
+        case kCmdRestore:
+            restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
+            break;
+        case kCmdCloseWindow:
+            PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
+            break;
+        case kCmdQuitDock:
             PostMessageW(hwnd_, WM_CLOSE, 0, 0);
             break;
         default: break;
@@ -448,7 +509,8 @@ void DockApp::renderNow() {
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
-    frame.glass = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
+    // Pendant un menu, la capture du Dock est suspendue : il garde sa dernière image d'arrière-plan.
+    frame.glass = glassLive_ && (capture_.status() == BackdropCapture::Status::Running || capturePaused_);
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -564,13 +626,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 requestFrame();
             }
             return 0;
-        case WM_RBUTTONUP: {
-            POINT client{short(LOWORD(lp)), short(HIWORD(lp))};
-            POINT screen = client;
-            ClientToScreen(hwnd_, &screen);
-            showContextMenu(screen, controller_.hitTest(client));
+        case WM_RBUTTONUP:
+            if (controller_.dragging()) return 0;
+            showContextMenu(controller_.hitTestAny(POINT{short(LOWORD(lp)), short(HIWORD(lp))}));
             return 0;
-        }
         case WM_APP_IPC_FLASH: {
             std::wstring app = model_.appOfWindow(WindowId(lp));
             controller_.setAttention(app, true);

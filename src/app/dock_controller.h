@@ -57,6 +57,8 @@ public:
     DragVisual dragVisual(IconProvider& icons) const;
 
     std::optional<std::size_t> hitTest(POINT clientPx) const;
+    // Comme hitTest, mais reconnaît aussi les séparateurs (clic droit : menu du Dock).
+    std::optional<std::size_t> hitTestAny(POINT clientPx) const;
     const DockItem* itemAt(std::size_t index) const;
     bool isInsideInteractiveZone(POINT clientPx) const;
 

@@ -42,13 +42,14 @@ private:
     void loadConfig(bool initial);
     void applySettings();
     void savePinned();
+    void saveSettings();
     void reposition();
     void registerAppBar();
     void removeAppBar();
     void onMouse(POINT screen);
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
-    void showContextMenu(POINT screen, std::optional<std::size_t> index);
+    void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
     void renderNow();
     void requestFrame();
     void startMouseThread();
@@ -57,6 +58,8 @@ private:
     void onHotKey(int id);
     void updateGlass();       // applique settings_.glass : exclusion de la capture, démarrage ou arrêt
     void restartCapture();
+    void pauseCapture();      // le temps d'un menu (une seule duplication de l'écran par processus)
+    void resumeCapture();
     void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
     void onPointerUp(POINT client);
@@ -99,7 +102,8 @@ private:
 
     BackdropCapture capture_;
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
-    bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
+    bool glassLive_ = false;
+    bool capturePaused_ = false;   // capture suspendue pendant un menu : la dernière image reste valable   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
 
     SpriteRenderer sprites_;

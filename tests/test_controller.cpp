@@ -144,3 +144,16 @@ TEST_CASE(controller_attention_stops_when_app_closes) {
     CHECK(!f.c.isBouncing(L"c:\\a.exe"));
     CHECK(!f.c.tick(1.0 / 60));
 }
+
+TEST_CASE(controller_hit_test_separator) {
+    Fixture f;   // a, b, c, séparateur, corbeille
+    bool found = false;
+    for (int x = -150; x <= 150 && !found; ++x) {
+        auto any = f.c.hitTestAny(f.at(x));
+        if (any && f.c.itemAt(*any)->kind == md::ItemKind::Separator) {
+            found = true;
+            CHECK(!f.c.hitTest(f.at(x)).has_value());   // le clic gauche ignore toujours le séparateur
+        }
+    }
+    CHECK(found);
+}

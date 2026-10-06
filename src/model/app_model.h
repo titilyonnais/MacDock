@@ -45,6 +45,10 @@ public:
     void windowClosed(WindowId id);
     void windowMinimized(WindowId id, bool minimized);
     void windowTitle(WindowId id, const std::wstring& title);
+    // « Masquer » : les fenêtres réduites de l'app ne deviennent pas des tuiles. Levé dès qu'une
+    // de ses fenêtres est restaurée ou ouverte, ou à la fermeture de l'app.
+    void setHidden(const std::wstring& appId, bool hidden);
+    bool isHidden(const std::wstring& appId) const;
 
     bool pin(const std::wstring& appId, std::size_t index);
     bool unpin(const std::wstring& key);
@@ -64,6 +68,7 @@ private:
         AppIdentity identity;
         std::vector<WindowId> windows;
         std::uint64_t openSeq = 0;
+        bool hidden = false;
     };
     struct Window {
         std::wstring appId;
