@@ -28,6 +28,7 @@ public:
         std::wstring wallpaper;          // PNG de fond pour la capture (redimensionné à la fenêtre)
         std::wstring reference;          // PNG de référence (capture de macOS) à comparer
         std::wstring diff;               // carte de différence (PNG) ; diff.txt écrit à côté
+        std::optional<bool> dark;        // thème forcé (--theme light|dark) ; sinon celui du système
     };
     int run(HINSTANCE instance, const Options& options);
 

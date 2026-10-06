@@ -3,7 +3,7 @@
 //   MacDock.exe --quit           ferme le Dock en cours d'exécution
 //   MacDock.exe --trace-windows  journalise le suivi des fenêtres (diagnostic)
 //   MacDock.exe --snapshot f.png [--hover x]  rendu hors écran du Dock (x : curseur en points depuis le centre)
-//               [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
+//               [--theme light|dark] [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
 //   MacDock.exe --capture-test f.png   capture réelle du bas de l'écran (diagnostic du verre)
 #include <windows.h>
 #include <objbase.h>
@@ -53,6 +53,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--wallpaper") == 0) options.wallpaper = argv[i + 1];
             if (wcscmp(argv[i], L"--reference") == 0) options.reference = argv[i + 1];
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
+            if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
         std::wstring captureTest;
         for (int i = 1; i + 1 < argc; ++i)

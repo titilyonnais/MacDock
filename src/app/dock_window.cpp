@@ -614,7 +614,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     std::wstring iconDir = dataDir_ + L"\\icons";
     CreateDirectoryW(iconDir.c_str(), nullptr);
     icons_.setCustomDir(iconDir);
-    dark_ = systemDarkMode();
+    dark_ = options.dark.value_or(systemDarkMode());
     icons_.setDark(dark_);
 
     controller_.init(settings_, metrics_, &model_);
