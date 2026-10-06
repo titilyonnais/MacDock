@@ -16,6 +16,9 @@ IRect toOutputRect(const IRect& screen, const IRect& outputDesktop);
 bool anyIntersects(const IRect& region, const IRect* rects, std::size_t n);
 // Rotation DXGI (1 = IDENTITY, 0 = UNSPECIFIED) : seules ces deux valeurs sont prises en charge.
 bool rotationSupported(int dxgiRotation);
+// Échec de mise en place de la capture qui ne se résoudra pas seul (DXGI_ERROR_UNSUPPORTED, écran tourné) :
+// la capture s'arrête jusqu'au prochain changement d'affichage au lieu de réessayer toutes les 2 s.
+bool permanentCaptureFailure(long hr, bool rotationUnsupported);
 // SDRWhiteLevel de DISPLAYCONFIG (1000 = 80 nits) → facteur scRGB du blanc SDR ; 1 si invalide.
 float sdrWhiteScale(unsigned sdrWhiteLevel);
 

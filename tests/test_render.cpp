@@ -113,18 +113,23 @@ TEST_CASE(render_glass_readable_on_white_and_black) {
 }
 
 TEST_CASE(render_glass_hdr_backdrop_not_blown_out) {
-    // Fond scRGB à 3.0 (blanc SDR à 240 nits) avec sdrWhiteScale = 3 : même rendu qu'un fond SDR blanc (écart ≤ 8).
+    // Fond scRGB à 0,6 avec un blanc SDR à 3 (240 nits) : 0,2 en linéaire, soit 124 en sRGB. Le rendu doit égaler
+    // celui d'un fond SDR à 124 (écart ≤ 8) ; si l'échelle du blanc était ignorée (1), il serait nettement plus clair.
     ComScope com;
     md::DockRenderer r;
     REQUIRE(r.initOffscreen());
     md::Metrics m;
     auto f = sampleFrame(false, 2);
-    auto sdr = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 255, 255, 255));
-    auto hdr = r.renderToBgraScRgb(f, m, L"", kW, kH, 3.0f, 3.0f);
+    auto sdr = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 124, 124, 124));
+    auto hdr = r.renderToBgraScRgb(f, m, L"", kW, kH, 0.6f, 3.0f);
+    auto unscaled = r.renderToBgraScRgb(f, m, L"", kW, kH, 0.6f, 1.0f);
     REQUIRE(!sdr.empty());
     REQUIRE(!hdr.empty());
+    REQUIRE(!unscaled.empty());
     int x = int(f.icons[3].cx) + 6, y = int((f.bgTop + f.bgBottom) / 2);   // à côté du séparateur
-    CHECK(std::abs(int(sdr[(size_t(y) * kW + x) * 4 + 1]) - int(hdr[(size_t(y) * kW + x) * 4 + 1])) <= 8);
+    auto g = [&](const std::vector<std::uint8_t>& img) { return int(img[(size_t(y) * kW + x) * 4 + 1]); };
+    CHECK(std::abs(g(sdr) - g(hdr)) <= 8);
+    CHECK(g(unscaled) - g(sdr) > 20);
 }
 
 TEST_CASE(render_glass_shadow_outside_only) {

@@ -30,6 +30,11 @@ bool anyIntersects(const IRect& region, const IRect* rects, std::size_t n) {
 
 bool rotationSupported(int dxgiRotation) { return dxgiRotation == 0 || dxgiRotation == 1; }
 
+bool permanentCaptureFailure(long hr, bool rotationUnsupported) {
+    constexpr long kDxgiUnsupported = long(0x887A0004);
+    return rotationUnsupported || hr == kDxgiUnsupported;
+}
+
 float sdrWhiteScale(unsigned sdrWhiteLevel) { return sdrWhiteLevel ? float(sdrWhiteLevel) / 1000.0f : 1.0f; }
 
 unsigned CaptureBackoff::nextDelayMs() {

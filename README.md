@@ -65,7 +65,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --snapshot capture.png [--hover 0] [--theme light|dark]` : rendu du Dock dans une image, sans l'afficher.
 - `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
-- `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDockeference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
+- `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
 ## Note

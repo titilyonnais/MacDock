@@ -394,6 +394,15 @@ void DockRenderer::endGpuTimer(ID3D11DeviceContext* ctx) {
     tsPending_ = true;
 }
 
+LUID DockRenderer::adapterLuid() const {
+    Com<IDXGIDevice> dxgi;
+    Com<IDXGIAdapter> adapter;
+    DXGI_ADAPTER_DESC d{};
+    if (d3d_ && SUCCEEDED(d3d_.As(&dxgi)) && SUCCEEDED(dxgi->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&d)))
+        return d.AdapterLuid;
+    return {};
+}
+
 double DockRenderer::takeGlassGpuMs() {
     double ms = gpuMsCount_ ? gpuMsSum_ / gpuMsCount_ : -1;
     gpuMsSum_ = 0;

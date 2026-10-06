@@ -20,7 +20,8 @@ class BackdropCapture {
     template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 
 public:
-    enum class Status { Off, Running, Unavailable };
+    // Failed : échec définitif (carte non prise en charge, écran tourné) ; à relancer après un changement d'affichage.
+    enum class Status { Off, Running, Unavailable, Failed };
     // Fournit la texture de destination (device de l'interface) pour une image w x h ; nullptr si impossible.
     using DestinationFn = std::function<ID3D11Texture2D*(UINT w, UINT h, bool scRgb)>;
 

@@ -62,6 +62,8 @@ constexpr int kMetricsVersion = 2;
 
 Metrics metricsFromJson(const json::Value& v);
 json::Value metricsToJson(const Metrics& m);   // écrit "version": kMetricsVersion
+// Toutes les mesures connues sont-elles présentes ? Sinon le fichier est réécrit complet (mesures ajoutées visibles).
+bool metricsJsonComplete(const json::Value& v);
 
 // Version d'un fichier de réglages ("version"), 1 si absente.
 int jsonVersion(const json::Value& v);

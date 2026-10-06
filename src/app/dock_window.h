@@ -57,6 +57,7 @@ private:
     void restartCapture();
     void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
+    bool rendererOnDockAdapter();   // le device de rendu est-il sur la carte qui pilote l'écran du Dock ?
     static bool systemDarkMode();
 
     HINSTANCE instance_ = nullptr;
@@ -94,6 +95,7 @@ private:
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
     bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
+    bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

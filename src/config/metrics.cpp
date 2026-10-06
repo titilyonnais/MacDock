@@ -26,6 +26,13 @@ json::Value metricsToJson(const Metrics& m) {
     return v;
 }
 
+bool metricsJsonComplete(const json::Value& v) {
+#define MD_HAS(name, def, lo, hi) if (!v.find(#name)) return false;
+    MD_METRICS_FIELDS(MD_HAS)
+#undef MD_HAS
+    return true;
+}
+
 int jsonVersion(const json::Value& v) {
     auto* f = v.find("version");
     double d = f ? f->asNumber(1) : 1;

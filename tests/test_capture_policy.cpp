@@ -58,3 +58,13 @@ TEST_CASE(capture_change_gate_detects_content_changes) {
     gate.reset();
     CHECK(gate.changed(a, 1, 1, 8));
 }
+
+TEST_CASE(capture_permanent_failures_stop_retrying) {
+    // DXGI_ERROR_UNSUPPORTED (carte hybride) et écran tourné : inutile de réessayer avant un changement d'affichage.
+    CHECK(md::permanentCaptureFailure(long(0x887A0004), false));
+    CHECK(md::permanentCaptureFailure(0, true));
+    // Bureau sécurisé (E_ACCESSDENIED), accès perdu, carte occupée : passagers, on réessaie.
+    CHECK(!md::permanentCaptureFailure(long(0x80070005), false));
+    CHECK(!md::permanentCaptureFailure(long(0x887A0026), false));
+    CHECK(!md::permanentCaptureFailure(long(0x887A0022), false));
+}

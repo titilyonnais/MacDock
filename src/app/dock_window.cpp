@@ -86,7 +86,8 @@ void DockApp::loadConfig(bool initial) {
         log::info(L"dock-metrics.json migré de la v1 à la v%d", kMetricsVersion);
     }
     if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
-    if (!m.fromFile && !m.wasInvalid && !m.unreadable)   // fichier absent : on l'écrit pour qu'il soit modifiable
+    // Fichier absent ou incomplet (mesures ajoutées par une version plus récente) : on l'écrit complet.
+    if (!m.wasInvalid && !m.unreadable && (!m.fromFile || !metricsJsonComplete(m.value)))
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", metricsToJson(metrics_));
 
     // Les épingles ne sont rechargées que si le fichier a été modifié à la main.
@@ -171,9 +172,22 @@ bool DockApp::initRenderer() {
     return renderer_.init(hwnd_, adapter.Get());
 }
 
+bool DockApp::rendererOnDockAdapter() {
+    auto adapter = BackdropCapture::adapterFor(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY));
+    DXGI_ADAPTER_DESC1 d{};
+    if (!adapter || FAILED(adapter->GetDesc1(&d))) return false;
+    LUID r = renderer_.adapterLuid();
+    return r.LowPart == d.AdapterLuid.LowPart && r.HighPart == d.AdapterLuid.HighPart;
+}
+
 void DockApp::updateGlass() {
     if (!hwnd_ || snapshot_) return;
-    bool want = settings_.glass && renderer_.glassAvailable() && !renderer_.isWarp();
+    bool want = settings_.glass && renderer_.glassAvailable() && !renderer_.isWarp() && !captureFailed_;
+    if (want && !rendererOnDockAdapter()) {
+        // La texture partagée ne passe pas d'une carte à l'autre : pas de capture (verre dépoli).
+        log::warn(L"Verre : le rendu n'est pas sur la carte de l'écran du Dock ; verre dépoli");
+        want = false;
+    }
     if (want && !excluded_) {
         // Sans exclusion, le Dock se capturerait lui-même (boucle de rétroaction) : verre désactivé.
         excluded_ = SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE) != FALSE;
@@ -202,7 +216,12 @@ void DockApp::restartCapture() {
 }
 
 void DockApp::onBackdrop() {
-    bool wasLive = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
+    if (capture_.status() == BackdropCapture::Status::Failed) {
+        // Échec définitif : on rend le Dock aux captures d'écran ; nouvel essai au prochain changement d'affichage.
+        captureFailed_ = true;
+        updateGlass();
+        return;
+    }
     ID3D11Device* dev = renderer_.device();
     if (dev) {
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
@@ -220,7 +239,7 @@ void DockApp::onBackdrop() {
         }
     }
     // Changement d'état (capture indisponible ou reprise) : on bascule entre verre réel et repli dépoli.
-    if (wasLive != (glassLive_ && capture_.status() == BackdropCapture::Status::Running)) requestFrame();
+    requestFrame();
 }
 
 void DockApp::setTransparent(bool transparent) {
@@ -483,7 +502,19 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             icons_.clear();
             renderer_.releaseImages();
             reposition();
+            captureFailed_ = false;
+            if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
+                // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
+                capture_.stop();
+                glassLive_ = false;
+                if (initRenderer()) {
+                    RECT rc;
+                    GetClientRect(hwnd_, &rc);
+                    renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+                }
+            }
             if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
+            updateGlass();
             return 0;
         case WM_APP_BACKDROP:
             onBackdrop();

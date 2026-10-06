@@ -38,3 +38,16 @@ TEST_CASE(settings_glass_defaults_on_and_roundtrips) {
     s.glass = false;
     CHECK(!md::settingsFromJson(md::settingsToJson(s)).glass);
 }
+
+TEST_CASE(metrics_json_complete_detects_missing_keys) {
+    md::Metrics m;
+    CHECK(md::metricsJsonComplete(md::metricsToJson(m)));
+    // Fichier migré de la v1 : il ne contient pas les mesures ajoutées par la v2 (verre, grille d'icône…).
+    auto migrated = md::migrateMetricsJson(*md::json::parse(R"({"iconGap":6,"shadowOpacity":0.3})"));
+    CHECK(!md::metricsJsonComplete(migrated));
+    // Réécrit complet, il garde les personnalisations.
+    auto full = md::metricsToJson(md::metricsFromJson(migrated));
+    CHECK(md::metricsJsonComplete(full));
+    CHECK(full.find("glassBlur") != nullptr);
+    CHECK_NEAR(md::metricsFromJson(full).shadowOpacity, 0.3, 1e-9);
+}

@@ -245,7 +245,8 @@ void BackdropCapture::run() {
         Com<ID3D11Device> dev;
         Com<IDXGIOutputDuplication> dup;
         IRect outputDesktop{};
-        bool ok = false;
+        bool ok = false, rotated = false;
+        HRESULT hr = E_FAIL;
         if (adapter && SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
                                                    D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &dev,
                                                    nullptr, nullptr))) {
@@ -257,19 +258,26 @@ void BackdropCapture::run() {
                 Com<IDXGIOutput5> out5;
                 Com<IDXGIOutput1> out1;
                 const DXGI_FORMAT formats[] = {DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT};
-                HRESULT hr = E_FAIL;
                 if (SUCCEEDED(output.As(&out5))) hr = out5->DuplicateOutput1(dev.Get(), 0, 2, formats, &dup);
                 if (FAILED(hr) && SUCCEEDED(output.As(&out1))) hr = out1->DuplicateOutput(dev.Get(), &dup);
                 if (SUCCEEDED(hr)) {
                     DXGI_OUTDUPL_DESC dd{};
                     dup->GetDesc(&dd);
-                    if (rotationSupported(int(dd.Rotation))) ok = true;
-                    else log::warn(L"Capture : écran tourné, non pris en charge (verre dépoli)");
+                    ok = rotationSupported(int(dd.Rotation));
+                    rotated = !ok;
                 } else if (!unavailableLogged) {
                     log::warn(L"Capture : duplication impossible (0x%08X), verre dépoli en attendant", hr);
                 }
                 break;
             }
+        }
+        if (!ok && permanentCaptureFailure(long(hr), rotated)) {
+            // Rien ne changera avant un changement d'affichage : on s'arrête (le Dock reprend à WM_DISPLAYCHANGE).
+            log::warn(rotated ? L"Capture : écran tourné, non pris en charge ; verre dépoli"
+                              : L"Capture : non prise en charge par cette carte (0x%08X) ; verre dépoli",
+                      hr);
+            setStatus(Status::Failed);
+            return;
         }
         if (!ok) {
             setStatus(Status::Unavailable);
@@ -307,9 +315,20 @@ bool BackdropCapture::captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplica
     const bool reducerOk = reducer.init(dev.Get());
     if (!reducerOk) log::warn(L"Capture : comparaison du contenu indisponible (toutes les compositions sont transmises)");
     bool desktopValid = false;   // la surface de duplication ne contient l'image qu'après une vraie présentation
+    ULONGLONG whiteCheckedAt = GetTickCount64();
 
     for (;;) {
         if (WaitForSingleObject(stopEvent_, 0) == WAIT_OBJECT_0) return false;
+        if (GetTickCount64() - whiteCheckedAt >= 2000) {
+            whiteCheckedAt = GetTickCount64();
+            float white = querySdrWhite(monitor_);
+            if (white != sdrWhite_.load()) {
+                sdrWhite_ = white;
+                gate.reset();   // la conversion change : l'image publiée doit être refaite
+                std::lock_guard g(lock_);
+                regionChanged_ = true;
+            }
+        }
         DXGI_OUTDUPL_FRAME_INFO info{};
         Com<IDXGIResource> resource;
         HRESULT hr = dup->AcquireNextFrame(100, &info, &resource);
@@ -393,7 +412,9 @@ bool BackdropCapture::captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplica
                 bool differs = reducer.update(ctx.Get(), frame.Get(), box, fd.Format, sdrWhite_.load(), gate);
                 copy = differs || changed;
             }
-            if (copy && SUCCEEDED(sharedMutex_->AcquireSync(0, 100))) {
+            bool owned = copy && sharedMutex_->AcquireSync(0, 100) == S_OK;
+            if (copy && !owned) gate.reset();   // non publiée : la prochaine image doit l'être quoi qu'il arrive
+            if (owned) {
                 if (reducerOk && reducer.scratch()) ctx->CopyResource(shared_.Get(), reducer.scratch());
                 else ctx->CopySubresourceRegion(shared_.Get(), 0, 0, 0, 0, frame.Get(), 0, &box);
                 sharedMutex_->ReleaseSync(0);
