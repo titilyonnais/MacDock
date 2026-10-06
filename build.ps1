@@ -27,11 +27,11 @@ function Get-Sources([string[]]$Patterns) {
 # Modules logiques (sans dépendance graphique) partagés par les tests.
 $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp',
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp',
-                  'src\icons\squircle.cpp')
+                  'src\icons\*.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources; Subsystem = 'CONSOLE';
-                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib') }
+                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
                       'src\shell\*.cpp', 'src\render\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
