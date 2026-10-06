@@ -55,7 +55,7 @@ function Build-Target([string]$Name) {
     $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
     Set-Content -Path $rsp -Value $lines -Encoding ascii
     Write-Host "== $Name ($Config) : $($sources.Count) fichiers"
-    cmd /c "`"$vcvars`" >nul && cl @`"$rsp`" /link $link"
+    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && cl @`"$rsp`" /link $link"
     if ($LASTEXITCODE -ne 0) { throw "Echec de compilation : $Name" }
 }
 
