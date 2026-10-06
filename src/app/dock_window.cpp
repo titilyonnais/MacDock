@@ -10,6 +10,7 @@
 
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "../icons/squircle.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -87,7 +88,7 @@ void DockApp::loadConfig(bool initial) {
 void DockApp::applySettings() {
     model_.setShowRecents(settings_.showRecents);
     icons_.setStrictTahoe(settings_.tahoeStrictIcons);
-    icons_.setJailInset(metrics_.iconJailInset);
+    icons_.setGrid(kIconShapeRatio, kIconCornerRatio, metrics_.iconJailInset, 0.5);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
 }
