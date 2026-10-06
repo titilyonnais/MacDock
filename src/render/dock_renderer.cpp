@@ -2,6 +2,7 @@
 
 #include <d2d1_3helper.h>
 #include <dxgi1_3.h>
+#include <wincodec.h>
 
 #include <algorithm>
 
@@ -206,9 +207,21 @@ bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wst
     dc->SetDpi(96, 96);
     dc->SetTransform(D2D1::Matrix3x2F::Translation(float(offset.x), float(offset.y)));
     dc->Clear(rgba(0, 0, 0, 0));
-    dc->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    drawFrame(dc.Get(), f, m, fontFamily);
 
-    drawBackground(dc.Get(), f, m);
+    hr = surface_->EndDraw();
+    if (FAILED(hr)) {
+        log::warn(L"EndDraw a échoué (0x%08X)", hr);
+        return false;
+    }
+    hr = dcomp_->Commit();
+    return SUCCEEDED(hr);
+}
+
+void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m,
+                             const std::wstring& fontFamily) {
+    dc->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    drawBackground(dc, f, m);
 
     Com<ID2D1SolidColorBrush> sepBrush, dotBrush;
     dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.25f) : rgba(0, 0, 0, 0.22f), &sepBrush);
@@ -233,15 +246,56 @@ bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wst
         }
     }
 
-    drawTooltip(dc.Get(), f, m, fontFamily);
+    drawTooltip(dc, f, m, fontFamily);
+}
 
-    hr = surface_->EndDraw();
-    if (FAILED(hr)) {
-        log::warn(L"EndDraw a échoué (0x%08X)", hr);
+bool DockRenderer::renderToFile(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily, UINT w,
+                                UINT h, const std::wstring& path) {
+    auto pf = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
+    Com<ID2D1Bitmap1> target, readback;
+    if (FAILED(dc_->CreateBitmap(D2D1::SizeU(w, h), nullptr, 0,
+                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET, pf), &target)) ||
+        FAILED(dc_->CreateBitmap(D2D1::SizeU(w, h), nullptr, 0,
+                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, pf),
+                                 &readback)))
         return false;
-    }
-    hr = dcomp_->Commit();
-    return SUCCEEDED(hr);
+    dc_->SetTarget(target.Get());
+    dc_->BeginDraw();
+    dc_->SetDpi(96, 96);
+    dc_->SetTransform(D2D1::Matrix3x2F::Identity());
+    // Fond de bureau factice : dégradé coloré pour juger la translucidité.
+    D2D1_GRADIENT_STOP stops[3] = {{0, rgba(0.16f, 0.32f, 0.62f, 1)}, {0.5f, rgba(0.55f, 0.36f, 0.66f, 1)},
+                                   {1, rgba(0.95f, 0.55f, 0.42f, 1)}};
+    Com<ID2D1GradientStopCollection> coll;
+    dc_->CreateGradientStopCollection(stops, 3, &coll);
+    Com<ID2D1LinearGradientBrush> wallpaper;
+    dc_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(float(w), float(h))),
+                                   coll.Get(), &wallpaper);
+    dc_->FillRectangle(D2D1::RectF(0, 0, float(w), float(h)), wallpaper.Get());
+    drawFrame(dc_.Get(), f, m, fontFamily);
+    HRESULT hr = dc_->EndDraw();
+    dc_->SetTarget(nullptr);
+    if (FAILED(hr) || FAILED(readback->CopyFromBitmap(nullptr, target.Get(), nullptr))) return false;
+
+    D2D1_MAPPED_RECT mapped{};
+    if (FAILED(readback->Map(D2D1_MAP_OPTIONS_READ, &mapped))) return false;
+    Com<IWICImagingFactory> wic;
+    Com<IWICStream> stream;
+    Com<IWICBitmapEncoder> encoder;
+    Com<IWICBitmapFrameEncode> frame;
+    bool ok = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) &&
+              SUCCEEDED(wic->CreateStream(&stream)) &&
+              SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
+              SUCCEEDED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder)) &&
+              SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)) &&
+              SUCCEEDED(encoder->CreateNewFrame(&frame, nullptr)) && SUCCEEDED(frame->Initialize(nullptr)) &&
+              SUCCEEDED(frame->SetSize(w, h));
+    WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppPBGRA;
+    ok = ok && SUCCEEDED(frame->SetPixelFormat(&fmt)) &&
+         SUCCEEDED(frame->WritePixels(h, mapped.pitch, mapped.pitch * h, mapped.bits)) && SUCCEEDED(frame->Commit()) &&
+         SUCCEEDED(encoder->Commit());
+    readback->Unmap();
+    return ok;
 }
 
 } // namespace md

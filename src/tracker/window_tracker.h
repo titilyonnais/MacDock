@@ -27,6 +27,7 @@ public:
     bool handleMessage(UINT msg, WPARAM wp, LPARAM lp);   // à appeler depuis le WndProc
     void rescan();
     HWND foreground() const { return foreground_; }
+    void setTrace(bool trace) { trace_ = trace; }
 
 private:
     static void CALLBACK winEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD,
@@ -43,6 +44,9 @@ private:
     std::map<HWND, Known> known_;
     std::map<HWND, ULONGLONG> pending_;   // fenêtres à réévaluer (cadres d'apps du Store en chargement)
     HWND foreground_ = nullptr;
+    bool trace_ = false;
+    std::map<DWORD, int> eventCounts_;
+    ULONGLONG countSince_ = 0;
     static WindowTracker* instance_;
 };
 

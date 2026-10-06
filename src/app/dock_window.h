@@ -1,0 +1,84 @@
+// Fenêtre du Dock : orchestration des modules, messages système, boucle d'animation.
+#pragma once
+#include <windows.h>
+
+#include <atomic>
+#include <optional>
+#include <string>
+#include <thread>
+
+#include "../config/metrics.h"
+#include "../config/settings.h"
+#include "../icons/icon_provider.h"
+#include "../ipc/pipe_server.h"
+#include "../model/app_model.h"
+#include "../render/dock_renderer.h"
+#include "../tracker/window_tracker.h"
+#include "dock_controller.h"
+
+namespace md {
+
+class DockApp {
+public:
+    struct Options {
+        bool trace = false;
+        std::wstring snapshot;           // chemin PNG : rendu hors écran puis sortie
+        std::optional<double> hover;     // position simulée du curseur (points depuis le centre)
+    };
+    int run(HINSTANCE instance, const Options& options);
+
+private:
+    static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
+    static LRESULT CALLBACK mouseHookProc(int code, WPARAM wp, LPARAM lp);
+    LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
+
+    void loadConfig(bool initial);
+    void applySettings();
+    void savePinned();
+    void reposition();
+    void registerAppBar();
+    void removeAppBar();
+    void onMouse(POINT screen);
+    void setTransparent(bool transparent);
+    void onClick(std::size_t index);
+    void showContextMenu(POINT screen, std::optional<std::size_t> index);
+    void renderNow();
+    void startMouseThread();
+    void startConfigWatcher();
+    static bool systemDarkMode();
+
+    HINSTANCE instance_ = nullptr;
+    HWND hwnd_ = nullptr;
+    bool trace_ = false;
+    bool snapshot_ = false;
+    std::wstring dataDir_;
+    Settings settings_;
+    Metrics metrics_;
+    AppModel model_;
+    WindowTracker tracker_;
+    IconProvider icons_;
+    DockRenderer renderer_;
+    DockController controller_;
+    ipc::PipeServer pipe_;
+
+    RECT monitor_{};
+    POINT origin_{};
+    float scale_ = 1;
+    bool dark_ = false;
+    bool transparent_ = true;
+    bool appBar_ = false;
+    std::optional<std::size_t> pressed_;
+    UINT taskbarCreated_ = 0;
+    bool running_ = true;
+    bool wakeAnimation_ = true;
+
+    std::thread mouseThread_;
+    DWORD mouseThreadId_ = 0;
+    std::atomic<LONG> mouseX_{0}, mouseY_{0};
+    std::atomic<bool> mousePending_{false};
+    std::thread configThread_;
+    HANDLE stopEvent_ = nullptr;
+    static DockApp* self_;
+};
+
+} // namespace md

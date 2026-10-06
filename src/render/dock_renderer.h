@@ -49,12 +49,16 @@ public:
     // false => périphérique perdu : rappeler init().
     bool render(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily);
     void releaseImages() { bitmaps_.clear(); }
+    // Rendu hors écran vers un PNG (diagnostic, calibration) sur un fond de bureau factice.
+    bool renderToFile(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily, UINT w, UINT h,
+                      const std::wstring& path);
 
 private:
     ID2D1Bitmap1* bitmapFor(const IconProvider::ImagePtr& img);
     std::wstring resolveFont(const std::wstring& wanted);
     void drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m);
     void drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
+    void drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
 
     template <class T> using Com = Microsoft::WRL::ComPtr<T>;
     HWND hwnd_ = nullptr;

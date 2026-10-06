@@ -27,7 +27,8 @@ function Get-Sources([string[]]$Patterns) {
 # Modules logiques (sans dépendance graphique) partagés par les tests.
 $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp',
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp',
-                  'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp')
+                  'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
+                  'src\app\dock_controller.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources; Subsystem = 'CONSOLE';
@@ -37,7 +38,7 @@ $Targets = @{
                       'src\shell\*.cpp', 'src\render\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
-                      'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib') }
+                      'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
     launcher = @{ Exe = 'MacDockLauncher.exe'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
 }

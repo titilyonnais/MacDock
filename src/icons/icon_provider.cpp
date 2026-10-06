@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 #include "../core/log.h"
 #include "squircle.h"
@@ -119,30 +120,40 @@ Pixels loadPng(const std::wstring& path, int& size) {
     return px;
 }
 
-void applySquircleMask(Pixels& px, int size) {
-    for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x) {
-            double a = squircleMaskAlpha(x, y, size);
-            if (a >= 1.0) continue;
-            auto* p = &px[(size_t(y) * size + x) * 4];
-            for (int c = 0; c < 4; ++c) p[c] = std::uint8_t(std::lround(p[c] * a));
-        }
+// Table de couverture du squircle (anticrénelée), calculée une fois par taille.
+const std::vector<float>& maskFor(int size) {
+    static std::map<int, std::vector<float>> cache;
+    auto& m = cache[size];
+    if (m.empty()) {
+        m.resize(size_t(size) * size);
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) m[size_t(y) * size + x] = float(squircleMaskAlpha(x, y, size));
+    }
+    return m;
 }
 
-// Plaque squircle avec dégradé vertical et liseré clair.
+void applySquircleMask(Pixels& px, int size) {
+    const auto& mask = maskFor(size);
+    for (size_t i = 0; i < mask.size(); ++i) {
+        float a = mask[i];
+        if (a >= 1.0f) continue;
+        for (int c = 0; c < 4; ++c) px[i * 4 + c] = std::uint8_t(std::lround(px[i * 4 + c] * a));
+    }
+}
+
+// Plaque squircle avec dégradé vertical et liseré clair sur le pourtour.
 Pixels plate(int size, Rgb top, Rgb bottom, double rimOpacity) {
+    const auto& mask = maskFor(size);
+    auto at = [&](int x, int y) { return (x < 0 || y < 0 || x >= size || y >= size) ? 0.0f : mask[size_t(y) * size + x]; };
     Pixels px(size_t(size) * size * 4, 0);
     for (int y = 0; y < size; ++y) {
         double t = size > 1 ? double(y) / (size - 1) : 0;
         Rgb c{top.r + (bottom.r - top.r) * t, top.g + (bottom.g - top.g) * t, top.b + (bottom.b - top.b) * t};
         for (int x = 0; x < size; ++x) {
-            double a = squircleMaskAlpha(x, y, size);
+            double a = at(x, y);
             if (a <= 0) continue;
-            // Liseré : pixels proches du bord de la forme (forme réduite de 1 px non couvrante).
-            double inner = squircleMaskAlpha(x, y, size) - (x > 0 && y > 0 && x < size - 1 && y < size - 1
-                               ? std::min(squircleMaskAlpha(x - 1, y, size), std::min(squircleMaskAlpha(x + 1, y, size),
-                                 std::min(squircleMaskAlpha(x, y - 1, size), squircleMaskAlpha(x, y + 1, size))))
-                               : 0.0);
+            // Liseré : écart entre la couverture du pixel et celle de son voisin le moins couvert.
+            double inner = a - std::min({at(x - 1, y), at(x + 1, y), at(x, y - 1), at(x, y + 1)});
             double rim = std::clamp(inner, 0.0, 1.0) * rimOpacity;
             double r = c.r + (1 - c.r) * rim, g = c.g + (1 - c.g) * rim, b = c.b + (1 - c.b) * rim;
             auto* p = &px[(size_t(y) * size + x) * 4];
@@ -154,7 +165,6 @@ Pixels plate(int size, Rgb top, Rgb bottom, double rimOpacity) {
     }
     return px;
 }
-
 // dst = src par-dessus dst (prémultiplié), src de taille s placée en (ox, oy).
 void blendOver(Pixels& dst, int dstSize, const Pixels& src, int s, int ox, int oy) {
     for (int y = 0; y < s; ++y) {

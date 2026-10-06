@@ -1,5 +1,8 @@
 #include "app_identity.h"
 
+// Les en-têtes Shell redéfinissent PID_FIRST_USABLE (avertissement du SDK, sans conséquence).
+#pragma warning(push)
+#pragma warning(disable : 4005)
 #include <appmodel.h>
 #include <dwmapi.h>
 #include <propkey.h>
@@ -8,6 +11,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
+#pragma warning(pop)
 
 #include <vector>
 

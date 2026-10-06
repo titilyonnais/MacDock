@@ -20,6 +20,7 @@ TEST_CASE(default_pins_structure) {
         CHECK(!p.appId.empty());
         CHECK(!p.name.empty());
         CHECK(ids.insert(p.appId).second);   // pas de doublon
+        CHECK(p.appId != L"Microsoft.Windows.Explorer");   // l'Explorateur n'est épinglé qu'une fois
     }
     CoUninitialize();
 }

@@ -55,7 +55,8 @@ std::vector<PinnedEntry> defaultPins() {
     for (auto& lnk : taskbarPinnedShortcuts()) {
         auto id = identifyLaunchTarget(lnk);
         if (!id) continue;
-        if (toLower(id->exePath) == toLower(explorer)) continue;   // déjà présent
+        // L'Explorateur est déjà la première épingle (raccourci « Explorateur de fichiers » de la barre).
+        if (toLower(id->exePath) == toLower(explorer) || id->aumid == L"Microsoft.Windows.Explorer") continue;
         bool dup = std::any_of(pins.begin(), pins.end(), [&](auto& p) { return p.appId == id->appId; });
         if (dup) continue;
         pins.push_back({PinKind::App, id->appId, lnk, id->displayName, id->exePath});

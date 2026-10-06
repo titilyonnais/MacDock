@@ -55,6 +55,17 @@ void CALLBACK WindowTracker::winEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd,
 }
 
 void WindowTracker::onEvent(DWORD event, HWND hwnd) {
+    if (trace_) {
+        ++eventCounts_[event];
+        ULONGLONG now = GetTickCount64();
+        if (now - countSince_ > 5000) {
+            std::wstring s;
+            for (auto& [e, n] : eventCounts_) s += std::to_wstring(e) + L"=" + std::to_wstring(n) + L" ";
+            log::info(L"[perf] événements fenêtres en 5 s : %s", s.c_str());
+            eventCounts_.clear();
+            countSince_ = now;
+        }
+    }
     switch (event) {
         case EVENT_OBJECT_DESTROY:
             forget(hwnd);

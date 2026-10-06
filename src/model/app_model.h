@@ -54,6 +54,7 @@ public:
     std::vector<WindowId> windowsOf(const std::wstring& appId) const;
     std::optional<AppIdentity> identityOf(const std::wstring& appId) const;
     std::wstring titleOf(WindowId id) const;
+    std::wstring appOfWindow(WindowId id) const;   // vide si inconnue
     std::uint64_t revision() const { return revision_; }
 
 private:

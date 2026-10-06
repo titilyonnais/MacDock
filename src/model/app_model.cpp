@@ -148,6 +148,11 @@ std::wstring AppModel::titleOf(WindowId id) const {
     return w == windows_.end() ? std::wstring() : w->second.title;
 }
 
+std::wstring AppModel::appOfWindow(WindowId id) const {
+    auto w = windows_.find(id);
+    return w == windows_.end() ? std::wstring() : w->second.appId;
+}
+
 std::vector<DockItem> AppModel::items() const {
     std::vector<DockItem> out;
     auto appItem = [&](const std::wstring& appId, const std::wstring& name, const std::wstring& launch) {

@@ -170,3 +170,10 @@ TEST_CASE(settings_roundtrip_pin_exe_path) {
     s.pinned.push_back(p);
     CHECK(md::settingsFromJson(md::settingsToJson(s)).pinned[0].exePath == L"C:\\c.exe");
 }
+
+TEST_CASE(model_app_of_window) {
+    md::AppModel m;
+    m.windowOpened(7, idOf(L"C:\\a.exe"));
+    CHECK(m.appOfWindow(7) == L"c:\\a.exe");
+    CHECK(m.appOfWindow(8).empty());
+}
