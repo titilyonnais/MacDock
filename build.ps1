@@ -31,17 +31,33 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\app\dock_controller.cpp')
 
 $Targets = @{
-    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp'); Subsystem = 'CONSOLE';
+    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
                   Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib',
                       'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
-                      'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
+                      'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
     launcher = @{ Exe = 'MacDockLauncher.exe'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
+}
+
+# Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
+$ShaderDir = Join-Path $Root "build\$Config\shaders"
+function Build-Shaders {
+    New-Item -ItemType Directory -Force -Path $ShaderDir | Out-Null
+    $files = Get-ChildItem -Path (Join-Path $Root 'src\glass\shaders\*.hlsl') -ErrorAction SilentlyContinue
+    if (-not $files) { return }
+    $cmds = foreach ($f in $files) {
+        $name = $f.BaseName
+        $shaderProfile = if ($name.EndsWith('_vs')) { 'vs_5_0' } else { 'ps_5_0' }
+        "fxc /nologo /O3 /T $shaderProfile /E main /Vn g_$name /Fh `"$ShaderDir\$name.h`" `"$($f.FullName)`" >nul"
+    }
+    Write-Host "== shaders : $($files.Count) fichiers"
+    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && $($cmds -join ' && ')"
+    if ($LASTEXITCODE -ne 0) { throw 'Echec de compilation des shaders' }
 }
 
 function Build-Target([string]$Name) {
@@ -52,7 +68,7 @@ function Build-Target([string]$Name) {
     $sources = Get-Sources $t.Sources
     if (-not $sources) { throw "Aucune source pour $Name" }
     $rsp = Join-Path $out "$Name.rsp"
-    $lines = $Common + @("/Fo`"$obj\\`"", "/Fd`"$obj\\vc.pdb`"", "/Fe`"$out\$($t.Exe)`"") +
+    $lines = $Common + @("/I`"$ShaderDir`"", "/Fo`"$obj\\`"", "/Fd`"$obj\\vc.pdb`"", "/Fe`"$out\$($t.Exe)`"") +
              ($sources | ForEach-Object { "`"$_`"" })
     $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
     Set-Content -Path $rsp -Value $lines -Encoding ascii
@@ -62,6 +78,7 @@ function Build-Target([string]$Name) {
 }
 
 $names = if ($Target -eq 'all') { @('tests', 'dock', 'launcher') } else { @($Target) }
+if ($names -contains 'tests' -or $names -contains 'dock') { Build-Shaders }
 foreach ($n in $names) { Build-Target $n }
 
 if ($Run -and ($names -contains 'tests')) {

@@ -59,5 +59,83 @@ TEST_CASE(render_smooth_corner_not_circular) {
     auto img = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 0, 0, 0));
     float rl = float(md::limitedCornerRadius(f.bgRight - f.bgLeft, f.bgBottom - f.bgTop, f.cornerRadius));
     int x = int(f.bgLeft + 0.90f * rl), y = int(f.bgTop);
-    CHECK(img[(size_t(y) * kW + x) * 4 + 1] < 60);
+    // Le bord du verre est anticrénelé sur ±0,5 px et porte un liseré clair : un pixel couvert au quart reste
+    // sous 120, alors qu'un arc de cercle le couvrirait aux trois quarts (≈ 190).
+    CHECK(img[(size_t(y) * kW + x) * 4 + 1] < 120);
+}
+
+TEST_CASE(render_glass_refracts_near_edge) {
+    // Bandes horizontales de 8 px : près du bord haut, la réfraction (vers le centre, donc verticale)
+    // fait lire une autre bande ; sans réfraction, le verre montre la bande située juste derrière.
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    auto f = sampleFrame(false, 2);
+    md::Metrics m;
+    m.glassBlur = 0.5;
+    auto stripes = stripedWallpaper(kW, kH, 8, true);
+    m.glassRefraction = 0;
+    auto flat = r.renderToBgra(f, m, L"", kW, kH, stripes);
+    m.glassRefraction = 1.5;
+    auto bent = r.renderToBgra(f, m, L"", kW, kH, stripes);
+    REQUIRE(!flat.empty());
+    REQUIRE(!bent.empty());
+    int y = int(f.bgTop) + 6, diff = 0;
+    for (int x = int(f.bgLeft) + 60; x < int(f.bgRight) - 60; ++x)
+        diff += std::abs(int(flat[(size_t(y) * kW + x) * 4]) - int(bent[(size_t(y) * kW + x) * 4]));
+    CHECK(diff > 2000);
+}
+
+TEST_CASE(render_glass_readable_on_white_and_black) {
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    md::Metrics m;
+    for (bool dark : {false, true})
+        for (int v : {0, 255}) {
+            auto f = sampleFrame(dark, 2);
+            auto img = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, std::uint8_t(v), std::uint8_t(v), std::uint8_t(v)));
+            REQUIRE(!img.empty());
+            // Verre « profond » (hors biseau, sans icône) : à côté du séparateur, à mi-hauteur.
+            int glassY = int((f.bgTop + f.bgBottom) / 2), x = int(f.icons[3].cx) + 6;
+            double lum = img[(size_t(glassY) * kW + x) * 4 + 1] / 255.0;
+            if (dark) {
+                CHECK(lum >= 0.05);
+                CHECK(lum <= 0.45);
+            } else {
+                CHECK(lum >= 0.28);
+                CHECK(lum <= 0.95);
+            }
+            const auto& ic = f.icons[1];   // le point contraste avec le verre (écart ≥ 60)
+            int dot = img[(size_t(ic.indicatorY) * kW + size_t(ic.cx)) * 4 + 1];
+            CHECK(std::abs(dot - int(lum * 255)) >= 60);
+        }
+}
+
+TEST_CASE(render_glass_hdr_backdrop_not_blown_out) {
+    // Fond scRGB à 3.0 (blanc SDR à 240 nits) avec sdrWhiteScale = 3 : même rendu qu'un fond SDR blanc (écart ≤ 8).
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    md::Metrics m;
+    auto f = sampleFrame(false, 2);
+    auto sdr = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 255, 255, 255));
+    auto hdr = r.renderToBgraScRgb(f, m, L"", kW, kH, 3.0f, 3.0f);
+    REQUIRE(!sdr.empty());
+    REQUIRE(!hdr.empty());
+    int x = int(f.icons[3].cx) + 6, y = int((f.bgTop + f.bgBottom) / 2);   // à côté du séparateur
+    CHECK(std::abs(int(sdr[(size_t(y) * kW + x) * 4 + 1]) - int(hdr[(size_t(y) * kW + x) * 4 + 1])) <= 8);
+}
+
+TEST_CASE(render_glass_shadow_outside_only) {
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    md::Metrics m;
+    auto f = sampleFrame(false, 2);
+    auto img = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 230, 230, 230));
+    REQUIRE(!img.empty());
+    int below = img[(size_t(f.bgBottom) + 4) * kW * 4 + size_t(kW / 2) * 4 + 1];
+    CHECK(below < 230);   // ombre sous le Dock
+    CHECK(below > 150);   // douce
 }

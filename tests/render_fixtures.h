@@ -50,12 +50,12 @@ inline std::vector<std::uint8_t> flatWallpaper(UINT w, UINT h, std::uint8_t b, s
     return px;
 }
 
-// Rayures verticales noires et blanches de period px.
-inline std::vector<std::uint8_t> stripedWallpaper(UINT w, UINT h, int period) {
+// Rayures noires et blanches de period px (bandes horizontales si horizontal, sinon verticales).
+inline std::vector<std::uint8_t> stripedWallpaper(UINT w, UINT h, int period, bool horizontal) {
     std::vector<std::uint8_t> px(size_t(w) * h * 4);
     for (UINT y = 0; y < h; ++y)
         for (UINT x = 0; x < w; ++x) {
-            std::uint8_t v = (int(x) / period) % 2 ? 255 : 0;
+            std::uint8_t v = (int(horizontal ? y : x) / period) % 2 ? 255 : 0;
             auto* p = &px[(size_t(y) * w + x) * 4];
             p[0] = p[1] = p[2] = v;
             p[3] = 255;

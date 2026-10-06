@@ -1,6 +1,7 @@
 #include "dock_renderer.h"
 
 #include <d2d1_3helper.h>
+#include <DirectXPackedVector.h>
 #include <dxgi1_3.h>
 
 #include <algorithm>
@@ -20,6 +21,12 @@ bool DockRenderer::createDevices(bool warpOnly) {
     bitmaps_.clear();
     overlayBitmap_.Reset();
     geometries_.clear();
+    glassReady_ = false;
+    backdropTex_.Reset();
+    backdropSrv_.Reset();
+    glassTex_.Reset();
+    glassRtv_.Reset();
+    glassBitmap_.Reset();
     surface_.Reset();
     shadow_.Reset();
     target_.Reset();
@@ -49,6 +56,8 @@ bool DockRenderer::createDevices(bool warpOnly) {
                                                reinterpret_cast<IUnknown**>(dwrite_.GetAddressOf()))))
         return false;
     dc_->CreateEffect(CLSID_D2D1Shadow, &shadow_);
+    glassReady_ = glass_.init(d3d_.Get());
+    if (!glassReady_) log::warn(L"Verre indisponible : repli sur le verre dépoli");
     return true;
 }
 
@@ -196,47 +205,151 @@ void DockRenderer::drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, 
     }
 }
 
-void DockRenderer::drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m,
-                               const std::wstring& font) {
+bool DockRenderer::tooltipLayout(const RenderFrame& f, const Metrics& m, const std::wstring& font, D2D1_RECT_F& rect,
+                                 Com<IDWriteTextLayout>& layout) {
     const auto& t = f.tooltip;
-    if (!t.visible || t.text.empty() || t.opacity <= 0.01f) return;
+    if (!t.visible || t.text.empty() || t.opacity <= 0.01f) return false;
     Com<IDWriteTextFormat> format;
     if (FAILED(dwrite_->CreateTextFormat(resolveFont(font).c_str(), nullptr, DWRITE_FONT_WEIGHT_MEDIUM,
                                          DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                                          float(m.tooltipFontSize) * f.scale, L"", &format)))
-        return;
+        return false;
     format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-    Com<IDWriteTextLayout> layout;
     if (FAILED(dwrite_->CreateTextLayout(t.text.c_str(), UINT32(t.text.size()), format.Get(), 4000, 200, &layout)))
-        return;
+        return false;
     DWRITE_TEXT_METRICS tm{};
     layout->GetMetrics(&tm);
     float padX = float(m.tooltipPadX) * f.scale, padY = float(m.tooltipPadY) * f.scale;
     float w = tm.width + 2 * padX, h = tm.height + 2 * padY;
     float maxRight = float(width_ ? width_ : 4000);
     float left = std::clamp(t.cx - w / 2, 2.0f, std::max(2.0f, maxRight - w - 2));
-    D2D1_RECT_F rect = D2D1::RectF(left, t.bottom - h, left + w, t.bottom);
-    ID2D1Geometry* shape = smoothRect(rect, h / 2);   // capsule à coins continus
-    if (!shape) return;
+    rect = D2D1::RectF(left, t.bottom - h, left + w, t.bottom);
+    return true;
+}
 
-    Com<ID2D1SolidColorBrush> bg, border, text;
-    if (f.dark) {
-        dc->CreateSolidColorBrush(rgba(0.16f, 0.16f, 0.17f, 0.88f * t.opacity), &bg);
-        dc->CreateSolidColorBrush(rgba(1, 1, 1, 0.16f * t.opacity), &border);
-        dc->CreateSolidColorBrush(rgba(1, 1, 1, 0.92f * t.opacity), &text);
-    } else {
-        dc->CreateSolidColorBrush(rgba(0.97f, 0.97f, 0.98f, 0.90f * t.opacity), &bg);
-        dc->CreateSolidColorBrush(rgba(0, 0, 0, 0.10f * t.opacity), &border);
-        dc->CreateSolidColorBrush(rgba(0, 0, 0, 0.85f * t.opacity), &text);
+void DockRenderer::drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m,
+                               const std::wstring& font, bool glass) {
+    D2D1_RECT_F rect{};
+    Com<IDWriteTextLayout> layout;
+    if (!tooltipLayout(f, m, font, rect, layout)) return;
+    const float opacity = f.tooltip.opacity;
+    Com<ID2D1SolidColorBrush> text;
+    dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.85f * opacity), &text);
+    if (!glass) {   // repli : capsule dépolie ; avec le verre, la capsule est déjà dans glassTex_
+        ID2D1Geometry* shape = smoothRect(rect, (rect.bottom - rect.top) / 2);   // capsule à coins continus
+        if (!shape) return;
+        Com<ID2D1SolidColorBrush> bg, border;
+        if (f.dark) {
+            dc->CreateSolidColorBrush(rgba(0.16f, 0.16f, 0.17f, 0.88f * opacity), &bg);
+            dc->CreateSolidColorBrush(rgba(1, 1, 1, 0.16f * opacity), &border);
+        } else {
+            dc->CreateSolidColorBrush(rgba(0.97f, 0.97f, 0.98f, 0.90f * opacity), &bg);
+            dc->CreateSolidColorBrush(rgba(0, 0, 0, 0.10f * opacity), &border);
+        }
+        dc->FillGeometry(shape, bg.Get());
+        dc->DrawGeometry(shape, border.Get(), std::max(1.0f, f.scale * 0.75f));
     }
-    dc->FillGeometry(shape, bg.Get());
-    dc->DrawGeometry(shape, border.Get(), std::max(1.0f, f.scale * 0.75f));
-    dc->DrawTextLayout(D2D1::Point2F(left + padX, rect.top + padY), layout.Get(), text.Get(),
+    float padX = float(m.tooltipPadX) * f.scale, padY = float(m.tooltipPadY) * f.scale;
+    dc->DrawTextLayout(D2D1::Point2F(rect.left + padX, rect.top + padY), layout.Get(), text.Get(),
                        D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+}
+
+ID3D11Texture2D* DockRenderer::backdropTexture(UINT w, UINT h, bool scRgb) {
+    if (!d3d_ || !w || !h) return nullptr;
+    if (backdropTex_) {
+        D3D11_TEXTURE2D_DESC d{};
+        backdropTex_->GetDesc(&d);
+        if (d.Width == w && d.Height == h && backdropScRgb_ == scRgb) return backdropTex_.Get();
+    }
+    backdropTex_.Reset();
+    backdropSrv_.Reset();
+    D3D11_TEXTURE2D_DESC d{};
+    d.Width = w;
+    d.Height = h;
+    d.MipLevels = d.ArraySize = 1;
+    d.Format = scRgb ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM;
+    d.SampleDesc.Count = 1;
+    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(d3d_->CreateTexture2D(&d, nullptr, &backdropTex_)) ||
+        FAILED(d3d_->CreateShaderResourceView(backdropTex_.Get(), nullptr, &backdropSrv_))) {
+        backdropTex_.Reset();
+        backdropSrv_.Reset();
+        return nullptr;
+    }
+    backdropScRgb_ = scRgb;
+    return backdropTex_.Get();
+}
+
+bool DockRenderer::runGlass(const RenderFrame& f, const Metrics& m, const std::wstring& font, UINT w, UINT h) {
+    if (!glassReady_ || !backdropSrv_ || !w || !h) return false;
+    D3D11_TEXTURE2D_DESC bd{};
+    backdropTex_->GetDesc(&bd);
+    if (bd.Width != w || bd.Height != h) return false;
+
+    // Cible du verre (taille de la fenêtre) et son image Direct2D.
+    D3D11_TEXTURE2D_DESC gd{};
+    if (glassTex_) glassTex_->GetDesc(&gd);
+    if (!glassTex_ || gd.Width != w || gd.Height != h) {
+        glassTex_.Reset();
+        glassRtv_.Reset();
+        glassBitmap_.Reset();
+        D3D11_TEXTURE2D_DESC d{};
+        d.Width = w;
+        d.Height = h;
+        d.MipLevels = d.ArraySize = 1;
+        d.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        d.SampleDesc.Count = 1;
+        d.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        Com<IDXGISurface> surface;
+        auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,
+                                             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        if (FAILED(d3d_->CreateTexture2D(&d, nullptr, &glassTex_)) ||
+            FAILED(d3d_->CreateRenderTargetView(glassTex_.Get(), nullptr, &glassRtv_)) ||
+            FAILED(glassTex_.As(&surface)) || FAILED(dc_->CreateBitmapFromDxgiSurface(surface.Get(), &props, &glassBitmap_))) {
+            glassTex_.Reset();
+            glassRtv_.Reset();
+            glassBitmap_.Reset();
+            return false;
+        }
+    }
+
+    const float s = f.scale;
+    GlassParams p;
+    p.scale = s;
+    p.dark = f.dark;
+    p.blurSigmaPx = float(m.glassBlur) * s;
+    p.bevelPx = float(m.glassBevel) * s;
+    p.refraction = float(m.glassRefraction);
+    p.chromatic = float(m.glassChromatic);
+    p.fresnel = float(m.glassFresnel);
+    p.specular = float(m.glassSpecular);
+    p.tint = float(f.dark ? m.glassTintDark : m.glassTintLight);
+    p.saturation = float(m.glassSaturation);
+    p.shadowBlurPx = float(m.shadowBlur) * s;
+    p.shadowOffsetPx = 2 * s;
+    p.backdropIsScRgb = backdropScRgb_;
+    p.sdrWhiteScale = sdrWhite_;
+
+    std::vector<GlassShape> shapes;
+    float shadow = float(m.shadowOpacity * (f.dark ? 1.6 : 1.0));
+    shapes.push_back({f.bgLeft, f.bgTop, f.bgRight, f.bgBottom,
+                      float(limitedCornerRadius(f.bgRight - f.bgLeft, f.bgBottom - f.bgTop, f.cornerRadius)), 1, shadow, 1});
+    D2D1_RECT_F tip{};
+    Com<IDWriteTextLayout> layout;
+    if (tooltipLayout(f, m, font, tip, layout)) {
+        float th = tip.bottom - tip.top;
+        shapes.push_back({tip.left, tip.top, tip.right, tip.bottom,
+                          float(limitedCornerRadius(tip.right - tip.left, th, th / 2)), float(m.tooltipGlassStrength),
+                          shadow * 0.6f, f.tooltip.opacity});
+    }
+    Com<ID3D11DeviceContext> ctx;
+    d3d_->GetImmediateContext(&ctx);
+    return glass_.render(ctx.Get(), backdropSrv_.Get(), w, h, glassRtv_.Get(), shapes, p);
 }
 
 bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily) {
     if (!surface_) return false;
+    const bool glass = f.glass && runGlass(f, m, fontFamily, width_, height_);
     POINT offset{};
     Com<ID2D1DeviceContext> dc;
     HRESULT hr = surface_->BeginDraw(nullptr, IID_PPV_ARGS(&dc), &offset);
@@ -247,7 +360,7 @@ bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wst
     dc->SetDpi(96, 96);
     dc->SetTransform(D2D1::Matrix3x2F::Translation(float(offset.x), float(offset.y)));
     dc->Clear(rgba(0, 0, 0, 0));
-    drawFrame(dc.Get(), f, m, fontFamily);
+    drawFrame(dc.Get(), f, m, fontFamily, glass);
 
     hr = surface_->EndDraw();
     if (FAILED(hr)) {
@@ -259,9 +372,10 @@ bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wst
 }
 
 void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m,
-                             const std::wstring& fontFamily) {
+                             const std::wstring& fontFamily, bool glass) {
     dc->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-    drawBackground(dc, f, m);
+    if (glass && glassBitmap_) dc->DrawBitmap(glassBitmap_.Get());   // verre et ombres (Dock, infobulle)
+    else drawBackground(dc, f, m);
 
     Com<ID2D1SolidColorBrush> sepBrush, dotBrush;
     dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.25f) : rgba(0, 0, 0, 0.22f), &sepBrush);
@@ -285,7 +399,7 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
         }
     }
 
-    drawTooltip(dc, f, m, fontFamily);
+    drawTooltip(dc, f, m, fontFamily, glass);
     drawOverlay(dc, f);
 }
 
@@ -306,9 +420,10 @@ void DockRenderer::drawOverlay(ID2D1DeviceContext* dc, const RenderFrame& f) {
                    D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
 }
 
-std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const Metrics& m,
-                                                     const std::wstring& fontFamily, UINT w, UINT h,
-                                                     const std::vector<std::uint8_t>& wallpaper) {
+std::vector<std::uint8_t> DockRenderer::renderOffscreen(const RenderFrame& f, const Metrics& m,
+                                                        const std::wstring& fontFamily, UINT w, UINT h,
+                                                        const std::vector<std::uint8_t>& wallpaper, float scRgbValue,
+                                                        float sdrWhite) {
     if (!dc_ || !w || !h) return {};
     auto pf = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
     Com<ID2D1Bitmap1> target, readback, wall;
@@ -324,16 +439,20 @@ std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const
         return {};
 
     const UINT savedW = width_, savedH = height_;
+    const float savedWhite = sdrWhite_;
     width_ = w;
     height_ = h;
+
+    // 1. Fond d'écran (image fournie, blanc pour un fond scRGB, sinon dégradé factice).
     dc_->SetTarget(target.Get());
     dc_->BeginDraw();
     dc_->SetDpi(96, 96);
     dc_->SetTransform(D2D1::Matrix3x2F::Identity());
     if (wall) {
         dc_->DrawBitmap(wall.Get());
+    } else if (scRgbValue >= 0) {
+        dc_->Clear(rgba(1, 1, 1, 1));
     } else {
-        // Fond de bureau factice : dégradé coloré pour juger la translucidité.
         D2D1_GRADIENT_STOP stops[3] = {{0, rgba(0.16f, 0.32f, 0.62f, 1)}, {0.5f, rgba(0.55f, 0.36f, 0.66f, 1)},
                                        {1, rgba(0.95f, 0.55f, 0.42f, 1)}};
         Com<ID2D1GradientStopCollection> coll;
@@ -343,11 +462,44 @@ std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const
             D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(float(w), float(h))), coll.Get(), &brush);
         dc_->FillRectangle(D2D1::RectF(0, 0, float(w), float(h)), brush.Get());
     }
-    drawFrame(dc_.Get(), f, m, fontFamily);
     HRESULT hr = dc_->EndDraw();
+
+    // 2. Arrière-plan du verre : copie du fond, ou fond scRGB uniforme (tests HDR).
+    bool backdrop = false;
+    Com<ID3D11DeviceContext> ctx;
+    d3d_->GetImmediateContext(&ctx);
+    if (SUCCEEDED(hr) && scRgbValue >= 0) {
+        if (ID3D11Texture2D* tex = backdropTexture(w, h, true)) {
+            std::vector<DirectX::PackedVector::HALF> px(size_t(w) * h * 4);
+            const auto v = DirectX::PackedVector::XMConvertFloatToHalf(scRgbValue);
+            const auto one = DirectX::PackedVector::XMConvertFloatToHalf(1.0f);
+            for (size_t i = 0; i < px.size(); i += 4) px[i] = px[i + 1] = px[i + 2] = v, px[i + 3] = one;
+            ctx->UpdateSubresource(tex, 0, nullptr, px.data(), w * 8, 0);
+            sdrWhite_ = sdrWhite;
+            backdrop = true;
+        }
+    } else if (SUCCEEDED(hr)) {
+        Com<IDXGISurface> surface;
+        Com<ID3D11Texture2D> targetTex;
+        ID3D11Texture2D* tex = backdropTexture(w, h, false);
+        if (tex && SUCCEEDED(target->GetSurface(&surface)) && SUCCEEDED(surface.As(&targetTex))) {
+            ctx->CopyResource(tex, targetTex.Get());
+            sdrWhite_ = 1;
+            backdrop = true;
+        }
+    }
+
+    // 3. Verre, puis le Dock par-dessus.
+    const bool glass = backdrop && runGlass(f, m, fontFamily, w, h);
+    if (SUCCEEDED(hr)) {
+        dc_->BeginDraw();
+        drawFrame(dc_.Get(), f, m, fontFamily, glass);
+        hr = dc_->EndDraw();
+    }
     dc_->SetTarget(nullptr);
     width_ = savedW;
     height_ = savedH;
+    sdrWhite_ = savedWhite;
     if (FAILED(hr) || FAILED(readback->CopyFromBitmap(nullptr, target.Get(), nullptr))) return {};
 
     D2D1_MAPPED_RECT mapped{};
@@ -356,6 +508,18 @@ std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const
     for (UINT y = 0; y < h; ++y) std::copy_n(mapped.bits + size_t(y) * mapped.pitch, size_t(w) * 4, &out[size_t(y) * w * 4]);
     readback->Unmap();
     return out;
+}
+
+std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const Metrics& m,
+                                                     const std::wstring& fontFamily, UINT w, UINT h,
+                                                     const std::vector<std::uint8_t>& wallpaper) {
+    return renderOffscreen(f, m, fontFamily, w, h, wallpaper, -1, 1);
+}
+
+std::vector<std::uint8_t> DockRenderer::renderToBgraScRgb(const RenderFrame& f, const Metrics& m,
+                                                          const std::wstring& fontFamily, UINT w, UINT h, float value,
+                                                          float sdrWhiteScale) {
+    return renderOffscreen(f, m, fontFamily, w, h, {}, std::max(0.0f, value), sdrWhiteScale);
 }
 
 bool DockRenderer::renderToFile(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily, UINT w,

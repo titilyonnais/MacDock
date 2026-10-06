@@ -1,4 +1,4 @@
-// Rendu du Dock : DirectComposition + Direct2D + DirectWrite.
+// Rendu du Dock : DirectComposition + Direct2D + DirectWrite, verre Liquid Glass (D3D11) sous les icônes.
 #pragma once
 #include <windows.h>
 #include <d2d1_3.h>
@@ -16,6 +16,7 @@
 
 #include "../config/metrics.h"
 #include "../config/settings.h"
+#include "../glass/glass_renderer.h"
 #include "../icons/icon_provider.h"
 
 namespace md {
@@ -45,6 +46,7 @@ struct RenderFrame {
     float bgLeft = 0, bgTop = 0, bgRight = 0, bgBottom = 0;
     float cornerRadius = 0, scale = 1;
     bool dark = false;
+    bool glass = false;   // verre Liquid Glass sur l'arrière-plan capturé ; false = verre dépoli Direct2D
     std::vector<RenderIcon> icons;
     RenderTooltip tooltip;
     DockPosition position = DockPosition::Bottom;
@@ -54,6 +56,8 @@ struct RenderFrame {
 };
 
 class DockRenderer {
+    template <class T> using Com = Microsoft::WRL::ComPtr<T>;
+
 public:
     bool init(HWND hwnd);
     bool initOffscreen();   // device WARP, sans fenêtre ni DirectComposition (tests, captures)
@@ -62,25 +66,41 @@ public:
     bool render(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily);
     void releaseImages() { bitmaps_.clear(); }
     // Rendu dans une image BGRA prémultipliée w x h, sur un fond donné (BGRA w x h ; vide = dégradé factice).
+    // Le fond sert aussi d'arrière-plan au verre : le verre est toujours rendu (frame.glass est ignoré).
     std::vector<std::uint8_t> renderToBgra(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily,
                                            UINT w, UINT h, const std::vector<std::uint8_t>& wallpaper = {});
+    // Tests : arrière-plan scRGB (RGBA16F) uniforme de valeur value, blanc SDR à sdrWhiteScale.
+    std::vector<std::uint8_t> renderToBgraScRgb(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily,
+                                                UINT w, UINT h, float value, float sdrWhiteScale);
     // Rendu hors écran vers un PNG (diagnostic, calibration).
     bool renderToFile(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily, UINT w, UINT h,
                       const std::wstring& path, const std::vector<std::uint8_t>& wallpaper = {});
     ID3D11Device* device() const { return d3d_.Get(); }
+    // Texture de l'arrière-plan du verre (w x h, BGRA8, ou RGBA16F si scRgb), recréée si besoin ; nullptr si impossible.
+    ID3D11Texture2D* backdropTexture(UINT w, UINT h, bool scRgb);
+    void setBackdropWhite(float sdrWhiteScale) { sdrWhite_ = sdrWhiteScale > 0 ? sdrWhiteScale : 1; }
+    bool glassAvailable() const { return glassReady_; }
 
 private:
     bool createDevices(bool warpOnly);
-    // Rectangle à coins continus (Apple), en pixels ; la dernière géométrie est gardée en cache.
+    // Rectangle à coins continus (Apple), en pixels ; les dernières géométries sont gardées en cache.
     ID2D1Geometry* smoothRect(D2D1_RECT_F r, float radius);
     ID2D1Bitmap1* bitmapFor(const IconProvider::ImagePtr& img);
     std::wstring resolveFont(const std::wstring& wanted);
+    // Position de l'infobulle et mise en page du texte ; false si rien à afficher.
+    bool tooltipLayout(const RenderFrame& f, const Metrics& m, const std::wstring& font, D2D1_RECT_F& rect,
+                       Com<IDWriteTextLayout>& layout);
+    // Rendu hors écran commun : fond (wallpaper, blanc si scRgbValue ≥ 0, sinon dégradé) → verre → Dock → lecture.
+    std::vector<std::uint8_t> renderOffscreen(const RenderFrame& f, const Metrics& m, const std::wstring& font, UINT w,
+                                              UINT h, const std::vector<std::uint8_t>& wallpaper, float scRgbValue,
+                                              float sdrWhite);
+    // Passe de verre (D3D11) dans glassTex_ ; false si indisponible (repli dépoli).
+    bool runGlass(const RenderFrame& f, const Metrics& m, const std::wstring& font, UINT w, UINT h);
     void drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m);
-    void drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
-    void drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font);
+    void drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font, bool glass);
+    void drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m, const std::wstring& font, bool glass);
     void drawOverlay(ID2D1DeviceContext* dc, const RenderFrame& f);
 
-    template <class T> using Com = Microsoft::WRL::ComPtr<T>;
     HWND hwnd_ = nullptr;
     UINT width_ = 0, height_ = 0;
     Com<ID3D11Device> d3d_;
@@ -100,6 +120,17 @@ private:
     std::weak_ptr<const OverlayImage> overlayOwner_;
     Com<ID2D1Bitmap1> overlayBitmap_;
     std::wstring fontWanted_, fontResolved_;
+
+    // Verre.
+    GlassRenderer glass_;
+    bool glassReady_ = false;
+    Com<ID3D11Texture2D> backdropTex_;
+    Com<ID3D11ShaderResourceView> backdropSrv_;
+    bool backdropScRgb_ = false;
+    float sdrWhite_ = 1;
+    Com<ID3D11Texture2D> glassTex_;
+    Com<ID3D11RenderTargetView> glassRtv_;
+    Com<ID2D1Bitmap1> glassBitmap_;
 };
 
 } // namespace md
