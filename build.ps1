@@ -26,7 +26,7 @@ function Get-Sources([string[]]$Patterns) {
 
 # Modules logiques (sans dépendance graphique) partagés par les tests.
 $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp',
-                  'src\model\*.cpp', 'src\ipc\protocol.cpp', 'src\launcher\crash_policy.cpp',
+                  'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp',
                   'src\icons\squircle.cpp')
 
 $Targets = @{
