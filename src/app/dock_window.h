@@ -9,6 +9,7 @@
 
 #include "../config/metrics.h"
 #include "../config/settings.h"
+#include "../glass/backdrop_capture.h"
 #include "../icons/icon_provider.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
@@ -24,6 +25,10 @@ public:
         bool trace = false;
         std::wstring snapshot;           // chemin PNG : rendu hors écran puis sortie
         std::optional<double> hover;     // position simulée du curseur (points depuis le centre)
+        std::wstring wallpaper;          // PNG de fond pour la capture (redimensionné à la fenêtre)
+        std::wstring reference;          // PNG de référence (capture de macOS) à comparer
+        std::wstring diff;               // carte de différence (PNG) ; diff.txt écrit à côté
+        std::optional<bool> dark;        // thème forcé (--theme light|dark) ; sinon celui du système
     };
     int run(HINSTANCE instance, const Options& options);
 
@@ -46,6 +51,13 @@ private:
     void requestFrame();
     void startMouseThread();
     void startConfigWatcher();
+    int runSnapshot(const Options& options);
+    void onHotKey(int id);
+    void updateGlass();       // applique settings_.glass : exclusion de la capture, démarrage ou arrêt
+    void restartCapture();
+    void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
+    bool initRenderer();
+    bool rendererOnDockAdapter();   // le device de rendu est-il sur la carte qui pilote l'écran du Dock ?
     static bool systemDarkMode();
 
     HINSTANCE instance_ = nullptr;
@@ -75,7 +87,15 @@ private:
     std::atomic<bool> wakePosted_{false};
     std::atomic<ULONGLONG> lastUiBeat_{0};
     int renderFailures_ = 0;
+    std::shared_ptr<const OverlayImage> overlay_;   // superposition de calibration (Ctrl+Alt+Maj+O)
+    float overlayOpacity_ = 0.5f;
     int exitCode_ = 0;
+
+    BackdropCapture capture_;
+    bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
+    bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
+    int capturesTaken_ = 0;    // compteur [perf]
+    bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

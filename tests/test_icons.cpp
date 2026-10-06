@@ -43,6 +43,7 @@ TEST_CASE(icons_strict_mode_keeps_corners_transparent) {
     auto img = p.get(L"notepad", L"C:\\Windows\\System32\\notepad.exe", 128);
     REQUIRE(img != nullptr);
     CHECK_EQ(int(img->bgra[3]), 0);                       // coin haut-gauche hors du squircle
+    CHECK_EQ(int(img->bgra[(1 * 128 + 64) * 4 + 3]), 0);  // marge de la grille Apple au-dessus de la forme
     CHECK(img->bgra[(64 * 128 + 64) * 4 + 3] > 0);        // centre opaque
 }
 

@@ -108,6 +108,20 @@ TEST_CASE(controller_frame_has_indicator_for_running_app) {
     CHECK_NEAR(frame.bgBottom, md::DockController::windowHeightPx(f.s, f.m, 1) - f.m.dockScreenMargin, 1e-3);
 }
 
+TEST_CASE(controller_indicator_is_spaced_from_icon) {
+    Fixture f;
+    md::IconProvider icons;
+    f.model.windowOpened(1, idOf(L"C:\\b.exe"));
+    auto frame = f.c.buildFrame(false, icons);
+    REQUIRE(frame.icons.size() == 5);
+    const auto& ic = frame.icons[1];
+    float visibleBottom = ic.cy + ic.size / 2 - ic.size * float(1 - f.m.iconShapeRatio) / 2;
+    float dotTop = ic.indicatorY - float(f.m.indicatorDiameter) / 2;
+    CHECK(dotTop - visibleBottom >= 5.0f);
+    CHECK(ic.indicatorY < frame.bgBottom);
+    CHECK(ic.indicatorY > frame.bgBottom - 10);
+}
+
 TEST_CASE(controller_tooltip_on_hover) {
     Fixture f;
     md::IconProvider icons;

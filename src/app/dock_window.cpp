@@ -8,6 +8,8 @@
 #include <cmath>
 #include <map>
 
+#include "../calib/image_diff.h"
+#include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "../shell/default_pins.h"
@@ -26,7 +28,10 @@ constexpr UINT WM_APP_APPBAR = WM_APP + 3;
 constexpr UINT WM_APP_MOUSE = WM_APP + 4;
 constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
+constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
+// Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
+constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
 enum MenuId : UINT {
     kMenuOpen = 1, kMenuShowAll, kMenuPin, kMenuUnpin, kMenuReveal, kMenuQuitApp, kMenuSettings, kMenuQuitDock
@@ -61,6 +66,11 @@ void DockApp::loadConfig(bool initial) {
     if (!initial && (s.wasInvalid || s.unreadable)) {
         log::warn(L"settings.json ignoré (invalide ou illisible) : réglages actuels conservés");
     } else {
+        if (s.fromFile && jsonVersion(s.value) < kSettingsVersion) {
+            s.value = migrateSettingsJson(s.value);
+            saveJsonFileAtomic(dataDir_ + L"\\settings.json", s.value);
+            log::info(L"settings.json migré de la v1 à la v%d", kSettingsVersion);
+        }
         settings_ = settingsFromJson(s.value);
     }
     if (shouldImportDefaultPins(s, settings_)) {
@@ -70,8 +80,14 @@ void DockApp::loadConfig(bool initial) {
         log::info(L"Premier lancement : %zu épingles par défaut", settings_.pinned.size());
     }
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
+    if (m.fromFile && !m.wasInvalid && jsonVersion(m.value) < kMetricsVersion) {
+        m.value = migrateMetricsJson(m.value);
+        saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", m.value);
+        log::info(L"dock-metrics.json migré de la v1 à la v%d", kMetricsVersion);
+    }
     if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
-    if (!m.fromFile && !m.wasInvalid && !m.unreadable)   // fichier absent : on l'écrit pour qu'il soit modifiable
+    // Fichier absent ou incomplet (mesures ajoutées par une version plus récente) : on l'écrit complet.
+    if (!m.wasInvalid && !m.unreadable && (!m.fromFile || !metricsJsonComplete(m.value)))
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", metricsToJson(metrics_));
 
     // Les épingles ne sont rechargées que si le fichier a été modifié à la main.
@@ -87,9 +103,10 @@ void DockApp::loadConfig(bool initial) {
 void DockApp::applySettings() {
     model_.setShowRecents(settings_.showRecents);
     icons_.setStrictTahoe(settings_.tahoeStrictIcons);
-    icons_.setJailInset(metrics_.iconJailInset);
+    icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
+    updateGlass();   // réglage glass modifié à chaud
 }
 
 void DockApp::savePinned() {
@@ -144,6 +161,84 @@ void DockApp::reposition() {
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
     controller_.setViewport(UINT(width), UINT(height), scale_);
+    if (capture_.status() != BackdropCapture::Status::Off)
+        capture_.setRegion({origin_.x, origin_.y, origin_.x + width, origin_.y + height});
+    requestFrame();
+}
+
+bool DockApp::initRenderer() {
+    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    auto adapter = BackdropCapture::adapterFor(mon);
+    return renderer_.init(hwnd_, adapter.Get());
+}
+
+bool DockApp::rendererOnDockAdapter() {
+    auto adapter = BackdropCapture::adapterFor(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY));
+    DXGI_ADAPTER_DESC1 d{};
+    if (!adapter || FAILED(adapter->GetDesc1(&d))) return false;
+    LUID r = renderer_.adapterLuid();
+    return r.LowPart == d.AdapterLuid.LowPart && r.HighPart == d.AdapterLuid.HighPart;
+}
+
+void DockApp::updateGlass() {
+    if (!hwnd_ || snapshot_) return;
+    bool want = settings_.glass && renderer_.glassAvailable() && !renderer_.isWarp() && !captureFailed_;
+    if (want && !rendererOnDockAdapter()) {
+        // La texture partagée ne passe pas d'une carte à l'autre : pas de capture (verre dépoli).
+        log::warn(L"Verre : le rendu n'est pas sur la carte de l'écran du Dock ; verre dépoli");
+        want = false;
+    }
+    if (want && !excluded_) {
+        // Sans exclusion, le Dock se capturerait lui-même (boucle de rétroaction) : verre désactivé.
+        excluded_ = SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE) != FALSE;
+        if (!excluded_) log::warn(L"Exclusion des captures impossible (%lu) : verre dépoli", GetLastError());
+    }
+    if (!want || !excluded_) {
+        capture_.stop();
+        glassLive_ = false;
+        if (excluded_) SetWindowDisplayAffinity(hwnd_, WDA_NONE);
+        excluded_ = false;
+        requestFrame();
+        return;
+    }
+    if (capture_.status() == BackdropCapture::Status::Off) restartCapture();
+}
+
+void DockApp::restartCapture() {
+    capture_.stop();
+    glassLive_ = false;
+    if (!excluded_) return;
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
+                   {rc.left, rc.top, rc.right, rc.bottom});
+    requestFrame();
+}
+
+void DockApp::onBackdrop() {
+    if (capture_.status() == BackdropCapture::Status::Failed) {
+        // Échec définitif : on rend le Dock aux captures d'écran ; nouvel essai au prochain changement d'affichage.
+        captureFailed_ = true;
+        updateGlass();
+        return;
+    }
+    ID3D11Device* dev = renderer_.device();
+    if (dev) {
+        Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+        dev->GetImmediateContext(&ctx);
+        bool scRgb = false;
+        float white = 1;
+        if (capture_.takeLatest(dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); },
+                                scRgb, white)) {
+            renderer_.setBackdropWhite(white);
+            if (!glassLive_) log::info(L"Verre : arrière-plan réel reçu (%s)", scRgb ? L"HDR" : L"SDR");
+            glassLive_ = true;
+            ++capturesTaken_;
+            requestFrame();
+            return;
+        }
+    }
+    // Changement d'état (capture indisponible ou reprise) : on bascule entre verre réel et repli dépoli.
     requestFrame();
 }
 
@@ -272,6 +367,10 @@ void DockApp::requestFrame() {
 
 void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    frame.overlay = overlay_;
+    frame.overlayOpacity = overlayOpacity_;
+    frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
+    frame.glass = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -284,10 +383,13 @@ void DockApp::renderNow() {
         running_ = false;
         return;
     }
-    if (renderer_.init(hwnd_)) {
+    capture_.stop();
+    glassLive_ = false;
+    if (initRenderer()) {
         RECT rc;
         GetClientRect(hwnd_, &rc);
         renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+        updateGlass();
     }
     requestFrame();
 }
@@ -400,6 +502,22 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             icons_.clear();
             renderer_.releaseImages();
             reposition();
+            captureFailed_ = false;
+            if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
+                // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
+                capture_.stop();
+                glassLive_ = false;
+                if (initRenderer()) {
+                    RECT rc;
+                    GetClientRect(hwnd_, &rc);
+                    renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+                }
+            }
+            if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
+            updateGlass();
+            return 0;
+        case WM_APP_BACKDROP:
+            onBackdrop();
             return 0;
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
@@ -428,6 +546,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 removeAppBar();
             }
             return 0;
+        case WM_HOTKEY:
+            onHotKey(int(wp));
+            return 0;
         case WM_CLOSE:
             running_ = false;
             PostQuitMessage(0);
@@ -435,6 +556,82 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         default: break;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
+}
+
+int DockApp::runSnapshot(const Options& options) {
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    UINT w = UINT(rc.right - rc.left), h = UINT(rc.bottom - rc.top);
+    if (options.hover) {
+        double bgBottom = h - metrics_.dockScreenMargin * scale_;
+        POINT p{LONG(w / 2.0 + *options.hover * scale_), LONG(bgBottom - 10 * scale_)};
+        controller_.setCursor(p);
+    }
+    for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+
+    std::vector<std::uint8_t> wallpaper;
+    if (!options.wallpaper.empty()) {
+        UINT ww = 0, wh = 0;
+        auto img = readPng(options.wallpaper, ww, wh);
+        if (img.empty()) log::warn(L"Fond illisible : %s", options.wallpaper.c_str());
+        else wallpaper = resizeBgra(img, ww, wh, w, h);
+    }
+    auto px = renderer_.renderToBgra(frame, metrics_, settings_.font, w, h, wallpaper);
+    bool ok = !px.empty() && writePng(options.snapshot, px.data(), w, h);
+    log::info(L"Capture %s : %s", ok ? L"écrite" : L"impossible", options.snapshot.c_str());
+    if (!ok || options.reference.empty()) return ok ? 0 : 1;
+
+    // Comparaison : la référence est mise à la largeur du rendu, puis on compare sa bande du bas.
+    UINT rw = 0, rh = 0;
+    auto ref = readPng(options.reference, rw, rh);
+    if (ref.empty()) {
+        log::error(L"Référence illisible : %s", options.reference.c_str());
+        return 1;
+    }
+    UINT sh = UINT(std::lround(double(rh) * w / rw));
+    ref = resizeBgra(ref, rw, rh, w, sh);
+    if (sh < h) {
+        log::error(L"Référence trop basse (%u px) pour une fenêtre de %u px", sh, h);
+        return 1;
+    }
+    const std::uint8_t* band = ref.data() + size_t(sh - h) * w * 4;
+    DiffStats s = diffImages(px.data(), band, int(w), int(h), 24);
+    log::info(L"Comparaison : écart moyen %.2f, max %d, pixels > 24 : %.2f %%", s.meanAbs, s.maxAbs,
+              s.fractionAbove * 100);
+    if (!options.diff.empty()) {
+        auto heat = diffHeatmap(px.data(), band, int(w), int(h));
+        writePng(options.diff, heat.data(), w, h);
+        std::wstring txt = options.diff + L".txt";
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, txt.c_str(), L"w") == 0 && f) {
+            fprintf(f, "meanAbs %.4f\nmaxAbs %d\nfractionAbove24 %.6f\n", s.meanAbs, s.maxAbs, s.fractionAbove);
+            fclose(f);
+        }
+    }
+    return 0;
+}
+
+void DockApp::onHotKey(int id) {
+    if (id == kHotOverlay) {
+        if (overlay_) {
+            overlay_.reset();
+            log::info(L"Superposition de calibration masquée");
+        } else {
+            std::wstring path = dataDir_ + L"\\reference\\overlay.png";
+            auto img = std::make_shared<OverlayImage>();
+            img->bgra = readPng(path, img->w, img->h);
+            if (img->bgra.empty()) {
+                log::warn(L"Superposition introuvable : %s", path.c_str());
+                return;
+            }
+            overlay_ = img;
+            log::info(L"Superposition de calibration affichée (%ux%u)", img->w, img->h);
+        }
+    } else if (id == kHotOpacityUp || id == kHotOpacityDown) {
+        overlayOpacity_ = std::clamp(overlayOpacity_ + (id == kHotOpacityUp ? 0.1f : -0.1f), 0.1f, 1.0f);
+    }
+    requestFrame();
 }
 
 int DockApp::run(HINSTANCE instance, const Options& options) {
@@ -448,7 +645,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     std::wstring iconDir = dataDir_ + L"\\icons";
     CreateDirectoryW(iconDir.c_str(), nullptr);
     icons_.setCustomDir(iconDir);
-    dark_ = systemDarkMode();
+    dark_ = options.dark.value_or(systemDarkMode());
     icons_.setDark(dark_);
 
     controller_.init(settings_, metrics_, &model_);
@@ -468,9 +665,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
     ChangeWindowMessageFilterEx(hwnd_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
 
-    if (!renderer_.init(hwnd_)) { log::error(L"Initialisation graphique impossible"); return 2; }
+    if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
+    renderer_.setGpuTiming(trace_);
     if (!snapshot_) registerAppBar();
     reposition();
+    updateGlass();
 
     WindowTracker::Events ev;
     ev.opened = [this](HWND h, const AppIdentity& id) {
@@ -502,22 +701,14 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     tracker_.start(hwnd_, ev);
 
     if (snapshot_) {
-        RECT rc;
-        GetWindowRect(hwnd_, &rc);
-        UINT w = UINT(rc.right - rc.left), h = UINT(rc.bottom - rc.top);
-        if (options.hover) {
-            double bgBottom = h - metrics_.dockScreenMargin * scale_;
-            POINT p{LONG(w / 2.0 + *options.hover * scale_), LONG(bgBottom - 10 * scale_)};
-            controller_.setCursor(p);
-        }
-        for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
-        RenderFrame frame = controller_.buildFrame(dark_, icons_);
-        bool ok = renderer_.renderToFile(frame, metrics_, settings_.font, w, h, options.snapshot);
-        log::info(L"Capture %s : %s", ok ? L"écrite" : L"impossible", options.snapshot.c_str());
+        int code = runSnapshot(options);
         tracker_.stop();
         DestroyWindow(hwnd_);
-        return ok ? 0 : 1;
+        return code;
     }
+    RegisterHotKey(hwnd_, kHotOverlay, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, 'O');
+    RegisterHotKey(hwnd_, kHotOpacityUp, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_UP);
+    RegisterHotKey(hwnd_, kHotOpacityDown, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_DOWN);
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);
@@ -571,8 +762,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
                 byDirty += dirty;
                 byWake += wakeAnimation_;
                 if (now - since >= 5) {
-                    log::info(L"[perf] %d images en 5 s (animation %d, modèle %d, réveil %d)", frames, byAnim, byDirty,
-                              byWake);
+                    log::info(L"[perf] %d images en 5 s (animation %d, modèle %d, réveil %d) ; arrière-plans reçus %d ; "
+                              L"verre GPU %.3f ms",
+                              frames, byAnim, byDirty, byWake, capturesTaken_, renderer_.takeGlassGpuMs());
+                    capturesTaken_ = 0;
                     frames = byAnim = byDirty = byWake = 0;
                     since = now;
                 }
@@ -589,6 +782,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     }
 
     log::info(L"MacDock s'arrête");
+    capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();
     if (mouseThreadId_) PostThreadMessageW(mouseThreadId_, WM_QUIT, 0, 0);

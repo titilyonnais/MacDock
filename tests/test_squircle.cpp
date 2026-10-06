@@ -36,3 +36,8 @@ TEST_CASE(squircle_mask_alpha_is_antialiased) {
     CHECK(edge > 0.1);
     CHECK(edge < 1.0);
 }
+
+TEST_CASE(squircle_straight_edge_is_full) {
+    // Loin des coins, le bord gauche est droit : le pixel du bord est entièrement couvert.
+    CHECK_NEAR(md::squircleMaskAlpha(0, 50, 100), 1, 1e-9);
+}

@@ -11,6 +11,8 @@
 #include <map>
 
 #include "../core/log.h"
+#include "../geom/smooth_rect.h"
+#include "icon_grid.h"
 #include "squircle.h"
 
 using Microsoft::WRL::ComPtr;
@@ -120,20 +122,16 @@ Pixels loadPng(const std::wstring& path, int& size) {
     return px;
 }
 
-// Table de couverture du squircle (anticrénelée), calculée une fois par taille.
-const std::vector<float>& maskFor(int size) {
-    static std::map<int, std::vector<float>> cache;
-    auto& m = cache[size];
-    if (m.empty()) {
-        m.resize(size_t(size) * size);
-        for (int y = 0; y < size; ++y)
-            for (int x = 0; x < size; ++x) m[size_t(y) * size + x] = float(squircleMaskAlpha(x, y, size));
-    }
+// Table de couverture de la forme d'icône (coins continus, anticrénelée), calculée une fois par taille et rayon.
+const std::vector<float>& maskFor(int size, double ratio) {
+    static std::map<std::pair<int, double>, std::vector<float>> cache;
+    auto& m = cache[{size, ratio}];
+    if (m.empty()) m = smoothSquareMask(size, ratio);
     return m;
 }
 
-void applySquircleMask(Pixels& px, int size) {
-    const auto& mask = maskFor(size);
+void applySquircleMask(Pixels& px, int size, double ratio) {
+    const auto& mask = maskFor(size, ratio);
     for (size_t i = 0; i < mask.size(); ++i) {
         float a = mask[i];
         if (a >= 1.0f) continue;
@@ -142,8 +140,8 @@ void applySquircleMask(Pixels& px, int size) {
 }
 
 // Plaque squircle avec dégradé vertical et liseré clair sur le pourtour.
-Pixels plate(int size, Rgb top, Rgb bottom, double rimOpacity) {
-    const auto& mask = maskFor(size);
+Pixels plate(int size, double ratio, Rgb top, Rgb bottom, double rimOpacity) {
+    const auto& mask = maskFor(size, ratio);
     auto at = [&](int x, int y) { return (x < 0 || y < 0 || x >= size || y >= size) ? 0.0f : mask[size_t(y) * size + x]; };
     Pixels px(size_t(size) * size * 4, 0);
     for (int y = 0; y < size; ++y) {
@@ -207,12 +205,13 @@ void fillRoundRect(Pixels& px, int size, double x0, double y0, double x1, double
 
 Rgb hex(unsigned v) { return {((v >> 16) & 0xFF) / 255.0, ((v >> 8) & 0xFF) / 255.0, (v & 0xFF) / 255.0}; }
 
-Pixels jailPlate(int size, bool dark) {
-    return dark ? plate(size, hex(0x48484A), hex(0x2C2C2E), 0.18) : plate(size, hex(0xFBFBFD), hex(0xE3E3E8), 0.65);
+Pixels jailPlate(int size, double ratio, bool dark) {
+    return dark ? plate(size, ratio, hex(0x48484A), hex(0x2C2C2E), 0.18)
+                : plate(size, ratio, hex(0xFBFBFD), hex(0xE3E3E8), 0.65);
 }
 
-Pixels genericIcon(int size, bool dark) {
-    Pixels px = jailPlate(size, dark);
+Pixels genericIcon(int size, double ratio, bool dark) {
+    Pixels px = jailPlate(size, ratio, dark);
     double m = size * 0.27;
     fillRoundRect(px, size, m, m, size - m, size - m, size * 0.06, dark ? hex(0x8E8E93) : hex(0xAEAEB2));
     fillRoundRect(px, size, m, m, size - m, m + size * 0.09, size * 0.04, dark ? hex(0x636366) : hex(0x8E8E93));
@@ -233,11 +232,27 @@ void IconProvider::setStrictTahoe(bool strict) {
     clear();
 }
 
-void IconProvider::setJailInset(double inset) {
-    inset = std::clamp(inset, 0.0, 0.4);
-    if (inset == jailInset_) return;
-    jailInset_ = inset;
+void IconProvider::setGrid(double shapeRatio, double cornerRatio, double jailInset, double shadowOpacity) {
+    shapeRatio = std::clamp(std::isfinite(shapeRatio) ? shapeRatio : kIconShapeRatio, 0.5, 1.0);
+    cornerRatio = std::clamp(std::isfinite(cornerRatio) ? cornerRatio : kIconCornerRatio, 0.0, 0.5);
+    jailInset = std::clamp(std::isfinite(jailInset) ? jailInset : 0.16, 0.0, 0.4);
+    shadowOpacity = std::clamp(std::isfinite(shadowOpacity) ? shadowOpacity : 0.0, 0.0, 1.0);
+    if (shapeRatio == shapeRatio_ && cornerRatio == cornerRatio_ && jailInset == jailInset_ &&
+        shadowOpacity == shadowOpacity_)
+        return;
+    shapeRatio_ = shapeRatio;
+    cornerRatio_ = cornerRatio;
+    jailInset_ = jailInset;
+    shadowOpacity_ = shadowOpacity;
     clear();
+}
+
+IconProvider::ImagePtr IconProvider::finish(Pixels shaped, int shape, int px) const {
+    auto img = std::make_shared<Image>();
+    img->size = px;
+    img->bgra = placeOnGrid(shaped, shape, px);
+    addDropShadow(img->bgra, px, px * 14.0 / 1024, px * 12.0 / 1024, shadowOpacity_);
+    return img;
 }
 
 void IconProvider::setDark(bool dark) {
@@ -256,8 +271,7 @@ IconProvider::ImagePtr IconProvider::get(const std::wstring& key, const std::wst
 }
 
 IconProvider::ImagePtr IconProvider::build(const std::wstring& key, const std::wstring& parsingName, int px) {
-    auto img = std::make_shared<Image>();
-    img->size = px;
+    const int s = iconShapePx(px, shapeRatio_);   // forme visible, centrée dans la case (grille Apple)
 
     int srcSize = 0;
     Pixels src;
@@ -269,41 +283,46 @@ IconProvider::ImagePtr IconProvider::build(const std::wstring& key, const std::w
     if (src.empty() && !parsingName.empty()) src = shellImage(parsingName, srcSize);
     if (src.empty()) {
         log::warn(L"Icône introuvable pour %s", parsingName.c_str());
-        img->bgra = genericIcon(px, dark_);
-        return img;
+        return finish(genericIcon(s, cornerRatio_, dark_), s, px);
     }
 
-    if (custom || !strict_) {
-        // Icône personnalisée : déjà dessinée par l'utilisateur, on la respecte telle quelle.
+    if (custom) {
+        // Icône personnalisée : dessinée sur la grille Apple (toile complète), respectée telle quelle.
+        auto img = std::make_shared<Image>();
+        img->size = px;
         img->bgra = resize(src, srcSize, px);
-    } else if (iconFitsSquircle(src.data(), srcSize, srcSize, srcSize * 4)) {
-        img->bgra = resize(src, srcSize, px);
-        applySquircleMask(img->bgra, px);
-    } else {
-        img->bgra = jailPlate(px, dark_);
-        int inner = std::max(1, int(std::lround(px * (1 - 2 * jailInset_))));
-        Pixels icon = resize(src, srcSize, inner);
-        blendOver(img->bgra, px, icon, inner, (px - inner) / 2, (px - inner) / 2);
+        return img;
     }
-    return img;
+    if (!strict_) return finish(resize(src, srcSize, s), s, px);
+    if (iconFitsSquircle(src.data(), srcSize, srcSize, srcSize * 4)) {
+        Pixels shaped = resize(src, srcSize, s);
+        applySquircleMask(shaped, s, cornerRatio_);
+        return finish(std::move(shaped), s, px);
+    }
+    Pixels shaped = jailPlate(s, cornerRatio_, dark_);
+    int inner = std::max(1, int(std::lround(s * (1 - 2 * jailInset_))));
+    Pixels icon = resize(src, srcSize, inner);
+    blendOver(shaped, s, icon, inner, (s - inner) / 2, (s - inner) / 2);
+    return finish(std::move(shaped), s, px);
 }
 
 IconProvider::ImagePtr IconProvider::appsButton(int px) {
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = L"#apps|" + std::to_wstring(px);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
-    auto img = std::make_shared<Image>();
-    img->size = px;
-    img->bgra = dark_ ? plate(px, hex(0x3A3A3C), hex(0x1C1C1E), 0.2) : plate(px, hex(0xFFFFFF), hex(0xE9E9EE), 0.7);
+    const int s = iconShapePx(px, shapeRatio_);
+    Pixels shaped = dark_ ? plate(s, cornerRatio_, hex(0x3A3A3C), hex(0x1C1C1E), 0.2)
+                          : plate(s, cornerRatio_, hex(0xFFFFFF), hex(0xE9E9EE), 0.7);
     static const unsigned colors[9] = {0xFF5F57, 0xFFBD2E, 0x28C840, 0x0A84FF, 0xBF5AF2, 0xFF375F,
                                        0x64D2FF, 0xFF9F0A, 0x30D158};
-    double cell = px * 0.17, gap = px * 0.055;
-    double start = (px - (3 * cell + 2 * gap)) / 2;
+    double cell = s * 0.17, gap = s * 0.055;
+    double start = (s - (3 * cell + 2 * gap)) / 2;
     for (int j = 0; j < 3; ++j)
         for (int i = 0; i < 3; ++i) {
             double x = start + i * (cell + gap), y = start + j * (cell + gap);
-            fillRoundRect(img->bgra, px, x, y, x + cell, y + cell, cell * 0.28, hex(colors[j * 3 + i]));
+            fillRoundRect(shaped, s, x, y, x + cell, y + cell, cell * 0.28, hex(colors[j * 3 + i]));
         }
+    auto img = finish(std::move(shaped), s, px);
     cache_[cacheKey] = img;
     return img;
 }

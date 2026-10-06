@@ -11,6 +11,7 @@
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../icons/icon_provider.h"
+#include "../layout/dock_geometry.h"
 #include "../layout/dock_layout.h"
 #include "../model/app_model.h"
 #include "../render/dock_renderer.h"

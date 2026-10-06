@@ -25,13 +25,18 @@ struct Settings {
     bool showRecents = true;
     bool tahoeStrictIcons = true;
     double tileSize = 48;     // borné à [16, 128]
-    double largeSize = 128;   // borné à [tileSize, 128]
+    double largeSize = 80;    // borné à [tileSize, 128]
+    bool glass = true;        // verre Liquid Glass (capture de l'arrière-plan) ; false = verre dépoli simple
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     std::vector<PinnedEntry> pinned;
     bool pinnedInitialized = false;  // false => importer les épingles par défaut
 };
 
+constexpr int kSettingsVersion = 2;
+
 Settings settingsFromJson(const json::Value& v);
-json::Value settingsToJson(const Settings& s);
+json::Value settingsToJson(const Settings& s);   // écrit "version": kSettingsVersion
+// Fichier sans "version" (v1) : largeSize 128 (ancien défaut) → 80 ; met "version": 2.
+json::Value migrateSettingsJson(const json::Value& v);
 
 } // namespace md

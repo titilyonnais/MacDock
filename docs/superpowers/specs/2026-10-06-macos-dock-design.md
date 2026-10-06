@@ -90,27 +90,41 @@ Toutes les mesures sont exprimées en **points macOS** puis multipliées par l'�
 - **Animations :** durées et courbes mesurées image par image sur les vidéos de référence.
 - **Toutes les mesures visuelles** (rayon, marges, tailles, opacités, flou, réfraction, ressorts, délais) sont regroupées dans `dock-metrics.json`, rechargé à chaud sans recompilation.
 
-### 3.3 Valeurs de départ (à calibrer)
+### 3.3 Valeurs retenues (plan 2, calibrables dans `dock-metrics.json`)
 
-| Paramètre | Départ | Source |
+Seule la grille d'icône est sourcée ; le reste est estimé, vérifié sur des captures hors écran (fonds blanc, noir, coloré et fond d'écran réel, en clair et en sombre), puis ajustable à chaud.
+
+| Paramètre | Valeur | Origine |
 |---|---|---|
-| Taille d'icône (`tilesize`) | 48 pt | Valeur par défaut de macOS |
-| Taille maximale en magnification (`largesize`) | 128 pt (plage 16–128) | Plage de macOS |
+| Taille d'icône (`tileSize`) | 48 pt | Valeur par défaut de macOS |
+| Taille maximale en magnification (`largeSize`) | 80 pt (plage 16–128) | Retour de l'utilisateur (128 pt jugé trop gros) |
 | Magnification | activée | Choix de l'utilisateur (désactivée par défaut sur macOS) |
-| Rayon d'influence de la magnification | ≈ 3 icônes de chaque côté | Estimation, à calibrer |
-| Forme du fond et des icônes | coins continus (superellipse) | Apparence de Tahoe |
-| Point indicateur | ≈ 4 pt de diamètre, sous l'icône | Estimation, à calibrer |
+| Forme visible de l'icône / case | 824/1024 = 0,8046875 | Grille Apple (sourcée) |
+| Rayon de l'icône / forme visible | 0,225, coin continu | Grille Apple (sourcée) |
+| Ombre d'icône | σ = 14/1024 de la case, décalage 12/1024, noir 50 % | Grille Apple (sourcée) |
+| Rayon du fond | auto = rayon de l'icône + marge + retrait visuel (≈ 21,4 pt pour 48 pt) | Concentricité (principe Liquid Glass) ; retour de l'utilisateur |
+| Pas entre icônes | 52 pt de centre à centre (`iconGap` 4) | Estimation |
+| Point indicateur | diamètre 4 pt, centre à 4 pt au-dessus du bas du fond | Estimation ; retour de l'utilisateur (point plus espacé) |
+| Forme du fond et des icônes | coins continus (chemin UIKit, extension 1,52866) | Rétro-conception de UIKit |
 
-### 3.4 Pipeline Liquid Glass (à chaque image)
-1. **Capture** de l'arrière-plan avec l'API Desktop Duplication. La fenêtre du Dock en est exclue avec `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Seule la zone sous le Dock, avec une marge, est copiée.
-2. **Flou** gaussien séparable, à résolution réduite.
-3. **Shader** (HLSL) :
-   - forme : distance signée d'un rectangle à coins continus ;
-   - bord biseauté qui **réfracte** l'arrière-plan selon un profil de lentille (loi de Snell), avec une légère aberration chromatique concentrée sur le biseau ;
-   - reflet de Fresnel sur le pourtour et liseré spéculaire ;
-   - teinte adaptative selon la luminance moyenne de l'arrière-plan ;
-   - ombre portée douce.
-4. **Repli :** si la duplication est indisponible (contenu protégé, plein écran exclusif, session distante), on utilise le flou acrylique système (`DWMWA_SYSTEMBACKDROP_TYPE`) avec une teinte équivalente. Pas d'écran noir, pas de plantage.
+### 3.4 Pipeline Liquid Glass
+
+1. **Capture** de l'arrière-plan par Desktop Duplication (`DuplicateOutput1`, BGRA8 ou RGBA16F en HDR), sur un thread dédié. La fenêtre du Dock en est exclue (`WDA_EXCLUDEFROMCAPTURE`). Seule la région de la fenêtre est copiée, dans une texture partagée (handle NT et keyed mutex) que le thread d'interface recopie.
+2. **Filtrage** : une composition n'est transmise que si la région est touchée (rectangles modifiés) **et** si son contenu réduit au quart a réellement changé. En HDR, Windows signale l'écran entier à chaque composition et la présentation du Dock en provoque une : sans cette comparaison, le Dock se redessinerait en boucle. Au repos, le Dock ne rend aucune image (mesuré : 0,16 % d'un cœur).
+3. **Flou** gaussien séparable au quart de la résolution, puis mipmaps (luminance moyenne). Un arrière-plan scRGB est ramené en sRGB en respectant le blanc SDR de Windows.
+4. **Shader** (HLSL) :
+   - forme : distance signée du rectangle à coins continus (table précalculée) ;
+   - biseau qui réfracte l'arrière-plan vers le centre, avec une légère aberration chromatique ;
+   - saturation, teinte adaptative selon la luminance de l'arrière-plan, bornée pour garder le contraste des icônes et du point ;
+   - reflet de Fresnel et liseré spéculaire ;
+   - ombre portée douce, hors de la forme.
+5. **Repli** : si la capture est indisponible (écran tourné, rendu WARP, bureau sécurisé, exclusion impossible), verre dépoli Direct2D, puis nouvel essai à 250, 500, 1000 puis 2000 ms. Pas d'écran noir, pas de plantage.
+
+**Écarts assumés par rapport à la version initiale de cette spec :**
+- Le repli est un verre dépoli Direct2D, pas l'acrylique système : `DWMWA_SYSTEMBACKDROP_TYPE` floute tout le rectangle de la fenêtre et ne peut pas prendre la forme du Dock.
+- La carte de différence est produite hors ligne (`--reference`, `--diff`) ; en direct, seule une superposition de référence est proposée (Ctrl+Alt+Maj+O).
+- Les captures de référence de macOS ne sont pas versionnées (contenu Apple) ; `reference/README.md` explique comment les produire.
+- Quand le verre est actif, le Dock n'apparaît ni dans les captures d'écran ni dans les partages d'écran. `glass: false` rétablit les captures.
 
 ### 3.5 Icônes
 - Extraction à la meilleure résolution disponible, puis masque squircle.

@@ -19,7 +19,9 @@ public:
     void setStrictTahoe(bool strict);
     void setDark(bool dark);
     void setCustomDir(std::wstring dir) { customDir_ = std::move(dir); clear(); }
-    void setJailInset(double inset);         // marge relative de l'icône dans sa plaque (« icon jail »)
+    // Grille Apple : forme visible / case, rayon / forme, marge de l'icône dans sa plaque (« icon jail »),
+    // opacité de l'ombre portée. Vide le cache si une valeur change.
+    void setGrid(double shapeRatio, double cornerRatio, double jailInset, double shadowOpacity);
 
     // key : identifiant stable (appId, chemin…) utilisé pour l'icône personnalisée et le cache.
     // parsingName : nom Shell (chemin, .lnk, shell:AppsFolder\AUMID, ::{CLSID}).
@@ -29,10 +31,15 @@ public:
 
 private:
     ImagePtr build(const std::wstring& key, const std::wstring& parsingName, int px);
+    // Forme visible (shape x shape) posée au centre d'une case px x px, avec l'ombre portée.
+    ImagePtr finish(std::vector<std::uint8_t> shaped, int shape, int px) const;
 
     bool strict_ = true;
     bool dark_ = false;
+    double shapeRatio_ = 824.0 / 1024.0;
+    double cornerRatio_ = 185.4 / 824.0;
     double jailInset_ = 0.16;
+    double shadowOpacity_ = 0.5;
     std::wstring customDir_;
     std::map<std::wstring, ImagePtr> cache_;
 };
