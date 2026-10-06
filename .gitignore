@@ -1,0 +1,4 @@
+build/
+.superpowers/
+*.pdb
+*.obj

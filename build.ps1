@@ -1,0 +1,68 @@
+# Construction de MacDock avec MSVC (Visual Studio 2022), sans CMake.
+#   ./build.ps1 -Target tests -Run
+#   ./build.ps1 -Target all -Config Release
+param(
+    [ValidateSet('tests', 'dock', 'launcher', 'all')] [string]$Target = 'all',
+    [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
+    [switch]$Run
+)
+$ErrorActionPreference = 'Stop'
+$Root = $PSScriptRoot
+
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) { throw 'Visual Studio avec les outils C++ est introuvable.' }
+$vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+
+$Common = @('/nologo', '/std:c++latest', '/W4', '/permissive-', '/EHsc', '/utf-8', '/MP',
+            '/DUNICODE', '/D_UNICODE', '/DNOMINMAX', '/DWIN32_LEAN_AND_MEAN', '/D_WIN32_WINNT=0x0A00')
+if ($Config -eq 'Debug') { $Common += @('/Zi', '/Od', '/MDd', '/D_DEBUG') }
+else { $Common += @('/O2', '/MD', '/DNDEBUG', '/Zi') }
+
+function Get-Sources([string[]]$Patterns) {
+    $files = foreach ($p in $Patterns) { Get-ChildItem -Path (Join-Path $Root $p) -ErrorAction SilentlyContinue }
+    $files | Where-Object { $_ } | ForEach-Object { $_.FullName } | Sort-Object -Unique
+}
+
+# Modules logiques (sans dépendance graphique) partagés par les tests.
+$LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp',
+                  'src\model\*.cpp', 'src\ipc\protocol.cpp', 'src\launcher\crash_policy.cpp',
+                  'src\icons\squircle.cpp')
+
+$Targets = @{
+    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources; Subsystem = 'CONSOLE';
+                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib') }
+    dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\layout\*.cpp',
+                      'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
+                      'src\shell\*.cpp', 'src\render\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
+                  Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
+                      'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
+                      'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib') }
+    launcher = @{ Exe = 'MacDockLauncher.exe'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
+                  Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
+}
+
+function Build-Target([string]$Name) {
+    $t = $Targets[$Name]
+    $out = Join-Path $Root "build\$Config"
+    $obj = Join-Path $out "obj\$Name"
+    New-Item -ItemType Directory -Force -Path $obj | Out-Null
+    $sources = Get-Sources $t.Sources
+    if (-not $sources) { throw "Aucune source pour $Name" }
+    $rsp = Join-Path $out "$Name.rsp"
+    $lines = $Common + @("/Fo`"$obj\\`"", "/Fd`"$obj\\vc.pdb`"", "/Fe`"$out\$($t.Exe)`"") +
+             ($sources | ForEach-Object { "`"$_`"" })
+    $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
+    Set-Content -Path $rsp -Value $lines -Encoding ascii
+    Write-Host "== $Name ($Config) : $($sources.Count) fichiers"
+    cmd /c "`"$vcvars`" >nul && cl @`"$rsp`" /link $link"
+    if ($LASTEXITCODE -ne 0) { throw "Echec de compilation : $Name" }
+}
+
+$names = if ($Target -eq 'all') { @('tests', 'dock', 'launcher') } else { @($Target) }
+foreach ($n in $names) { Build-Target $n }
+
+if ($Run -and ($names -contains 'tests')) {
+    & (Join-Path $Root "build\$Config\tests.exe")
+    exit $LASTEXITCODE
+}
