@@ -2,11 +2,13 @@
 
 #include <d2d1_3helper.h>
 #include <dxgi1_3.h>
-#include <wincodec.h>
 
 #include <algorithm>
+#include <cmath>
 
+#include "../calib/png_io.h"
 #include "../core/log.h"
+#include "../geom/smooth_rect.h"
 
 namespace md {
 
@@ -14,18 +16,23 @@ namespace {
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
 }
 
-bool DockRenderer::init(HWND hwnd) {
-    hwnd_ = hwnd;
+bool DockRenderer::createDevices(bool warpOnly) {
     bitmaps_.clear();
+    geometries_.clear();
     surface_.Reset();
     shadow_.Reset();
+    target_.Reset();
+    visual_.Reset();
+    dcomp_.Reset();
 
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
-                                   &d3d_, nullptr, nullptr);
+    HRESULT hr = E_FAIL;
+    if (!warpOnly)
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
+                               d3d_.ReleaseAndGetAddressOf(), nullptr, nullptr);
     if (FAILED(hr))
-        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &d3d_,
-                               nullptr, nullptr);
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
+                               d3d_.ReleaseAndGetAddressOf(), nullptr, nullptr);
     if (FAILED(hr)) { log::error(L"D3D11CreateDevice a échoué (0x%08X)", hr); return false; }
 
     Com<IDXGIDevice> dxgi;
@@ -34,20 +41,30 @@ bool DockRenderer::init(HWND hwnd) {
     if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory3), &opts,
                                  reinterpret_cast<void**>(d2dFactory_.ReleaseAndGetAddressOf()))))
         return false;
-    if (FAILED(d2dFactory_->CreateDevice(dxgi.Get(), &d2dDevice_))) return false;
-    if (FAILED(d2dDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &dc_))) return false;
-
-    if (FAILED(DCompositionCreateDevice2(d2dDevice_.Get(), IID_PPV_ARGS(&dcomp_)))) return false;
-    if (FAILED(dcomp_->CreateTargetForHwnd(hwnd, TRUE, &target_))) return false;
-    if (FAILED(dcomp_->CreateVisual(&visual_))) return false;
-    target_->SetRoot(visual_.Get());
-
+    if (FAILED(d2dFactory_->CreateDevice(dxgi.Get(), d2dDevice_.ReleaseAndGetAddressOf()))) return false;
+    if (FAILED(d2dDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, dc_.ReleaseAndGetAddressOf())))
+        return false;
     if (!dwrite_ && FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3),
                                                reinterpret_cast<IUnknown**>(dwrite_.GetAddressOf()))))
         return false;
     dc_->CreateEffect(CLSID_D2D1Shadow, &shadow_);
+    return true;
+}
+
+bool DockRenderer::init(HWND hwnd) {
+    hwnd_ = hwnd;
+    if (!createDevices(false)) return false;
+    if (FAILED(DCompositionCreateDevice2(d2dDevice_.Get(), IID_PPV_ARGS(&dcomp_)))) return false;
+    if (FAILED(dcomp_->CreateTargetForHwnd(hwnd, TRUE, &target_))) return false;
+    if (FAILED(dcomp_->CreateVisual(&visual_))) return false;
+    target_->SetRoot(visual_.Get());
     if (width_ && height_) resize(width_, height_);
     return true;
+}
+
+bool DockRenderer::initOffscreen() {
+    hwnd_ = nullptr;
+    return createDevices(true);
 }
 
 void DockRenderer::resize(UINT w, UINT h) {
@@ -85,6 +102,26 @@ std::wstring DockRenderer::resolveFont(const std::wstring& wanted) {
     return fontResolved_;
 }
 
+ID2D1Geometry* DockRenderer::smoothRect(D2D1_RECT_F r, float radius) {
+    auto q = [](float v) { return long(std::lround(v * 64)); };   // clé arrondie à 1/64 px
+    std::array<long, 5> key{q(r.left), q(r.top), q(r.right), q(r.bottom), q(radius)};
+    for (auto& g : geometries_)
+        if (g.key == key) return g.geometry.Get();
+
+    Com<ID2D1PathGeometry> path;
+    Com<ID2D1GeometrySink> sink;
+    if (FAILED(d2dFactory_->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return nullptr;
+    auto pts = smoothRectOutline(r.left, r.top, r.right - r.left, r.bottom - r.top, radius, 12);
+    sink->BeginFigure(D2D1::Point2F(float(pts[0].x), float(pts[0].y)), D2D1_FIGURE_BEGIN_FILLED);
+    for (size_t i = 1; i < pts.size(); ++i) sink->AddLine(D2D1::Point2F(float(pts[i].x), float(pts[i].y)));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) return nullptr;
+
+    if (geometries_.size() >= 8) geometries_.erase(geometries_.begin());
+    geometries_.push_back({key, path});
+    return path.Get();
+}
+
 ID2D1Bitmap1* DockRenderer::bitmapFor(const IconProvider::ImagePtr& img) {
     if (!img || img->size <= 0) return nullptr;
     if (auto it = bitmaps_.find(img.get()); it != bitmaps_.end() && !it->second.owner.expired())
@@ -102,7 +139,9 @@ ID2D1Bitmap1* DockRenderer::bitmapFor(const IconProvider::ImagePtr& img) {
 }
 
 void DockRenderer::drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m) {
-    D2D1_ROUNDED_RECT rr{D2D1::RectF(f.bgLeft, f.bgTop, f.bgRight, f.bgBottom), f.cornerRadius, f.cornerRadius};
+    D2D1_RECT_F rect = D2D1::RectF(f.bgLeft, f.bgTop, f.bgRight, f.bgBottom);
+    ID2D1Geometry* shape = smoothRect(rect, f.cornerRadius);
+    if (!shape) return;
 
     // Ombre portée douce.
     if (shadow_ && m.shadowOpacity > 0) {
@@ -113,7 +152,7 @@ void DockRenderer::drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, 
             dc->SetTarget(list.Get());
             Com<ID2D1SolidColorBrush> black;
             dc->CreateSolidColorBrush(rgba(0, 0, 0, 1), &black);
-            dc->FillRoundedRectangle(rr, black.Get());
+            dc->FillGeometry(shape, black.Get());
             list->Close();
             dc->SetTarget(previous.Get());
             shadow_->SetInput(0, list.Get());
@@ -127,7 +166,7 @@ void DockRenderer::drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, 
         }
     }
 
-    // Verre simple (le vrai Liquid Glass arrive au plan 2) : dégradé vertical translucide.
+    // Verre dépoli (repli sans capture) : dégradé vertical translucide.
     float base = float(f.dark ? m.bgOpacityDark : m.bgOpacityLight);
     D2D1_GRADIENT_STOP stops[2];
     if (f.dark) {
@@ -143,19 +182,17 @@ void DockRenderer::drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, 
     dc->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, f.bgTop),
                                                                       D2D1::Point2F(0, f.bgBottom)),
                                   coll.Get(), &fill);
-    dc->FillRoundedRectangle(rr, fill.Get());
+    dc->FillGeometry(shape, fill.Get());
 
-    // Liseré intérieur clair.
+    // Liseré intérieur clair : contour d'une forme réduite d'un demi-trait, de même famille.
     float stroke = std::max(1.0f, f.scale);
-    D2D1_ROUNDED_RECT inner = rr;
-    inner.rect.left += stroke / 2;
-    inner.rect.top += stroke / 2;
-    inner.rect.right -= stroke / 2;
-    inner.rect.bottom -= stroke / 2;
-    inner.radiusX = inner.radiusY = std::max(0.0f, f.cornerRadius - stroke / 2);
-    Com<ID2D1SolidColorBrush> rim;
-    dc->CreateSolidColorBrush(rgba(1, 1, 1, float(m.borderOpacity) * (f.dark ? 0.35f : 1.0f)), &rim);
-    dc->DrawRoundedRectangle(inner, rim.Get(), stroke);
+    D2D1_RECT_F inner = D2D1::RectF(rect.left + stroke / 2, rect.top + stroke / 2, rect.right - stroke / 2,
+                                    rect.bottom - stroke / 2);
+    if (ID2D1Geometry* rim = smoothRect(inner, std::max(0.0f, f.cornerRadius - stroke / 2))) {
+        Com<ID2D1SolidColorBrush> rimBrush;
+        dc->CreateSolidColorBrush(rgba(1, 1, 1, float(m.borderOpacity) * (f.dark ? 0.35f : 1.0f)), &rimBrush);
+        dc->DrawGeometry(rim, rimBrush.Get(), stroke);
+    }
 }
 
 void DockRenderer::drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m,
@@ -175,9 +212,11 @@ void DockRenderer::drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, con
     layout->GetMetrics(&tm);
     float padX = float(m.tooltipPadX) * f.scale, padY = float(m.tooltipPadY) * f.scale;
     float w = tm.width + 2 * padX, h = tm.height + 2 * padY;
-    float left = std::clamp(t.cx - w / 2, 2.0f, float(width_) - w - 2);
+    float maxRight = float(width_ ? width_ : 4000);
+    float left = std::clamp(t.cx - w / 2, 2.0f, std::max(2.0f, maxRight - w - 2));
     D2D1_RECT_F rect = D2D1::RectF(left, t.bottom - h, left + w, t.bottom);
-    D2D1_ROUNDED_RECT rr{rect, h / 2, h / 2};
+    ID2D1Geometry* shape = smoothRect(rect, h / 2);   // capsule à coins continus
+    if (!shape) return;
 
     Com<ID2D1SolidColorBrush> bg, border, text;
     if (f.dark) {
@@ -189,8 +228,8 @@ void DockRenderer::drawTooltip(ID2D1DeviceContext* dc, const RenderFrame& f, con
         dc->CreateSolidColorBrush(rgba(0, 0, 0, 0.10f * t.opacity), &border);
         dc->CreateSolidColorBrush(rgba(0, 0, 0, 0.85f * t.opacity), &text);
     }
-    dc->FillRoundedRectangle(rr, bg.Get());
-    dc->DrawRoundedRectangle(rr, border.Get(), std::max(1.0f, f.scale * 0.75f));
+    dc->FillGeometry(shape, bg.Get());
+    dc->DrawGeometry(shape, border.Get(), std::max(1.0f, f.scale * 0.75f));
     dc->DrawTextLayout(D2D1::Point2F(left + padX, rect.top + padY), layout.Get(), text.Get(),
                        D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
 }
@@ -248,53 +287,60 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
     drawTooltip(dc, f, m, fontFamily);
 }
 
-bool DockRenderer::renderToFile(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily, UINT w,
-                                UINT h, const std::wstring& path) {
+std::vector<std::uint8_t> DockRenderer::renderToBgra(const RenderFrame& f, const Metrics& m,
+                                                     const std::wstring& fontFamily, UINT w, UINT h,
+                                                     const std::vector<std::uint8_t>& wallpaper) {
+    if (!dc_ || !w || !h) return {};
     auto pf = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
-    Com<ID2D1Bitmap1> target, readback;
+    Com<ID2D1Bitmap1> target, readback, wall;
     if (FAILED(dc_->CreateBitmap(D2D1::SizeU(w, h), nullptr, 0,
                                  D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET, pf), &target)) ||
         FAILED(dc_->CreateBitmap(D2D1::SizeU(w, h), nullptr, 0,
                                  D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, pf),
                                  &readback)))
-        return false;
+        return {};
+    if (wallpaper.size() == size_t(w) * h * 4 &&
+        FAILED(dc_->CreateBitmap(D2D1::SizeU(w, h), wallpaper.data(), w * 4, D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, pf),
+                                 &wall)))
+        return {};
+
+    const UINT savedW = width_;
+    width_ = w;
     dc_->SetTarget(target.Get());
     dc_->BeginDraw();
     dc_->SetDpi(96, 96);
     dc_->SetTransform(D2D1::Matrix3x2F::Identity());
-    // Fond de bureau factice : dégradé coloré pour juger la translucidité.
-    D2D1_GRADIENT_STOP stops[3] = {{0, rgba(0.16f, 0.32f, 0.62f, 1)}, {0.5f, rgba(0.55f, 0.36f, 0.66f, 1)},
-                                   {1, rgba(0.95f, 0.55f, 0.42f, 1)}};
-    Com<ID2D1GradientStopCollection> coll;
-    dc_->CreateGradientStopCollection(stops, 3, &coll);
-    Com<ID2D1LinearGradientBrush> wallpaper;
-    dc_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(float(w), float(h))),
-                                   coll.Get(), &wallpaper);
-    dc_->FillRectangle(D2D1::RectF(0, 0, float(w), float(h)), wallpaper.Get());
+    if (wall) {
+        dc_->DrawBitmap(wall.Get());
+    } else {
+        // Fond de bureau factice : dégradé coloré pour juger la translucidité.
+        D2D1_GRADIENT_STOP stops[3] = {{0, rgba(0.16f, 0.32f, 0.62f, 1)}, {0.5f, rgba(0.55f, 0.36f, 0.66f, 1)},
+                                       {1, rgba(0.95f, 0.55f, 0.42f, 1)}};
+        Com<ID2D1GradientStopCollection> coll;
+        dc_->CreateGradientStopCollection(stops, 3, &coll);
+        Com<ID2D1LinearGradientBrush> brush;
+        dc_->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(float(w), float(h))), coll.Get(), &brush);
+        dc_->FillRectangle(D2D1::RectF(0, 0, float(w), float(h)), brush.Get());
+    }
     drawFrame(dc_.Get(), f, m, fontFamily);
     HRESULT hr = dc_->EndDraw();
     dc_->SetTarget(nullptr);
-    if (FAILED(hr) || FAILED(readback->CopyFromBitmap(nullptr, target.Get(), nullptr))) return false;
+    width_ = savedW;
+    if (FAILED(hr) || FAILED(readback->CopyFromBitmap(nullptr, target.Get(), nullptr))) return {};
 
     D2D1_MAPPED_RECT mapped{};
-    if (FAILED(readback->Map(D2D1_MAP_OPTIONS_READ, &mapped))) return false;
-    Com<IWICImagingFactory> wic;
-    Com<IWICStream> stream;
-    Com<IWICBitmapEncoder> encoder;
-    Com<IWICBitmapFrameEncode> frame;
-    bool ok = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) &&
-              SUCCEEDED(wic->CreateStream(&stream)) &&
-              SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
-              SUCCEEDED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder)) &&
-              SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)) &&
-              SUCCEEDED(encoder->CreateNewFrame(&frame, nullptr)) && SUCCEEDED(frame->Initialize(nullptr)) &&
-              SUCCEEDED(frame->SetSize(w, h));
-    WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppPBGRA;
-    ok = ok && SUCCEEDED(frame->SetPixelFormat(&fmt)) &&
-         SUCCEEDED(frame->WritePixels(h, mapped.pitch, mapped.pitch * h, mapped.bits)) && SUCCEEDED(frame->Commit()) &&
-         SUCCEEDED(encoder->Commit());
+    if (FAILED(readback->Map(D2D1_MAP_OPTIONS_READ, &mapped))) return {};
+    std::vector<std::uint8_t> out(size_t(w) * h * 4);
+    for (UINT y = 0; y < h; ++y) std::copy_n(mapped.bits + size_t(y) * mapped.pitch, size_t(w) * 4, &out[size_t(y) * w * 4]);
     readback->Unmap();
-    return ok;
+    return out;
+}
+
+bool DockRenderer::renderToFile(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily, UINT w,
+                                UINT h, const std::wstring& path, const std::vector<std::uint8_t>& wallpaper) {
+    auto px = renderToBgra(f, m, fontFamily, w, h, wallpaper);
+    return !px.empty() && writePng(path, px.data(), w, h);
 }
 
 } // namespace md

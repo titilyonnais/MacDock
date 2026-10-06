@@ -7,6 +7,8 @@
 #include <dwrite_3.h>
 #include <wrl/client.h>
 
+#include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -46,15 +48,23 @@ struct RenderFrame {
 class DockRenderer {
 public:
     bool init(HWND hwnd);
+    bool initOffscreen();   // device WARP, sans fenêtre ni DirectComposition (tests, captures)
     void resize(UINT w, UINT h);
     // false => périphérique perdu : rappeler init().
     bool render(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily);
     void releaseImages() { bitmaps_.clear(); }
-    // Rendu hors écran vers un PNG (diagnostic, calibration) sur un fond de bureau factice.
+    // Rendu dans une image BGRA prémultipliée w x h, sur un fond donné (BGRA w x h ; vide = dégradé factice).
+    std::vector<std::uint8_t> renderToBgra(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily,
+                                           UINT w, UINT h, const std::vector<std::uint8_t>& wallpaper = {});
+    // Rendu hors écran vers un PNG (diagnostic, calibration).
     bool renderToFile(const RenderFrame& frame, const Metrics& m, const std::wstring& fontFamily, UINT w, UINT h,
-                      const std::wstring& path);
+                      const std::wstring& path, const std::vector<std::uint8_t>& wallpaper = {});
+    ID3D11Device* device() const { return d3d_.Get(); }
 
 private:
+    bool createDevices(bool warpOnly);
+    // Rectangle à coins continus (Apple), en pixels ; la dernière géométrie est gardée en cache.
+    ID2D1Geometry* smoothRect(D2D1_RECT_F r, float radius);
     ID2D1Bitmap1* bitmapFor(const IconProvider::ImagePtr& img);
     std::wstring resolveFont(const std::wstring& wanted);
     void drawBackground(ID2D1DeviceContext* dc, const RenderFrame& f, const Metrics& m);
@@ -76,6 +86,8 @@ private:
     Com<ID2D1Effect> shadow_;
     struct CachedBitmap { std::weak_ptr<const IconProvider::Image> owner; Com<ID2D1Bitmap1> bitmap; };
     std::map<const IconProvider::Image*, CachedBitmap> bitmaps_;
+    struct CachedGeometry { std::array<long, 5> key{}; Com<ID2D1PathGeometry> geometry; };
+    std::vector<CachedGeometry> geometries_;   // quelques formes par image (fond, infobulle)
     std::wstring fontWanted_, fontResolved_;
 };
 

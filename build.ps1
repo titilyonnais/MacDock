@@ -31,11 +31,12 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\app\dock_controller.cpp')
 
 $Targets = @{
-    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources; Subsystem = 'CONSOLE';
-                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib') }
+    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp'); Subsystem = 'CONSOLE';
+                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib',
+                      'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
-                      'src\shell\*.cpp', 'src\render\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
+                      'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
