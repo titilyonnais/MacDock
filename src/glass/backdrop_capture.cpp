@@ -3,9 +3,13 @@
 #include <d3d11_1.h>
 #include <dxgi1_6.h>
 
+#include <cstring>
 #include <vector>
 
 #include "../core/log.h"
+
+#include "downsample_ps.h"
+#include "fullscreen_vs.h"
 
 #pragma comment(lib, "dxgi.lib")
 
@@ -13,6 +17,128 @@ namespace md {
 
 namespace {
 IRect toIRect(const RECT& r) { return {r.left, r.top, r.right, r.bottom}; }
+
+// Réduction au quart (sRGB 8 bits) de la région copiée, relue par le processeur pour savoir si le contenu
+// a vraiment changé : le Dock ne se redessine pas pour une composition qui ne change rien sous lui.
+class RegionReducer {
+    template <class T> using Com = Microsoft::WRL::ComPtr<T>;
+    struct QuadCb { float rect[4]; float target[2]; float pad[2]; };
+    struct DownCb { float srcSize[2]; float scRgb; float sdrWhite; };
+
+public:
+    bool init(ID3D11Device* dev) {
+        dev_ = dev;
+        auto cb = [&](UINT size, Com<ID3D11Buffer>& out) {
+            D3D11_BUFFER_DESC d{};
+            d.ByteWidth = (size + 15) & ~15u;
+            d.Usage = D3D11_USAGE_DYNAMIC;
+            d.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            d.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            return SUCCEEDED(dev->CreateBuffer(&d, nullptr, &out));
+        };
+        D3D11_SAMPLER_DESC sd{};
+        sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        D3D11_RASTERIZER_DESC rd{};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        return SUCCEEDED(dev->CreateVertexShader(g_fullscreen_vs, sizeof g_fullscreen_vs, nullptr, &vs_)) &&
+               SUCCEEDED(dev->CreatePixelShader(g_downsample_ps, sizeof g_downsample_ps, nullptr, &ps_)) &&
+               cb(sizeof(QuadCb), quadCb_) && cb(sizeof(DownCb), downCb_) &&
+               SUCCEEDED(dev->CreateSamplerState(&sd, &sampler_)) && SUCCEEDED(dev->CreateRasterizerState(&rd, &raster_));
+    }
+
+    // Copie la région de frame dans scratch() puis indique si son contenu réduit diffère du précédent.
+    bool update(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, const D3D11_BOX& box, DXGI_FORMAT format,
+                float sdrWhite, ChangeGate& gate) {
+        const UINT w = box.right - box.left, h = box.bottom - box.top, dw = (w + 3) / 4, dh = (h + 3) / 4;
+        if (!ensure(w, h, format, dw, dh)) return true;
+        ctx->CopySubresourceRegion(scratch_.Get(), 0, 0, 0, 0, frame, 0, &box);
+
+        ctx->ClearState();
+        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+        ctx->VSSetShader(vs_.Get(), nullptr, 0);
+        ctx->PSSetShader(ps_.Get(), nullptr, 0);
+        ctx->RSSetState(raster_.Get());
+        D3D11_VIEWPORT v{0, 0, float(dw), float(dh), 0, 1};
+        ctx->RSSetViewports(1, &v);
+        set(ctx, quadCb_.Get(), QuadCb{{0, 0, float(dw), float(dh)}, {float(dw), float(dh)}, {}});
+        set(ctx, downCb_.Get(),
+            DownCb{{float(w), float(h)}, format == DXGI_FORMAT_R16G16B16A16_FLOAT ? 1.0f : 0.0f, sdrWhite});
+        ctx->VSSetConstantBuffers(0, 1, quadCb_.GetAddressOf());
+        ctx->PSSetConstantBuffers(1, 1, downCb_.GetAddressOf());
+        ctx->PSSetSamplers(0, 1, sampler_.GetAddressOf());
+        ctx->PSSetShaderResources(0, 1, scratchSrv_.GetAddressOf());
+        ctx->OMSetRenderTargets(1, smallRtv_.GetAddressOf(), nullptr);
+        ctx->Draw(4, 0);
+        ctx->ClearState();
+        ctx->CopyResource(staging_.Get(), small_.Get());
+
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (FAILED(ctx->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &m))) return true;
+        bool changed = gate.changed(static_cast<const std::uint8_t*>(m.pData), dw, dh, m.RowPitch);
+        ctx->Unmap(staging_.Get(), 0);
+        return changed;
+    }
+    ID3D11Texture2D* scratch() const { return scratch_.Get(); }
+
+private:
+    template <class T> static void set(ID3D11DeviceContext* ctx, ID3D11Buffer* b, const T& data) {
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (SUCCEEDED(ctx->Map(b, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            std::memcpy(m.pData, &data, sizeof data);
+            ctx->Unmap(b, 0);
+        }
+    }
+    bool ensure(UINT w, UINT h, DXGI_FORMAT format, UINT dw, UINT dh) {
+        if (scratch_ && w == w_ && h == h_ && format == format_) return true;
+        scratch_.Reset();
+        scratchSrv_.Reset();
+        small_.Reset();
+        smallRtv_.Reset();
+        staging_.Reset();
+        D3D11_TEXTURE2D_DESC d{};
+        d.Width = w;
+        d.Height = h;
+        d.MipLevels = d.ArraySize = 1;
+        d.Format = format;
+        d.SampleDesc.Count = 1;
+        d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_TEXTURE2D_DESC s = d;
+        s.Width = dw;
+        s.Height = dh;
+        s.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        s.BindFlags = D3D11_BIND_RENDER_TARGET;
+        D3D11_TEXTURE2D_DESC st = s;
+        st.BindFlags = 0;
+        st.Usage = D3D11_USAGE_STAGING;
+        st.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(dev_->CreateTexture2D(&d, nullptr, &scratch_)) ||
+            FAILED(dev_->CreateShaderResourceView(scratch_.Get(), nullptr, &scratchSrv_)) ||
+            FAILED(dev_->CreateTexture2D(&s, nullptr, &small_)) ||
+            FAILED(dev_->CreateRenderTargetView(small_.Get(), nullptr, &smallRtv_)) ||
+            FAILED(dev_->CreateTexture2D(&st, nullptr, &staging_))) {
+            scratch_.Reset();
+            return false;
+        }
+        w_ = w;
+        h_ = h;
+        format_ = format;
+        return true;
+    }
+
+    ID3D11Device* dev_ = nullptr;
+    Com<ID3D11VertexShader> vs_;
+    Com<ID3D11PixelShader> ps_;
+    Com<ID3D11Buffer> quadCb_, downCb_;
+    Com<ID3D11SamplerState> sampler_;
+    Com<ID3D11RasterizerState> raster_;
+    Com<ID3D11Texture2D> scratch_, small_, staging_;
+    Com<ID3D11ShaderResourceView> scratchSrv_;
+    Com<ID3D11RenderTargetView> smallRtv_;
+    UINT w_ = 0, h_ = 0;
+    DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
+};
 } // namespace
 
 Microsoft::WRL::ComPtr<IDXGIAdapter1> BackdropCapture::adapterFor(HMONITOR monitor) {
@@ -104,6 +230,10 @@ void BackdropCapture::releaseShared() {
     hasFrame_ = false;
 }
 
+void BackdropCapture::setStatus(Status s) {
+    if (status_.exchange(s) != s && s != Status::Off) PostMessageW(notify_, notifyMsg_, 0, 0);
+}
+
 void BackdropCapture::run() {
     CaptureBackoff backoff;
     bool unavailableLogged = false;
@@ -142,7 +272,7 @@ void BackdropCapture::run() {
             }
         }
         if (!ok) {
-            status_ = Status::Unavailable;
+            setStatus(Status::Unavailable);
             unavailableLogged = true;
             if (waitStop(backoff.nextDelayMs())) break;
             continue;
@@ -155,13 +285,13 @@ void BackdropCapture::run() {
         if (unavailableLogged) log::info(L"Capture : reprise");
         unavailableLogged = false;
         backoff.reset();
-        status_ = Status::Running;
+        setStatus(Status::Running);
 
         bool lost = captureLoop(dev, dup, outputDesktop);
         shared_.Reset();
         sharedMutex_.Reset();
         if (!lost) break;   // arrêt demandé
-        status_ = Status::Unavailable;
+        setStatus(Status::Unavailable);
         if (waitStop(backoff.nextDelayMs())) break;
     }
     status_ = Status::Off;
@@ -172,6 +302,10 @@ bool BackdropCapture::captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplica
     Com<ID3D11DeviceContext> ctx;
     dev->GetImmediateContext(&ctx);
     std::vector<BYTE> meta;
+    RegionReducer reducer;
+    ChangeGate gate;
+    const bool reducerOk = reducer.init(dev.Get());
+    if (!reducerOk) log::warn(L"Capture : comparaison du contenu indisponible (toutes les compositions sont transmises)");
     bool desktopValid = false;   // la surface de duplication ne contient l'image qu'après une vraie présentation
 
     for (;;) {
@@ -253,9 +387,15 @@ bool BackdropCapture::captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplica
                 copy = anyIntersects(r, rects.data(), rects.size());
             }
 
+            D3D11_BOX box{UINT(r.left), UINT(r.top), 0, UINT(r.right), UINT(r.bottom), 1};
+            if (copy && reducerOk) {
+                // Toujours comparer (la référence reste à jour), publier si le contenu change ou si on y est forcé.
+                bool differs = reducer.update(ctx.Get(), frame.Get(), box, fd.Format, sdrWhite_.load(), gate);
+                copy = differs || changed;
+            }
             if (copy && SUCCEEDED(sharedMutex_->AcquireSync(0, 100))) {
-                D3D11_BOX box{UINT(r.left), UINT(r.top), 0, UINT(r.right), UINT(r.bottom), 1};
-                ctx->CopySubresourceRegion(shared_.Get(), 0, 0, 0, 0, frame.Get(), 0, &box);
+                if (reducerOk && reducer.scratch()) ctx->CopyResource(shared_.Get(), reducer.scratch());
+                else ctx->CopySubresourceRegion(shared_.Get(), 0, 0, 0, 0, frame.Get(), 0, &box);
                 sharedMutex_->ReleaseSync(0);
                 ctx->Flush();
                 {

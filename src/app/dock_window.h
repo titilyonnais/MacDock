@@ -9,6 +9,7 @@
 
 #include "../config/metrics.h"
 #include "../config/settings.h"
+#include "../glass/backdrop_capture.h"
 #include "../icons/icon_provider.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
@@ -51,6 +52,10 @@ private:
     void startConfigWatcher();
     int runSnapshot(const Options& options);
     void onHotKey(int id);
+    void updateGlass();       // applique settings_.glass : exclusion de la capture, démarrage ou arrêt
+    void restartCapture();
+    void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
+    bool initRenderer();
     static bool systemDarkMode();
 
     HINSTANCE instance_ = nullptr;
@@ -83,6 +88,11 @@ private:
     std::shared_ptr<const OverlayImage> overlay_;   // superposition de calibration (Ctrl+Alt+Maj+O)
     float overlayOpacity_ = 0.5f;
     int exitCode_ = 0;
+
+    BackdropCapture capture_;
+    bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
+    bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
+    int capturesTaken_ = 0;    // compteur [perf]
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

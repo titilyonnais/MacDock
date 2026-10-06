@@ -43,3 +43,18 @@ TEST_CASE(capture_backoff_grows_and_resets) {
     b.reset();
     CHECK_EQ(b.nextDelayMs(), 250u);
 }
+
+TEST_CASE(capture_change_gate_detects_content_changes) {
+    // Lignes de 4 octets utiles avec un pas de 8 : le remplissage de fin de ligne est ignoré.
+    std::uint8_t a[16] = {1, 2, 3, 4, 9, 9, 9, 9, 5, 6, 7, 8, 9, 9, 9, 9};
+    md::ChangeGate gate;
+    CHECK(gate.changed(a, 1, 2, 8));    // première image
+    CHECK(!gate.changed(a, 1, 2, 8));   // identique
+    a[4] = 0;                           // remplissage seulement
+    CHECK(!gate.changed(a, 1, 2, 8));
+    a[9] = 0;                           // un pixel change
+    CHECK(gate.changed(a, 1, 2, 8));
+    CHECK(gate.changed(a, 1, 1, 8));    // taille différente
+    gate.reset();
+    CHECK(gate.changed(a, 1, 1, 8));
+}

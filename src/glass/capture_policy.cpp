@@ -1,6 +1,7 @@
 #include "capture_policy.h"
 
 #include <algorithm>
+#include <cstring>
 
 namespace md {
 
@@ -35,6 +36,23 @@ unsigned CaptureBackoff::nextDelayMs() {
     unsigned d = next_;
     next_ = std::min(2000u, next_ * 2);
     return d;
+}
+
+bool ChangeGate::changed(const std::uint8_t* pixels, unsigned w, unsigned h, unsigned rowPitch) {
+    const std::size_t row = std::size_t(w) * 4;
+    bool diff = w != w_ || h != h_ || last_.size() != row * h;
+    if (diff) {
+        last_.assign(row * h, 0);
+        w_ = w;
+        h_ = h;
+    }
+    for (unsigned y = 0; y < h; ++y) {
+        std::uint8_t* dst = &last_[row * y];
+        const std::uint8_t* src = pixels + std::size_t(rowPitch) * y;
+        if (!diff && std::memcmp(dst, src, row) != 0) diff = true;
+        if (diff) std::memcpy(dst, src, row);
+    }
+    return diff;
 }
 
 } // namespace md

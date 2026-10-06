@@ -28,6 +28,7 @@ constexpr UINT WM_APP_APPBAR = WM_APP + 3;
 constexpr UINT WM_APP_MOUSE = WM_APP + 4;
 constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
+constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
@@ -104,6 +105,7 @@ void DockApp::applySettings() {
     icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
+    updateGlass();   // réglage glass modifié à chaud
 }
 
 void DockApp::savePinned() {
@@ -158,7 +160,67 @@ void DockApp::reposition() {
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
     controller_.setViewport(UINT(width), UINT(height), scale_);
+    if (capture_.status() != BackdropCapture::Status::Off)
+        capture_.setRegion({origin_.x, origin_.y, origin_.x + width, origin_.y + height});
     requestFrame();
+}
+
+bool DockApp::initRenderer() {
+    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    auto adapter = BackdropCapture::adapterFor(mon);
+    return renderer_.init(hwnd_, adapter.Get());
+}
+
+void DockApp::updateGlass() {
+    if (!hwnd_ || snapshot_) return;
+    bool want = settings_.glass && renderer_.glassAvailable() && !renderer_.isWarp();
+    if (want && !excluded_) {
+        // Sans exclusion, le Dock se capturerait lui-même (boucle de rétroaction) : verre désactivé.
+        excluded_ = SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE) != FALSE;
+        if (!excluded_) log::warn(L"Exclusion des captures impossible (%lu) : verre dépoli", GetLastError());
+    }
+    if (!want || !excluded_) {
+        capture_.stop();
+        glassLive_ = false;
+        if (excluded_) SetWindowDisplayAffinity(hwnd_, WDA_NONE);
+        excluded_ = false;
+        requestFrame();
+        return;
+    }
+    if (capture_.status() == BackdropCapture::Status::Off) restartCapture();
+}
+
+void DockApp::restartCapture() {
+    capture_.stop();
+    glassLive_ = false;
+    if (!excluded_) return;
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
+                   {rc.left, rc.top, rc.right, rc.bottom});
+    requestFrame();
+}
+
+void DockApp::onBackdrop() {
+    bool wasLive = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
+    ID3D11Device* dev = renderer_.device();
+    if (dev) {
+        Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+        dev->GetImmediateContext(&ctx);
+        bool scRgb = false;
+        float white = 1;
+        if (capture_.takeLatest(dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); },
+                                scRgb, white)) {
+            renderer_.setBackdropWhite(white);
+            if (!glassLive_) log::info(L"Verre : arrière-plan réel reçu (%s)", scRgb ? L"HDR" : L"SDR");
+            glassLive_ = true;
+            ++capturesTaken_;
+            requestFrame();
+            return;
+        }
+    }
+    // Changement d'état (capture indisponible ou reprise) : on bascule entre verre réel et repli dépoli.
+    if (wasLive != (glassLive_ && capture_.status() == BackdropCapture::Status::Running)) requestFrame();
 }
 
 void DockApp::setTransparent(bool transparent) {
@@ -289,6 +351,7 @@ void DockApp::renderNow() {
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
+    frame.glass = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -301,10 +364,13 @@ void DockApp::renderNow() {
         running_ = false;
         return;
     }
-    if (renderer_.init(hwnd_)) {
+    capture_.stop();
+    glassLive_ = false;
+    if (initRenderer()) {
         RECT rc;
         GetClientRect(hwnd_, &rc);
         renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+        updateGlass();
     }
     requestFrame();
 }
@@ -417,6 +483,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             icons_.clear();
             renderer_.releaseImages();
             reposition();
+            if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
+            return 0;
+        case WM_APP_BACKDROP:
+            onBackdrop();
             return 0;
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
@@ -564,9 +634,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
     ChangeWindowMessageFilterEx(hwnd_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
 
-    if (!renderer_.init(hwnd_)) { log::error(L"Initialisation graphique impossible"); return 2; }
+    if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
+    renderer_.setGpuTiming(trace_);
     if (!snapshot_) registerAppBar();
     reposition();
+    updateGlass();
 
     WindowTracker::Events ev;
     ev.opened = [this](HWND h, const AppIdentity& id) {
@@ -659,8 +731,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
                 byDirty += dirty;
                 byWake += wakeAnimation_;
                 if (now - since >= 5) {
-                    log::info(L"[perf] %d images en 5 s (animation %d, modèle %d, réveil %d)", frames, byAnim, byDirty,
-                              byWake);
+                    log::info(L"[perf] %d images en 5 s (animation %d, modèle %d, réveil %d) ; arrière-plans reçus %d ; "
+                              L"verre GPU %.3f ms",
+                              frames, byAnim, byDirty, byWake, capturesTaken_, renderer_.takeGlassGpuMs());
+                    capturesTaken_ = 0;
                     frames = byAnim = byDirty = byWake = 0;
                     since = now;
                 }
@@ -677,6 +751,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     }
 
     log::info(L"MacDock s'arrête");
+    capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();
     if (mouseThreadId_) PostThreadMessageW(mouseThreadId_, WM_QUIT, 0, 0);

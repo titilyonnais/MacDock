@@ -59,7 +59,8 @@ class DockRenderer {
     template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 
 public:
-    bool init(HWND hwnd);
+    // adapter : carte qui pilote l'écran du Dock (texture partagée de la capture) ; nullptr = carte par défaut.
+    bool init(HWND hwnd, IDXGIAdapter1* adapter = nullptr);
     bool initOffscreen();   // device WARP, sans fenêtre ni DirectComposition (tests, captures)
     void resize(UINT w, UINT h);
     // false => périphérique perdu : rappeler init().
@@ -80,9 +81,15 @@ public:
     ID3D11Texture2D* backdropTexture(UINT w, UINT h, bool scRgb);
     void setBackdropWhite(float sdrWhiteScale) { sdrWhite_ = sdrWhiteScale > 0 ? sdrWhiteScale : 1; }
     bool glassAvailable() const { return glassReady_; }
+    bool isWarp() const { return warp_; }
+    // Temps GPU moyen (ms) de la passe de verre depuis le dernier appel ; -1 si aucune mesure (mode trace).
+    double takeGlassGpuMs();
+    void setGpuTiming(bool on) { gpuTiming_ = on; }
 
 private:
-    bool createDevices(bool warpOnly);
+    bool createDevices(bool warpOnly, IDXGIAdapter1* adapter = nullptr);
+    void beginGpuTimer(ID3D11DeviceContext* ctx);
+    void endGpuTimer(ID3D11DeviceContext* ctx);
     // Rectangle à coins continus (Apple), en pixels ; les dernières géométries sont gardées en cache.
     ID2D1Geometry* smoothRect(D2D1_RECT_F r, float radius);
     ID2D1Bitmap1* bitmapFor(const IconProvider::ImagePtr& img);
@@ -104,6 +111,7 @@ private:
     HWND hwnd_ = nullptr;
     UINT width_ = 0, height_ = 0;
     Com<ID3D11Device> d3d_;
+    bool warp_ = false;
     Com<ID2D1Factory3> d2dFactory_;
     Com<ID2D1Device2> d2dDevice_;
     Com<ID2D1DeviceContext2> dc_;
@@ -131,6 +139,13 @@ private:
     Com<ID3D11Texture2D> glassTex_;
     Com<ID3D11RenderTargetView> glassRtv_;
     Com<ID2D1Bitmap1> glassBitmap_;
+
+    // Mesure GPU de la passe de verre (requêtes timestamp, lues sans attente à l'image suivante).
+    bool gpuTiming_ = false;
+    Com<ID3D11Query> tsDisjoint_, tsBegin_, tsEnd_;
+    bool tsPending_ = false;
+    double gpuMsSum_ = 0;
+    int gpuMsCount_ = 0;
 };
 
 } // namespace md

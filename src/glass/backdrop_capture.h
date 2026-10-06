@@ -25,7 +25,8 @@ public:
     using DestinationFn = std::function<ID3D11Texture2D*(UINT w, UINT h, bool scRgb)>;
 
     ~BackdropCapture() { stop(); }
-    // notify reçoit notifyMsg quand une nouvelle image couvre la région (au plus un message en attente).
+    // notify reçoit notifyMsg quand une nouvelle image couvre la région (au plus un message en attente)
+    // et quand la capture devient indisponible ou reprend (status() a changé).
     bool start(HWND notify, UINT notifyMsg, HMONITOR monitor, IRect regionScreen);
     void setRegion(IRect regionScreen);   // provoque une copie complète
     void stop();
@@ -39,6 +40,7 @@ private:
     void run();
     bool captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplication>& dup, const IRect& outputDesktop);
     void releaseShared();
+    void setStatus(Status s);
     static float querySdrWhite(HMONITOR monitor);
 
     HWND notify_ = nullptr;

@@ -1,6 +1,8 @@
 // Règles de la capture de l'arrière-plan (pur) : régions, filtrage des zones modifiées, reprise, HDR.
 #pragma once
 #include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace md {
 
@@ -24,6 +26,18 @@ public:
 
 private:
     unsigned next_ = 250;
+};
+
+// Compare une image réduite (pixels BGRA8, rowPitch octets par ligne) à la précédente. Sert à ignorer les
+// compositions qui ne changent rien sous le Dock (en HDR, Windows signale l'écran entier comme modifié).
+class ChangeGate {
+public:
+    bool changed(const std::uint8_t* pixels, unsigned w, unsigned h, unsigned rowPitch);
+    void reset() { last_.clear(); w_ = h_ = 0; }
+
+private:
+    std::vector<std::uint8_t> last_;
+    unsigned w_ = 0, h_ = 0;
 };
 
 } // namespace md

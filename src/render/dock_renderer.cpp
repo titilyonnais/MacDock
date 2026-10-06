@@ -17,7 +17,7 @@ namespace {
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
 }
 
-bool DockRenderer::createDevices(bool warpOnly) {
+bool DockRenderer::createDevices(bool warpOnly, IDXGIAdapter1* adapter) {
     bitmaps_.clear();
     overlayBitmap_.Reset();
     geometries_.clear();
@@ -27,6 +27,10 @@ bool DockRenderer::createDevices(bool warpOnly) {
     glassTex_.Reset();
     glassRtv_.Reset();
     glassBitmap_.Reset();
+    tsDisjoint_.Reset();
+    tsBegin_.Reset();
+    tsEnd_.Reset();
+    tsPending_ = false;
     surface_.Reset();
     shadow_.Reset();
     target_.Reset();
@@ -35,12 +39,18 @@ bool DockRenderer::createDevices(bool warpOnly) {
 
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     HRESULT hr = E_FAIL;
-    if (!warpOnly)
+    warp_ = false;
+    if (!warpOnly && adapter)
+        hr = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
+                               d3d_.ReleaseAndGetAddressOf(), nullptr, nullptr);
+    if (!warpOnly && FAILED(hr))
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
                                d3d_.ReleaseAndGetAddressOf(), nullptr, nullptr);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION,
                                d3d_.ReleaseAndGetAddressOf(), nullptr, nullptr);
+        warp_ = SUCCEEDED(hr);
+    }
     if (FAILED(hr)) { log::error(L"D3D11CreateDevice a échoué (0x%08X)", hr); return false; }
 
     Com<IDXGIDevice> dxgi;
@@ -61,9 +71,9 @@ bool DockRenderer::createDevices(bool warpOnly) {
     return true;
 }
 
-bool DockRenderer::init(HWND hwnd) {
+bool DockRenderer::init(HWND hwnd, IDXGIAdapter1* adapter) {
     hwnd_ = hwnd;
-    if (!createDevices(false)) return false;
+    if (!createDevices(false, adapter)) return false;
     if (FAILED(DCompositionCreateDevice2(d2dDevice_.Get(), IID_PPV_ARGS(&dcomp_)))) return false;
     if (FAILED(dcomp_->CreateTargetForHwnd(hwnd, TRUE, &target_))) return false;
     if (FAILED(dcomp_->CreateVisual(&visual_))) return false;
@@ -344,7 +354,51 @@ bool DockRenderer::runGlass(const RenderFrame& f, const Metrics& m, const std::w
     }
     Com<ID3D11DeviceContext> ctx;
     d3d_->GetImmediateContext(&ctx);
-    return glass_.render(ctx.Get(), backdropSrv_.Get(), w, h, glassRtv_.Get(), shapes, p);
+    beginGpuTimer(ctx.Get());
+    bool ok = glass_.render(ctx.Get(), backdropSrv_.Get(), w, h, glassRtv_.Get(), shapes, p);
+    endGpuTimer(ctx.Get());
+    return ok;
+}
+
+void DockRenderer::beginGpuTimer(ID3D11DeviceContext* ctx) {
+    if (!gpuTiming_ || !d3d_) return;
+    if (!tsDisjoint_) {
+        D3D11_QUERY_DESC q{D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+        D3D11_QUERY_DESC t{D3D11_QUERY_TIMESTAMP, 0};
+        if (FAILED(d3d_->CreateQuery(&q, &tsDisjoint_)) || FAILED(d3d_->CreateQuery(&t, &tsBegin_)) ||
+            FAILED(d3d_->CreateQuery(&t, &tsEnd_))) {
+            tsDisjoint_.Reset();
+            return;
+        }
+    }
+    if (tsPending_) {   // mesure précédente : lue sans attendre ; perdue si pas encore prête
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT dj{};
+        UINT64 b = 0, e = 0;
+        if (ctx->GetData(tsDisjoint_.Get(), &dj, sizeof dj, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK &&
+            ctx->GetData(tsBegin_.Get(), &b, sizeof b, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK &&
+            ctx->GetData(tsEnd_.Get(), &e, sizeof e, D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK && !dj.Disjoint &&
+            dj.Frequency) {
+            gpuMsSum_ += double(e - b) * 1000.0 / double(dj.Frequency);
+            ++gpuMsCount_;
+        }
+        tsPending_ = false;
+    }
+    ctx->Begin(tsDisjoint_.Get());
+    ctx->End(tsBegin_.Get());
+}
+
+void DockRenderer::endGpuTimer(ID3D11DeviceContext* ctx) {
+    if (!gpuTiming_ || !tsDisjoint_) return;
+    ctx->End(tsEnd_.Get());
+    ctx->End(tsDisjoint_.Get());
+    tsPending_ = true;
+}
+
+double DockRenderer::takeGlassGpuMs() {
+    double ms = gpuMsCount_ ? gpuMsSum_ / gpuMsCount_ : -1;
+    gpuMsSum_ = 0;
+    gpuMsCount_ = 0;
+    return ms;
 }
 
 bool DockRenderer::render(const RenderFrame& f, const Metrics& m, const std::wstring& fontFamily) {

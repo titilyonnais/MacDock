@@ -39,12 +39,20 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 
 | Fichier | Contenu |
 |---|---|
-| `settings.json` | Taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), apps récentes, mode « Tahoe strict » des icônes, police, épingles. |
+| `settings.json` | Taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles. |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
-| `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). |
+| `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `logs\` | Journaux. |
 
 Un fichier invalide n'efface rien : une copie `.bak` est faite et les réglages actuels sont conservés.
+
+## Liquid Glass
+
+Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en verre : ce qui se trouve derrière est flouté, réfracté sur les bords, teinté selon le thème, avec un liseré lumineux. Le Dock ne se redessine que si le contenu sous lui change vraiment.
+
+- Pour lire l'écran sous lui, le Dock s'exclut des captures : **il n'apparaît pas sur les captures d'écran** ni dans les partages d'écran. Mets `"glass": false` si tu en as besoin ; le Dock passe alors en verre dépoli classique.
+- Écran HDR : pris en charge (le blanc SDR de Windows est respecté).
+- Si la capture est impossible (écran tourné, carte graphique sans accélération, bureau sécurisé), le Dock passe en verre dépoli et reprend tout seul.
 
 ## Sécurité
 
@@ -55,6 +63,9 @@ Un fichier invalide n'efface rien : une copie `.bak` est faite et les réglages 
 
 - `MacDock.exe --trace-windows` : journalise le suivi des fenêtres et les performances.
 - `MacDock.exe --snapshot capture.png [--hover 0]` : rendu du Dock dans une image, sans l'afficher.
+- `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
+- `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
+- `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDockeference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
 ## Note
