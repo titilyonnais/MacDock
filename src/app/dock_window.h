@@ -14,8 +14,10 @@
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
 #include "../render/dock_renderer.h"
+#include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "sprite_window.h"
 
 namespace md {
 
@@ -57,6 +59,10 @@ private:
     void restartCapture();
     void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
+    void onPointerUp(POINT client);
+    void logItemPositions(const RenderFrame& frame);
+    void updateDragSprite();
+    bool stepPoof(double now);   // true tant que le nuage s'anime
     bool rendererOnDockAdapter();   // le device de rendu est-il sur la carte qui pilote l'écran du Dock ?
     static bool systemDarkMode();
 
@@ -95,6 +101,13 @@ private:
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
     bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
+
+    SpriteRenderer sprites_;
+    SpriteWindow dragSprite_, poofSprite_;
+    struct { std::wstring key; bool removing = false; UINT px = 0, w = 0, h = 0; bool dark = false; } dragSpriteKey_;
+    double poofStart_ = -1;
+    std::uint64_t loggedRevision_ = 0;   // [trace] dernière révision du modèle dont les positions ont été journalisées
+    POINT poofCenter_{};
     bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;

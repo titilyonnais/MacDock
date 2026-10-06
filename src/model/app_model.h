@@ -49,6 +49,8 @@ public:
     bool pin(const std::wstring& appId, std::size_t index);
     bool unpin(const std::wstring& key);
     bool movePinned(std::size_t from, std::size_t to);
+    // Index dans pinnedEntries() de l'élément de clé key ("app:…", "apps", "stack:…") ; nullopt s'il n'est pas épinglé.
+    std::optional<std::size_t> pinnedIndexOf(const std::wstring& key) const;
 
     std::vector<DockItem> items() const;
     std::vector<WindowId> windowsOf(const std::wstring& appId) const;

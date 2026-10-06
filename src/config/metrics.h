@@ -50,7 +50,12 @@ namespace md {
     X(glassSpecular, 0.55, 0, 1)                   \
     X(glassTintLight, 0.22, 0, 1)                  \
     X(glassTintDark, 0.30, 0, 1)                   \
-    X(glassSaturation, 1.15, 0, 3)
+    X(glassSaturation, 1.15, 0, 3)                 \
+    X(dragThreshold, 4, 1, 50)                     \
+    X(dragRemoveDistance, 50, 5, 400)              \
+    X(dragStiffness, 400, 1, 5000)                 \
+    X(dragDamping, 34, 1, 500)                     \
+    X(poofSeconds, 0.35, 0.05, 3)
 
 struct Metrics {
 #define MD_DECLARE(name, def, lo, hi) double name = def;

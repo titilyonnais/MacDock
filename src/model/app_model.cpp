@@ -129,6 +129,12 @@ bool AppModel::movePinned(std::size_t from, std::size_t to) {
     return true;
 }
 
+std::optional<std::size_t> AppModel::pinnedIndexOf(const std::wstring& key) const {
+    for (std::size_t i = 0; i < pinned_.size(); ++i)
+        if (pinKey(pinned_[i]) == key) return i;
+    return std::nullopt;
+}
+
 std::vector<WindowId> AppModel::windowsOf(const std::wstring& appId) const {
     auto a = apps_.find(appId);
     return a == apps_.end() ? std::vector<WindowId>{} : a->second.windows;

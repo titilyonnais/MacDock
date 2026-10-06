@@ -82,6 +82,7 @@ public:
     void setBackdropWhite(float sdrWhiteScale) { sdrWhite_ = sdrWhiteScale > 0 ? sdrWhiteScale : 1; }
     bool glassAvailable() const { return glassReady_; }
     bool isWarp() const { return warp_; }
+    std::wstring fontName(const std::wstring& wanted) { return resolveFont(wanted); }   // police réellement utilisée
     LUID adapterLuid() const;   // carte du device ({0, 0} si inconnue)
     // Temps GPU moyen (ms) de la passe de verre depuis le dernier appel ; -1 si aucune mesure (mode trace).
     double takeGlassGpuMs();

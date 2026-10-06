@@ -258,6 +258,80 @@ void DockApp::onMouse(POINT screen) {
     setTransparent(!inside);
 }
 
+void DockApp::logItemPositions(const RenderFrame& frame) {
+    // Position des éléments à l'écran (essais automatisés, calibration).
+    for (std::size_t i = 0; i < frame.icons.size(); ++i)
+        if (const DockItem* it = controller_.itemAt(i))
+            log::info(L"[trace] élément %zu %s : x=%ld y=%ld", i, it->key.c_str(), origin_.x + LONG(frame.icons[i].cx),
+                      origin_.y + LONG(frame.icons[i].cy));
+}
+
+void DockApp::onPointerUp(POINT client) {
+    DragOutcome o = controller_.pointerUp(client);   // avant ReleaseCapture (WM_CAPTURECHANGED annulerait le glisser)
+    if (GetCapture() == hwnd_) ReleaseCapture();
+    updateDragSprite();
+    using Kind = DragOutcome::Kind;
+    if (trace_) log::info(L"[trace] relâchement en %ld,%ld : résultat %d", client.x, client.y, int(o.kind));
+    switch (o.kind) {
+        case Kind::Click: onClick(o.index); break;
+        case Kind::Move:
+            if (model_.movePinned(o.fromPinned, o.toPinned)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : épingle %zu déplacée en %zu", o.fromPinned, o.toPinned);
+            break;
+        case Kind::Pin:
+            if (model_.pin(o.appId, o.toPinned)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : %s épinglée en %zu", o.appId.c_str(), o.toPinned);
+            break;
+        case Kind::Remove:
+            if (model_.unpin(o.key)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : %s retirée%s", o.key.c_str(), o.poof ? L" (poof)" : L"");
+            if (o.poof) {
+                GetCursorPos(&poofCenter_);
+                poofStart_ = nowSeconds();
+            }
+            break;
+        default: break;
+    }
+    requestFrame();
+}
+
+void DockApp::updateDragSprite() {
+    DragVisual v = controller_.dragVisual(icons_);
+    if (!v.active || !v.image) {
+        dragSprite_.hide();
+        dragSpriteKey_ = {};
+        return;
+    }
+    POINT cur;
+    GetCursorPos(&cur);
+    UINT px = UINT(std::lround(v.sizePx));
+    auto& k = dragSpriteKey_;
+    if (k.key != v.key || k.removing != v.removing || k.px != px || k.dark != dark_ || !dragSprite_.visible()) {
+        UINT w = 0, h = 0;
+        auto bgra = sprites_.dragSprite(*v.image, px, v.removing ? L"Supprimer" : L"", scale_, dark_,
+                                        renderer_.fontName(settings_.font), w, h);
+        if (bgra.empty()) return;
+        k = {v.key, v.removing, px, w, h, dark_};
+        dragSprite_.show(bgra, w, h, POINT{cur.x - LONG(w / 2), cur.y - LONG(px / 2)});
+    } else {
+        dragSprite_.move(POINT{cur.x - LONG(k.w / 2), cur.y - LONG(px / 2)});
+    }
+}
+
+bool DockApp::stepPoof(double now) {
+    if (poofStart_ < 0) return false;
+    double t = (now - poofStart_) / std::max(0.05, metrics_.poofSeconds);
+    if (t >= 1) {
+        poofSprite_.hide();
+        poofStart_ = -1;
+        return false;
+    }
+    UINT px = UINT(std::lround(settings_.tileSize * 1.6 * scale_));
+    auto frame = sprites_.poofFrame(t, px);
+    poofSprite_.show(frame, px, px, POINT{poofCenter_.x - LONG(px / 2), poofCenter_.y - LONG(px / 2)});
+    return true;
+}
+
 void DockApp::onClick(std::size_t index) {
     const DockItem* p = controller_.itemAt(index);
     if (!p) return;
@@ -367,6 +441,10 @@ void DockApp::requestFrame() {
 
 void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
+        loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
+        logItemPositions(frame);
+    }
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
@@ -455,16 +533,37 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
-            pressed_ = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            controller_.pointerDown(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            if (trace_) {
+                auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+                const DockItem* it = hit ? controller_.itemAt(*hit) : nullptr;
+                log::info(L"[trace] appui en %d,%d sur %s", int(short(LOWORD(lp))), int(short(HIWORD(lp))),
+                          it ? it->key.c_str() : L"(rien)");
+            }
             SetCapture(hwnd_);
             return 0;
-        case WM_LBUTTONUP: {
-            ReleaseCapture();
-            auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
-            if (hit && pressed_ && *hit == *pressed_) onClick(*hit);
-            pressed_.reset();
+        case WM_MOUSEMOVE:
+            if (GetCapture() == hwnd_) {
+                if (controller_.dragging() && (GetAsyncKeyState(VK_ESCAPE) & 0x8000)) {
+                    controller_.cancelDrag();   // Échap : l'icône revient à sa place
+                    ReleaseCapture();
+                } else {
+                    controller_.pointerMove(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+                }
+                updateDragSprite();
+                requestFrame();
+            }
             return 0;
-        }
+        case WM_LBUTTONUP:
+            onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            return 0;
+        case WM_CAPTURECHANGED:
+            if (controller_.dragging()) {
+                controller_.cancelDrag();
+                updateDragSprite();
+                requestFrame();
+            }
+            return 0;
         case WM_RBUTTONUP: {
             POINT client{short(LOWORD(lp)), short(HIWORD(lp))};
             POINT screen = client;
@@ -569,6 +668,7 @@ int DockApp::runSnapshot(const Options& options) {
     }
     for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (trace_) logItemPositions(frame);
 
     std::vector<std::uint8_t> wallpaper;
     if (!options.wallpaper.empty()) {
@@ -667,7 +767,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
     renderer_.setGpuTiming(trace_);
-    if (!snapshot_) registerAppBar();
+    if (!snapshot_) {
+        registerAppBar();
+        dragSprite_.create(instance);
+        poofSprite_.create(instance);
+    }
     reposition();
     updateGlass();
 
@@ -752,6 +856,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         double dt = std::min(now - last, 0.1);
         last = now;
         bool animating = controller_.tick(dt);
+        if (stepPoof(now)) animating = true;
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {

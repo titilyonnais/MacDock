@@ -112,3 +112,52 @@ TEST_CASE(layout_background_encloses_items) {
     CHECK_NEAR(r.bgStart, r.items.front().center - r.items.front().size / 2 - 8, 1e-6);
     CHECK_NEAR(r.bgEnd, r.items.back().center + r.items.back().size / 2 + 8, 1e-6);
 }
+
+TEST_CASE(layout_presence_collapses_slot) {
+    md::LayoutInput in;
+    in.items.resize(3);
+    in.items[1].presence = 0;
+    auto r = md::computeLayout(in);
+    CHECK_NEAR(r.items[2].center - r.items[0].center, in.tileSize + in.gap, 1e-9);
+    CHECK_NEAR(r.bgEnd - r.bgStart, 2 * in.tileSize + in.gap + 2 * in.padding, 1e-9);
+    CHECK_NEAR(r.items[1].size, 0, 1e-9);
+}
+
+TEST_CASE(layout_placeholder_takes_a_tile) {
+    md::LayoutInput three;
+    three.items.resize(3);
+    md::LayoutInput gap;
+    gap.items.resize(3);
+    gap.items[1].placeholder = true;
+    auto a = md::computeLayout(three), b = md::computeLayout(gap);
+    CHECK_NEAR(b.bgEnd - b.bgStart, a.bgEnd - a.bgStart, 1e-9);
+    CHECK_NEAR(b.items[2].center, a.items[2].center, 1e-9);
+}
+
+TEST_CASE(layout_half_presence_is_between) {
+    md::LayoutInput in;
+    in.items.resize(3);
+    in.items[1].presence = 0.5;
+    auto r = md::computeLayout(in);
+    double full = 3 * in.tileSize + 2 * in.gap + 2 * in.padding, none = 2 * in.tileSize + in.gap + 2 * in.padding;
+    CHECK_NEAR(r.bgEnd - r.bgStart, (full + none) / 2, 1e-9);
+}
+
+TEST_CASE(layout_hovered_item_stays_under_cursor_long_dock) {
+    // Dock réel : 21 éléments, séparateurs en 13 et 16, cases de 48, agrandissement à 80.
+    md::LayoutInput in;
+    in.items.resize(21);
+    in.items[13].separator = in.items[16].separator = true;
+    in.gap = 4;
+    in.largeSize = 80;
+    auto rest = md::computeLayout(in);
+    for (std::size_t k : {std::size_t(2), std::size_t(5), std::size_t(18)}) {
+        in.cursor = rest.items[k].center;
+        in.amount = 1;
+        auto r = md::computeLayout(in);
+        CHECK_NEAR(r.items[k].center, rest.items[k].center, 1e-6);
+        in.amount = 0.4;
+        r = md::computeLayout(in);
+        CHECK_NEAR(r.items[k].center, rest.items[k].center, 1e-6);
+    }
+}
