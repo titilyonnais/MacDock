@@ -63,6 +63,7 @@ Settings settingsFromJson(const json::Value& v) {
             e.appId = readString(p, "appId");
             e.launch = readString(p, "launch");
             e.name = readString(p, "name");
+            e.exePath = readString(p, "exePath");
             if (e.kind == PinKind::App && e.appId.empty()) continue;
             if (e.kind == PinKind::Stack && e.launch.empty()) continue;
             s.pinned.push_back(std::move(e));
@@ -89,6 +90,7 @@ json::Value settingsToJson(const Settings& s) {
         e.set("appId", toUtf8(p.appId));
         e.set("launch", toUtf8(p.launch));
         e.set("name", toUtf8(p.name));
+        if (!p.exePath.empty()) e.set("exePath", toUtf8(p.exePath));
         pins.push(std::move(e));
     }
     v.set("pinned", std::move(pins));

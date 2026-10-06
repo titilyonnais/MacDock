@@ -15,6 +15,7 @@ struct PinnedEntry {
     std::wstring appId;    // App : identifiant de regroupement (AUMID ou chemin exe en minuscules)
     std::wstring launch;   // App : cible lancée ; Stack : chemin du dossier
     std::wstring name;
+    std::wstring exePath;  // App : exécutable cible, pour rattacher les fenêtres sans AUMID
 };
 
 struct Settings {

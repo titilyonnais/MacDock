@@ -39,8 +39,20 @@ void AppModel::setShowRecents(bool show) {
     touch();
 }
 
-void AppModel::windowOpened(WindowId id, const AppIdentity& app) {
+void AppModel::windowOpened(WindowId id, const AppIdentity& original) {
     if (windows_.contains(id)) return;
+    // Fenêtre sans l'AUMID de son épingle : on la rattache à l'épingle du même exécutable.
+    AppIdentity app = original;
+    if (!isPinned(app.appId) && !apps_.contains(app.appId) && !app.exePath.empty()) {
+        std::wstring exe = toLower(app.exePath);
+        for (auto& p : pinned_) {
+            if (p.kind == PinKind::App && !p.exePath.empty() && toLower(p.exePath) == exe) {
+                app.appId = p.appId;
+                if (app.launch.empty()) app.launch = p.launch;
+                break;
+            }
+        }
+    }
     windows_[id] = Window{app.appId, {}, false, 0};
     auto& a = apps_[app.appId];
     if (a.windows.empty()) {

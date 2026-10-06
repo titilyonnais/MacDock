@@ -148,3 +148,25 @@ TEST_CASE(model_titles) {
     CHECK(m.titleOf(3) == L"Doc");
     CHECK(m.titleOf(4).empty());
 }
+
+TEST_CASE(model_window_matches_pin_by_exe_path) {
+    md::AppModel m;
+    m.setShowRecents(false);
+    md::PinnedEntry pin{md::PinKind::App, L"Chrome", L"C:\\Chrome\\chrome.lnk", L"Chrome"};
+    pin.exePath = L"C:\\Chrome\\chrome.exe";
+    m.loadPinned({pin});
+    // La fenêtre n'expose pas d'AUMID : son appId est le chemin de l'exe.
+    m.windowOpened(1, idOf(L"c:\\chrome\\CHROME.exe"));
+    auto items = m.items();
+    CHECK_EQ(items.size(), size_t(3));   // épingle, séparateur, corbeille
+    CHECK(items[0].running);
+    CHECK_EQ(m.windowsOf(L"Chrome").size(), size_t(1));
+}
+
+TEST_CASE(settings_roundtrip_pin_exe_path) {
+    md::Settings s;
+    md::PinnedEntry p{md::PinKind::App, L"Chrome", L"x.lnk", L"Chrome"};
+    p.exePath = L"C:\\c.exe";
+    s.pinned.push_back(p);
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).pinned[0].exePath == L"C:\\c.exe");
+}
