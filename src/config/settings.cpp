@@ -1,0 +1,98 @@
+#include "settings.h"
+
+#include <algorithm>
+
+#include "../core/strings.h"
+
+namespace md {
+namespace {
+
+bool readBool(const json::Value& v, const char* key, bool def) {
+    auto* f = v.find(key);
+    return f ? f->asBool(def) : def;
+}
+
+double readNumber(const json::Value& v, const char* key, double def) {
+    auto* f = v.find(key);
+    return f ? f->asNumber(def) : def;
+}
+
+std::wstring readString(const json::Value& v, const char* key) {
+    auto* f = v.find(key);
+    return f ? fromUtf8(f->asString("")) : std::wstring();
+}
+
+const char* positionName(DockPosition p) {
+    switch (p) {
+        case DockPosition::Left: return "left";
+        case DockPosition::Right: return "right";
+        default: return "bottom";
+    }
+}
+
+const char* kindName(PinKind k) {
+    switch (k) {
+        case PinKind::AppsButton: return "apps";
+        case PinKind::Stack: return "stack";
+        default: return "app";
+    }
+}
+
+} // namespace
+
+Settings settingsFromJson(const json::Value& v) {
+    Settings s;
+    std::wstring pos = readString(v, "position");
+    if (pos == L"left") s.position = DockPosition::Left;
+    else if (pos == L"right") s.position = DockPosition::Right;
+    s.autohide = readBool(v, "autohide", s.autohide);
+    s.magnification = readBool(v, "magnification", s.magnification);
+    s.showRecents = readBool(v, "showRecents", s.showRecents);
+    s.tahoeStrictIcons = readBool(v, "tahoeStrictIcons", s.tahoeStrictIcons);
+    s.tileSize = std::clamp(readNumber(v, "tileSize", s.tileSize), 16.0, 128.0);
+    s.largeSize = std::clamp(readNumber(v, "largeSize", s.largeSize), s.tileSize, 128.0);
+    s.font = readString(v, "font");
+    s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
+    if (auto* pins = v.find("pinned")) {
+        for (auto& p : pins->asArray()) {
+            if (!p.isObject()) continue;
+            PinnedEntry e;
+            std::wstring kind = readString(p, "kind");
+            if (kind == L"apps") e.kind = PinKind::AppsButton;
+            else if (kind == L"stack") e.kind = PinKind::Stack;
+            e.appId = readString(p, "appId");
+            e.launch = readString(p, "launch");
+            e.name = readString(p, "name");
+            if (e.kind == PinKind::App && e.appId.empty()) continue;
+            if (e.kind == PinKind::Stack && e.launch.empty()) continue;
+            s.pinned.push_back(std::move(e));
+        }
+    }
+    return s;
+}
+
+json::Value settingsToJson(const Settings& s) {
+    json::Value v = json::Object{};
+    v.set("position", positionName(s.position));
+    v.set("autohide", s.autohide);
+    v.set("magnification", s.magnification);
+    v.set("showRecents", s.showRecents);
+    v.set("tahoeStrictIcons", s.tahoeStrictIcons);
+    v.set("tileSize", s.tileSize);
+    v.set("largeSize", s.largeSize);
+    v.set("font", toUtf8(s.font));
+    v.set("pinnedInitialized", s.pinnedInitialized);
+    json::Value pins = json::Array{};
+    for (auto& p : s.pinned) {
+        json::Value e = json::Object{};
+        e.set("kind", kindName(p.kind));
+        e.set("appId", toUtf8(p.appId));
+        e.set("launch", toUtf8(p.launch));
+        e.set("name", toUtf8(p.name));
+        pins.push(std::move(e));
+    }
+    v.set("pinned", std::move(pins));
+    return v;
+}
+
+} // namespace md
