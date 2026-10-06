@@ -200,7 +200,7 @@ Toutes les mesures sont exprimées en **points macOS** puis multipliées par l'�
 
 ## 6. Installation et construction
 
-- **Construction :** CMake et Ninja fournis par Visual Studio 2022, compilateur MSVC, C++20. Dépôt Git dans `macos-dock`.
+- **Construction :** script `build.ps1` qui charge l'environnement MSVC de Visual Studio 2022 (`vcvars64.bat`) et compile en C++20 avec `cl.exe`. CMake n'étant pas installé sur la machine, on évite toute dépendance à télécharger. Dépôt Git dans `macos-dock`.
 - **Démarrage :** entrée `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` pointant vers `MacDockLauncher.exe`. Aucun droit administrateur.
 - **Mod :** le fichier `windhawk/macdock-hide-taskbar.wh.cpp` est compilé et activé depuis l'éditeur de Windhawk.
 - **Désinstallation :** couper le mod et retirer l'entrée de démarrage. Rien d'autre n'est modifié dans le système.
@@ -208,21 +208,21 @@ Toutes les mesures sont exprimées en **points macOS** puis multipliées par l'�
 ### Arborescence prévue
 ```
 macos-dock/
-  CMakeLists.txt
+  build.ps1
   src/
     app/        (main, boucle de messages, lanceur)
     config/  model/  tracker/  icons/  layout/  anim/
     render/     (D3D11, DComp, D2D, shaders HLSL)
     interact/  shell/  ipc/
   windhawk/macdock-hide-taskbar.wh.cpp
-  tests/        (doctest)
+  tests/        (minitest)
   reference/    (captures et vidéos de référence + sources)
   docs/superpowers/specs/
 ```
 
 ## 7. Tests
 
-- **Unitaires (doctest) :** `DockLayout` (magnification, écartement, dimensions), `Animator` (ressorts, rebonds), regroupement des fenêtres par app, `Config` (lecture, valeurs par défaut, fichiers invalides), protocole `Ipc`.
+- **Unitaires (mini-framework maison `tests/minitest.h`, sans dépendance externe) :** `DockLayout` (magnification, écartement, dimensions), `Animator` (ressorts, rebonds), regroupement des fenêtres par app, `Config` (lecture, valeurs par défaut, fichiers invalides), protocole `Ipc`.
 - **Rendu :** rendu hors écran vers une texture, comparé à des images de référence avec une tolérance.
 - **Calibration :** comparaison visuelle avec le vrai macOS via le mode calibration.
 - **Vérifications manuelles :** multi-écran, plein écran, redémarrage de l'Explorateur, plantage simulé (la barre native doit revenir), changement de DPI, mode clair/sombre, glisser-déposer depuis l'Explorateur.
