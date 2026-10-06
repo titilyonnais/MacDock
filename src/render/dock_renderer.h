@@ -22,6 +22,7 @@ struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
     float cx = 0, cy = 0, size = 0;
     IconProvider::ImagePtr image;
     bool indicator = false;
+    float indicatorY = 0;      // centre du point indicateur
     bool separator = false;
     float sepLength = 0;
     float opacity = 1;

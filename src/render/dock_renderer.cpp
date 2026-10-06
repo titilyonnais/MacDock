@@ -241,8 +241,7 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
         }
         if (icon.indicator) {
             float r = float(m.indicatorDiameter) * f.scale / 2;
-            float y = f.bgBottom - float(m.indicatorInset) * f.scale - r;
-            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(icon.cx, y), r, r), dotBrush.Get());
+            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(icon.cx, icon.indicatorY), r, r), dotBrush.Get());
         }
     }
 

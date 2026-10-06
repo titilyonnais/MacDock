@@ -10,7 +10,6 @@
 
 #include "../config/config_store.h"
 #include "../core/log.h"
-#include "../icons/squircle.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -62,6 +61,11 @@ void DockApp::loadConfig(bool initial) {
     if (!initial && (s.wasInvalid || s.unreadable)) {
         log::warn(L"settings.json ignoré (invalide ou illisible) : réglages actuels conservés");
     } else {
+        if (s.fromFile && jsonVersion(s.value) < kSettingsVersion) {
+            s.value = migrateSettingsJson(s.value);
+            saveJsonFileAtomic(dataDir_ + L"\\settings.json", s.value);
+            log::info(L"settings.json migré de la v1 à la v%d", kSettingsVersion);
+        }
         settings_ = settingsFromJson(s.value);
     }
     if (shouldImportDefaultPins(s, settings_)) {
@@ -71,6 +75,11 @@ void DockApp::loadConfig(bool initial) {
         log::info(L"Premier lancement : %zu épingles par défaut", settings_.pinned.size());
     }
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
+    if (m.fromFile && !m.wasInvalid && jsonVersion(m.value) < kMetricsVersion) {
+        m.value = migrateMetricsJson(m.value);
+        saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", m.value);
+        log::info(L"dock-metrics.json migré de la v1 à la v%d", kMetricsVersion);
+    }
     if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
     if (!m.fromFile && !m.wasInvalid && !m.unreadable)   // fichier absent : on l'écrit pour qu'il soit modifiable
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", metricsToJson(metrics_));
@@ -88,7 +97,7 @@ void DockApp::loadConfig(bool initial) {
 void DockApp::applySettings() {
     model_.setShowRecents(settings_.showRecents);
     icons_.setStrictTahoe(settings_.tahoeStrictIcons);
-    icons_.setGrid(kIconShapeRatio, kIconCornerRatio, metrics_.iconJailInset, 0.5);
+    icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
 }

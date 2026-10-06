@@ -51,6 +51,7 @@ Settings settingsFromJson(const json::Value& v) {
     s.tahoeStrictIcons = readBool(v, "tahoeStrictIcons", s.tahoeStrictIcons);
     s.tileSize = std::clamp(readNumber(v, "tileSize", s.tileSize), 16.0, 128.0);
     s.largeSize = std::clamp(readNumber(v, "largeSize", s.largeSize), s.tileSize, 128.0);
+    s.glass = readBool(v, "glass", s.glass);
     s.font = readString(v, "font");
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
     if (auto* pins = v.find("pinned")) {
@@ -74,6 +75,7 @@ Settings settingsFromJson(const json::Value& v) {
 
 json::Value settingsToJson(const Settings& s) {
     json::Value v = json::Object{};
+    v.set("version", kSettingsVersion);
     v.set("position", positionName(s.position));
     v.set("autohide", s.autohide);
     v.set("magnification", s.magnification);
@@ -81,6 +83,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("tahoeStrictIcons", s.tahoeStrictIcons);
     v.set("tileSize", s.tileSize);
     v.set("largeSize", s.largeSize);
+    v.set("glass", s.glass);
     v.set("font", toUtf8(s.font));
     v.set("pinnedInitialized", s.pinnedInitialized);
     json::Value pins = json::Array{};
@@ -95,6 +98,16 @@ json::Value settingsToJson(const Settings& s) {
     }
     v.set("pinned", std::move(pins));
     return v;
+}
+
+json::Value migrateSettingsJson(const json::Value& v) {
+    auto* ver = v.find("version");
+    if (!v.isObject() || (ver && ver->asNumber(1) >= kSettingsVersion)) return v;
+    json::Value out = v;
+    if (auto* large = v.find("largeSize"); large && large->isNumber() && large->asNumber(0) == 128)
+        out.set("largeSize", 80);   // ancien défaut du plan 1, jugé trop gros
+    out.set("version", kSettingsVersion);
+    return out;
 }
 
 } // namespace md

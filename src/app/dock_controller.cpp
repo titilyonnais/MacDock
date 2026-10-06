@@ -215,7 +215,8 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     f.bgRight = float(toPx(r.bgEnd));
     f.bgBottom = float(bgBottomPx());
     f.bgTop = f.bgBottom - float(r.thickness) * s;
-    f.cornerRadius = std::min(float(metrics_.dockCornerRadius) * s, (f.bgBottom - f.bgTop) / 2);
+    const DockGeometry g = dockGeometry(settings_.tileSize, metrics_);
+    f.cornerRadius = float(g.cornerRadius) * s;
 
     double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     int imgPx = int(std::ceil(large * s));
@@ -227,12 +228,13 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         if (item.kind == ItemKind::Separator) {
             icon.separator = true;
             icon.cy = (f.bgTop + f.bgBottom) / 2;
-            icon.sepLength = float(settings_.tileSize * metrics_.separatorLengthRatio) * s;
+            icon.sepLength = float(g.separatorLength) * s;
             f.icons.push_back(icon);
             continue;
         }
         icon.size = float(r.items[i].size) * s;
         icon.cy = f.bgBottom - float(metrics_.dockPadding) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
+        icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
         switch (item.kind) {
             case ItemKind::App: {
                 std::wstring parsing = item.launch;
@@ -264,7 +266,9 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         if (item.kind == ItemKind::Trash) f.tooltip.text = L"Corbeille";
         else if (item.kind == ItemKind::AppsButton && f.tooltip.text.empty()) f.tooltip.text = L"Apps";
         f.tooltip.cx = icon.cx;
-        f.tooltip.bottom = icon.cy - icon.size / 2 - float(metrics_.tooltipGap) * s;
+        // Au-dessus de la forme visible (la case contient la marge transparente de la grille Apple).
+        float visibleTop = icon.cy - icon.size / 2 + icon.size * float(1 - metrics_.iconShapeRatio) / 2;
+        f.tooltip.bottom = visibleTop - float(metrics_.tooltipGap) * s;
         f.tooltip.opacity = float(tooltipOpacity_);
     }
     dirty_ = false;
