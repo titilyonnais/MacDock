@@ -122,8 +122,10 @@ bool isDockEligibleWindow(HWND hwnd) {
         if (cls == e) return false;
 
     if (isCloakedForGood(hwnd)) return false;
-    // Cadre d'app du Store sans contenu (app suspendue ou pas encore chargée).
-    if (cls == L"ApplicationFrameWindow" && !findCoreWindow(hwnd)) return false;
+    // Cadre d'app du Store sans contenu : Windows détache la CoreWindow d'une app réduite.
+    // On ne garde un tel cadre que s'il est réduit et porte un AUMID (sinon : app suspendue ou en chargement).
+    if (cls == L"ApplicationFrameWindow" && !findCoreWindow(hwnd) && (!IsIconic(hwnd) || windowAumid(hwnd).empty()))
+        return false;
     return true;
 }
 
@@ -156,15 +158,19 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
     GetWindowThreadProcessId(hwnd, &pid);
     AppIdentity id;
     if (className(hwnd) == L"ApplicationFrameWindow") {
-        HWND core = findCoreWindow(hwnd);
-        if (!core) return std::nullopt;
-        GetWindowThreadProcessId(core, &pid);
-        id.aumid = processAumid(pid);
+        if (HWND core = findCoreWindow(hwnd)) {
+            GetWindowThreadProcessId(core, &pid);
+            id.aumid = processAumid(pid);
+        } else {
+            id.aumid = windowAumid(hwnd);   // app du Store réduite
+            if (id.aumid.empty()) return std::nullopt;
+            pid = 0;
+        }
     } else {
         id.aumid = windowAumid(hwnd);
         if (id.aumid.empty()) id.aumid = processAumid(pid);
     }
-    id.exePath = processPath(pid);
+    id.exePath = pid ? processPath(pid) : std::wstring();
     if (id.exePath.empty() && id.aumid.empty()) return std::nullopt;
     id.appId = makeAppId(id.aumid, id.exePath);
 

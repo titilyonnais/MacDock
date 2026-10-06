@@ -24,6 +24,8 @@ constexpr UINT WM_APP_IPC_FLASH = WM_APP + 1;
 constexpr UINT WM_APP_CONFIG = WM_APP + 2;
 constexpr UINT WM_APP_APPBAR = WM_APP + 3;
 constexpr UINT WM_APP_MOUSE = WM_APP + 4;
+constexpr UINT WM_APP_WAKE = WM_APP + 5;
+constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 
 enum MenuId : UINT {
@@ -55,16 +57,21 @@ bool DockApp::systemDarkMode() {
 
 void DockApp::loadConfig(bool initial) {
     auto s = loadJsonFile(dataDir_ + L"\\settings.json");
-    settings_ = settingsFromJson(s.value);
-    if (!settings_.pinnedInitialized) {
+    // Au rechargement à chaud, un fichier invalide ou illisible ne change rien : on garde l'état courant.
+    if (!initial && (s.wasInvalid || s.unreadable)) {
+        log::warn(L"settings.json ignoré (invalide ou illisible) : réglages actuels conservés");
+    } else {
+        settings_ = settingsFromJson(s.value);
+    }
+    if (shouldImportDefaultPins(s, settings_)) {
         settings_.pinned = defaultPins();
         settings_.pinnedInitialized = true;
         saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
         log::info(L"Premier lancement : %zu épingles par défaut", settings_.pinned.size());
     }
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
-    metrics_ = metricsFromJson(m.value);
-    if (!m.fromFile && !m.wasInvalid)   // fichier absent : on l'écrit pour qu'il soit modifiable
+    if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
+    if (!m.fromFile && !m.wasInvalid && !m.unreadable)   // fichier absent : on l'écrit pour qu'il soit modifiable
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", metricsToJson(metrics_));
 
     // Les épingles ne sont rechargées que si le fichier a été modifié à la main.
@@ -137,7 +144,7 @@ void DockApp::reposition() {
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
     controller_.setViewport(UINT(width), UINT(height), scale_);
-    wakeAnimation_ = true;
+    requestFrame();
 }
 
 void DockApp::setTransparent(bool transparent) {
@@ -151,9 +158,9 @@ void DockApp::setTransparent(bool transparent) {
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     bool inside = controller_.isInsideInteractiveZone(client);
+    // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
     controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
-    wakeAnimation_ = true;
 }
 
 void DockApp::onClick(std::size_t index) {
@@ -179,7 +186,7 @@ void DockApp::onClick(std::size_t index) {
             break;
         default: break;
     }
-    wakeAnimation_ = true;
+    requestFrame();
 }
 
 void DockApp::showContextMenu(POINT screen, std::optional<std::size_t> index) {
@@ -254,20 +261,35 @@ void DockApp::showContextMenu(POINT screen, std::optional<std::size_t> index) {
             break;
         default: break;
     }
+    requestFrame();
+}
+
+void DockApp::requestFrame() {
     wakeAnimation_ = true;
+    // Réveille WaitMessage, y compris depuis un message envoyé (SendMessage) qui ne le réveille pas.
+    if (hwnd_ && !wakePosted_.exchange(true)) PostMessageW(hwnd_, WM_APP_WAKE, 0, 0);
 }
 
 void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
-    if (!renderer_.render(frame, metrics_, settings_.font)) {
-        log::warn(L"Rendu impossible : recréation du périphérique graphique");
-        if (renderer_.init(hwnd_)) {
-            RECT rc;
-            GetClientRect(hwnd_, &rc);
-            renderer_.resize(UINT(rc.right), UINT(rc.bottom));
-        }
-        wakeAnimation_ = true;
+    if (renderer_.render(frame, metrics_, settings_.font)) {
+        renderFailures_ = 0;
+        return;
     }
+    log::warn(L"Rendu impossible : recréation du périphérique graphique");
+    if (++renderFailures_ >= 5) {
+        // Dock invisible : on quitte avec une erreur pour que le lanceur, puis le mod, prennent le relais.
+        log::error(L"Échecs graphiques répétés : arrêt");
+        exitCode_ = 4;
+        running_ = false;
+        return;
+    }
+    if (renderer_.init(hwnd_)) {
+        RECT rc;
+        GetClientRect(hwnd_, &rc);
+        renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+    }
+    requestFrame();
 }
 
 LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
@@ -276,7 +298,8 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
         self_->mouseX_ = info->pt.x;
         self_->mouseY_ = info->pt.y;
         // Un seul message en attente à la fois : les mouvements sont fusionnés.
-        if (!self_->mousePending_.exchange(true)) PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0);
+        if (!self_->mousePending_.exchange(true) && !PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
+            self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -350,7 +373,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_IPC_FLASH: {
             std::wstring app = model_.appOfWindow(WindowId(lp));
             controller_.setAttention(app, true);
-            wakeAnimation_ = true;
+            requestFrame();
             return 0;
         }
         case WM_APP_CONFIG:
@@ -359,12 +382,13 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == kConfigTimer) {
                 KillTimer(hwnd_, kConfigTimer);
-                Settings before = settings_;
+                double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
+                double heightBefore = DockController::windowHeightPx(settings_, metrics_, scale_);
                 loadConfig(false);
-                if (before.tileSize != settings_.tileSize || before.largeSize != settings_.largeSize ||
-                    before.magnification != settings_.magnification)
+                if (reserveBefore != DockController::reservePx(settings_, metrics_, scale_) ||
+                    heightBefore != DockController::windowHeightPx(settings_, metrics_, scale_))
                     reposition();
-                wakeAnimation_ = true;
+                requestFrame();
                 return 0;
             }
             break;
@@ -384,8 +408,24 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     dark_ = dark;
                     icons_.setDark(dark);
                     renderer_.releaseImages();
-                    wakeAnimation_ = true;
+                    requestFrame();
                 }
+            }
+            return 0;
+        case WM_APP_WAKE:
+            wakePosted_ = false;
+            return 0;
+        case WM_APP_PING:
+            lastUiBeat_ = GetTickCount64();
+            return 0;
+        case WM_QUERYENDSESSION:
+            return TRUE;
+        case WM_ENDSESSION:
+            if (wp) {
+                // Fermeture de session : on rend la barre Windows tout de suite (Goodbye) et la zone d'écran.
+                log::info(L"Fin de session");
+                pipe_.stop();
+                removeAppBar();
             }
             return 0;
         case WM_CLOSE:
@@ -436,27 +476,27 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.opened = [this](HWND h, const AppIdentity& id) {
         if (trace_) log::info(L"[trace] ouverte %p %s (%s)", h, id.displayName.c_str(), id.appId.c_str());
         model_.windowOpened(toId(h), id);
-        wakeAnimation_ = true;
+        requestFrame();
     };
     ev.closed = [this](HWND h) {
         if (trace_) log::info(L"[trace] fermée %p", h);
         model_.windowClosed(toId(h));
-        wakeAnimation_ = true;
+        requestFrame();
     };
     ev.minimized = [this](HWND h, bool m) {
         if (trace_) log::info(L"[trace] %s %p", m ? L"réduite" : L"restaurée", h);
         model_.windowMinimized(toId(h), m);
-        wakeAnimation_ = true;
+        requestFrame();
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.activated = [this](HWND h) {
         controller_.setAttention(model_.appOfWindow(toId(h)), false);
-        wakeAnimation_ = true;
+        requestFrame();
     };
     ev.flashed = [this](HWND h) {
         if (trace_) log::info(L"[trace] attention %p", h);
         controller_.setAttention(model_.appOfWindow(toId(h)), true);
-        wakeAnimation_ = true;
+        requestFrame();
     };
     tracker_.setTrace(trace_);
     tracker_.start(hwnd_, ev);
@@ -478,6 +518,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         DestroyWindow(hwnd_);
         return ok ? 0 : 1;
     }
+    lastUiBeat_ = GetTickCount64();
+    pipe_.setLivenessCheck([this] {
+        PostMessageW(hwnd_, WM_APP_PING, 0, 0);
+        return GetTickCount64() - lastUiBeat_.load() < 3000;
+    });
     pipe_.start(L"\\\\.\\pipe\\MacDock", [this](const ipc::Message& m) {
         if (auto f = ipc::parseFlash(m)) PostMessageW(hwnd_, WM_APP_IPC_FLASH, 0, LPARAM(f->hwnd));
     });
@@ -553,7 +598,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     tracker_.stop();
     removeAppBar();
     DestroyWindow(hwnd_);
-    return 0;
+    return exitCode_;
 }
 
 } // namespace md

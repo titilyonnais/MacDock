@@ -19,6 +19,8 @@ public:
     bool start(const std::wstring& name, Handler handler);
     void stop();   // envoie Goodbye au client puis ferme
     bool clientConnected() const { return connected_; }
+    // Le battement de cœur n'est envoyé que si ce prédicat est vrai (thread d'interface vivant).
+    void setLivenessCheck(std::function<bool()> alive) { alive_ = std::move(alive); }
 
 private:
     void run();
@@ -26,6 +28,7 @@ private:
 
     std::wstring name_;
     Handler handler_;
+    std::function<bool()> alive_;
     std::thread thread_;
     HANDLE stopEvent_ = nullptr;
     std::atomic<bool> connected_{false};

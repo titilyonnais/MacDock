@@ -43,6 +43,7 @@ private:
     void onClick(std::size_t index);
     void showContextMenu(POINT screen, std::optional<std::size_t> index);
     void renderNow();
+    void requestFrame();
     void startMouseThread();
     void startConfigWatcher();
     static bool systemDarkMode();
@@ -71,6 +72,10 @@ private:
     UINT taskbarCreated_ = 0;
     bool running_ = true;
     bool wakeAnimation_ = true;
+    std::atomic<bool> wakePosted_{false};
+    std::atomic<ULONGLONG> lastUiBeat_{0};
+    int renderFailures_ = 0;
+    int exitCode_ = 0;
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

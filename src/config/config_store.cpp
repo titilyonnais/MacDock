@@ -45,7 +45,10 @@ LoadResult loadJsonFile(const std::wstring& path) {
     std::string text;
     bool exists = false;
     if (!readAll(path, text, exists)) {
-        if (exists) log::warn(L"Lecture impossible : %s", path.c_str());
+        if (exists) {
+            r.unreadable = true;
+            log::warn(L"Lecture impossible : %s", path.c_str());
+        }
         return r;
     }
     // BOM UTF-8 éventuel (fichier édité avec le Bloc-notes).
@@ -81,3 +84,11 @@ bool saveJsonFileAtomic(const std::wstring& path, const json::Value& v) {
 }
 
 } // namespace md
+
+namespace md {
+bool shouldImportDefaultPins(const LoadResult& file, const Settings& parsed) {
+    if (file.wasInvalid || file.unreadable) return false;
+    return !parsed.pinnedInitialized;
+}
+} // namespace md
+

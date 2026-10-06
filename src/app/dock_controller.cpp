@@ -174,6 +174,7 @@ bool DockController::tick(double dt) {
     for (auto it = bounces_.begin(); it != bounces_.end();) {
         Bounce& b = it->second;
         b.elapsed += dt;
+        if (b.attention && b.stopAt < 0 && !appRunning(it->first)) b.stopAt = b.elapsed;   // app fermée
         if (!b.attention && b.stopAt < 0 && (appRunning(it->first) || b.elapsed >= metrics_.launchTimeout)) {
             double period = metrics_.launchBouncePeriod;
             b.stopAt = std::ceil(b.elapsed / period) * period;

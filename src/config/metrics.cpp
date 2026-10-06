@@ -1,15 +1,16 @@
 #include "metrics.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace md {
 
 Metrics metricsFromJson(const json::Value& v) {
     Metrics m;
-#define MD_READ(name, def)                                                   \
+#define MD_READ(name, def, lo, hi)                                           \
     if (auto* f = v.find(#name)) {                                           \
         double d = f->asNumber(m.name);                                      \
-        if (std::isfinite(d)) m.name = d;                                    \
+        if (std::isfinite(d)) m.name = std::clamp(d, double(lo), double(hi)); \
     }
     MD_METRICS_FIELDS(MD_READ)
 #undef MD_READ
@@ -18,7 +19,7 @@ Metrics metricsFromJson(const json::Value& v) {
 
 json::Value metricsToJson(const Metrics& m) {
     json::Value v = json::Object{};
-#define MD_WRITE(name, def) v.set(#name, m.name);
+#define MD_WRITE(name, def, lo, hi) v.set(#name, m.name);
     MD_METRICS_FIELDS(MD_WRITE)
 #undef MD_WRITE
     return v;

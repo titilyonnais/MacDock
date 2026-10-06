@@ -2,7 +2,7 @@
 // @id              macdock-hide-taskbar
 // @name            MacDock - Hide Taskbar
 // @description     Hides the Windows taskbar while MacDock is running, and restores it automatically if the Dock stops
-// @version         1.0.0
+// @version         1.1.0
 // @author          MacDock
 // @include         explorer.exe
 // @architecture    x86-64
@@ -55,6 +55,8 @@ namespace {
 constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\MacDock";
 
 std::atomic<bool> g_dockAlive{false};
+// Vrai seulement dans le processus explorer qui porte la barre des tâches (pas les explorer secondaires).
+std::atomic<bool> g_isShell{false};
 std::atomic<int> g_restoreDelayMs{5000};
 HANDLE g_stopEvent = nullptr;
 HANDLE g_thread = nullptr;
@@ -72,23 +74,32 @@ bool isTrayWindow(HWND hwnd) {
 }
 
 BOOL WINAPI ShowWindow_hook(HWND hwnd, int cmd) {
-    if (g_dockAlive && cmd != SW_HIDE && isTrayWindow(hwnd)) cmd = SW_HIDE;
+    if (g_isShell && g_dockAlive && cmd != SW_HIDE && isTrayWindow(hwnd)) cmd = SW_HIDE;
     return ShowWindow_orig(hwnd, cmd);
 }
 
 BOOL WINAPI SetWindowPos_hook(HWND hwnd, HWND after, int x, int y, int cx, int cy, UINT flags) {
-    if (g_dockAlive && (flags & SWP_SHOWWINDOW) && isTrayWindow(hwnd)) {
+    if (g_isShell && g_dockAlive && (flags & SWP_SHOWWINDOW) && isTrayWindow(hwnd)) {
         flags &= ~SWP_SHOWWINDOW;
         flags |= SWP_HIDEWINDOW;
     }
     return SetWindowPos_orig(hwnd, after, x, y, cx, cy, flags);
 }
 
+bool ownedByThisProcess(HWND h) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    return pid == GetCurrentProcessId();
+}
+
+// Barres des tâches de CE processus uniquement.
 template <class F>
 void forEachTrayWindow(F f) {
-    if (HWND main = FindWindowW(L"Shell_TrayWnd", nullptr)) f(main);
+    HWND main = FindWindowW(L"Shell_TrayWnd", nullptr);
+    if (main && ownedByThisProcess(main)) f(main);
     HWND h = nullptr;
-    while ((h = FindWindowExW(nullptr, h, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) f(h);
+    while ((h = FindWindowExW(nullptr, h, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr)
+        if (ownedByThisProcess(h)) f(h);
 }
 
 UINT appBarState() {
@@ -118,7 +129,9 @@ void restoreTaskbar() {
     int original = Wh_GetIntValue(L"originalState", -1);
     if (original >= 0) {
         setAppBarState(UINT(original));
-        Wh_DeleteValue(L"originalState");
+        // On n'oublie l'état d'origine qu'une fois sa restauration vérifiée (sinon : nouvel essai plus tard).
+        if ((appBarState() & ABS_AUTOHIDE) == (UINT(original) & ABS_AUTOHIDE)) Wh_DeleteValue(L"originalState");
+        else Wh_Log(L"Restauration du masquage automatique non confirmée : nouvel essai");
     }
     forEachTrayWindow([](HWND h) { ShowWindowAsync(h, SW_SHOWNA); });
     Wh_Log(L"Barre des tâches rétablie");
@@ -159,13 +172,33 @@ bool consumeFrames(std::vector<uint8_t>& buf) {
     return true;
 }
 
+// Attend que la barre des tâches existe. Retourne false si elle appartient à un autre processus
+// (explorer secondaire : le mod n'y fait rien) ou si le mod s'arrête.
+bool waitForOwnTaskbar() {
+    for (;;) {
+        HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
+        if (tray) return ownedByThisProcess(tray);
+        if (WaitForSingleObject(g_stopEvent, 500) == WAIT_OBJECT_0) return false;
+    }
+}
+
 DWORD WINAPI pipeThread(LPVOID) {
+    if (!waitForOwnTaskbar()) {
+        Wh_Log(L"Processus explorer secondaire : le mod reste inactif");
+        return 0;
+    }
+    g_isShell = true;
+    // Un état d'origine resté en mémoire : explorer ou la session s'est arrêté pendant que la barre était cachée.
+    if (Wh_GetIntValue(L"originalState", -1) >= 0) restoreTaskbar();
+
     HANDLE readEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     while (WaitForSingleObject(g_stopEvent, 0) != WAIT_OBJECT_0) {
         HANDLE pipe = CreateFileW(kPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
                                   FILE_FLAG_OVERLAPPED, nullptr);
         if (pipe == INVALID_HANDLE_VALUE) {
             setDockAlive(false);
+            // Restauration précédente non confirmée : on réessaie tant que le Dock est absent.
+            if (Wh_GetIntValue(L"originalState", -1) >= 0) restoreTaskbar();
             if (WaitForSingleObject(g_stopEvent, 1000) == WAIT_OBJECT_0) break;
             continue;
         }
@@ -220,8 +253,7 @@ void loadSettings() {
 BOOL Wh_ModInit() {
     InitializeCriticalSection(&g_stateLock);
     loadSettings();
-    // Un état d'origine resté en mémoire signifie qu'explorer s'est arrêté pendant que la barre était cachée.
-    if (Wh_GetIntValue(L"originalState", -1) >= 0) restoreTaskbar();
+    // La restauration éventuelle se fait dans le thread du pipe, une fois la barre de CE processus créée.
     Wh_SetFunctionHook((void*)ShowWindow, (void*)ShowWindow_hook, (void**)&ShowWindow_orig);
     Wh_SetFunctionHook((void*)SetWindowPos, (void*)SetWindowPos_hook, (void**)&SetWindowPos_orig);
     return TRUE;
@@ -239,7 +271,10 @@ void Wh_ModBeforeUninit() {
         CloseHandle(g_thread);
         g_thread = nullptr;
     }
-    setDockAlive(false);
+    if (g_isShell) {
+        setDockAlive(false);
+        if (Wh_GetIntValue(L"originalState", -1) >= 0) restoreTaskbar();
+    }
 }
 
 void Wh_ModUninit() {

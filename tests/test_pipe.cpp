@@ -48,3 +48,29 @@ TEST_CASE(pipe_heartbeat_and_client_message) {
     CHECK(goodbye);
     CloseHandle(client);
 }
+
+TEST_CASE(pipe_no_heartbeat_when_ui_not_alive) {
+    std::wstring name = L"\\\\.\\pipe\\MacDockTest2-" + std::to_wstring(GetCurrentProcessId());
+    std::atomic<bool> alive{false};
+    md::ipc::PipeServer server;
+    server.setLivenessCheck([&] { return alive.load(); });
+    REQUIRE(server.start(name, [](const md::ipc::Message&) {}));
+    HANDLE client = INVALID_HANDLE_VALUE;
+    for (int i = 0; i < 50 && client == INVALID_HANDLE_VALUE; ++i) {
+        client = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (client == INVALID_HANDLE_VALUE) Sleep(20);
+    }
+    REQUIRE(client != INVALID_HANDLE_VALUE);
+    Sleep(2500);
+    DWORD available = 0;
+    PeekNamedPipe(client, nullptr, 0, nullptr, &available, nullptr);
+    CHECK_EQ(available, 0ul);   // interface figée : aucun battement de cœur
+    alive = true;
+    for (int i = 0; i < 150 && available == 0; ++i) {
+        Sleep(10);
+        PeekNamedPipe(client, nullptr, 0, nullptr, &available, nullptr);
+    }
+    CHECK(available >= 12);
+    server.stop();
+    CloseHandle(client);
+}

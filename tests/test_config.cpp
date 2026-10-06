@@ -1,3 +1,5 @@
+#include <windows.h>
+
 #include "minitest.h"
 #include "test_helpers.h"
 #include "../src/config/config_store.h"
@@ -75,4 +77,44 @@ TEST_CASE(config_atomic_save_then_load) {
     CHECK(r.fromFile);
     CHECK(!r.wasInvalid);
     CHECK_NEAR(r.value.find("a")->asNumber(0), 2, 1e-9);
+}
+
+TEST_CASE(metrics_absurd_values_are_clamped) {
+    auto m = md::metricsFromJson(*md::json::parse(
+        R"({"iconGap":-48,"magnifyDamping":0,"magnifyStiffness":-5,"dockPadding":-3,"launchBouncePeriod":0,"magnifyRangeTiles":-1})"));
+    CHECK(m.iconGap >= 0);
+    CHECK(m.magnifyDamping > 0);
+    CHECK(m.magnifyStiffness > 0);
+    CHECK(m.dockPadding >= 0);
+    CHECK(m.launchBouncePeriod > 0);
+    CHECK(m.magnifyRangeTiles > 0);
+    auto big = md::metricsFromJson(*md::json::parse(R"({"magnifyStiffness":1e12})"));
+    CHECK(big.magnifyStiffness <= 5000);
+}
+
+TEST_CASE(config_default_pins_only_when_file_absent) {
+    md::LoadResult absent;
+    CHECK(md::shouldImportDefaultPins(absent, md::Settings{}));
+    md::LoadResult invalid;
+    invalid.wasInvalid = true;
+    CHECK(!md::shouldImportDefaultPins(invalid, md::Settings{}));
+    md::LoadResult unreadable;
+    unreadable.unreadable = true;
+    CHECK(!md::shouldImportDefaultPins(unreadable, md::Settings{}));
+    md::LoadResult ok;
+    ok.fromFile = true;
+    md::Settings initialized;
+    initialized.pinnedInitialized = true;
+    CHECK(!md::shouldImportDefaultPins(ok, initialized));
+    CHECK(md::shouldImportDefaultPins(ok, md::Settings{}));   // fichier valide mais jamais initialisé
+}
+
+TEST_CASE(config_locked_file_is_unreadable_not_absent) {
+    std::wstring p = md::testTempDir() + L"\\locked.json";
+    md::testWriteFile(p, "{}");
+    HANDLE lock = CreateFileW(p.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);   // aucun partage
+    auto r = md::loadJsonFile(p);
+    CloseHandle(lock);
+    CHECK(r.unreadable);
+    CHECK(!r.fromFile);
 }

@@ -86,7 +86,8 @@ void PipeServer::run() {
         OVERLAPPED rov{};
         std::uint8_t buf[4096];
         bool readPending = false;
-        bool alive = writeMessage(pipe, {MsgType::Heartbeat, {}});
+        auto uiAlive = [this] { return !alive_ || alive_(); };
+        bool alive = !uiAlive() || writeMessage(pipe, {MsgType::Heartbeat, {}});
 
         while (alive) {
             if (!readPending) {
@@ -99,7 +100,8 @@ void PipeServer::run() {
             HANDLE waits[2] = {readEv.h, stopEvent_};
             DWORD r = WaitForMultipleObjects(2, waits, FALSE, kHeartbeatMs);
             if (r == WAIT_TIMEOUT) {
-                alive = writeMessage(pipe, {MsgType::Heartbeat, {}});
+                // Interface figée : pas de battement, le mod réaffichera la barre Windows.
+                if (uiAlive()) alive = writeMessage(pipe, {MsgType::Heartbeat, {}});
             } else if (r == WAIT_OBJECT_0) {
                 DWORD got = 0;
                 readPending = false;

@@ -86,6 +86,7 @@ TEST_CASE(controller_launch_bounce_times_out) {
 
 TEST_CASE(controller_attention_until_cleared) {
     Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));   // l'attention vient toujours d'une fenêtre ouverte
     f.c.setAttention(L"c:\\a.exe", true);
     for (int i = 0; i < 600; ++i) f.c.tick(1.0 / 60);
     CHECK(f.c.isBouncing(L"c:\\a.exe"));
@@ -116,4 +117,16 @@ TEST_CASE(controller_tooltip_on_hover) {
     CHECK(frame.tooltip.visible);
     CHECK(frame.tooltip.text == L"A");
     CHECK(frame.tooltip.opacity > 0.9f);
+}
+
+TEST_CASE(controller_attention_stops_when_app_closes) {
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.tick(0.01);
+    f.c.setAttention(L"c:\\a.exe", true);
+    f.c.tick(0.1);
+    f.model.windowClosed(1);   // l'app est fermée sans avoir été activée
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 60);
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    CHECK(!f.c.tick(1.0 / 60));
 }
