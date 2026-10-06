@@ -441,7 +441,7 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
     else drawBackground(dc, f, m);
 
     Com<ID2D1SolidColorBrush> sepBrush, dotBrush;
-    dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.25f) : rgba(0, 0, 0, 0.22f), &sepBrush);
+    dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.25f) : rgba(0, 0, 0, 0.38f), &sepBrush);
     dc->CreateSolidColorBrush(f.dark ? rgba(1, 1, 1, 0.80f) : rgba(0, 0, 0, 0.78f), &dotBrush);
 
     for (auto& icon : f.icons) {

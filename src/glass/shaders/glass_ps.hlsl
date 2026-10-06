@@ -16,7 +16,7 @@ cbuffer Glass : register(b1) {
     float shadowOffset;   // pixels, vers le bas
     float scale;          // pixels par point
     float dark;           // 1 = mode sombre
-    float2 targetSize;
+    float2 targetSize;    // étendue en pixels de la cible couverte par le flou (multiple de 4)
     float maxMip;         // dernier niveau de mip du flou
     float opacity;        // fondu de la forme (infobulle)
     float2 pad;

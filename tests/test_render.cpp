@@ -109,6 +109,9 @@ TEST_CASE(render_glass_readable_on_white_and_black) {
             const auto& ic = f.icons[1];   // le point contraste avec le verre (écart ≥ 60)
             int dot = img[(size_t(ic.indicatorY) * kW + size_t(ic.cx)) * 4 + 1];
             CHECK(std::abs(dot - int(lum * 255)) >= 60);
+            // Le séparateur (icône 3) se détache aussi du verre (écart ≥ 35).
+            int sep = img[(size_t(glassY) * kW + size_t(f.icons[3].cx)) * 4 + 1];
+            CHECK(std::abs(sep - int(lum * 255)) >= 35);
         }
 }
 

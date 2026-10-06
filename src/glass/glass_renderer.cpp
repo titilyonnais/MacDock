@@ -216,8 +216,9 @@ bool GlassRenderer::render(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* b
         c.shadowOffset = p.shadowOffsetPx;
         c.scale = p.scale;
         c.dark = p.dark ? 1.0f : 0.0f;
-        c.targetSize[0] = float(w);
-        c.targetSize[1] = float(h);
+        // Étendue couverte par la texture réduite (4·dw × 4·dh), qui dépasse la cible si w ou h n'est pas un multiple de 4.
+        c.targetSize[0] = float(down_.w * kDownsample);
+        c.targetSize[1] = float(down_.h * kDownsample);
         c.maxMip = float(blurB_.mips - 1);
         c.opacity = s.opacity;
         setConstants(ctx, glassCb_.Get(), c);
