@@ -30,6 +30,23 @@ const char* positionName(DockPosition p) {
     }
 }
 
+const char* viewName(StackView v) {
+    switch (v) {
+        case StackView::Fan: return "fan";
+        case StackView::Grid: return "grid";
+        default: return "auto";
+    }
+}
+
+const char* sortName(StackSort s) {
+    switch (s) {
+        case StackSort::Name: return "name";
+        case StackSort::Modified: return "modified";
+        case StackSort::Kind: return "kind";
+        default: return "dateAdded";
+    }
+}
+
 const char* kindName(PinKind k) {
     switch (k) {
         case PinKind::AppsButton: return "apps";
@@ -66,6 +83,14 @@ Settings settingsFromJson(const json::Value& v) {
             e.launch = readString(p, "launch");
             e.name = readString(p, "name");
             e.exePath = readString(p, "exePath");
+            if (e.kind == PinKind::Stack) {
+                std::wstring view = readString(p, "view"), sort = readString(p, "sort");
+                if (view == L"fan") e.stackView = StackView::Fan;
+                else if (view == L"grid") e.stackView = StackView::Grid;
+                if (sort == L"name") e.stackSort = StackSort::Name;
+                else if (sort == L"modified") e.stackSort = StackSort::Modified;
+                else if (sort == L"kind") e.stackSort = StackSort::Kind;
+            }
             if (e.kind == PinKind::App && e.appId.empty()) continue;
             if (e.kind == PinKind::Stack && e.launch.empty()) continue;
             s.pinned.push_back(std::move(e));
@@ -96,6 +121,10 @@ json::Value settingsToJson(const Settings& s) {
         e.set("launch", toUtf8(p.launch));
         e.set("name", toUtf8(p.name));
         if (!p.exePath.empty()) e.set("exePath", toUtf8(p.exePath));
+        if (p.kind == PinKind::Stack) {
+            e.set("view", viewName(p.stackView));
+            e.set("sort", sortName(p.stackSort));
+        }
         pins.push(std::move(e));
     }
     v.set("pinned", std::move(pins));

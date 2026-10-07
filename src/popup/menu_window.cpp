@@ -91,8 +91,8 @@ struct Session {
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
-    UINT swallowUp = 0;
-    MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
+    UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
+    MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal
     double hoverSince = 0;
 
     float s() const { return env.scale; }

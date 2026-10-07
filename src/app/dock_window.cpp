@@ -15,6 +15,7 @@
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
+#include "../popup/stack_window.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -514,7 +515,72 @@ bool DockApp::stepPoof(double now) {
 }
 
 void DockApp::onClick(std::size_t index) {
-    if (const DockItem* p = controller_.itemAt(index)) activateItem(*p);
+    const DockItem* p = controller_.itemAt(index);
+    if (p && p->kind == ItemKind::Stack) openStack(index);
+    else if (p) activateItem(*p);
+}
+
+MenuWindow::Env DockApp::popupEnv() {
+    MenuWindow::Env env;
+    env.instance = instance_;
+    env.device = renderer_.device();
+    env.dark = dark_;
+    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
+    env.scale = scale_;
+    env.font = renderer_.fontName(settings_.font);
+    env.metrics = metrics_;
+    env.trace = trace_;
+    return env;
+}
+
+void DockApp::openStack(std::size_t index) {
+    const DockItem* p = controller_.itemAt(index);
+    if (!p) return;
+    const DockItem item = *p;
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (index >= frame.icons.size()) return;
+    StackView view = StackView::Auto;
+    StackSort sort = StackSort::DateAdded;
+    if (auto i = model_.pinnedIndexOf(item.key)) {
+        const PinnedEntry e = model_.pinnedEntries()[*i];
+        view = e.stackView;
+        sort = e.stackSort;
+    }
+    StackWindow::Request r;
+    r.folder = item.launch;
+    r.title = item.name;
+    r.items = sortStack(listFolder(item.launch), sort);
+    // Dock vertical : la grille s'ouvre à côté (l'éventail ne monte que d'un Dock en bas, comme sur macOS).
+    r.view = settings_.position == DockPosition::Bottom ? resolveView(view, r.items.size()) : StackView::Grid;
+    const RenderIcon& icon = frame.icons[index];
+    r.iconCenter = {origin_.x + LONG(std::lround(icon.cx)), origin_.y + LONG(std::lround(icon.cy))};
+    switch (settings_.position) {
+        case DockPosition::Left:
+            r.side = MenuWindow::Side::Right;
+            r.dockEdge = origin_.x + LONG(std::lround(frame.bgRight));
+            break;
+        case DockPosition::Right:
+            r.side = MenuWindow::Side::Left;
+            r.dockEdge = origin_.x + LONG(std::lround(frame.bgLeft));
+            break;
+        default:
+            r.side = MenuWindow::Side::Above;
+            r.dockEdge = origin_.y + LONG(std::lround(frame.bgTop));
+    }
+    r.tile = settings_.tileSize;
+    r.icons = &icons_;
+    if (trace_) log::info(L"[trace] pile %s : %zu éléments", item.key.c_str(), r.items.size());
+    MenuWindow::Env env = popupEnv();
+    controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant que la pile est ouverte
+    requestFrame();
+    pauseCapture();   // une seule duplication de l'écran par processus
+    menuOpen_ = true;
+    std::wstring chosen = StackWindow::track(env, r);
+    menuOpen_ = false;
+    resumeCapture();
+    if (chosen == r.folder) openFolder(chosen);
+    else if (!chosen.empty()) launch(chosen);
+    requestFrame();
 }
 
 // Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
@@ -558,6 +624,12 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         for (WindowId w : model_.windowsOf(item.appId)) ctx.windows.emplace_back(w, model_.titleOf(w));
     } else if (item.kind == ItemKind::Trash) {
         ctx.trashFull = recycleBinHasItems();
+    } else if (item.kind == ItemKind::Stack) {
+        if (auto i = model_.pinnedIndexOf(item.key)) {
+            const PinnedEntry e = model_.pinnedEntries()[*i];
+            ctx.stackView = e.stackView;
+            ctx.stackSort = e.stackSort;
+        }
     }
 
     // Ancrage : face à l'icône (ou au curseur, hors icône), juste au-delà du Dock, côté écran.
@@ -585,15 +657,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             anchor.y = origin_.y + LONG(std::lround(std::min(frame.bgTop, icon ? icon->cy - half : frame.bgTop) - gap));
     }
 
-    MenuWindow::Env env;
-    env.instance = instance_;
-    env.device = renderer_.device();
-    env.dark = dark_;
-    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
-    env.scale = scale_;
-    env.font = renderer_.fontName(settings_.font);
-    env.metrics = metrics_;
-    env.trace = trace_;
+    MenuWindow::Env env = popupEnv();
     controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant le menu, comme sur macOS
     requestFrame();
     // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
@@ -669,6 +733,24 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         case kCmdRemove:
             if (model_.unpin(item.key)) savePinned();
             break;
+        case kCmdSortDateAdded:
+        case kCmdSortName:
+        case kCmdSortModified:
+        case kCmdSortKind: {
+            const StackSort sort = cmd == kCmdSortName       ? StackSort::Name
+                                   : cmd == kCmdSortModified ? StackSort::Modified
+                                   : cmd == kCmdSortKind     ? StackSort::Kind
+                                                             : StackSort::DateAdded;
+            if (model_.setStackOptions(item.key, ctx.stackView, sort)) savePinned();
+            break;
+        }
+        case kCmdViewAuto:
+        case kCmdViewFan:
+        case kCmdViewGrid: {
+            const StackView view = cmd == kCmdViewFan ? StackView::Fan : cmd == kCmdViewGrid ? StackView::Grid : StackView::Auto;
+            if (model_.setStackOptions(item.key, view, ctx.stackSort)) savePinned();
+            break;
+        }
         case kCmdRestore:
             restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
             break;

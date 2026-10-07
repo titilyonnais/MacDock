@@ -10,14 +10,15 @@
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
-#include "monitor_choice.h"
 #include "../icons/icon_provider.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
+#include "../popup/menu_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "monitor_choice.h"
 #include "thumbnails.h"
 #include "visibility.h"
 #include "sprite_window.h"
@@ -57,6 +58,8 @@ private:
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
+    void openStack(std::size_t index);                        // pile ouverte en éventail ou en grille
+    MenuWindow::Env popupEnv();                               // environnement des menus et des piles
     void renderNow();
     void requestFrame();
     void startMouseThread();

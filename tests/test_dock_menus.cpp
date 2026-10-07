@@ -120,3 +120,21 @@ TEST_CASE(menu_packaged_app_login_and_reveal_disabled) {
     CHECK(md::isPackagedApp(L"", L"shell:AppsFolder\\X!App"));
     CHECK(!md::isPackagedApp(L"C:\\Tools\\x.exe", L"C:\\Tools\\x.lnk"));
 }
+
+TEST_CASE(dock_menus_stack_full) {
+    md::MenuContext c;
+    c.item.kind = md::ItemKind::Stack;
+    c.item.key = L"stack:C:\\D";
+    c.stackSort = md::StackSort::Name;
+    c.stackView = md::StackView::Grid;
+    auto m = md::buildDockMenu(c);
+    for (int id : {md::kCmdSortDateAdded, md::kCmdSortName, md::kCmdSortModified, md::kCmdSortKind, md::kCmdViewAuto,
+                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdReveal, md::kCmdRemove})
+        REQUIRE(find(m.items, id) != nullptr);
+    CHECK(find(m.items, md::kCmdSortName)->checked);
+    CHECK(!find(m.items, md::kCmdSortDateAdded)->checked);
+    CHECK(find(m.items, md::kCmdViewGrid)->checked);
+    CHECK(!find(m.items, md::kCmdViewAuto)->checked);
+    // Les choix de tri et de présentation sont dans des sous-menus, pas à plat.
+    CHECK(std::none_of(m.items.begin(), m.items.end(), [](const md::MenuItem& it) { return it.id == md::kCmdSortName; }));
+}

@@ -59,6 +59,24 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     out.push_back(entry(kCmdSettings, L"Réglages du Dock…"));
 }
 
+void stackMenu(const MenuContext& c, std::vector<MenuItem>& out) {
+    MenuItem sort{-1, L"Trier par"};
+    sort.submenu = {entry(kCmdSortName, L"Nom", true, c.stackSort == StackSort::Name),
+                    entry(kCmdSortDateAdded, L"Date d'ajout", true, c.stackSort == StackSort::DateAdded),
+                    entry(kCmdSortModified, L"Date de modification", true, c.stackSort == StackSort::Modified),
+                    entry(kCmdSortKind, L"Type", true, c.stackSort == StackSort::Kind)};
+    out.push_back(sort);
+    MenuItem view{-1, L"Présenter le contenu comme"};
+    view.submenu = {entry(kCmdViewFan, L"Éventail", true, c.stackView == StackView::Fan),
+                    entry(kCmdViewGrid, L"Grille", true, c.stackView == StackView::Grid),
+                    entry(kCmdViewAuto, L"Automatiquement", true, c.stackView == StackView::Auto)};
+    out.push_back(view);
+    out.push_back({});
+    out.push_back(entry(kCmdReveal, L"Ouvrir dans l'Explorateur"));
+    out.push_back({});
+    out.push_back(entry(kCmdRemove, L"Retirer du Dock"));
+}
+
 } // namespace
 
 bool isPackagedApp(const std::wstring& exePath, const std::wstring& launch) {
@@ -77,11 +95,7 @@ MenuModel buildDockMenu(const MenuContext& c) {
             out.push_back({});
             out.push_back(entry(kCmdTrashEmpty, L"Vider la Corbeille", c.trashFull));
             break;
-        case ItemKind::Stack:
-            out.push_back(entry(kCmdReveal, L"Ouvrir dans l'Explorateur"));
-            out.push_back({});
-            out.push_back(entry(kCmdRemove, L"Retirer du Dock"));
-            break;
+        case ItemKind::Stack: stackMenu(c, out); break;
         case ItemKind::AppsButton: out.push_back(entry(kCmdRemove, L"Retirer du Dock")); break;
         case ItemKind::MinimizedWindow:
             out.push_back(entry(kCmdRestore, L"Restaurer"));
