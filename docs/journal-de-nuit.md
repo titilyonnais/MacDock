@@ -101,6 +101,28 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   2. un clic gauche, un double-clic et un clic droit sur ces icônes ;
   3. tes deux écrans : une barre sur chacun, l'autre atténuée, un menu qui s'ouvre sur la barre cliquée.
 
+### Plan 10 — Effet génie (sous-projet 3, fusionné dans `main`)
+
+- **Réduction** : la fenêtre s'écoule dans sa miniature du Dock, comme sur macOS (le bas se resserre vers la case, puis tout glisse dedans). L'effet **Échelle** de macOS est proposé aussi.
+- **Restauration depuis le Dock** : clic sur la miniature ou *Restaurer* : le chemin inverse, puis la fenêtre reprend sa place.
+- **Comment** : le Dock pose au-dessus de tout une fenêtre transparente qui laisse passer les clics, et y découpe la fenêtre réduite en 16 à 128 bandes (des miniatures DWM, comme celles du Dock). Pas d'injection, pas de capture d'écran.
+- **Choix** : clic droit sur le séparateur → *Effet de réduction* (Génie, Échelle, Windows), ou `minimizeEffect` dans `settings.json`. Maj enfoncée au moment de réduire : ralenti × 8.
+- **Animation de Windows** : coupée à la réduction et à l'agrandissement pendant que le Dock tourne (sinon elle se superpose), sans rien écrire dans ton profil. Elle revient à l'arrêt du Dock ; après un plantage, au prochain démarrage du Dock ou à ta prochaine session.
+- **Vérifié hors écran** : planches `--genie-snapshot` (Dock en bas, à gauche, à droite ; génie et échelle). Je n'ai réduit aucune de tes fenêtres et je n'ai pas touché au réglage d'animation de Windows (les tests utilisent des fonctions factices).
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. réduire une fenêtre : elle doit s'écouler dans sa miniature, sans la petite animation de Windows ;
+  2. cliquer sur sa miniature : elle ressort et reprend sa place ;
+  3. une fenêtre agrandie, puis le Dock à gauche ;
+  4. *Effet de réduction* → *Windows* : l'animation d'origine revient.
+
+## Décisions prises sans toi (plan 10)
+- L'agrandissement n'est plus animé tant que l'effet Génie ou Échelle est actif : Windows règle les deux par le même interrupteur.
+- Seule la restauration depuis le Dock est animée : ailleurs, la fenêtre est déjà affichée quand le Dock l'apprend.
+- L'ouverture et la fermeture des fenêtres gardent les animations de Windows 11, déjà proches de macOS.
+- Dock masqué : la fenêtre va vers la case où elle serait si le Dock était visible.
+- Une seule animation à la fois : une nouvelle réduction termine net la précédente.
+- La restauration part de la case affichée (agrandie sous le curseur) ; la réduction, de la case au repos.
+
 ## Décisions prises sans toi (plan 9)
 - Les icônes d'apps passent par le pipe de la barre ; c'est le mod qui se connecte, et il renvoie tout à chaque reconnexion.
 - Une fenêtre de contrôle cachée garde le nom de classe `MacMenuBarWindow` (le lanceur et `--quit` la trouvent) ; les barres ont leur propre classe.

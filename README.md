@@ -2,10 +2,10 @@
 
 Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 
-- **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
+- **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
 
-> État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
+> État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Les fenêtres se réduisent dans le Dock avec l'effet génie (plan 10). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -48,6 +48,9 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - **sur la Corbeille** : ils y partent (annulable) ; **sur une pile** : ils y sont déplacés.
 - **Masquage automatique** (clic droit sur le séparateur) : le Dock glisse sous le bord de l'écran et revient quand le curseur touche ce bord. En plein écran (jeu, vidéo, F11), il s'efface toujours.
 - **Fenêtres réduites** : miniature en direct dans le Dock, avec la petite icône de l'app dans le coin.
+- **Effet génie** : une fenêtre réduite (bouton, `Win+↓`…) s'écoule dans sa miniature du Dock, comme sur macOS ; un clic sur la miniature (ou *Restaurer*) la fait ressortir à sa place. Maj enfoncée : au ralenti. Clic droit sur le séparateur → *Effet de réduction* : Génie, Échelle, ou Windows (l'animation d'origine).
+  - Pour éviter deux animations l'une sur l'autre, le Dock coupe celle de Windows à la réduction et à l'agrandissement tant qu'il tourne (rien n'est écrit dans ton profil ; elle revient à l'arrêt du Dock). Avec *Windows*, rien n'est coupé.
+  - Une fenêtre restaurée ailleurs que depuis le Dock (Alt+Tab, barre de menus) apparaît sans animation.
 - **Corbeille** : son icône passe de vide à pleine selon son contenu.
 - **Quitter le Dock** : clic droit → *Quitter MacDock*, ou `MacDock.exe --quit`. La barre Windows revient immédiatement.
 
@@ -79,7 +82,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 
 | Fichier | Contenu |
 |---|---|
-| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
+| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), effet de réduction (`minimizeEffect` : `genie`, `scale`, `windows`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`, `showAppIcons`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
@@ -108,6 +111,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --snapshot capture.png [--hover 0] [--theme light|dark]` : rendu du Dock dans une image, sans l'afficher.
 - `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
+- `MacDock.exe --genie-snapshot planche.png [--effect genie|scale] [--edge bottom|left|right]` : six étapes de l'effet de réduction sur une fenêtre factice, sans rien afficher.
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.
 - `MacMenuBar.exe --snapshot barre.png [--wallpaper fond.png] [--app "Nom"] [--theme light|dark] [--open 1]` : rendu de la barre dans une image, sans l'afficher.
