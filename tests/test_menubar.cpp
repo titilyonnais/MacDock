@@ -370,3 +370,61 @@ TEST_CASE(menus_window_list_checks_active) {
     CHECK_EQ(a.window, std::uint64_t(1));
     CHECK(actionOf(b, findItem(*win, L"Réduire")).kind == md::ActionKind::Minimize);
 }
+
+// ---- Actions de la barre ----
+#include "../src/menubar/bar_actions.h"
+
+TEST_CASE(bar_target_window_kept_from_open) {
+    HWND notes = reinterpret_cast<HWND>(std::uintptr_t(0x1010));
+    HWND dockMenu = reinterpret_cast<HWND>(std::uintptr_t(0x2020));
+    HWND folder = reinterpret_cast<HWND>(std::uintptr_t(0x3030));
+    md::BarTarget t{notes, L"notes.exe"};
+    // Le menu de la barre ou du Dock prend le premier plan : la commande ira toujours à l'app.
+    auto kept = md::keepTarget(t, dockMenu, md::ForegroundKind::Ignore, L"");
+    CHECK(kept.window == notes);
+    CHECK(kept.appId == L"notes.exe");
+    auto moved = md::keepTarget(t, folder, md::ForegroundKind::Explorer, L"explorer");
+    CHECK(moved.window == folder);
+    CHECK(moved.appId == L"explorer");
+    auto app = md::keepTarget(moved, notes, md::ForegroundKind::App, L"notes.exe");
+    CHECK(app.window == notes);
+}
+
+TEST_CASE(bar_actions_system_confirmed) {
+    int restarts = 0, shutdowns = 0, signOuts = 0, sleeps = 0, locks = 0, questions = 0;
+    bool answer = false;
+    md::SystemActions sys;
+    sys.restart = [&] { ++restarts; };
+    sys.shutdown = [&] { ++shutdowns; };
+    sys.signOut = [&] { ++signOuts; };
+    sys.sleep = [&] { ++sleeps; };
+    sys.lock = [&] { ++locks; };
+    sys.confirm = [&](const std::wstring& q) { ++questions; CHECK(!q.empty()); return answer; };
+    md::ActionContext ctx;   // pas de fenêtre cible : les actions système n'en ont pas besoin
+    for (auto k : {md::ActionKind::Restart, md::ActionKind::Shutdown, md::ActionKind::SignOut})
+        md::runAction({k}, ctx, sys);
+    CHECK_EQ(questions, 3);
+    CHECK_EQ(restarts + shutdowns + signOuts, 0);   // refusé : rien
+    answer = true;
+    for (auto k : {md::ActionKind::Restart, md::ActionKind::Shutdown, md::ActionKind::SignOut})
+        md::runAction({k}, ctx, sys);
+    CHECK_EQ(restarts, 1);
+    CHECK_EQ(shutdowns, 1);
+    CHECK_EQ(signOuts, 1);
+    // Suspendre et verrouiller : sans confirmation, comme sur macOS.
+    md::runAction({md::ActionKind::Sleep}, ctx, sys);
+    md::runAction({md::ActionKind::Lock}, ctx, sys);
+    CHECK_EQ(sleeps, 1);
+    CHECK_EQ(locks, 1);
+    CHECK_EQ(questions, 6);
+}
+
+TEST_CASE(bar_actions_ignore_missing_window) {
+    // Une commande vers une fenêtre disparue ne fait rien (et ne plante pas).
+    md::SystemActions sys;
+    md::ActionContext ctx;
+    ctx.target.window = reinterpret_cast<HWND>(std::uintptr_t(0x7FFFFFF0));
+    CHECK(!md::runAction({md::ActionKind::Shortcut, L"Ctrl+S"}, ctx, sys));
+    CHECK(!md::runAction({md::ActionKind::CloseWindow}, ctx, sys));
+    CHECK(!md::runAction({md::ActionKind::Minimize}, ctx, sys));
+}
