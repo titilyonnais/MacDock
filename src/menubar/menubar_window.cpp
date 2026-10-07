@@ -820,6 +820,7 @@ void MenuBarApp::stopSamples() {   // une seule duplication d'un écran par proc
 
 void MenuBarApp::registerVolumeKeys() {
     const bool want = settings_.hud;
+    if (!want) hideHud();   // même si les touches n'avaient pas pu être prises
     if (want == volumeKeys_) return;
     for (int id : {kHotVolUp, kHotVolDown, kHotMute, kHotVolUpFine, kHotVolDownFine}) UnregisterHotKey(ctl_, id);
     volumeKeys_ = false;
@@ -853,7 +854,7 @@ HudContent MenuBarApp::volumeContent() {
 }
 
 void MenuBarApp::onVolumeKey(int id) {
-    if (!volumeKeys_) return;
+    if (!volumeKeys_ || id < kHotVolUp || id > kHotVolDownFine) return;
     const float v = audio_.volume();
     if (v < 0) return;   // aucune sortie audio : rien à régler (Windows non plus)
     if (id == kHotMute) {
@@ -877,10 +878,13 @@ void MenuBarApp::showHud(const HudContent& c) {
     // Sous la barre visible ; barre masquée (masquage automatique, plein écran) : sous le haut de l'écran.
     const int barBottom = hudBarBottom(at->rect.top, at->heightPx, at->yOffsetPx);
     for (auto& s : screens_)   // une seule duplication d'écran par processus : la pastille capture à son tour
-        if (s->sampler.running()) finishSample(*s, std::nullopt);
+        if (s->sampler.running()) {
+            finishSample(*s, std::nullopt);
+            hudStoppedSample_ = true;   // refait quand la pastille se cache
+        }
     if (!hud_.show(menuEnv(*at), at->monitor, hudPlace(at->rect, barBottom, at->scale), c)) return;
     hudFade_.show(hudNow());
-    SetTimer(ctl_, kHudTimer, 16, nullptr);
+    SetTimer(ctl_, kHudTimer, UINT(HudFade::kHold * 1000), nullptr);   // rien à animer avant le fondu
 }
 
 void MenuBarApp::stepHud() {
@@ -889,6 +893,8 @@ void MenuBarApp::stepHud() {
         hideHud();
         return;
     }
+    if (o >= 1) return;
+    SetTimer(ctl_, kHudTimer, 16, nullptr);   // fondu : une image toutes les 16 ms
     hud_.setOpacity(o);
 }
 
@@ -896,6 +902,10 @@ void MenuBarApp::hideHud() {
     if (ctl_) KillTimer(ctl_, kHudTimer);
     hudFade_.reset();
     if (hud_.visible()) hud_.hide();
+    if (hudStoppedSample_ && ctl_) {   // couleur du texte : relevé repris (après un menu s'il s'en ouvre un)
+        hudStoppedSample_ = false;
+        SetTimer(ctl_, kResampleSoon, 800, nullptr);
+    }
 }
 
 void MenuBarApp::onSample(Screen& s) {
@@ -1335,6 +1345,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == 1) {   // nouvelle sortie par défaut : on la suit
                 audio_.watch(ctl_, WM_APP_VOLUME);
                 outputName_.clear();
+                if (hud_.visible() && audio_.volume() < 0) hideHud();   // plus de sortie : la pastille serait fausse
             }
             updateStatusItems();
             // Touches non reprises : la pastille suit le volume changé ailleurs (pas sous un menu : son curseur suffit).

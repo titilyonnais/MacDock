@@ -204,6 +204,7 @@ private:
     HPOWERNOTIFY brightnessNotify_ = nullptr, displayNotify_ = nullptr, powerNotify_ = nullptr;
     bool volumeKeys_ = false;              // touches de volume reprises (sinon : avis Core Audio)
     std::wstring outputName_;              // nom de la sortie par défaut (vide : à relire)
+    bool hudStoppedSample_ = false;        // un relevé du fond a été arrêté pour la pastille : à refaire
 
     bool menuOpen_ = false;
     bool menuSession_ = false;     // openMenu ou menu de la barre en cours (menuOpen_ retombe entre deux titres)

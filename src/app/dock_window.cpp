@@ -517,7 +517,13 @@ void DockApp::runHotCorner(HotCornerAction action) {
             break;
         case HotCornerAction::LockScreen: LockWorkStation(); break;
         case HotCornerAction::DisplaySleep: PostMessageW(hwnd_, WM_SYSCOMMAND, SC_MONITORPOWER, 2); break;
-        case HotCornerAction::ScreenSaver: PostMessageW(hwnd_, WM_SYSCOMMAND, SC_SCREENSAVE, 0); break;
+        case HotCornerAction::ScreenSaver: {
+            BOOL active = FALSE;
+            SystemParametersInfoW(SPI_GETSCREENSAVEACTIVE, 0, &active, 0);
+            if (!active) log::warn(L"Coin actif : aucun économiseur d'écran n'est réglé dans Windows");
+            else PostMessageW(hwnd_, WM_SYSCOMMAND, SC_SCREENSAVE, 0);
+            break;
+        }
         case HotCornerAction::Off: break;
     }
 }
@@ -916,18 +922,24 @@ void DockApp::switcherKey(int id) {
         mru_.touch(front);
         switchApps_ = mru_.order(running);
         const bool frontFirst = !front.empty() && !switchApps_.empty() && switchApps_.front() == front;
-        if (!switch_.begin(switchApps_.size(), back, nowSeconds(), frontFirst)) return;
-        // Touche neutre : Alt relâché sans autre frappe ouvrirait le menu de l'app au premier plan.
+        // Touche neutre, même sans app : Alt relâché sans autre frappe (Tab est pris par le raccourci) ouvrirait le
+        // menu de l'app au premier plan.
         INPUT in[2] = {};
         in[0].type = in[1].type = INPUT_KEYBOARD;
         in[0].ki.wVk = in[1].ki.wVk = 0xE8;
         in[1].ki.dwFlags = KEYEVENTF_KEYUP;
         SendInput(2, in, sizeof(INPUT));
-        RegisterHotKey(hwnd_, kHotSwitchEsc, MOD_ALT, VK_ESCAPE);
-        RegisterHotKey(hwnd_, kHotSwitchLeft, MOD_ALT, VK_LEFT);
-        RegisterHotKey(hwnd_, kHotSwitchRight, MOD_ALT, VK_RIGHT);
-        RegisterHotKey(hwnd_, kHotSwitchQuit, MOD_ALT | MOD_NOREPEAT, 'Q');
-        RegisterHotKey(hwnd_, kHotSwitchHide, MOD_ALT | MOD_NOREPEAT, 'H');
+        if (!switch_.begin(switchApps_.size(), back, nowSeconds(), frontFirst)) return;
+        const bool keys = RegisterHotKey(hwnd_, kHotSwitchEsc, MOD_ALT, VK_ESCAPE) &
+                          RegisterHotKey(hwnd_, kHotSwitchLeft, MOD_ALT, VK_LEFT) &
+                          RegisterHotKey(hwnd_, kHotSwitchRight, MOD_ALT, VK_RIGHT) &
+                          RegisterHotKey(hwnd_, kHotSwitchQuit, MOD_ALT | MOD_NOREPEAT, 'Q') &
+                          RegisterHotKey(hwnd_, kHotSwitchHide, MOD_ALT | MOD_NOREPEAT, 'H');
+        static bool warned = false;
+        if (!keys && !warned) {
+            warned = true;
+            log::warn(L"Sélecteur d'apps : Alt+Échap, Alt+flèches, Alt+Q ou Alt+H déjà pris par une autre app");
+        }
         SetTimer(hwnd_, kSwitchTimer, 15, nullptr);
         return;
     }
@@ -961,6 +973,19 @@ void DockApp::switcherTick() {
     switch (switch_.tick((GetAsyncKeyState(VK_MENU) & 0x8000) != 0, nowSeconds())) {
         case SwitchSession::Tick::Finish: endSwitch(true); break;
         case SwitchSession::Tick::ShowPanel: {
+            // Apps fermées depuis l'appui : retirées de la rangée (pas de case vide), la sélection reste sur son app.
+            const std::wstring chosen = switchApps_[switch_.selected()];
+            for (std::size_t i = switchApps_.size(); i-- > 0;) {
+                if (!model_.windowsOf(switchApps_[i]).empty()) continue;
+                switch_.select(i);
+                if (!switch_.removeSelected()) {
+                    endSwitch(false);
+                    return;
+                }
+                switchApps_.erase(switchApps_.begin() + std::ptrdiff_t(i));
+            }
+            if (auto it = std::find(switchApps_.begin(), switchApps_.end(), chosen); it != switchApps_.end())
+                switch_.select(std::size_t(it - switchApps_.begin()));
             std::map<std::wstring, std::wstring> names;
             for (const DockItem& it : model_.items())
                 if (it.kind == ItemKind::App) names[it.appId] = it.name;
