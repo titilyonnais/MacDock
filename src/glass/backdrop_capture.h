@@ -36,13 +36,13 @@ public:
     bool takeLatest(ID3D11Device* uiDevice, ID3D11DeviceContext* ctx, const DestinationFn& dst, bool& scRgb,
                     float& sdrWhite);
     static Com<IDXGIAdapter1> adapterFor(HMONITOR monitor);   // carte qui pilote l'écran (nullptr si introuvable)
+    static float querySdrWhite(HMONITOR monitor);             // valeur scRGB du blanc SDR de l'écran (1 hors HDR)
 
 private:
     void run();
     bool captureLoop(Com<ID3D11Device>& dev, Com<IDXGIOutputDuplication>& dup, const IRect& outputDesktop);
     void releaseShared();
     void setStatus(Status s);
-    static float querySdrWhite(HMONITOR monitor);
 
     HWND notify_ = nullptr;
     UINT notifyMsg_ = 0;

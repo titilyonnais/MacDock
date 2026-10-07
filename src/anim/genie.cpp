@@ -43,6 +43,76 @@ RECT sourceStrip(SIZE src, DockPosition edge, LONG k0, LONG k1) {
     }
 }
 
+// Forme du génie, d'après la reconstitution image par image de BCGenieEffect (B. Ciechanowski) :
+//  - les côtés sont des courbes de Bézier cubiques, tangentes verticales aux deux bouts, du bord de la fenêtre le
+//    plus éloigné du Dock jusqu'à la ligne d'entrée de la case ; leurs pieds se resserrent sur la largeur de la case
+//    entre 0 et 40 % de la durée ;
+//  - entre 30 et 100 %, le contenu glisse le long des courbes à sa taille réelle (sans étirement) et n'est écrasé
+//    qu'en passant la ligne d'entrée, proportionnellement (toute la fenêtre tient dans la case à la fin) ;
+//  - les deux phases suivent un smoothstep.
+// Une fenêtre qui déborde déjà sous la ligne d'entrée n'est écrasée que progressivement (pas de saut à t = 0).
+struct Shape {
+    Local w, c;
+    double line = 0, total = 0, start = 0, squeeze = 1, foot0 = 0, foot1 = 0;
+    bool degenerate = false;
+    double tScale = 0;
+
+    // Ligne f de la source (0 : bord le plus éloigné du Dock, 1 : le plus proche) : bornes u0, u1 et position v.
+    void row(double f, double& u0, double& u1, double& v) const {
+        if (degenerate) {   // fenêtre déjà dans le Dock : simple réduction
+            const double k = smooth(tScale);
+            u0 = lerp(w.u0, c.u0, k);
+            u1 = lerp(w.u1, c.u1, k);
+            v = lerp(lerp(w.v0, c.v0, k), lerp(w.v1, c.v1, k), f);
+            return;
+        }
+        const double y = start + f * total;
+        if (y <= line) {
+            const double g = clamp01((y - w.v0) / (line - w.v0));
+            const double b = smooth(bezierParam(g));   // abscisse de la courbe : smoothstep du paramètre
+            u0 = lerp(w.u0, foot0, b);
+            u1 = lerp(w.u1, foot1, b);
+            v = y;
+        } else {
+            u0 = foot0;
+            u1 = foot1;
+            v = line + (y - line) * squeeze;
+        }
+    }
+
+    // Courbe (w.u, w.v0) → (pied, line), points de contrôle à mi-hauteur : v(s) = 1,5 s − 1,5 s² + s³ (normalisé),
+    // strictement croissante ; on cherche s tel que v(s) = g (Newton, départ linéaire, puis bissection de secours).
+    static double bezierParam(double g) {
+        double s = g;
+        for (int i = 0; i < 8; ++i) {
+            const double f = 1.5 * s - 1.5 * s * s + s * s * s - g;
+            const double df = 1.5 - 3 * s + 3 * s * s;   // ≥ 0,75
+            s = clamp01(s - f / df);
+        }
+        return s;
+    }
+};
+
+Shape genieShape(const RECT& from, const RECT& to, DockPosition edge, double t) {
+    Shape s;
+    s.w = toLocal(from, edge);
+    s.c = toLocal(to, edge);
+    s.line = s.c.v0;
+    s.total = s.w.v1 - s.w.v0;
+    if (s.line - s.w.v0 < 1 || s.total <= 0) {
+        s.degenerate = true;
+        s.tScale = clamp01(t);
+        return s;
+    }
+    const double curve = smooth(clamp01(t / 0.4));            // courbes : 0 → 40 %
+    const double slide = smooth(clamp01((t - 0.3) / 0.7));    // glissement : 30 → 100 %
+    s.foot0 = lerp(s.w.u0, s.c.u0, curve);
+    s.foot1 = lerp(s.w.u1, s.c.u1, curve);
+    s.start = lerp(s.w.v0, s.line, slide);
+    s.squeeze = lerp(1.0, (s.c.v1 - s.c.v0) / s.total, curve);
+    return s;
+}
+
 } // namespace
 
 std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
@@ -56,27 +126,64 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
                                                         px(lerp(from.right, to.right, k)), px(lerp(from.bottom, to.bottom, k))}});
         return out;
     }
-    const Local w = toLocal(from, edge), c = toLocal(to, edge);
+    const Shape shape = genieShape(from, to, edge, t);
     const LONG extent = edge == DockPosition::Bottom ? src.cy : src.cx;
     const int n = std::max(1, std::min(slices, int(extent)));
-    const double p = easeInOut(clamp01(t / 0.45));          // courbure : le bas se resserre vers la case
-    const double q = easeInOut(clamp01((t - 0.2) / 0.8));   // glissement dans la case
-    const double top = lerp(w.v0, c.v0, q), bottom = lerp(w.v1, c.v1, q);
-    const double span = c.v0 - w.v0;
-    const auto weight = [&](double v) { return span > 0 ? smooth(clamp01((v - w.v0) / span)) : 1.0; };
     out.reserve(std::size_t(n));
     for (int k = 0; k < n; ++k) {
         const double f0 = double(k) / n, f1 = double(k + 1) / n;
-        const double a = lerp(top, bottom, f0), b = lerp(top, bottom, f1);
-        const double bend = weight((a + b) / 2) * p;
-        const double left = lerp(w.u0, c.u0, bend), right = lerp(w.u1, c.u1, bend);
+        double l0, r0, a, l1, r1, b, left, right, v;
+        shape.row(f0, l0, r0, a);
+        shape.row(f1, l1, r1, b);
+        shape.row((f0 + f1) / 2, left, right, v);   // largeur prise au milieu de la bande
         const LONG k0 = px(extent * f0), k1 = px(extent * f1);
         out.push_back({sourceStrip(src, edge, k0, k1), toScreen(px(left), px(right), px(a), px(b), edge)});
     }
     return out;
 }
 
-int genieSliceCount(long extent) { return std::clamp(int(extent / 2), 16, 400); }
+int genieStripTarget(int full, bool gpuPending, double elapsed) {
+    return gpuPending && elapsed < 0.15 ? std::min(48, full) : full;
+}
+
+int genieSliceCount(long extent) { return std::clamp(int(extent / 4), 16, 128); }
+
+std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
+                                   int rows) {
+    std::vector<GenieVertex> out;
+    if (e == MinimizeEffect::Windows || src.cx <= 0 || src.cy <= 0) return out;
+    t = clamp01(t);
+    if (e == MinimizeEffect::Scale) {
+        const double k = easeInOut(t);
+        const float l = float(lerp(from.left, to.left, k)), tp = float(lerp(from.top, to.top, k)),
+                    r = float(lerp(from.right, to.right, k)), b = float(lerp(from.bottom, to.bottom, k));
+        return {{l, tp, 0, 0}, {r, tp, 1, 0}, {l, b, 0, 1}, {r, b, 1, 1}};
+    }
+    const Shape shape = genieShape(from, to, edge, t);
+    const int n = std::max(1, rows);
+    out.reserve(std::size_t(n + 1) * 2);
+    for (int k = 0; k <= n; ++k) {
+        const double f = double(k) / n;
+        double u0, u1, v;
+        shape.row(f, u0, u1, v);
+        const float ff = float(f);
+        switch (edge) {   // repère local → écran ; texture : la ligne (ou colonne) f de la source
+            case DockPosition::Left:
+                out.push_back({float(-v), float(u0), 1 - ff, 0});
+                out.push_back({float(-v), float(u1), 1 - ff, 1});
+                break;
+            case DockPosition::Right:
+                out.push_back({float(v), float(u0), ff, 0});
+                out.push_back({float(v), float(u1), ff, 1});
+                break;
+            default:
+                out.push_back({float(u0), float(v), 0, ff});
+                out.push_back({float(u1), float(v), 1, ff});
+                break;
+        }
+    }
+    return out;
+}
 
 double minimizeDuration(MinimizeEffect e, bool slow) {
     const double base = e == MinimizeEffect::Genie ? 0.55 : e == MinimizeEffect::Scale ? 0.3 : 0.0;

@@ -29,6 +29,8 @@
 #include <vector>
 
 #include "../anim/genie_preview.h"
+#include "genie_window.h"
+#include "window_capture.h"
 #include "../apps/apps_folder.h"
 #include "../apps/apps_window.h"
 #include "../calib/png_io.h"
@@ -94,7 +96,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                     args.find(L"--apps-snapshot") != std::wstring::npos ||
                     args.find(L"--spotlight-snapshot") != std::wstring::npos ||
                     args.find(L"--mission-snapshot") != std::wstring::npos ||
-                    args.find(L"--switcher-snapshot") != std::wstring::npos;
+                    args.find(L"--switcher-snapshot") != std::wstring::npos ||
+                    args.find(L"--genie-capture-probe") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -113,6 +116,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
+        std::wstring captureProbe;
         std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot, missionSnapshot, switcherSnapshot;
         int countArg = -1, missionHover = -1, switcherSelect = 1;   // countArg < 0 : nombre par défaut
         int appsPage = 0;
@@ -121,6 +125,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         for (int i = 1; i + 1 < argc; ++i) {
             if (wcscmp(argv[i], L"--capture-test") == 0) captureTest = argv[i + 1];
             if (wcscmp(argv[i], L"--genie-snapshot") == 0) genieSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--genie-capture-probe") == 0) captureProbe = argv[i + 1];
             if (wcscmp(argv[i], L"--apps-snapshot") == 0) appsSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--spotlight-snapshot") == 0) spotSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--mission-snapshot") == 0) missionSnapshot = argv[i + 1];
@@ -137,7 +142,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                                                             : md::DockPosition::Bottom;
         }
         LocalFree(argv);
-        if (!switcherSnapshot.empty()) {
+        if (!captureProbe.empty()) {
+            md::log::init(md::appDataDir() + L"\\logs");
+            code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) ? 0 : 1;
+        } else if (!switcherSnapshot.empty()) {
             static const wchar_t* kNames[] = {L"Explorateur", L"Navigateur", L"Terminal", L"Éditeur de code", L"Musique",
                                               L"Photos", L"Courrier", L"Calendrier", L"Notes", L"Calculatrice"};
             std::vector<std::wstring> names;

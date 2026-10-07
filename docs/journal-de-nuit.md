@@ -280,6 +280,23 @@ J'ai repris les mineurs reportés qui se voient à l'usage (ils sont retirés de
 - **Lenteurs** : je t'avais fait lancer la version Debug (non optimisée). La version Release est compilée dans `build\Release`.
 - **La barre des tâches sous le Dock** : c'est le mod Windhawk de MacDock qui la cache, il n'est pas encore installé (étape 2 du README).
 
+### Plan 21 — Génie fluide sur la carte graphique
+
+Ton retour « pixelisé, pas fluide » avait deux causes : la version Debug, et ma méthode. Le génie découpait la fenêtre en centaines de miniatures DWM, une par bande : 400 bandes coûtaient 13,5 ms d'appels à DWM par image (mesuré), d'où les saccades, et les bandes faisaient des marches.
+- **Nouveau rendu** : la fenêtre est capturée une seule fois. Comme Windows ne capture pas une fenêtre réduite, une fenêtre relais, hors de tous les écrans, porte sa miniature DWM et c'est elle qui est capturée. La texture est ensuite déformée sur la carte graphique par un maillage lisse, au sous-pixel, avec mipmaps (nette en rapetissant) et bords anticrénelés.
+- **Forme de macOS** : Apple ne publie pas ce code ; j'ai repris le modèle de BCGenieEffect (B. Ciechanowski), reconstitution image par image du génie de macOS : côtés en courbes de Bézier, resserrement de 0 à 40 % de la durée, puis le contenu glisse à sa vraie taille et ne s'écrase qu'en entrant dans l'icône.
+- **Ton écran est en HDR** : une capture 8 bits délavait les couleurs (×3) ; tout passe en scRGB 16 bits puis est ramené au blanc SDR de l'écran.
+- **Mesuré hors écran (Release)** : départ en 9 ms, ~160 images/s, pire écart 12 ms ; le GPU prend le relais vers 70 ms, les bandes couvrent ce début avec la même forme.
+- Le Dock ne se redessine plus à chaque image pendant le génie et la fumée.
+- **Relecture finale** : 0 critique, 5 importants corrigés : bandes complètes si la capture échoue (test) ; périphérique GPU perdu au repos détecté ; DWM vidé avant la capture (sinon image vide possible) ; fenêtres protégées contre la capture (gestionnaires de mots de passe) laissées aux bandes ; blanc SDR lu sur le bon écran.
+
+## Mineurs reportés — plan 21
+- Deux réductions coup sur coup pendant un démarrage de capture lent : le Dock peut attendre jusqu'à ~40 ms.
+- Fenêtre 4K agrandie : le passage au GPU (mipmaps, fermeture de la capture) n'a pas été mesuré.
+- Côtés très inclinés : anticrénelage un peu court.
+- Une image de l'animation précédente peut clignoter au tout début.
+- Les enregistrements d'écran ne montrent que les bandes.
+
 ## Mineurs reportés — plan 19
 - Le relevé de la couleur du texte relancé après la pastille peut se perdre si une touche de volume ou un menu arrive dans les 0,8 s.
 - Casque débranché, haut-parleurs qui prennent le relais : la pastille garde le nom du casque jusqu'au fondu.
