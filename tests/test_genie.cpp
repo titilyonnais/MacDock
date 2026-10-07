@@ -327,3 +327,21 @@ TEST_CASE(genie_strip_target_grows_when_gpu_is_late) {   // relecture n° 1 : ca
     CHECK_EQ(md::genieStripTarget(128, false, 0.0), 128);   // GPU absent ou en échec
     CHECK_EQ(md::genieStripTarget(20, true, 0.0), 20);      // petite fenêtre : jamais plus que le plein
 }
+
+TEST_CASE(genie_settling_restore_is_not_cancelled) {   // fin d'ouverture : la fenêtre est restaurée sous l'image
+    md::GenieRun settling{true, 7, true};
+    settling.settling = true;
+    CHECK(md::genieOnMinimize(settling, 7, false, true) == md::GenieReact::Nothing);   // c'est notre restauration
+    CHECK(md::genieOnMinimize(settling, 8, false, true) == md::GenieReact::Nothing);
+    md::GenieRun running{true, 7, true};
+    CHECK(md::genieOnMinimize(running, 7, false, true) == md::GenieReact::Cancel);     // restaurée ailleurs en route
+    CHECK(!md::genieMustRestoreFirst(settling));   // déjà restaurée : rien à refaire avant une nouvelle animation
+}
+
+TEST_CASE(genie_waits_for_gpu_before_moving) {   // pas de raccord bandes → GPU en plein mouvement
+    CHECK(md::genieWaitStep(false, 0.0) == md::GenieWait::Hold);        // capture pas encore là : la fenêtre reste en place
+    CHECK(md::genieWaitStep(false, 0.149) == md::GenieWait::Hold);
+    CHECK(md::genieWaitStep(true, 0.05) == md::GenieWait::Go);          // image GPU prête : l'animation démarre
+    CHECK(md::genieWaitStep(false, 0.15) == md::GenieWait::GoStrips);   // trop long : les bandes, en pleine qualité
+    CHECK(md::genieWaitStep(true, 0.3) == md::GenieWait::Go);
+}

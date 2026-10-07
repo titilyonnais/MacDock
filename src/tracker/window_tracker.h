@@ -21,6 +21,7 @@ public:
         std::function<void(HWND, bool)> minimized;
         std::function<void(HWND)> minimizeStarted;   // EVENT_SYSTEM_MINIMIZESTART seulement (pas une fenêtre découverte réduite)
         std::function<void(HWND, const std::wstring&)> titleChanged;
+        std::function<void(HWND)> moved;   // fenêtre suivie de l'app au premier plan déplacée ou redimensionnée
     };
 
     ~WindowTracker() { stop(); }
@@ -40,7 +41,9 @@ private:
 
     HWND msgWindow_ = nullptr;
     UINT shellMsg_ = 0;
-    HWINEVENTHOOK hooks_[5] = {};
+    HWINEVENTHOOK hooks_[6] = {};   // [5] : déplacements, pour le seul processus au premier plan
+    DWORD movePid_ = 0;
+    void watchMoves(HWND foreground);
     Events events_;
     struct Known { std::wstring title; bool minimized = false; };
     std::map<HWND, Known> known_;

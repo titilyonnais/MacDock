@@ -34,6 +34,11 @@ std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from,
 
 // Durée en secondes (Maj enfoncée : ralenti × 8) ; 0 pour l'effet Windows.
 double minimizeDuration(MinimizeEffect e, bool slow);
+// Départ d'une animation dont le rendu GPU est attendu : la fenêtre reste immobile à sa place (les bandes, à
+// l'instant de départ, la reproduisent exactement) jusqu'à la première image GPU, pour que tout le mouvement soit
+// rendu par le GPU, sans raccord visible ; au-delà de 150 ms, l'animation part sur les bandes.
+enum class GenieWait { Hold, Go, GoStrips };
+GenieWait genieWaitStep(bool gpuReady, double waited);
 // Bandes à tenir pour une fenêtre qui en vaut full : 48 au plus tant que le rendu GPU est attendu (il couvre
 // l'animation vers 70 ms), toutes s'il est absent ou encore là au bout de 150 ms (capture ratée).
 int genieStripTarget(int full, bool gpuPending, double elapsed);
@@ -55,6 +60,7 @@ struct GenieRun {
     bool active = false;
     std::uint64_t source = 0;
     bool restoring = false;
+    bool settling = false;   // ouverture finie : la fenêtre, déjà restaurée, prend la place de la dernière image
 };
 enum class GenieReact { Nothing, Start, Cancel };
 // Fenêtre réduite (minimized) ou restaurée. live : réduction vue à l'instant, pas une fenêtre découverte déjà

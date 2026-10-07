@@ -50,6 +50,7 @@ constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT WM_APP_STACKS = WM_APP + 10;
 constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob_
+constexpr double kGenieSettleSeconds = 0.08;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre
 constexpr UINT WM_APP_SWITCHKEY = WM_APP + 13;   // wParam : kHotSwitch… (frappe prise par le crochet clavier)
 constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
@@ -1044,7 +1045,9 @@ void DockApp::restoreFromDock(HWND window) {
 }
 
 GenieRun DockApp::genieRun() const {
-    return GenieRun{genie_.active(), genie_.active() ? toId(genie_.source()) : 0, genie_.restoring()};
+    GenieRun run{genie_.active(), genie_.active() ? toId(genie_.source()) : 0, genie_.restoring()};
+    run.settling = run.active && genieSettleUntil_ >= 0;
+    return run;
 }
 
 void DockApp::noteForeground() {
@@ -1059,6 +1062,10 @@ bool DockApp::startGenie(HWND window, bool restore) {
         const HWND previous = genie_.source();
         genie_.finish();
         if (IsWindow(previous)) restoreWindow(previous);
+    }
+    if (genieSettleUntil_ >= 0) {   // la fin d'une ouverture laisse la place
+        genieSettleUntil_ = -1;
+        genie_.finish();
     }
     // Case de départ (restauration) : celle affichée, agrandie ou non ; sinon celle du Dock au repos.
     std::optional<RECT> cell;
@@ -1085,12 +1092,28 @@ bool DockApp::startGenie(HWND window, bool restore) {
 }
 
 bool DockApp::stepGenie(double now) {
-    if (!genie_.active()) return false;
+    if (!genie_.active()) {
+        genieSettleUntil_ = -1;
+        return false;
+    }
+    if (genieSettleUntil_ >= 0) {   // fin d'ouverture : la fenêtre restaurée s'affiche sous la dernière image
+        if (now < genieSettleUntil_) return true;
+        genieSettleUntil_ = -1;
+        genie_.finish();
+        requestFrame();
+        return false;
+    }
     if (genie_.step(now)) return true;
     const HWND window = genie_.source();
-    const bool restoring = genie_.restoring();
-    genie_.finish();   // avant restoreWindow : une animation lancée pendant celle-ci n'est pas coupée
-    if (restoring && IsWindow(window)) restoreWindow(window);   // la fenêtre prend la place de son image
+    if (genie_.restoring() && IsWindow(window)) {
+        // La fenêtre reprend sa place sous la dernière image, gardée le temps qu'elle soit composée et redessinée :
+        // ni trou d'une image entre les deux, ni contenu qui se rafraîchit à la vue.
+        genieSettleUntil_ = now + kGenieSettleSeconds;
+        restoreWindow(window);
+        requestFrame();
+        return true;
+    }
+    genie_.finish();
     requestFrame();
     return false;
 }
@@ -1953,6 +1976,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         if (genieOnMinimize(genieRun(), toId(h), true, true) == GenieReact::Start) startGenie(h, false);
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
+    ev.moved = [this](HWND h) {   // place exacte au moment d'une réduction (déplacée, ancrée, agrandie…)
+        RECT r{};
+        if (!IsIconic(h) && IsWindowVisible(h) && GetWindowRect(h, &r)) lastSeen_[toId(h)] = r;
+    };
     ev.activated = [this](HWND h) {
         mru_.touch(model_.appOfWindow(toId(h)));
         controller_.setAttention(model_.appOfWindow(toId(h)), false);

@@ -142,6 +142,11 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
     return out;
 }
 
+GenieWait genieWaitStep(bool gpuReady, double waited) {
+    if (gpuReady) return GenieWait::Go;
+    return waited < 0.15 ? GenieWait::Hold : GenieWait::GoStrips;
+}
+
 int genieStripTarget(int full, bool gpuPending, double elapsed) {
     return gpuPending && elapsed < 0.15 ? std::min(48, full) : full;
 }
@@ -210,9 +215,10 @@ RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& 
 
 GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minimized, bool live) {
     if (minimized) return live ? GenieReact::Start : GenieReact::Nothing;
-    return run.active && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
+    // Restaurée ailleurs pendant son animation : annulée ; pendant la fin d'une ouverture, c'est notre restauration.
+    return run.active && !run.settling && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
 }
 
-bool genieMustRestoreFirst(const GenieRun& run) { return run.active && run.restoring; }
+bool genieMustRestoreFirst(const GenieRun& run) { return run.active && run.restoring && !run.settling; }
 
 } // namespace md

@@ -32,14 +32,16 @@ bool WindowTracker::start(HWND messageWindow, Events events) {
     hooks_[3] = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nullptr, winEventProc, 0, 0, flags);
     hooks_[4] = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, nullptr, winEventProc, 0, 0, flags);
     rescan();
-    for (auto h : hooks_)
-        if (!h) return false;
+    watchMoves(GetForegroundWindow());
+    for (int i = 0; i < 5; ++i)
+        if (!hooks_[i]) return false;
     return true;
 }
 
 void WindowTracker::stop() {
     for (auto& h : hooks_)
         if (h) { UnhookWinEvent(h); h = nullptr; }
+    movePid_ = 0;
     if (msgWindow_) {
         DeregisterShellHookWindow(msgWindow_);
         KillTimer(msgWindow_, kPendingTimer);
@@ -87,8 +89,12 @@ void WindowTracker::onEvent(DWORD event, HWND hwnd) {
                 evaluate(hwnd);   // un titre qui apparaît peut rendre la fenêtre éligible
             }
             break;
+        case EVENT_OBJECT_LOCATIONCHANGE:
+            if (known_.contains(hwnd) && events_.moved) events_.moved(hwnd);
+            break;
         case EVENT_SYSTEM_FOREGROUND:
             foreground_ = hwnd;
+            watchMoves(hwnd);
             if (events_.foreground) events_.foreground(hwnd);
             if (!known_.contains(hwnd)) evaluate(hwnd);
             if (known_.contains(hwnd) && events_.activated) events_.activated(hwnd);
@@ -107,6 +113,20 @@ void WindowTracker::onEvent(DWORD event, HWND hwnd) {
         default:
             break;
     }
+}
+
+// EVENT_OBJECT_LOCATIONCHANGE pour tout le système arriverait à chaque mouvement de souris : on ne l'écoute que
+// pour le processus au premier plan (c'est lui qu'on réduit), et on change de processus avec le premier plan.
+void WindowTracker::watchMoves(HWND foreground) {
+    DWORD pid = 0;
+    if (foreground) GetWindowThreadProcessId(foreground, &pid);
+    if (pid == movePid_ && (hooks_[5] || !pid)) return;
+    if (hooks_[5]) UnhookWinEvent(hooks_[5]);
+    hooks_[5] = nullptr;
+    movePid_ = pid;
+    if (pid && pid != GetCurrentProcessId())
+        hooks_[5] = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr, winEventProc, pid, 0,
+                                    WINEVENT_OUTOFCONTEXT);
 }
 
 void WindowTracker::evaluate(HWND hwnd) {

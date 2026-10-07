@@ -74,8 +74,9 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
         }
         thumbs_.push_back(t);
     }
-    start_ = now;
+    start_ = begun_ = now;
     elapsed_ = 0;
+    waiting_ = gpuStarted_;   // l'horloge part avec la première image GPU (step)
     duration_ = minimizeDuration(effect, slow);
     running_ = true;
     stripsHidden_ = false;
@@ -126,11 +127,22 @@ void GenieWindow::growStrips() {
 
 bool GenieWindow::step(double now) {
     if (!running_) return false;
-    elapsed_ = now - start_;
     if (!IsWindow(source_)) {   // fenêtre fermée pendant l'animation
         finish();
         return false;
     }
+    if (waiting_) {
+        const double t0 = restore_ ? 1.0 : 0.0;
+        const bool ready = gpu_.frame(genieMesh(effect_, src_, from_, to_, edge_, t0, rows_));
+        switch (genieWaitStep(ready, now - begun_)) {
+            case GenieWait::Hold: return true;   // les bandes tiennent la fenêtre à sa place
+            case GenieWait::GoStrips: gpuStarted_ = false; break;   // la capture n'arrive pas : bandes complètes
+            case GenieWait::Go: break;
+        }
+        waiting_ = false;
+        start_ = now;
+    }
+    elapsed_ = now - start_;
     const double k = duration_ > 0 ? std::clamp((now - start_) / duration_, 0.0, 1.0) : 1.0;
     show(restore_ ? 1 - k : k);
     if (k < 1) return true;

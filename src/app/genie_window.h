@@ -45,6 +45,8 @@ private:
     int slices_ = 48, rows_ = 1, fullSlices_ = 48;
     bool gpuStarted_ = false;   // capture GPU lancée pour cette animation
     double elapsed_ = 0;        // secondes depuis le départ
+    bool waiting_ = false;      // en attente de la première image GPU, fenêtre immobile
+    double begun_ = 0;          // début de l'attente
     GenieSurface gpu_;
     bool stripsHidden_ = false;   // le GPU a pris le relais : fenêtre des bandes cachée
     bool restore_ = false, running_ = false;

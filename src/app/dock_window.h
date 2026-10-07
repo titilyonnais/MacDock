@@ -200,6 +200,7 @@ private:
     std::shared_ptr<AppsIconCache> appsIcons_ = std::make_shared<AppsIconCache>();     // apps de l'écran Apps, relues après chaque ouverture
     ThemeJob themeJob_;   // thème macOS appliqué ou rétabli hors du fil de l'interface
     std::map<std::uint64_t, RECT> shownTiles_;   // cases des miniatures de la dernière image (pixels de la fenêtre)
+    double genieSettleUntil_ = -1;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre restaurée
     std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
     GenieRun genieRun() const;

@@ -290,6 +290,15 @@ Ton retour « pixelisé, pas fluide » avait deux causes : la version Debug, et 
 - Le Dock ne se redessine plus à chaque image pendant le génie et la fumée.
 - **Relecture finale** : 0 critique, 5 importants corrigés : bandes complètes si la capture échoue (test) ; périphérique GPU perdu au repos détecté ; DWM vidé avant la capture (sinon image vide possible) ; fenêtres protégées contre la capture (gestionnaires de mots de passe) laissées aux bandes ; blanc SDR lu sur le bon écran.
 
+### Plan 22 — Génie sans à-coups (tes retours)
+
+Tu voyais des décalages à la réduction et, à l'ouverture, la fenêtre « se réactualiser » et se décaler après l'animation. Trois causes, trois corrections :
+- **Raccord en plein mouvement** : les ~70 premières ms étaient rendues par les bandes DWM, puis le GPU prenait le relais. Maintenant la fenêtre reste immobile à sa place le temps que la capture arrive (~50 ms, les bandes la reproduisent exactement à cet instant), puis tout le mouvement est rendu par le GPU. Si la capture n'arrive pas en 150 ms, l'animation part sur les bandes en pleine qualité (test).
+- **Fin d'ouverture** : l'image du génie disparaissait avant que la fenêtre soit restaurée (un trou d'une image, puis la fenêtre qui se redessine à la vue). La fenêtre est désormais restaurée sous la dernière image, gardée 80 ms par-dessus (test : cette restauration n'annule pas la fin).
+- **Position de départ** : la place de la fenêtre n'était relevée qu'au passage au premier plan ; déplacée puis réduite aussitôt, le génie partait de l'ancienne place. Les déplacements de l'app au premier plan sont maintenant suivis (seulement elle : pas d'événement à chaque mouvement de souris).
+- Sonde (Release) : départ 7 ms, GPU dès 54 ms, mouvement entièrement GPU, pire écart 6 à 12 ms.
+- Relecture : je l'ai faite moi-même (correctif court) ; pas de relecture indépendante pour ce plan.
+
 ## Mineurs reportés — plan 21
 - Deux réductions coup sur coup pendant un démarrage de capture lent : le Dock peut attendre jusqu'à ~40 ms.
 - Fenêtre 4K agrandie : le passage au GPU (mipmaps, fermeture de la capture) n'a pas été mesuré.
