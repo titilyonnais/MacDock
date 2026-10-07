@@ -272,3 +272,29 @@ TEST_CASE(model_stack_preview_tracks_modification) {
     CHECK(m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\photo.jpg", 100}}));
     CHECK(m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\photo.jpg", 200}}));
 }
+
+TEST_CASE(model_app_click_follows_macos) {
+    // Clic sur l'icône d'une app, comme sur macOS : jamais de réduction ; les fenêtres réduites restent au Dock tant
+    // qu'une fenêtre est visible ; toutes réduites : la dernière réduite revient.
+    md::AppModel m;
+    m.setShowRecents(false);
+    const auto a = idOf(L"C:\\A\\a.exe");
+    CHECK(m.clickActionFor(a.appId).kind == md::AppClick::Kind::Launch);   // pas lancée
+    m.windowOpened(1, a);
+    m.windowOpened(2, a);
+    m.windowOpened(3, a);
+    m.windowMinimized(2, true);
+    auto c = m.clickActionFor(a.appId);
+    CHECK(c.kind == md::AppClick::Kind::Front);   // une fenêtre visible : l'app passe devant
+    CHECK(c.windows == std::vector<md::WindowId>({1, 3}));   // sans rouvrir la réduite
+    m.windowMinimized(3, true);
+    m.windowMinimized(1, true);
+    c = m.clickActionFor(a.appId);
+    CHECK(c.kind == md::AppClick::Kind::Restore);
+    CHECK_EQ(c.windows.size(), std::size_t(1));
+    CHECK_EQ(c.windows[0], md::WindowId(1));   // la plus récemment réduite
+    m.setHidden(a.appId, true);
+    c = m.clickActionFor(a.appId);   // app masquée : tout revient
+    CHECK(c.kind == md::AppClick::Kind::Unhide);
+    CHECK_EQ(c.windows.size(), std::size_t(3));
+}

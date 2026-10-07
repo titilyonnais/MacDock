@@ -66,6 +66,7 @@ private:
     void registerAppBar();
     void removeAppBar();
     void onMouse(POINT screen);
+    void syncPointer();
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
@@ -213,6 +214,7 @@ private:
     DWORD mouseThreadId_ = 0;
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
+    std::atomic<DWORD> mousePostedAt_{0};
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::thread configThread_;

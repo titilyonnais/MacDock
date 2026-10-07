@@ -50,6 +50,11 @@ int genieSliceCount(long extent);
 // invisibles (src plus grande, centrée).
 RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor, bool toolWindow, SIZE src);
 
+// Partie visible d'une fenêtre dont on connaît le rectangle Windows (bordures de redimensionnement invisibles
+// comprises : ~11 px à gauche, à droite et en bas, 0 en haut) et la taille de sa miniature DWM (partie visible
+// seule) : centrée en largeur, calée en haut. Rectangle inchangé s'il a déjà cette taille ou en diffère trop.
+RECT genieVisibleRect(const RECT& window, SIZE thumb);
+
 // Départ d'une réduction : le dernier rectangle vu à l'écran (fenêtre ancrée, agrandie…) s'il est connu, sinon
 // restoredRect.
 RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor,

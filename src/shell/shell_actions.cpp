@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <thread>
 
 #include "../core/log.h"
 
@@ -24,15 +25,31 @@ bool launch(const std::wstring& target) {
     return false;
 }
 
+void launchAsync(std::wstring target, bool (*launcher)(const std::wstring&)) {
+    std::thread([target = std::move(target), launcher] {
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        launcher(target);
+        if (SUCCEEDED(hr)) CoUninitialize();
+    }).detach();
+}
+
+std::vector<INPUT> foregroundUnlockKeys() {
+    std::vector<INPUT> in(4);
+    const WORD keys[4] = {VK_MENU, 0xE8, 0xE8, VK_MENU};
+    for (int i = 0; i < 4; ++i) {
+        in[std::size_t(i)].type = INPUT_KEYBOARD;
+        in[std::size_t(i)].ki.wVk = keys[i];
+        in[std::size_t(i)].ki.dwFlags = i >= 2 ? KEYEVENTF_KEYUP : 0;
+    }
+    return in;
+}
+
 bool forceForeground(HWND hwnd) {
     if (SetForegroundWindow(hwnd)) return true;
-    // Le Dock (WS_EX_NOACTIVATE) vient de recevoir le clic, mais Windows peut encore refuser :
-    // une frappe Alt synthétique débloque le verrou de premier plan.
-    INPUT in[2] = {};
-    in[0].type = in[1].type = INPUT_KEYBOARD;
-    in[0].ki.wVk = in[1].ki.wVk = VK_MENU;
-    in[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(2, in, sizeof(INPUT));
+    // Le Dock (WS_EX_NOACTIVATE) vient de recevoir le clic, mais Windows peut encore refuser : une frappe synthétique
+    // débloque le verrou de premier plan.
+    std::vector<INPUT> in = foregroundUnlockKeys();
+    SendInput(UINT(in.size()), in.data(), sizeof(INPUT));
     return SetForegroundWindow(hwnd) != FALSE;
 }
 
@@ -62,9 +79,9 @@ void minimizeAll(const std::vector<HWND>& windows) {
     for (HWND h : windows) ShowWindowAsync(h, SW_MINIMIZE);
 }
 
-void openRecycleBin() { launch(L"shell:RecycleBinFolder"); }
+void openRecycleBin() { launchAsync(L"shell:RecycleBinFolder"); }
 
-void openFolder(const std::wstring& path) { launch(path); }
+void openFolder(const std::wstring& path) { launchAsync(path); }
 
 void openStartMenu() {
     INPUT in[2] = {};

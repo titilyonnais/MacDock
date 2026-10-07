@@ -345,3 +345,20 @@ TEST_CASE(genie_waits_for_gpu_before_moving) {   // pas de raccord bandes → GP
     CHECK(md::genieWaitStep(false, 0.15) == md::GenieWait::GoStrips);   // trop long : les bandes, en pleine qualité
     CHECK(md::genieWaitStep(true, 0.3) == md::GenieWait::Go);
 }
+
+TEST_CASE(genie_visible_rect_drops_invisible_borders) {
+    // Mesuré (Windows 11) : fenêtre 800 x 600, partie visible et miniature DWM 778 x 589 (11 px invisibles à gauche,
+    // à droite et en bas, 0 en haut). Le génie doit partir de la partie visible, sinon l'image est étirée et décalée.
+    const RECT window{-3000, 100, -2200, 700};
+    const RECT v = md::genieVisibleRect(window, SIZE{778, 589});
+    CHECK_EQ(v.left, -2989L);
+    CHECK_EQ(v.top, 100L);
+    CHECK_EQ(v.right, -2989L + 778);
+    CHECK_EQ(v.bottom, 689L);
+    const RECT exact{10, 20, 788, 609};   // déjà la partie visible : inchangé
+    CHECK(EqualRect(&exact, &static_cast<const RECT&>(md::genieVisibleRect(exact, SIZE{778, 589}))));
+    // Écart trop grand (autre taille qu'avant la réduction) : rien à corriger, on garde le rectangle.
+    const RECT other{0, 0, 1600, 1200};
+    const RECT o = md::genieVisibleRect(other, SIZE{778, 589});
+    CHECK(EqualRect(&other, &o));
+}

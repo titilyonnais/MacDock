@@ -8,6 +8,9 @@
 namespace md {
 
 bool launch(const std::wstring& target);            // exe, .lnk, dossier, shell:AppsFolder\AUMID
+// Même lancement sur un fil à part (COM STA) : ShellExecuteEx peut bloquer plusieurs secondes (app froide, disque
+// en veille, invite de sécurité) et ne doit jamais figer le Dock. Les échecs sont journalisés par launcher.
+void launchAsync(std::wstring target, bool (*launcher)(const std::wstring&) = launch);
 void activateApp(const std::vector<HWND>& windows); // restaure les réduites, met tout au premier plan
 void restoreWindow(HWND hwnd);
 void minimizeAll(const std::vector<HWND>& windows);
@@ -16,6 +19,9 @@ void openFolder(const std::wstring& path);
 void openStartMenu();
 std::wstring downloadsFolder();
 bool forceForeground(HWND hwnd);
+// Frappe qui débloque le verrou de premier plan : Alt enfoncé, une touche non attribuée, Alt relâché. Jamais Alt
+// seul : relâché seul, il ouvrirait la barre de menus de l'app au premier plan (fenêtre « figée » jusqu'au clic suivant).
+std::vector<INPUT> foregroundUnlockKeys();
 void revealInExplorer(const std::wstring& path);
 
 // « Ouvrir à la connexion » : valeur « MacDock: <nom> » de HKCU\…\CurrentVersion\Run.

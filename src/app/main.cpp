@@ -39,22 +39,13 @@
 #include "../switcher/switcher_window.h"
 #include "../spotlight/spotlight_window.h"
 #include "../config/config_store.h"
+#include "../core/crash_report.h"
 #include "../core/log.h"
 #include "cli_args.h"
 #include "../theme/theme_system.h"
 #include "capture_test.h"
 #include "menu_test.h"
 #include "dock_window.h"
-
-namespace {
-
-LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
-    md::log::error(L"Plantage : exception 0x%08lX à l'adresse %p", info->ExceptionRecord->ExceptionCode,
-                   info->ExceptionRecord->ExceptionAddress);
-    return EXCEPTION_CONTINUE_SEARCH;   // le lanceur verra un code de sortie non nul et relancera
-}
-
-} // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
@@ -76,7 +67,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         }
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    SetUnhandledExceptionFilter(crashFilter);
+    md::installCrashReport(md::appDataDir() + L"\\crash", L"dock");
 
     // Thème : --theme apply|restore (--theme light|dark reste l'option de --snapshot).
     std::wstring themeAction, themeSnapshot;
@@ -144,7 +135,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         LocalFree(argv);
         if (!captureProbe.empty()) {
             md::log::init(md::appDataDir() + L"\\logs");
-            code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) ? 0 : 1;
+            code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) &&
+                           md::genieFrameProbe(GetModuleHandleW(nullptr))
+                       ? 0
+                       : 1;
         } else if (!switcherSnapshot.empty()) {
             static const wchar_t* kNames[] = {L"Explorateur", L"Navigateur", L"Terminal", L"Éditeur de code", L"Musique",
                                               L"Photos", L"Courrier", L"Calendrier", L"Notes", L"Calculatrice"};

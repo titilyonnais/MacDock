@@ -458,6 +458,7 @@ void DockApp::onBackdrop() {
 void DockApp::setTransparent(bool transparent) {
     if (transparent == transparent_) return;
     transparent_ = transparent;
+    if (trace_) log::info(L"[trace] Dock %s", transparent ? L"traversé par les clics" : L"cliquable");
     LONG_PTR ex = GetWindowLongPtrW(hwnd_, GWL_EXSTYLE);
     ex = transparent ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
     SetWindowLongPtrW(hwnd_, GWL_EXSTYLE, ex);
@@ -465,7 +466,8 @@ void DockApp::setTransparent(bool transparent) {
 
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
-    bool inside = controller_.isInsideInteractiveZone(client);
+    controller_.setCursor(client);   // ne marque le Dock à redessiner que si son état change
+    const bool inside = controller_.pointerInside();
     const LONG edgePx = LONG(metrics_.autohideEdgePx);
     bool atEdge = false;
     switch (settings_.position) {
@@ -485,9 +487,20 @@ void DockApp::onMouse(POINT screen) {
         cursorInDock_ = inside;
         if (settings_.autohide) requestFrame();   // réveille la boucle : le masquage réévalue ses entrées
     }
-    // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
-    controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
+}
+
+// Le Dock change de forme sous un curseur immobile (révélation, icône ajoutée ou retirée, fin d'agrandissement) :
+// sans cette réévaluation, il resterait traversé par les clics jusqu'au prochain mouvement de souris.
+void DockApp::syncPointer() {
+    const std::optional<bool> inside =
+        controller_.recheckPointer(POINT{mouseX_.load() - origin_.x, mouseY_.load() - origin_.y});
+    if (!inside) return;
+    if (*inside != cursorInDock_) {
+        cursorInDock_ = *inside;
+        if (settings_.autohide) requestFrame();
+    }
+    setTransparent(!*inside);
 }
 
 void DockApp::checkHotCorner(POINT screen) {
@@ -701,7 +714,7 @@ void DockApp::openStack(std::size_t index) {
     menuOpen_ = false;
     resumeCapture();
     if (chosen == r.folder) openFolder(chosen);
-    else if (!chosen.empty()) launch(chosen);
+    else if (!chosen.empty()) launchAsync(chosen);
     requestFrame();
 }
 
@@ -739,7 +752,7 @@ void DockApp::openApps() {
         const AppEntry* e = nullptr;
         for (const AppEntry& a : r.apps)
             if (a.parsingName == *chosen) e = &a;
-        if (e && !launch(launchTarget(*e))) log::warn(L"Apps : lancement impossible de %s", e->name.c_str());
+        if (e) launchAsync(launchTarget(*e));
     }
     apps_.refreshAsync();   // une app installée entre-temps sera là la prochaine fois
     requestFrame();
@@ -809,11 +822,11 @@ void DockApp::openSpotlight() {
                 if (!copyText(hwnd_, it.target)) log::warn(L"Spotlight : presse-papiers indisponible");
                 break;
             case SpotKind::App:
-                if (!launch(it.target)) log::warn(L"Spotlight : lancement impossible de %s", it.title.c_str());
+                launchAsync(it.target);
                 break;
             case SpotKind::File:
                 if (choice->reveal) revealInExplorer(it.target);
-                else launch(it.target);
+                else launchAsync(it.target);
                 break;
         }
     }
@@ -1019,13 +1032,18 @@ void DockApp::endSwitch(bool activate) {
 void DockApp::activateItem(const DockItem& item) {
     switch (item.kind) {
         case ItemKind::App:
-            if (auto windows = model_.windowsOf(item.appId); !windows.empty()) {
-                activateApp(toHwnds(windows));
+            if (const AppClick click = model_.clickActionFor(item.appId); click.kind == AppClick::Kind::Restore) {
+                restoreFromDock(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(click.windows.front())));   // génie
+            } else if (click.kind != AppClick::Kind::Launch) {
+                activateApp(toHwnds(click.windows));   // devant (ou tout réaffiché si l'app était masquée)
             } else {
                 std::wstring target = item.launch;
                 if (target.empty())
                     if (auto id = model_.identityOf(item.appId)) target = id->launch.empty() ? id->exePath : id->launch;
-                if (launch(target)) controller_.startLaunchBounce(item.appId);
+                if (!target.empty() && !controller_.isBouncing(item.appId)) {   // double clic : un seul lancement
+                    launchAsync(target);   // jamais sur le fil de l'interface : le Dock reste vivant
+                    controller_.startLaunchBounce(item.appId);
+                }
             }
             break;
         case ItemKind::AppsButton: openApps(); break;
@@ -1050,10 +1068,18 @@ GenieRun DockApp::genieRun() const {
     return run;
 }
 
+namespace {
+// Partie visible d'une fenêtre (sans ses bordures de redimensionnement invisibles), comme sa miniature DWM.
+bool visibleBounds(HWND h, RECT& r) {
+    if (SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof r)) && !IsRectEmpty(&r)) return true;
+    return GetWindowRect(h, &r) != FALSE;
+}
+} // namespace
+
 void DockApp::noteForeground() {
     HWND fg = GetForegroundWindow();
     RECT r{};
-    if (fg && !IsIconic(fg) && GetWindowRect(fg, &r)) lastSeen_[toId(fg)] = r;
+    if (fg && !IsIconic(fg) && visibleBounds(fg, r)) lastSeen_[toId(fg)] = r;
 }
 
 bool DockApp::startGenie(HWND window, bool restore) {
@@ -1524,9 +1550,15 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
         auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
         self_->mouseX_ = info->pt.x;
         self_->mouseY_ = info->pt.y;
-        // Un seul message en attente à la fois : les mouvements sont fusionnés.
-        if (!self_->mousePending_.exchange(true) && !PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
-            self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
+        // Un seul message en attente à la fois : les mouvements sont fusionnés. Message perdu (boucle modale qui vide
+        // la file sans distribuer) : au-delà de 250 ms on en renvoie un plutôt que de laisser le Dock sourd.
+        const DWORD now = GetTickCount();
+        if (self_->mousePending_ && now - self_->mousePostedAt_ > 250) self_->mousePending_ = false;
+        if (!self_->mousePending_.exchange(true)) {
+            self_->mousePostedAt_ = now;
+            if (!PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
+                self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
+        }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -1978,7 +2010,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.moved = [this](HWND h) {   // place exacte au moment d'une réduction (déplacée, ancrée, agrandie…)
         RECT r{};
-        if (!IsIconic(h) && IsWindowVisible(h) && GetWindowRect(h, &r)) lastSeen_[toId(h)] = r;
+        if (!IsIconic(h) && IsWindowVisible(h) && visibleBounds(h, r)) lastSeen_[toId(h)] = r;
     };
     ev.activated = [this](HWND h) {
         mru_.touch(model_.appOfWindow(toId(h)));
@@ -2070,6 +2102,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         // à chaque image ; leur début et leur fin demandent eux-mêmes une image (requestFrame).
         bool overlays = stepPoof(now);
         if (stepGenie(now)) overlays = true;
+        syncPointer();
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {

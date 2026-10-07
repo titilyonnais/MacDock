@@ -299,6 +299,22 @@ Tu voyais des décalages à la réduction et, à l'ouverture, la fenêtre « se 
 - Sonde (Release) : départ 7 ms, GPU dès 54 ms, mouvement entièrement GPU, pire écart 6 à 12 ms.
 - Relecture : je l'ai faite moi-même (correctif court) ; pas de relecture indépendante pour ce plan.
 
+### Plan 23 — Tes retours : décalage du génie, Dock inerte ou figé
+
+- **Génie qui grandit de quelques pixels et se décale** : Windows 11 entoure chaque fenêtre de bordures invisibles (11 px à gauche, à droite et en bas) ; le génie partait du cadre complet et la miniature, plus petite, était étirée. Départ et arrivée se font maintenant sur la partie visible (test, et sonde sur une vraie fenêtre : « exact »).
+- **Clic sur une app** (comme sur macOS, jamais de réduction) : app fermée → lancée ; ouverte → passe devant ; déjà devant → rien ; toutes ses fenêtres réduites → la dernière revient avec le génie ; masquée → réaffichée (test).
+- **App « figée comme sélectionnée » après un clic** : le Dock simulait un appui sur Alt seul pour avoir le droit de passer une fenêtre devant ; relâché seul, Alt ouvre la barre de menus de l'app, qui attend alors une touche. La frappe passe maintenant une touche neutre pendant qu'Alt est enfoncé (test).
+- **Dock figé pendant un lancement** : le lancement (`ShellExecuteEx`) tournait sur le fil de l'interface et pouvait le bloquer plusieurs secondes. Il tourne maintenant à part ; l'icône rebondit dès le clic ; un double clic ne lance qu'une fois (test).
+- **Dock pas cliquable tant qu'on ne ressort pas** : quand le Dock change de forme sous un curseur immobile (révélation, icône ajoutée, fenêtre déplacée), personne ne réévaluait s'il devait laisser passer les clics. C'est réévalué à chaque tour de boucle (test) ; le crochet souris renvoie aussi son message s'il s'est perdu.
+- **Plantages** : journal avec module et décalage, vidage mémoire dans `%APPDATA%\MacDock\crash\`, puis fin immédiate (plus d'attente d'une trentaine de secondes du rapport d'erreurs de Windows). Le rapport ne peut plus bloquer le processus : écriture sur un fil à part, 5 s au plus.
+- **Relecture finale (Opus)** : 0 critique, 2 importants corrigés (rapport de plantage qui pouvait bloquer ; curseur périmé après déplacement du Dock), plus le double lancement (mineur, corrigé car visible).
+
+## Mineurs reportés — plan 23
+- Un lancement très lent en cours au moment où l'on quitte peut journaliser après la destruction du journal.
+- Les vidages de plantage ne sont jamais supprimés (à borner aux N plus récents).
+- La barre de menus lance encore ses apps de façon synchrone (`bar_actions.cpp`).
+- Recadrage du génie appliqué aussi à la place relevée au premier plan (déjà visible) : sans effet si la miniature a la même taille.
+
 ## Mineurs reportés — plan 21
 - Deux réductions coup sur coup pendant un démarrage de capture lent : le Dock peut attendre jusqu'à ~40 ms.
 - Fenêtre 4K agrandie : le passage au GPU (mipmaps, fermeture de la capture) n'a pas été mesuré.

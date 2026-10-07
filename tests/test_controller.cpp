@@ -61,6 +61,28 @@ TEST_CASE(controller_zone_follows_magnification) {
     CHECK(f.c.isInsideInteractiveZone(above));              // les icônes agrandies dépassent du fond
 }
 
+TEST_CASE(controller_rechecks_still_pointer_when_dock_changes) {
+    // Le Dock se révèle (ou change de forme) sous un curseur immobile : sans nouveau mouvement de souris, il doit
+    // devenir cliquable quand même, sinon il reste traversé par les clics jusqu'à ce qu'on ressorte et revienne.
+    Fixture f;
+    CHECK(!f.c.recheckPointer(f.at(0)).has_value());   // aucun curseur connu : rien à réévaluer
+    f.c.setShown(0);
+    f.c.setCursor(f.at(0));
+    CHECK(!f.c.pointerInside());                 // masqué : le point ne touche pas le Dock
+    f.c.setShown(1);
+    const std::optional<bool> inside = f.c.recheckPointer(f.at(0));
+    REQUIRE(inside.has_value());
+    CHECK(*inside);
+    CHECK(f.c.pointerInside());
+    // Fenêtre déplacée (position, taille, écran) sous le même curseur : c'est le point recalculé qui compte, pas
+    // l'ancien point dans la fenêtre.
+    const std::optional<bool> moved = f.c.recheckPointer(POINT{5, 5});
+    REQUIRE(moved.has_value());
+    CHECK(!*moved);
+    f.c.setCursor(std::nullopt);                 // menu ouvert : curseur oublié
+    CHECK(!f.c.recheckPointer(f.at(0)).has_value());
+}
+
 TEST_CASE(controller_animates_only_when_needed) {
     Fixture f;
     CHECK(!f.c.tick(1.0 / 60));
