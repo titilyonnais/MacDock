@@ -10,6 +10,7 @@
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/shortcut.h"
 
+#include <functional>
 #include <set>
 #include <thread>
 
@@ -309,15 +310,21 @@ TEST_CASE(menus_generic_shortcuts_parse) {
     for (const auto& ctx : {appContext(), explorer}) {
         auto b = md::buildBarMenus(ctx);
         std::set<int> ids;
-        for (auto& m : b.menus)
-            for (auto& it : m.model.items) {
+        std::function<void(const std::vector<md::MenuItem>&)> check = [&](const std::vector<md::MenuItem>& items) {
+            for (auto& it : items) {
                 if (it.separator()) continue;
+                if (!it.submenu.empty()) {   // ouvre un sous-menu : pas d'action propre
+                    check(it.submenu);
+                    continue;
+                }
                 CHECK(ids.insert(it.id).second);                         // identifiants uniques
-                CHECK(b.actions.count(it.id) == 1);                      // chaque entrée a son action
+                CHECK(b.actions.count(it.id) == 1 || !it.enabled);       // chaque entrée active a son action
                 if (!it.shortcut.empty()) CHECK(md::parseShortcut(it.shortcut).has_value());
                 auto a = b.actions[it.id];
                 if (a.kind == md::ActionKind::Shortcut) CHECK(md::parseShortcut(a.arg).has_value());
             }
+        };
+        for (auto& m : b.menus) check(m.model.items);
     }
 }
 

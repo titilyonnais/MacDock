@@ -10,6 +10,7 @@
 
 #include "../app/visibility.h"
 #include "../config/metrics.h"
+#include "../icons/icon_provider.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
 #include "../tracker/window_tracker.h"
@@ -37,7 +38,7 @@ public:
 
 private:
     struct Active {               // app affichée dans la barre
-        std::wstring name, appId, exePath;
+        std::wstring name, appId, exePath, launch;
         bool explorer = false, desktop = false;
         HWND menuOwner = nullptr;   // fenêtre dont la barre montre les vrais menus
         MenuSource source = MenuSource::Generic;
@@ -59,7 +60,10 @@ private:
     static void readRealMenus(HWND top, HWND root, Active& a);
     void refreshRealMenu(int real);
     void requestUiaTitles(HWND window);   // titres lus sur le fil UI Automation, reçus par WM_APP_UIA_TITLES
-    void onUiaTitles(LPARAM result);   // à l'ouverture d'un vrai menu : l'app le prépare, la barre le relit
+    void onUiaTitles(LPARAM result);
+    void loadRecent();
+    void saveRecent();
+    std::vector<RecentEntry> withIcons(std::vector<RecentEntry> list) const;   // à l'ouverture d'un vrai menu : l'app le prépare, la barre le relit
     void relayout();
     void render();
     void recoverDevice();   // device perdu : recréé ; sinon sortie en erreur (le lanceur relance la barre)
@@ -99,6 +103,9 @@ private:
     UiaWorker uia_;
     std::atomic<unsigned> uiaLatest_{0};   // dernière demande de titres : les plus anciennes sont abandonnées
     HWND uiaWindow_ = nullptr;             // fenêtre de la dernière demande
+    RecentState recent_;                   // menubar-recent.json
+    bool recentDirty_ = false;             // à écrire (minuterie : pas d'écriture à chaque changement d'app)
+    mutable IconProvider icons_;           // icônes des Éléments récents
 
     RECT monitor_{};
     float scale_ = 1;

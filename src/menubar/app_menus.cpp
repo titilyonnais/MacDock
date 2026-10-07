@@ -42,12 +42,33 @@ private:
     int next_ = 100;
 };
 
+// Comme sur macOS : Applications, puis Documents, chaque section sous un intitulé grisé, puis Effacer le menu.
+MenuItem recentMenu(Builder& b, const BarContext& c) {
+    MenuItem r;
+    r.text = L"Éléments récents";
+    auto section = [&](const wchar_t* title, const std::vector<RecentEntry>& list, ActionKind kind) {
+        r.submenu.push_back(b.item(title, {}, {}, false));
+        for (const auto& e : list) {
+            MenuItem it = b.item(e.name, {kind, e.target});
+            it.icon = e.icon;
+            r.submenu.push_back(std::move(it));
+        }
+        r.submenu.push_back({});
+    };
+    section(L"Applications", c.recentApps, ActionKind::LaunchApp);
+    section(L"Documents", c.recentDocs, ActionKind::OpenUri);
+    r.submenu.push_back(b.item(L"Effacer le menu", {ActionKind::ClearRecent}, {}, !c.recentApps.empty() || !c.recentDocs.empty()));
+    return r;
+}
+
 void logoMenu(Builder& b, const BarContext& c) {
     BarMenu& m = b.menu(L"", false, true);
     b.add(m, L"À propos de ce PC", {ActionKind::OpenUri, L"ms-settings:about"});
     Builder::separator(m);
     b.add(m, L"Réglages système…", {ActionKind::OpenUri, L"ms-settings:"});
     b.add(m, L"Microsoft Store…", {ActionKind::OpenUri, L"ms-windows-store:"});
+    Builder::separator(m);
+    m.model.items.push_back(recentMenu(b, c));
     Builder::separator(m);
     b.key(m, L"Forcer à quitter…", L"Ctrl+Maj+Échap");
     Builder::separator(m);

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../popup/menu_model.h"
+#include "recent_items.h"
 #include "win32_menu.h"
 
 namespace md {
@@ -26,6 +27,8 @@ enum class ActionKind {
     Sleep, Lock, SignOut, Restart, Shutdown,
     MenuCommand,      // vrai menu Win32 : WM_COMMAND (command) à la fenêtre window
     UiaInvoke,        // vrai menu UI Automation : entrée au chemin path (titre, entrée…), nommée arg, de window
+    LaunchApp,        // arg : cible de relance d'une app récente (exe, .lnk, shell:AppsFolder\AUMID)
+    ClearRecent,      // Éléments récents : Effacer le menu (exécutée par la barre, qui garde la liste)
 };
 
 enum class MenuSource { Generic, Win32, Uia };
@@ -55,6 +58,7 @@ struct BarContext {
     MenuSource source = MenuSource::Generic;
     std::vector<RawMenuItem> real;
     std::uint64_t menuOwner = 0;   // fenêtre qui possède le menu
+    std::vector<RecentEntry> recentApps, recentDocs;   // Éléments récents du menu du système
 };
 
 struct BarMenus {

@@ -168,6 +168,9 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             if (IsWindowVisible(owner)) forceForeground(owner);   // un dialogue ouvert par la commande arrive devant
             return PostMessageW(owner, WM_COMMAND, MAKEWPARAM(a.command, 0), 0) != FALSE;
         }
+        case ActionKind::LaunchApp: return launch(a.arg);
+        case ActionKind::UiaInvoke:
+        case ActionKind::ClearRecent: return false;   // exécutées par la barre
         case ActionKind::Sleep: call(sys.sleep); return true;
         case ActionKind::Lock: call(sys.lock); return true;
         case ActionKind::SignOut:

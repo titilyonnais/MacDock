@@ -2,6 +2,7 @@
 
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shlobj.h>
 #define SECURITY_WIN32
 #include <security.h>
 
@@ -42,6 +43,7 @@ constexpr UINT_PTR kResampleTimer = 0x5253;     // "RS" : diaporama de fonds d'�
 constexpr UINT_PTR kResampleSoon = 0x5253 + 1;  // après un changement de fond (transition de Windows)
 constexpr UINT_PTR kConfigTimer = 0x4346;       // "CF"
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS"
+constexpr UINT_PTR kRecentTimer = 0x5243;       // "RC" : écriture différée des apps récentes
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
 constexpr int kCmdBarSettings = 1, kCmdBarAutohide = 2, kCmdBarQuit = 3;
 
@@ -238,6 +240,7 @@ void MenuBarApp::onForeground(HWND h) {
         a.name = id->displayName.empty() ? fileName(id->exePath) : id->displayName;
         a.appId = id->appId;
         a.exePath = id->exePath;
+        a.launch = id->launch.empty() ? id->exePath : id->launch;
     }
     if (!a.explorer) readRealMenus(top, root, a);
     if (!a.explorer && a.source == MenuSource::Generic) {
@@ -260,6 +263,11 @@ void MenuBarApp::onForeground(HWND h) {
                          a.menuOwner != active_.menuOwner || a.real.size() != active_.real.size() ||
                          !std::equal(a.real.begin(), a.real.end(), active_.real.begin(),
                                      [](const RawMenuItem& x, const RawMenuItem& y) { return x.text == y.text; });
+    if (changed && !a.explorer && !a.launch.empty() && a.name != active_.name) {
+        pushRecent(recent_.apps, {a.name, a.launch});
+        recentDirty_ = true;
+        if (hwnd_) SetTimer(hwnd_, kRecentTimer, 5000, nullptr);
+    }
     active_ = a;
     checkFullscreen();
     if (!changed) return;
@@ -347,6 +355,30 @@ void MenuBarApp::onUiaTitles(LPARAM lp) {
     render();
 }
 
+// ---- Éléments récents ----
+
+void MenuBarApp::loadRecent() {
+    auto f = loadJsonFile(dataDir_ + L"\\menubar-recent.json");
+    if (f.fromFile && !f.wasInvalid) recent_ = recentFromJson(f.value);
+}
+
+void MenuBarApp::saveRecent() {
+    if (hwnd_) KillTimer(hwnd_, kRecentTimer);
+    if (!recentDirty_ || !hwnd_) return;
+    recentDirty_ = false;
+    if (!saveJsonFileAtomic(dataDir_ + L"\\menubar-recent.json", recentToJson(recent_)))
+        log::warn(L"Barre : apps récentes non enregistrées");
+}
+
+std::vector<RecentEntry> MenuBarApp::withIcons(std::vector<RecentEntry> list) const {
+    const int px = int(std::lround(kMenuIconSize * scale_));
+    for (auto& e : list) {
+        e.icon = icons_.fileIcon(e.target, px);
+        if (!e.icon) e.icon = icons_.get(e.target, e.target, px);   // app empaquetée : shell:AppsFolder\AUMID
+    }
+    return list;
+}
+
 std::vector<HWND> MenuBarApp::appWindows() const {
     std::vector<HWND> out;
     for (WindowId id : model_.windowsOf(active_.appId))
@@ -366,6 +398,11 @@ BarContext MenuBarApp::context() const {
     c.source = active_.source;
     c.real = active_.real;
     c.menuOwner = toId(active_.menuOwner);
+    c.recentApps = withIcons(recent_.apps);
+    PWSTR folder = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
+        c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt));
+    CoTaskMemFree(folder);
     return c;
 }
 
@@ -679,6 +716,15 @@ void MenuBarApp::execute(const MenuAction& a) {
         });
         return;
     }
+    if (a.kind == ActionKind::ClearRecent) {   // le dossier Récents de Windows n'est pas touché
+        recent_.apps.clear();
+        FILETIME now{};
+        GetSystemTimeAsFileTime(&now);
+        recent_.clearedAt = (std::uint64_t(now.dwHighDateTime) << 32) | now.dwLowDateTime;
+        recentDirty_ = true;
+        saveRecent();
+        return;
+    }
     ActionContext ctx;
     ctx.target = target_;
     ctx.appWindows = appWindows();
@@ -721,6 +767,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case kResampleTimer: startSample(); break;
                 case kResampleSoon: KillTimer(hwnd_, kResampleSoon); startSample(); break;
                 case kConfigTimer: checkSettingsFile(); break;
+                case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer: checkFullscreen(); break;
                 case kVisibilityTimer: stepVisibility(); break;
                 default: break;
@@ -845,6 +892,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.flashed = [](HWND) {};
     tracker_.start(hwnd_, ev);
     uia_.start();   // sinon : menus Win32 et génériques seulement
+    loadRecent();
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
         active_.name = L"Explorateur";
@@ -870,6 +918,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     sampler_.stop();
     tracker_.stop();
     uia_.stop();
+    saveRecent();
     removeAppBar();
     DestroyWindow(hwnd_);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_UIA_TITLES, WM_APP_UIA_TITLES, PM_REMOVE);)   // résultats en attente
