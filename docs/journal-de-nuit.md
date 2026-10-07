@@ -248,6 +248,36 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - la fenêtre de la pastille avalait les clics sur la droite de la barre (icône Son, horloge) : ils passent maintenant ;
   - la pastille de luminosité pouvait surgir seule (sortie de veille, passage secteur/batterie, écran rallumé) : seulement si le niveau change, et pas dans les 2 s qui suivent ces événements (test).
 
+### Plan 18 — Coins actifs (sous-projet 11)
+
+- **Coins actifs** : pousser le pointeur dans un coin lance l'action choisie : Mission Control, bureau, Apps, Centre de notifications, verrouillage, veille de l'écran ou économiseur. Aucun coin n'agit par défaut (un coin actif surprend, l'horloge et le logo de la barre sont tout près) : le réglage est `hotCorners` dans `settings.json`.
+- **Comme sur macOS** : l'action part une fois à l'arrivée ; il faut s'éloigner de 24 pixels pour la relancer. Le coin de Mission Control le referme quand il est ouvert.
+- **Garde-fous** : rien pendant un glisser (bouton enfoncé), en plein écran, pendant Alt+Tab ou un menu, ni dans un coin collé à un autre écran (le pointeur y glisserait vers l'écran voisin au lieu de s'arrêter).
+- Le Dock suivait déjà le pointeur : aucun crochet de plus.
+- **Vérifié** : tests des coins (un écran, deux écrans de tailles différentes, zone de 2 px), du suivi (une fois par arrivée, réarmement, blocage) et du réglage. **Je n'ai pas déplacé ton pointeur et n'ai lancé aucune action.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. mets `"hotCorners": {"bottomLeft": "missionControl", "bottomRight": "desktop"}` dans `settings.json` ;
+  2. pointeur tout en bas à gauche : Mission Control ; tout en bas à droite : le bureau, puis (après t'en être éloigné) les fenêtres reviennent ;
+  3. glisse une fenêtre jusqu'au coin : rien ne se passe.
+- **Relecture finale** : 0 critique, 3 importants, tous corrigés :
+  - un jeu ou une vidéo en plein écran sur un autre écran que celui du Dock ne bloquait pas le coin : le plein écran est maintenant vérifié sur l'écran du coin ;
+  - j'avais mis le bureau en bas à droite par défaut : trop facile à déclencher en visant l'horloge, aucun coin n'est actif par défaut (test) ;
+  - la veille de l'écran partait pendant que la main bougeait encore (l'écran se rallumait aussitôt) : elle attend une seconde, l'économiseur aussi (test).
+
+## Décisions prises sans toi (plan 18)
+- Aucun coin actif par défaut ; à régler dans `settings.json`.
+- Un coin collé à un autre écran ne compte pas (le pointeur y passe à l'écran voisin).
+- Pas de « Note rapide » (pas d'équivalent sous Windows).
+
+## Mineurs reportés — plan 18
+- L'état des boutons est lu au traitement du mouvement : une fenêtre lâchée dans le coin pendant un rendu peut déclencher l'action.
+- Deux écrans décalés d'exactement 1 pixel peuvent donner un faux coin.
+- Liste des écrans gardée jusqu'au prochain changement d'affichage signalé.
+- L'économiseur sans économiseur réglé ne fait rien, sans le dire dans le journal.
+- Apps lancé depuis le coin d'un autre écran s'ouvre sur l'écran du Dock.
+- Un menu ouvert dans la barre de menus ne bloque pas les coins.
+- Pousser le Dock vers un autre écran près d'un coin peut aussi lancer l'action.
+
 ## Décisions prises sans toi (plan 17)
 - La barre de menus reprend les touches de volume (le panneau de Windows ne s'affiche plus pour elles) ; `"hud": false` les rend à Windows.
 - Les touches de luminosité d'un portable restent à Windows (traitées par l'ordinateur) : son panneau et la pastille s'affichent tous les deux.

@@ -1,9 +1,11 @@
 // Préférences utilisateur du Dock (settings.json).
 #pragma once
+#include <array>
 #include <string>
 #include <vector>
 
 #include "../core/json.h"
+#include "hot_corner_action.h"
 
 namespace md {
 
@@ -43,6 +45,10 @@ struct Settings {
     std::wstring spotlightHotkey = L"alt+space";   // Spotlight : alt+space, ctrl+space ou off
     std::wstring missionControlHotkey = L"ctrl+alt+up";   // Mission Control : ctrl+alt+up, ctrl+up, f3 ou off
     std::wstring appSwitcherHotkey = L"alt+tab";          // sélecteur d'apps : alt+tab ou off
+    // Coins actifs, indexés par Corner (haut gauche, haut droit, bas gauche, bas droit) ; aucun par défaut (un coin
+    // actif surprend : l'horloge et le logo sont tout près).
+    std::array<HotCornerAction, 4> hotCorners{HotCornerAction::Off, HotCornerAction::Off, HotCornerAction::Off,
+                                              HotCornerAction::Off};
     std::vector<PinnedEntry> pinned;
     bool pinnedInitialized = false;  // false => importer les épingles par défaut
 };
