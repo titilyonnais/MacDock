@@ -1,8 +1,11 @@
 # MacDock
 
-Un Dock façon **macOS Tahoe** pour Windows 11 : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
+Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 
-> État : **plan 1 (Dock fonctionnel)**. Le vrai verre « Liquid Glass » (plan 2) et les interactions avancées (plan 3 : glisser-déposer, menus en verre, piles, masquage automatique, multi-écran) arrivent ensuite. Voir `docs/superpowers/`.
+- **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
+- **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de l'écran, avec le menu du système, le nom de l'app active, ses menus, et la date et l'heure.
+
+> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6) ; viennent ensuite les vrais menus des apps (plan 7), les icônes d'état et le Centre de contrôle (plan 8), les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -19,7 +22,7 @@ Un Dock façon **macOS Tahoe** pour Windows 11 : magnification, rebonds, infobul
 
    Sans Dock lancé, le mod ne cache rien.
 
-3. **Lancer le Dock** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur relance le Dock s'il plante.
+3. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
 
 4. **Démarrage automatique** (facultatif) :
    ```powershell
@@ -48,6 +51,20 @@ Un Dock façon **macOS Tahoe** pour Windows 11 : magnification, rebonds, infobul
 - **Corbeille** : son icône passe de vide à pleine selon son contenu.
 - **Quitter le Dock** : clic droit → *Quitter MacDock*, ou `MacDock.exe --quit`. La barre Windows revient immédiatement.
 
+## Barre de menus
+
+- **Transparente**, comme sur Tahoe : le texte est clair ou foncé selon ton fond d'écran (mesuré sous la barre, puis toutes les minutes et à chaque changement de fond).
+- **À gauche** :
+  - le menu du système (logo) : À propos de ce PC, Réglages système, Microsoft Store, Forcer à quitter, Suspendre, Redémarrer, Éteindre, Verrouiller l'écran, Fermer la session. Redémarrer, Éteindre et Fermer la session demandent confirmation ;
+  - le nom de l'app active en gras, avec son menu : À propos, Réglages, Masquer, Masquer les autres, Tout afficher, Quitter ;
+  - ses menus Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Le menu Fenêtre liste les fenêtres de l'app ;
+  - sur le bureau ou dans l'Explorateur, les menus de l'Explorateur, avec **Aller** (Téléchargements, Documents, Applications, Corbeille…), comme le Finder.
+- **Ouvrir un menu** : un clic sur un titre ; tant qu'un menu est ouvert, survoler un autre titre l'ouvre aussi, et les flèches ← → passent au voisin. Le clavier reste à ton app : la commande choisie lui est envoyée.
+- **À droite** : la date et l'heure (`mer. 7 oct. 14:32`) ; un clic ouvre le centre de notifications.
+- **Plein écran** : la barre s'efface et revient quand le curseur touche le haut de l'écran.
+- **Clic droit dans le vide de la barre** : réglages, masquage automatique, quitter la barre.
+- **Logo** : par défaut celui de Windows. Pour le remplacer, mets une image `menubar-logo.png` dans `%APPDATA%\MacDock\` ; seule sa transparence compte, elle prend la couleur du texte.
+
 ## Réglages
 
 Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
@@ -57,7 +74,9 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 | `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
-| `logs\` | Journaux. |
+| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), mesures (`metrics` : hauteur, taille du texte, marges…). |
+| `menubar-logo.png` | Logo personnalisé du menu du système (facultatif). |
+| `logs\` | Journaux (`logs\menubar\` pour la barre de menus). |
 
 Un fichier invalide n'efface rien : une copie `.bak` est faite et les réglages actuels sont conservés.
 
@@ -81,8 +100,11 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
+- `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.
+- `MacMenuBar.exe --snapshot barre.png [--wallpaper fond.png] [--app "Nom"] [--theme light|dark] [--open 1]` : rendu de la barre dans une image, sans l'afficher.
+- `MacMenuBar.exe --quit` : ferme la barre seule.
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
 ## Note
 
-Aucune ressource Apple (icônes, logo, police SF Pro) n'est incluse. Si SF Pro est installé sur ta machine, le Dock l'utilise ; sinon Inter, puis Segoe UI Variable.
+Aucune ressource Apple (icônes, logo, police SF Pro) n'est incluse. Si SF Pro est installé sur ta machine, le Dock et la barre l'utilisent ; sinon Inter, puis Segoe UI Variable.

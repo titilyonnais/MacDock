@@ -1,5 +1,5 @@
-// MacDockLauncher.exe : démarre MacDock.exe et le relance s'il plante.
-//   MacDockLauncher.exe              lance et surveille le Dock
+// MacDockLauncher.exe : démarre MacDock.exe et MacMenuBar.exe (s'il est présent) et relance celui qui plante.
+//   MacDockLauncher.exe              lance et surveille le Dock et la barre de menus
 //   MacDockLauncher.exe --install    démarrage automatique à l'ouverture de session
 //   MacDockLauncher.exe --uninstall  retire le démarrage automatique
 #include <windows.h>
@@ -7,9 +7,10 @@
 #include <shlobj.h>
 
 #include <string>
+#include <vector>
 
 #include "../core/log.h"
-#include "crash_policy.h"
+#include "supervisor.h"
 
 namespace {
 
@@ -53,7 +54,7 @@ int uninstall() {
     return 0;
 }
 
-void notifyGaveUp(const std::wstring& logs) {
+void notifyGaveUp(const std::wstring& logs, const wchar_t* title, const wchar_t* text) {
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"MacDockLauncher", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
                                 GetModuleHandleW(nullptr), nullptr);
     NOTIFYICONDATAW nid{};
@@ -63,9 +64,9 @@ void notifyGaveUp(const std::wstring& logs) {
     nid.uFlags = NIF_ICON | NIF_TIP | NIF_INFO;
     nid.hIcon = LoadIconW(nullptr, IDI_WARNING);
     wcscpy_s(nid.szTip, L"MacDock");
-    wcscpy_s(nid.szInfoTitle, L"MacDock s'est arrêté");
-    std::wstring text = L"Le Dock a planté plusieurs fois. La barre des tâches Windows a été rétablie. Journal : " + logs;
-    wcsncpy_s(nid.szInfo, text.c_str(), _TRUNCATE);
+    wcsncpy_s(nid.szInfoTitle, title, _TRUNCATE);
+    std::wstring body = std::wstring(text) + L" Journal : " + logs;
+    wcsncpy_s(nid.szInfo, body.c_str(), _TRUNCATE);
     nid.dwInfoFlags = NIIF_WARNING;
     Shell_NotifyIconW(NIM_ADD, &nid);
     Sleep(10000);
@@ -74,6 +75,38 @@ void notifyGaveUp(const std::wstring& logs) {
 }
 
 double nowSeconds() { return double(GetTickCount64()) / 1000.0; }
+
+struct Child {
+    md::ChildRole role;
+    std::wstring exe;
+    const wchar_t* name;           // journal
+    const wchar_t* stoppedTitle;   // notification d'abandon
+    const wchar_t* stoppedText;
+    HANDLE process = nullptr;
+};
+
+bool startChild(Child& c) {
+    STARTUPINFOW si{sizeof si};
+    PROCESS_INFORMATION pi{};
+    std::wstring cmd = L"\"" + c.exe + L"\"";
+    if (!CreateProcessW(c.exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        md::log::error(L"Impossible de lancer %s (%lu)", c.exe.c_str(), GetLastError());
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    c.process = pi.hProcess;
+    return true;
+}
+
+// « Quitter MacDock » : la barre de menus se ferme proprement (elle rend sa zone réservée), sinon on l'arrête.
+void stopChild(Child& c) {
+    if (!c.process) return;
+    if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr); bar && c.role == md::ChildRole::MenuBar)
+        PostMessageW(bar, WM_CLOSE, 0, 0);
+    if (WaitForSingleObject(c.process, 3000) == WAIT_TIMEOUT) TerminateProcess(c.process, 0);
+    CloseHandle(c.process);
+    c.process = nullptr;
+}
 
 } // namespace
 
@@ -87,34 +120,51 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
 
     std::wstring logs = logDir();
     md::log::init(logs);
-    std::wstring dock = exeDir() + L"\\MacDock.exe";
-    md::CrashPolicy policy;
+    std::vector<Child> children{{md::ChildRole::Dock, exeDir() + L"\\MacDock.exe", L"Le Dock", L"MacDock s'est arrêté",
+                                 L"Le Dock a planté plusieurs fois. La barre des tâches Windows a été rétablie."}};
+    const std::wstring bar = exeDir() + L"\\MacMenuBar.exe";
+    if (GetFileAttributesW(bar.c_str()) != INVALID_FILE_ATTRIBUTES)
+        children.push_back({md::ChildRole::MenuBar, bar, L"La barre de menus", L"La barre de menus s'est arrêtée",
+                            L"La barre de menus a planté plusieurs fois et n'est plus relancée."});
+    md::Supervisor supervisor;
+    for (auto& c : children)
+        if (!startChild(c)) notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
 
     for (;;) {
-        STARTUPINFOW si{sizeof si};
-        PROCESS_INFORMATION pi{};
-        std::wstring cmd = L"\"" + dock + L"\"";
-        if (!CreateProcessW(dock.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-            md::log::error(L"Impossible de lancer %s (%lu)", dock.c_str(), GetLastError());
-            notifyGaveUp(logs);
-            break;
-        }
-        CloseHandle(pi.hThread);
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        std::vector<HANDLE> handles;
+        std::vector<std::size_t> index;
+        for (std::size_t i = 0; i < children.size(); ++i)
+            if (children[i].process) {
+                handles.push_back(children[i].process);
+                index.push_back(i);
+            }
+        if (handles.empty()) break;
+        DWORD w = WaitForMultipleObjects(DWORD(handles.size()), handles.data(), FALSE, INFINITE);
+        if (w < WAIT_OBJECT_0 || w >= WAIT_OBJECT_0 + handles.size()) break;
+        Child& c = children[index[w - WAIT_OBJECT_0]];
         DWORD code = 1;
-        GetExitCodeProcess(pi.hProcess, &code);
-        CloseHandle(pi.hProcess);
-        if (code == 0) {
-            md::log::info(L"Dock arrêté normalement");
-            break;
+        GetExitCodeProcess(c.process, &code);
+        CloseHandle(c.process);
+        c.process = nullptr;
+        switch (supervisor.onExit(c.role, code, nowSeconds())) {
+            case md::ExitDecision::StopAll:
+                md::log::info(L"Dock arrêté normalement : arrêt de la barre de menus");
+                for (auto& other : children) stopChild(other);
+                break;
+            case md::ExitDecision::Forget:
+                if (code == 0) {
+                    md::log::info(L"%s : arrêt normal", c.name);
+                } else {
+                    md::log::error(L"%s : trop de plantages en 60 s, abandon", c.name);
+                    notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
+                }
+                break;
+            case md::ExitDecision::Relaunch:
+                md::log::warn(L"%s : arrêt avec le code 0x%08lX, relance", c.name, code);
+                Sleep(1000);
+                if (!startChild(c)) notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
+                break;
         }
-        md::log::warn(L"Le Dock s'est arrêté avec le code 0x%08lX", code);
-        if (!policy.onCrash(nowSeconds())) {
-            md::log::error(L"Trop de plantages en 60 s : abandon");
-            notifyGaveUp(logs);
-            break;
-        }
-        Sleep(1000);
     }
     ReleaseMutex(mutex);
     CloseHandle(mutex);

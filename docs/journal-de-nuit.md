@@ -2,7 +2,33 @@
 
 Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiatives, fais grossir le projet tout seul, sans me demander »). Ce fichier est mis à jour au fil de la nuit : c'est le premier à lire au réveil.
 
-## Ce qui est fait
+## Journée du 7 octobre : la barre de menus, puis le reste
+
+À ta demande (« fais la barre de menus et fais le reste ensuite, je veux tout faire »), j'enchaîne les sous-projets 2 à 6 en autonomie :
+- pour chacun, j'écris une spec et un plan, je les exécute, un agent fait la relecture finale, puis je fusionne dans `main` en local ;
+- tes quatre choix sont dans la spec de la barre de menus (`docs/superpowers/specs/2026-10-07-macmenubar-design.md`).
+
+### Plan 6 — Barre de menus (`MacMenuBar.exe`)
+
+- **Barre transparente** en haut de l'écran (24 pt réservés). Le texte est clair ou foncé selon ton fond d'écran, mesuré sous la barre.
+- **Contenu de la barre** :
+  - le logo Windows, avec le menu du système (veille, redémarrage et extinction avec confirmation, verrouillage, session) ;
+  - le **nom de l'app active** en gras et son menu ;
+  - des menus Fichier, Édition, Présentation, Fenêtre, Aide, qui envoient les raccourcis standard à l'app ;
+  - pour le bureau et l'Explorateur, un menu **Aller** comme le Finder ;
+  - la date et l'heure à droite.
+- **Menus en verre** comme ceux du Dock, avec les raccourcis affichés à droite. Une fois un menu ouvert, survoler un autre titre l'ouvre.
+- **Plein écran** : la barre s'efface et revient au bord haut.
+- **Clic droit dans le vide** : réglages, masquage automatique, quitter.
+- **Le lanceur** démarre maintenant le Dock et la barre ; *Quitter MacDock* arrête les deux.
+- **Essais réels** :
+  - images hors écran sur fonds clair, sombre et sur un fond de Windows ;
+  - lancement réel : zone réservée, app active reconnue (« Claude »), fond mesuré (texte clair) ;
+  - le lanceur démarre et arrête les deux processus ;
+  - tes réglages ont été restaurés.
+- **Limite** : les apps sans vraie barre de menus (la plupart des apps modernes) reçoivent des menus génériques. Une commande n'agit que si l'app connaît le raccourci. Les vrais menus des apps Win32 et UI Automation arrivent au plan 7.
+
+## Ce qui est fait (nuit)
 
 ### Plan 5 — Piles complètes (fusionné dans `main`)
 
