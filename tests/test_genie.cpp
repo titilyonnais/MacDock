@@ -1,6 +1,14 @@
 // Effet génie : géométrie des bandes, aperçu hors écran, coupure de l'animation de Windows.
 #include "minitest.h"
+#include <windows.h>
+#include <objbase.h>
+
+#include <algorithm>
+#include <string>
+
 #include "../src/anim/genie.h"
+#include "../src/anim/genie_preview.h"
+#include "../src/calib/png_io.h"
 
 namespace {
 const RECT kWin{100, 100, 900, 700};   // 800 x 600
@@ -124,4 +132,43 @@ TEST_CASE(genie_restored_rect) {
     wp.flags = WPF_RESTORETOMAXIMIZED;   // agrandie : la zone de travail et ses bordures invisibles
     r = md::restoredRect(wp, work, monitor, false, SIZE{1936, 968});
     CHECK(same(r, RECT{-8, 40, 1928, 1008}));
+}
+
+TEST_CASE(genie_preview_draws_inside_tile_at_end) {
+    md::BgraImage src = md::syntheticWindow(200, 150);
+    md::BgraImage dst{400, 300, std::vector<std::uint8_t>(400 * 300 * 4, 0)};
+    const RECT win{20, 20, 220, 170}, tile{300, 250, 340, 280};
+    md::drawSlices(src, md::minimizeFrame(md::MinimizeEffect::Genie, SIZE{200, 150}, win, tile, md::DockPosition::Bottom, 1.0), dst);
+    int inside = 0, outside = 0;
+    for (int y = 0; y < 300; ++y)
+        for (int x = 0; x < 400; ++x)
+            if (dst.px[(y * 400 + x) * 4 + 3]) ((x >= 299 && x <= 340 && y >= 249 && y <= 280) ? inside : outside)++;
+    CHECK(inside > 0);
+    CHECK_EQ(outside, 0);
+}
+
+TEST_CASE(genie_preview_start_copies_window) {
+    md::BgraImage src = md::syntheticWindow(200, 150);
+    md::BgraImage dst{400, 300, std::vector<std::uint8_t>(400 * 300 * 4, 0)};
+    md::drawSlices(src, md::minimizeFrame(md::MinimizeEffect::Genie, SIZE{200, 150}, RECT{20, 20, 220, 170}, RECT{300, 250, 340, 280},
+                                          md::DockPosition::Bottom, 0.0), dst);
+    for (int y : {0, 75, 149})
+        for (int x : {0, 100, 199})
+            CHECK(std::equal(&src.px[(y * 200 + x) * 4], &src.px[(y * 200 + x) * 4] + 4, &dst.px[((y + 20) * 400 + x + 20) * 4]));
+}
+
+TEST_CASE(genie_sheet_size) {   // MACDOCK_DUMP=dossier : planches pour un contrôle à l'œil
+    wchar_t dump[MAX_PATH] = {};
+    const bool write = GetEnvironmentVariableW(L"MACDOCK_DUMP", dump, MAX_PATH) != 0;
+    if (write) CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // WIC
+    const std::pair<md::DockPosition, const wchar_t*> edges[] = {
+        {md::DockPosition::Bottom, L"bottom"}, {md::DockPosition::Left, L"left"}, {md::DockPosition::Right, L"right"}};
+    for (auto [edge, name] : edges) {
+        auto sheet = md::genieSheet(md::MinimizeEffect::Genie, edge);
+        CHECK_EQ(sheet.w, 1920);
+        CHECK_EQ(sheet.h, 800);
+        CHECK(sheet.px.size() == std::size_t(1920 * 800 * 4));
+        if (write) CHECK(md::writePng(std::wstring(dump) + L"\\genie-" + name + L".png", sheet.px.data(), UINT(sheet.w), UINT(sheet.h)));
+    }
+    if (write) CoUninitialize();
 }
