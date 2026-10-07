@@ -82,6 +82,14 @@ DockController::Laid DockController::layout() const {
         double presence = !collapsingKey_.empty() && it.key == collapsingKey_ ? collapse_.value() : 1.0;
         in.items.push_back({it.kind == ItemKind::Separator, false, presence});
     }
+    sizeInput(in);
+    in.amount = amount_.value();
+    in.cursor = cursor_;
+    out.r = computeLayout(in);
+    return out;
+}
+
+void DockController::sizeInput(LayoutInput& in) const {
     in.tileSize = settings_.tileSize;
     in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     in.gap = metrics_.iconGap;
@@ -100,10 +108,30 @@ DockController::Laid DockController::layout() const {
         in.padding *= f;
         in.separatorMargin *= f;
     }
-    in.amount = amount_.value();
-    in.cursor = cursor_;
-    out.r = computeLayout(in);
-    return out;
+}
+
+std::optional<RECT> DockController::restingTile(std::uint64_t window) {
+    refreshItems();
+    std::size_t index = items_.size();
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].kind == ItemKind::MinimizedWindow && items_[i].window == window) index = i;
+    if (index == items_.size() || width_ <= 0) return std::nullopt;
+    LayoutInput in;
+    for (auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
+    sizeInput(in);   // au repos : ni agrandissement, ni place ouverte
+    const LayoutResult r = computeLayout(in);
+    const double size = r.items[index].size * scale_;
+    const double cx = toPx(r.items[index].center);
+    const double cy = bgBottomPx() - metrics_.dockPadding * scale_ - size / 2;
+    double x0 = cx - size / 2, y0 = cy - size / 2, x1 = cx + size / 2, y1 = cy + size / 2;
+    if (edge_.vertical()) {
+        const auto a = edge_.toWindow(x0, y0), b = edge_.toWindow(x1, y1);
+        x0 = std::min<double>(a.x, b.x);
+        x1 = std::max<double>(a.x, b.x);
+        y0 = std::min<double>(a.y, b.y);
+        y1 = std::max<double>(a.y, b.y);
+    }
+    return RECT{LONG(std::lround(x0)), LONG(std::lround(y0)), LONG(std::lround(x1)), LONG(std::lround(y1))};
 }
 
 bool DockController::isInsideInteractiveZone(POINT p) const { return insideLocal(edge_.toLocal(p)); }

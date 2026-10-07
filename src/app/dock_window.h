@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <map>
 #include <optional>
 #include <string>
 #include <thread>
@@ -19,6 +20,8 @@
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "genie_window.h"
+#include "min_animate.h"
 #include "monitor_choice.h"
 #include "thumbnails.h"
 #include "visibility.h"
@@ -88,6 +91,11 @@ private:
     void logItemPositions(const RenderFrame& frame);
     void updateDragSprite();
     bool stepPoof(double now);   // true tant que le nuage s'anime
+    // Effet génie : réduction (de la fenêtre vers sa case) ou restauration depuis le Dock (de la case vers la
+    // fenêtre, restaurée à la fin). false : pas d'animation possible.
+    bool startGenie(HWND window, bool restore);
+    bool stepGenie(double now);   // true tant qu'il s'anime
+    void restoreFromDock(HWND window);
     bool rendererOnDockAdapter();   // le device de rendu est-il sur la carte qui pilote l'écran du Dock ?
     static bool systemDarkMode();
 
@@ -151,6 +159,9 @@ private:
     std::optional<PendingDrop> pendingDrop_;   // exécuté après le retour de Drop (WM_APP_DROP)
     Visibility visibility_;
     Thumbnails thumbnails_;
+    GenieWindow genie_;
+    MinAnimateGuard minAnimate_{realMinAnimateApi()};
+    std::map<std::uint64_t, RECT> shownTiles_;   // cases des miniatures de la dernière image (pixels de la fenêtre)
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée

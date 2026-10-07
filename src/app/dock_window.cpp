@@ -9,6 +9,7 @@
 #include <cmath>
 #include <map>
 
+#include "../anim/genie.h"
 #include "../calib/image_diff.h"
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
@@ -139,6 +140,7 @@ void DockApp::applySettings() {
                             metrics_.autohideHideSeconds});
     syncAppBar();
     if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
+    if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     updateGlass();   // réglage glass modifié à chaud
     requestFrame();
 }
@@ -642,11 +644,50 @@ void DockApp::activateItem(const DockItem& item) {
         case ItemKind::Stack: openFolder(item.launch); break;
         case ItemKind::Trash: openRecycleBin(); break;
         case ItemKind::MinimizedWindow:
-            restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
+            restoreFromDock(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
             break;
         default: break;
     }
     requestFrame();
+}
+
+void DockApp::restoreFromDock(HWND window) {
+    if (genie_.active() && genie_.source() == window && genie_.restoring()) return;   // déjà en route
+    if (!startGenie(window, true)) restoreWindow(window);
+}
+
+bool DockApp::startGenie(HWND window, bool restore) {
+    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !hwnd_) return false;
+    // Case de départ (restauration) : celle affichée, agrandie ou non ; sinon celle du Dock au repos.
+    std::optional<RECT> cell;
+    if (auto it = shownTiles_.find(toId(window)); restore && it != shownTiles_.end()) cell = it->second;
+    if (!cell) cell = controller_.restingTile(toId(window));
+    if (!cell) return false;   // pas de case (app masquée du Dock)
+    RECT dock{};
+    GetWindowRect(hwnd_, &dock);
+    OffsetRect(&*cell, dock.left, dock.top);
+    WINDOWPLACEMENT wp{sizeof wp};
+    if (!GetWindowPlacement(window, &wp)) return false;
+    MONITORINFO mi{sizeof mi};   // réduite : l'écran de sa place d'avant
+    if (!GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &mi)) return false;
+    const bool tool = (GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0;
+    const RECT from = restoredRect(wp, mi.rcWork, mi.rcMonitor, tool, SIZE{});
+    const bool slow = GetAsyncKeyState(VK_SHIFT) < 0;   // Maj : ralenti, comme sur macOS
+    if (!genie_.start(instance_, window, from, *cell, settings_.position, settings_.minimizeEffect, restore, nowSeconds(), slow))
+        return false;
+    if (trace_) log::info(L"[trace] génie %s %p", restore ? L"restauration" : L"réduction", static_cast<void*>(window));
+    requestFrame();   // la miniature de la case s'efface le temps de l'animation
+    return true;
+}
+
+bool DockApp::stepGenie(double now) {
+    if (!genie_.active()) return false;
+    if (genie_.step(now)) return true;
+    const HWND window = genie_.source();
+    if (genie_.restoring() && IsWindow(window)) restoreWindow(window);   // la fenêtre prend la place de son image
+    genie_.finish();
+    requestFrame();
+    return false;
 }
 
 void DockApp::saveSettings() {
@@ -813,7 +854,16 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
                 savePinned();
             break;
         case kCmdRestore:
-            restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
+            restoreFromDock(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
+            break;
+        case kCmdEffectGenie:
+        case kCmdEffectScale:
+        case kCmdEffectWindows:
+            settings_.minimizeEffect = cmd == kCmdEffectGenie   ? MinimizeEffect::Genie
+                                       : cmd == kCmdEffectScale ? MinimizeEffect::Scale
+                                                                : MinimizeEffect::Windows;
+            saveSettings();
+            applySettings();
             break;
         case kCmdCloseWindow:
             PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
@@ -995,6 +1045,15 @@ void DockApp::renderNow() {
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
     // Pendant un menu, la capture du Dock est suspendue : il garde sa dernière image d'arrière-plan.
     frame.glass = glassLive_ && (capture_.status() == BackdropCapture::Status::Running || capturePaused_);
+    shownTiles_.clear();
+    const std::uint64_t animated = genie_.active() ? toId(genie_.source()) : 0;
+    for (auto& icon : frame.icons) {
+        if (!icon.window) continue;
+        const float h = icon.size / 2;
+        shownTiles_[icon.window] = RECT{LONG(std::lround(icon.cx - h)), LONG(std::lround(icon.cy - h)),
+                                        LONG(std::lround(icon.cx + h)), LONG(std::lround(icon.cy + h))};
+        if (icon.window == animated) icon.opacity = 0;   // l'image animée y entre ou en sort
+    }
     if (!snapshot_) thumbnails_.sync(hwnd_, frame, !visibility_.hidden());
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
@@ -1369,6 +1428,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.minimized = [this](HWND h, bool m) {
         if (trace_) log::info(L"[trace] %s %p", m ? L"réduite" : L"restaurée", h);
         model_.windowMinimized(toId(h), m);
+        if (m) startGenie(h, false);   // vers sa case du Dock
+        else if (genie_.active() && genie_.source() == h && !genie_.restoring()) genie_.cancel();   // restaurée ailleurs
         requestFrame();
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
@@ -1446,6 +1507,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         bool animating = controller_.tick(dt);
         if (stepVisibility(now)) animating = true;
         if (stepPoof(now)) animating = true;
+        if (stepGenie(now)) animating = true;
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {
@@ -1476,6 +1538,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     }
 
     log::info(L"MacDock s'arrête");
+    genie_.cancel();
+    minAnimate_.restore();   // l'animation de Windows revient
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
     for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
     thumbnails_.clear();

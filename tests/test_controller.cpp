@@ -368,3 +368,20 @@ TEST_CASE(controller_stack_icon_uses_preview) {
     CHECK(c.buildFrame(false, icons).icons[k].image == folderIcon);
     if (SUCCEEDED(com)) CoUninitialize();
 }
+
+TEST_CASE(controller_resting_tile_of_minimized_window) {
+    Fixture f;
+    f.model.windowOpened(0x1234, idOf(L"C:\\a.exe"));
+    f.model.windowMinimized(0x1234, true);
+    f.c.setCursor(f.at(0));                       // agrandissement en cours : la case au repos l'ignore
+    for (int i = 0; i < 60; ++i) f.c.tick(1.0 / 60);
+    auto tile = f.c.restingTile(0x1234);
+    REQUIRE(tile.has_value());
+    CHECK_EQ(tile->right - tile->left, LONG(f.s.tileSize));
+    CHECK_EQ(tile->bottom - tile->top, LONG(f.s.tileSize));
+    CHECK(!f.c.restingTile(0x9999).has_value());
+    f.c.setShown(0.0);                             // masqué : même case
+    auto hidden = f.c.restingTile(0x1234);
+    REQUIRE(hidden.has_value());
+    CHECK(EqualRect(&*hidden, &*tile));
+}
