@@ -152,6 +152,33 @@ int genieStripTarget(int full, bool waiting, int have) {
     return full;
 }
 
+bool genieMinimizeConfirmed(POINT down, POINT up) {
+    return std::abs(up.x - down.x) <= 4 && std::abs(up.y - down.y) <= 4;
+}
+
+bool genieOnMinimizeButton(POINT pt, const RECT& window, const RECT& buttonBounds, bool hasMinimizeBox) {
+    const LONG width = buttonBounds.right - buttonBounds.left;
+    if (!hasMinimizeBox || width <= 0 || buttonBounds.bottom <= buttonBounds.top) return false;
+    const LONG left = window.left + buttonBounds.left, top = window.top + buttonBounds.top;
+    return pt.x >= left && pt.x < left + width / 3 && pt.y >= top && pt.y < window.top + buttonBounds.bottom;
+}
+
+RECT genieHostBox(const RECT& windowMonitor, const RECT& dockMonitor) {
+    RECT box{};
+    UnionRect(&box, &windowMonitor, &dockMonitor);
+    return box;
+}
+
+RECT genieGpuBox(const RECT& from, const RECT& to, const RECT* armed) {
+    RECT box{};
+    UnionRect(&box, &from, &to);
+    InflateRect(&box, 2, 2);
+    if (armed && !IsRectEmpty(armed) && armed->left <= box.left && armed->top <= box.top && armed->right >= box.right &&
+        armed->bottom >= box.bottom)
+        return *armed;
+    return box;
+}
+
 int genieSliceCount(long extent) { return std::clamp(int(extent / 4), 16, 128); }
 
 std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,

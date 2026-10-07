@@ -25,7 +25,16 @@ public:
     // Device, fenêtre, DirectComposition et relais de capture, une fois (au lancement du Dock : pas d'attente au
     // premier génie). false : GPU ou capture indisponibles, les bandes seules serviront.
     bool prepare(HINSTANCE instance);
-    // Animation de source dans box (pixels écran) : capture lancée, chaîne d'échange à la taille de box, fenêtre cachée.
+    // Capture lancée d'avance (réduction annoncée, case survolée) : begin() la reprend pour la même source, et le
+    // génie démarre sans attendre la première image. cool() : annonce sans suite.
+    // box (réduction annoncée) : chaîne d'échange posée d'avance à cette taille et fenêtre affichée, transparente.
+    bool warm(HINSTANCE instance, HWND source, const RECT* box = nullptr);
+    // Tant que l'annonce tient : prend les images de la capture et trace l'instant de départ à blanc (non présenté).
+    void pump(const std::vector<GenieVertex>& mesh);
+    void cool();
+    HWND warmSource() const { return warmSource_; }
+    // Animation de source dans box (pixels écran) : capture lancée (ou reprise), chaîne d'échange à la taille de box,
+    // fenêtre cachée.
     bool begin(HINSTANCE instance, HWND source, const RECT& box);
     // Dessine mesh si la capture est arrivée (affiche la fenêtre à la première image). false : pas (encore) d'image GPU.
     bool frame(const std::vector<GenieVertex>& mesh);
@@ -35,6 +44,7 @@ public:
 
 private:
     void reset();   // périphérique perdu : tout sera recréé au prochain prepare()
+    bool ensureSwap(const RECT& box);   // chaîne d'échange à la taille de box, fenêtre placée (pas affichée)
 
     HWND hwnd_ = nullptr;
     Com<ID3D11Device> dev_;
@@ -48,6 +58,9 @@ private:
     WindowCapture capture_;
     RECT box_{};
     bool capturing_ = false, failed_ = false;
+    HWND warmSource_ = nullptr;   // capture lancée d'avance pour cette fenêtre
+    bool shown_ = false;          // fenêtre affichée (première image, ou transparente d'avance)
+    bool warmDrawn_ = false;      // tracé à blanc fait pendant l'annonce
     int frames_ = 0;
 };
 

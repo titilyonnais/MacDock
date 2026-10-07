@@ -5,6 +5,8 @@
 #include <windows.h>
 #include <dwmapi.h>
 
+#include <atomic>
+#include <mutex>
 #include <vector>
 
 #include "../anim/genie.h"
@@ -23,11 +25,24 @@ public:
     // Avance l'animation ; false quand elle est finie (dernière image laissée affichée jusqu'à finish()).
     bool step(double now);
     void finish();   // masque la fenêtre et retire les miniatures
+    // Réduction annoncée (appui sur le bouton « réduire ») : capture GPU lancée et couverture posée d'avance,
+    // invisible, dans la fenêtre des bandes déjà à sa place (visible : partie visible de la fenêtre ; dock : rectangle
+    // du Dock ; down : point d'appui). revealArmed(up) : relâché sur place, la couverture apparaît ; appelable depuis
+    // le crochet souris (n'importe quel fil), avant que l'app ne reçoive le relâchement et ne réduise. true : affichée.
+    void arm(HINSTANCE instance, HWND source, const RECT& visible, const RECT& dock, POINT down);
+    bool revealArmed(POINT up);
+    void pumpArmed();   // à chaque tour de boucle tant que l'annonce tient : capture reçue, rendu GPU chauffé
+    void disarm();   // annonce sans suite
+    HWND armed() const { return armedSource_; }
+    // Capture lancée d'avance pour une restauration probable (case du Dock survolée) ; cool() : plus probable.
+    void warm(HINSTANCE instance, HWND source);
+    void cool();
     void cancel() { finish(); }
     bool running() const { return running_; }
     bool active() const { return !thumbs_.empty(); }   // affichée (en cours ou dernière image)
     HWND source() const { return source_; }
     bool onGpu() const { return stripsHidden_; }   // le rendu GPU a pris le relais
+    bool waiting() const { return running_ && waiting_; }   // départ en attente de la passation au GPU
     bool restoring() const { return restore_; }
 
 private:
@@ -38,8 +53,15 @@ private:
 
     HWND hwnd_ = nullptr;
     std::vector<HTHUMBNAIL> thumbs_;
+    HTHUMBNAIL armedThumb_ = nullptr;   // couverture posée d'avance (réduction annoncée)
+    HWND armedSource_ = nullptr;
+    std::atomic<bool> armedShown_{false};   // relâché sur le bouton : la couverture est affichée
+    std::mutex coverLock_;   // armedThumb_ et armDown_ : le crochet souris lit, le fil du Dock écrit
+    POINT armDown_{};
+    RECT armedBox_{};
+    RECT armedGpuBox_{}, armedVisible_{};   // surface GPU posée d'avance (fenêtre + Dock), partie visible annoncée
     HWND source_ = nullptr;
-    RECT from_{}, to_{}, box_{};
+    RECT from_{}, to_{}, box_{};   // box_ : fenêtre des bandes (écrans de la fenêtre et du Dock)
     SIZE src_{};
     DockPosition edge_ = DockPosition::Bottom;
     MinimizeEffect effect_ = MinimizeEffect::Genie;

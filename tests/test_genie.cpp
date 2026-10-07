@@ -367,3 +367,59 @@ TEST_CASE(genie_visible_rect_drops_invisible_borders) {
     const RECT o = md::genieVisibleRect(other, SIZE{778, 589});
     CHECK(EqualRect(&other, &o));
 }
+
+TEST_CASE(genie_minimize_click_is_confirmed_on_release) {
+    // Appui sur « réduire » : capture et couverture préparées ; relâché sur place, la réduction va suivre (la
+    // couverture s'affiche avant que Windows retire la fenêtre). Sinon, l'annonce tombe. La fenêtre sous le pointeur au
+    // relâchement ne compte pas : mesuré, l'app a parfois déjà réduit quand le Dock le traite (Brave dessous).
+    CHECK(md::genieMinimizeConfirmed(POINT{100, 20}, POINT{100, 20}));
+    CHECK(md::genieMinimizeConfirmed(POINT{100, 20}, POINT{103, 23}));    // tremblement de la main
+    CHECK(!md::genieMinimizeConfirmed(POINT{100, 20}, POINT{140, 20}));   // glissé hors du bouton
+    CHECK(!md::genieMinimizeConfirmed(POINT{100, 20}, POINT{100, 26}));
+}
+
+TEST_CASE(genie_host_covers_both_screens) {
+    // La fenêtre des bandes couvre l'écran de la fenêtre et celui du Dock : posée d'avance à sa place définitive,
+    // elle n'a plus à bouger au départ (un déplacement et une miniature changent rarement dans la même image).
+    const RECT left{0, 0, 3840, 2160}, right{3840, 0, 7680, 2160};
+    const RECT same = md::genieHostBox(left, left);
+    CHECK(EqualRect(&same, &left));
+    const RECT both = md::genieHostBox(right, left);
+    CHECK_EQ(both.left, 0L);
+    CHECK_EQ(both.right, 7680L);
+    CHECK_EQ(both.bottom, 2160L);
+}
+
+TEST_CASE(genie_gpu_box_reuses_armed_box_when_it_fits) {
+    // La surface GPU posée à l'appui (fenêtre + Dock) sert telle quelle si elle contient l'animation : ni
+    // redimensionnement ni déplacement au départ. Sinon, le cadre serré de l'animation.
+    const RECT from{900, 300, 2500, 1300}, to{1800, 2000, 1900, 2100};
+    const RECT tight = md::genieGpuBox(from, to, nullptr);
+    CHECK_EQ(tight.left, 898L);
+    CHECK_EQ(tight.top, 298L);
+    CHECK_EQ(tight.right, 2502L);
+    CHECK_EQ(tight.bottom, 2102L);
+    const RECT armed{0, 0, 3840, 2160};
+    const RECT reused = md::genieGpuBox(from, to, &armed);
+    CHECK(EqualRect(&reused, &armed));
+    const RECT narrow{800, 200, 2600, 1400};   // ne contient pas la case : le cadre serré
+    const RECT fallback = md::genieGpuBox(from, to, &narrow);
+    CHECK(EqualRect(&fallback, &tight));
+    const RECT empty{};
+    const RECT none = md::genieGpuBox(from, to, &empty);
+    CHECK(EqualRect(&none, &tight));
+}
+
+TEST_CASE(genie_minimize_button_from_dwm_caption_bounds) {
+    // Mesuré (Windows 11, 200 %) : fenêtre en 900,300 ; DWMWA_CAPTION_BUTTON_BOUNDS = 1296,0,1588,57 (repère de la
+    // fenêtre) : réduire, agrandir, fermer, un tiers chacun. WM_NCHITTEST, lui, répond « barre de titre » au milieu
+    // du vrai bouton « réduire » (ancienne géométrie) : il ne sert qu'aux apps qui dessinent leurs propres boutons.
+    const RECT window{900, 300, 2500, 1300}, bounds{1296, 0, 1588, 57};
+    CHECK(md::genieOnMinimizeButton(POINT{2259, 328}, window, bounds, true));
+    CHECK(md::genieOnMinimizeButton(POINT{2197, 301}, window, bounds, true));
+    CHECK(!md::genieOnMinimizeButton(POINT{2300, 328}, window, bounds, true));    // agrandir
+    CHECK(!md::genieOnMinimizeButton(POINT{2259, 360}, window, bounds, true));    // sous la barre
+    CHECK(!md::genieOnMinimizeButton(POINT{2150, 328}, window, bounds, true));    // barre de titre
+    CHECK(!md::genieOnMinimizeButton(POINT{2259, 328}, window, bounds, false));   // pas de bouton réduire
+    CHECK(!md::genieOnMinimizeButton(POINT{2259, 328}, window, RECT{1932, 0, 1932, 57}, true));   // boutons de l'app
+}

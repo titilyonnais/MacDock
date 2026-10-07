@@ -67,13 +67,69 @@ bool GenieSurface::prepare(HINSTANCE instance) {
     return true;
 }
 
-bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
+bool GenieSurface::warm(HINSTANCE instance, HWND source, const RECT* box) {
+    if (capturing_ && warmSource_ == source) return true;
     end();
-    if (dev_ && FAILED(dev_->GetDeviceRemovedReason())) {   // perdu au repos (pilote, veille, changement de carte)
+    if (dev_ && FAILED(dev_->GetDeviceRemovedReason())) reset();
+    if (!prepare(instance)) return false;
+    // Réduction annoncée : chaîne d'échange à sa taille et fenêtre affichée d'avance, transparente (rien ne se voit,
+    // rien de figé ne passe par-dessus la fenêtre vivante) ; begin() n'aura plus qu'à dessiner et présenter.
+    if (box && ensureSwap(*box)) {
+        Com<ID3D11Texture2D> back;
+        if (SUCCEEDED(swap_->GetBuffer(0, IID_PPV_ARGS(&back))) &&
+            gpu_.draw(ctx_.Get(), back.Get(), sw_, sh_, POINT{box_.left, box_.top}, {}) && SUCCEEDED(swap_->Present(0, 0))) {
+            SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            shown_ = true;
+        }
+    }
+    capturing_ = capture_.start(instance, dev_.Get(), source);   // sur un fil : retour immédiat
+    if (capturing_) gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
+    warmSource_ = capturing_ ? source : nullptr;
+    warmDrawn_ = false;
+    if (diagnosticCapture()) log::info(L"[diag] génie GPU : capture d'avance %s", capturing_ ? L"lancée" : L"impossible");
+    return capturing_;
+}
+
+void GenieSurface::pump(const std::vector<GenieVertex>& mesh) {
+    if (!warmSource_ || !capturing_ || !swap_) return;
+    const bool fresh = capture_.poll([&](ID3D11Texture2D* tex, UINT w, UINT h) { gpu_.setSource(ctx_.Get(), tex, w, h); });
+    if (!fresh || warmDrawn_ || !shown_) return;
+    // Tracé à blanc, jamais présenté : textures, shaders et pilote sont chauds quand la réduction part.
+    LARGE_INTEGER fq, a, b;
+    QueryPerformanceFrequency(&fq);
+    QueryPerformanceCounter(&a);
+    Com<ID3D11Texture2D> back;
+    if (SUCCEEDED(swap_->GetBuffer(0, IID_PPV_ARGS(&back))))
+        gpu_.draw(ctx_.Get(), back.Get(), sw_, sh_, POINT{box_.left, box_.top}, mesh);
+    ctx_->Flush();
+    warmDrawn_ = true;
+    QueryPerformanceCounter(&b);
+    if (diagnosticCapture())
+        log::info(L"[diag] génie GPU : tracé à blanc en %.1f ms", double(b.QuadPart - a.QuadPart) * 1000.0 / double(fq.QuadPart));
+}
+
+void GenieSurface::cool() {
+    if (warmSource_) end();
+}
+
+bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
+    const bool warmed = capturing_ && warmSource_ == source;   // capture déjà lancée : ses images sont là ou arrivent
+    warmSource_ = nullptr;
+    if (!warmed) end();
+    if (!warmed && dev_ && FAILED(dev_->GetDeviceRemovedReason())) {   // perdu au repos (pilote, veille, changement de carte)
         log::info(L"Génie : périphérique GPU perdu, recréé");
         reset();
     }
-    if (!prepare(instance)) return false;
+    if (!prepare(instance) || !ensureSwap(box)) return false;
+    if (diagnosticCapture()) log::info(L"[diag] génie GPU : départ, capture %s", warmed ? L"reprise" : L"à lancer");
+    if (warmed) return true;
+    capturing_ = capture_.start(instance, dev_.Get(), source);   // démarrage de la capture sur un fil : retour immédiat
+    // La capture scRGB porte le blanc SDR de l'écran du relais (le plus à gauche), pas celui de l'animation.
+    if (capturing_) gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
+    return capturing_;
+}
+
+bool GenieSurface::ensureSwap(const RECT& box) {
     const UINT w = UINT(std::max<LONG>(1, box.right - box.left)), h = UINT(std::max<LONG>(1, box.bottom - box.top));
     if (!swap_ || w != sw_ || h != sh_) {
         bool ok = false;
@@ -105,21 +161,36 @@ bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
         }
         sw_ = w;
         sh_ = h;
+        if (shown_) {   // tampons neufs, contenu indéfini : cachée jusqu'à la prochaine image présentée
+            ShowWindow(hwnd_, SW_HIDE);
+            shown_ = false;
+        }
     }
-    box_ = box;
-    SetWindowPos(hwnd_, HWND_TOPMOST, box.left, box.top, LONG(w), LONG(h), SWP_NOACTIVATE);
-    capturing_ = capture_.start(instance, dev_.Get(), source);   // démarrage de la capture sur un fil : retour immédiat
-    // La capture scRGB porte le blanc SDR de l'écran du relais (le plus à gauche), pas celui de l'animation.
-    if (capturing_) gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
-    return capturing_;
+    if (!EqualRect(&box, &box_)) {
+        box_ = box;
+        SetWindowPos(hwnd_, HWND_TOPMOST, box.left, box.top, LONG(w), LONG(h), SWP_NOACTIVATE);
+    }
+    return true;
 }
 
 bool GenieSurface::frame(const std::vector<GenieVertex>& mesh) {
     if (!swap_ || (!capturing_ && !gpu_.hasSource())) return false;
-    if (!gpu_.hasSource()) {
+    LARGE_INTEGER fq, f0, f1, f2, f3;
+    QueryPerformanceFrequency(&fq);
+    QueryPerformanceCounter(&f0);
+    f1 = f2 = f0;
+    // Image prise pendant l'appui (fenêtre encore à l'écran) si elle est là : après le relâchement, Windows retire la
+    // fenêtre et la capture ne la montre plus.
+    if (capturing_ && !gpu_.hasSource()) {
         capture_.poll([&](ID3D11Texture2D* tex, UINT w, UINT h) { gpu_.setSource(ctx_.Get(), tex, w, h); });
         if (!gpu_.hasSource()) return false;
-        capture_.stop();   // une seule image suffit : le relais disparaît
+        QueryPerformanceCounter(&f1);
+        if (diagnosticCapture())
+            log::info(L"[diag] génie GPU : image de la capture reçue (préparée en %.1f ms)",
+                      double(f1.QuadPart - f0.QuadPart) * 1000.0 / double(fq.QuadPart));
+        capturing_ = false;   // une seule image suffit ; l'arrêt (une dizaine de ms) attend la passation
+    } else if (frames_ == 3) {
+        capture_.stop();   // le relais disparaît
         capturing_ = false;
     }
     Com<ID3D11Texture2D> back;
@@ -131,23 +202,35 @@ bool GenieSurface::frame(const std::vector<GenieVertex>& mesh) {
         return false;
     }
     back.Reset();
+    QueryPerformanceCounter(&f2);
     const HRESULT hr = swap_->Present(1, 0);
+    QueryPerformanceCounter(&f3);
+    if (diagnosticCapture() && frames_ < 3)
+        log::info(L"[diag] génie GPU : image %d dessinée en %.1f ms, présentée en %.1f ms", frames_ + 1,
+                  double(f2.QuadPart - f1.QuadPart) * 1000.0 / double(fq.QuadPart),
+                  double(f3.QuadPart - f2.QuadPart) * 1000.0 / double(fq.QuadPart));
     if (FAILED(hr)) {
         log::warn(L"Génie : présentation impossible (0x%08X), retour aux bandes", unsigned(hr));
         end();
         reset();   // périphérique perdu : recréé à la prochaine animation
         return false;
     }
-    if (!frames_) SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Au premier plan à la première image (affichée d'avance, le Dock a pu repasser devant depuis).
+    if (!frames_)
+        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | (shown_ ? 0 : SWP_SHOWWINDOW));
+    shown_ = true;
     ++frames_;
     return true;
 }
 
 void GenieSurface::end() {
-    if (hwnd_ && frames_) ShowWindow(hwnd_, SW_HIDE);
+    if (hwnd_ && shown_) ShowWindow(hwnd_, SW_HIDE);
+    shown_ = false;
+    warmDrawn_ = false;
     frames_ = 0;
     capture_.stop();
     capturing_ = false;
+    warmSource_ = nullptr;
     gpu_.dropSource();
 }
 

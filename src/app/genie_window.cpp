@@ -11,6 +11,87 @@ namespace md {
 
 namespace {
 constexpr wchar_t kGenieClass[] = L"MacDockGenie";
+
+RECT monitorOf(const RECT& r) {
+    MONITORINFO mi{sizeof mi};
+    if (!GetMonitorInfoW(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &mi)) return r;
+    return mi.rcMonitor;
+}
+} // namespace
+
+void GenieWindow::arm(HINSTANCE instance, HWND source, const RECT& visible, const RECT& dock, POINT down) {
+    if (running_ || active()) return;   // une animation garde sa fenêtre
+    disarm();
+    if (!ensureWindow(instance)) return;
+    HTHUMBNAIL t = nullptr;
+    if (FAILED(DwmRegisterThumbnail(hwnd_, source, &t))) return;
+    {
+        std::lock_guard lock(coverLock_);
+        armedThumb_ = t;
+        armDown_ = down;
+        armedShown_ = false;
+    }
+    armedSource_ = source;
+    armedBox_ = genieHostBox(monitorOf(visible), monitorOf(dock));
+    DWM_THUMBNAIL_PROPERTIES p{};
+    p.dwFlags = DWM_TNP_VISIBLE | DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
+    p.fVisible = FALSE;
+    p.opacity = 255;
+    p.fSourceClientAreaOnly = FALSE;
+    p.rcDestination = visible;
+    OffsetRect(&p.rcDestination, -armedBox_.left, -armedBox_.top);
+    DwmUpdateThumbnailProperties(t, &p);
+    // Vide et traversée par les clics : rien ne se voit tant que la couverture est invisible.
+    SetWindowPos(hwnd_, HWND_TOPMOST, armedBox_.left, armedBox_.top, armedBox_.right - armedBox_.left,
+                 armedBox_.bottom - armedBox_.top, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Surface GPU à sa taille finale (la fenêtre et tout le Dock : la case d'arrivée y est), affichée transparente.
+    armedVisible_ = visible;
+    armedGpuBox_ = genieGpuBox(visible, dock, nullptr);
+    gpu_.warm(instance, source, &armedGpuBox_);
+}
+
+void GenieWindow::pumpArmed() {
+    if (!armedThumb_ || armedShown_) return;   // relâché : Windows retire la fenêtre, la capture ne la montre plus
+    // Maillage plat sur la partie visible : le tracé à blanc passe par les mêmes textures et shaders que l'animation.
+    const auto& v = armedVisible_;
+    const std::vector<GenieVertex> flat{{float(v.left), float(v.top), 0, 0},
+                                        {float(v.right), float(v.top), 1, 0},
+                                        {float(v.left), float(v.bottom), 0, 1},
+                                        {float(v.right), float(v.bottom), 1, 1}};
+    gpu_.pump(flat);
+}
+
+bool GenieWindow::revealArmed(POINT up) {
+    std::lock_guard lock(coverLock_);
+    if (!armedThumb_) return false;
+    if (armedShown_) return true;
+    if (!genieMinimizeConfirmed(armDown_, up)) return false;
+    DWM_THUMBNAIL_PROPERTIES p{};
+    p.dwFlags = DWM_TNP_VISIBLE;
+    p.fVisible = TRUE;
+    DwmUpdateThumbnailProperties(armedThumb_, &p);
+    armedShown_ = true;
+    return true;
+}
+
+void GenieWindow::disarm() {
+    if (!armedThumb_) return;
+    {
+        std::lock_guard lock(coverLock_);
+        DwmUnregisterThumbnail(armedThumb_);
+        armedThumb_ = nullptr;
+    }
+    armedSource_ = nullptr;
+    if (!active() && hwnd_) ShowWindow(hwnd_, SW_HIDE);
+    if (!running_) gpu_.cool();
+}
+
+void GenieWindow::warm(HINSTANCE instance, HWND source) {
+    if (!running_ && !active() && !armedThumb_) gpu_.warm(instance, source);
+}
+
+void GenieWindow::cool() {
+    if (!running_ && !active() && !armedThumb_) gpu_.cool();
 }
 
 GenieWindow::~GenieWindow() {
@@ -45,11 +126,26 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
                         MinimizeEffect effect, bool restore, double now, bool slow) {
     LARGE_INTEGER q0, q1, q2, q3, qf;
     QueryPerformanceCounter(&q0);
-    finish();
-    if (effect == MinimizeEffect::Windows || !IsWindow(source) || !ensureWindow(instance)) return false;
-    QueryPerformanceCounter(&q1);
+    // Réduction annoncée : sa couverture (peut-être déjà affichée) et sa capture sont reprises telles quelles.
     HTHUMBNAIL first = nullptr;
-    if (FAILED(DwmRegisterThumbnail(hwnd_, source, &first))) return false;
+    RECT armedBox{}, armedGpuBox{};
+    if (armedThumb_ && armedSource_ == source && !running_ && !active()) {
+        armedBox = armedBox_;
+        armedGpuBox = armedGpuBox_;
+        std::lock_guard lock(coverLock_);
+        first = armedThumb_;
+        armedThumb_ = nullptr;
+        armedSource_ = nullptr;
+    } else {
+        disarm();
+        if (running_ || active()) finish();   // sinon la capture lancée d'avance (case survolée) est gardée
+    }
+    if (effect == MinimizeEffect::Windows || !IsWindow(source) || !ensureWindow(instance)) {
+        if (first) DwmUnregisterThumbnail(first);
+        return false;
+    }
+    QueryPerformanceCounter(&q1);
+    if (!first && FAILED(DwmRegisterThumbnail(hwnd_, source, &first))) return false;
     thumbs_.push_back(first);
     if (FAILED(DwmQueryThumbnailSourceSize(first, &src_)) || src_.cx <= 0 || src_.cy <= 0) {
         finish();
@@ -61,8 +157,10 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
     edge_ = edge;
     effect_ = effect;
     restore_ = restore;
-    UnionRect(&box_, &from_, &to_);
-    InflateRect(&box_, 2, 2);
+    box_ = genieHostBox(monitorOf(from_), monitorOf(to_));
+    if (!IsRectEmpty(&armedBox) && !EqualRect(&armedBox, &box_))
+        log::info(L"Génie : cadre annoncé différent, la fenêtre des bandes se déplace");
+    const RECT gpuBox = genieGpuBox(from_, to_, &armedGpuBox);   // celle posée à l'appui si elle suffit
     const LONG extent = edge == DockPosition::Bottom ? from.bottom - from.top : from.right - from.left;
     fullSlices_ = effect == MinimizeEffect::Scale ? 1 : genieSliceCount(extent);
     rows_ = effect == MinimizeEffect::Scale ? 1 : std::clamp(int(extent / 3), 48, 256);   // maillage GPU : une rangée / 3 px
@@ -76,13 +174,16 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
     // Couverture d'abord : Windows a déjà retiré la fenêtre réduite de l'écran ; chaque milliseconde ici est un trou.
     QueryPerformanceCounter(&q2);
     placeStrips(restore ? 1.0 : 0.0);
-    SetWindowPos(hwnd_, HWND_TOPMOST, box_.left, box_.top, box_.right - box_.left, box_.bottom - box_.top,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (!EqualRect(&armedBox, &box_))   // annoncée : déjà affichée à cette place
+        SetWindowPos(hwnd_, HWND_TOPMOST, box_.left, box_.top, box_.right - box_.left, box_.bottom - box_.top,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
     LARGE_INTEGER q3b;
     QueryPerformanceCounter(&q3b);
     // Puis le rendu GPU (capture sur un fil) ; les bandes de secours s'ajoutent pendant l'attente (step).
-    gpuStarted_ = gpu_.begin(instance, source, box_);
+    gpuStarted_ = gpu_.begin(instance, source, gpuBox);
     waiting_ = gpuStarted_;   // l'horloge part avec la première image GPU (step)
+    // Capture prise d'avance : première image tout de suite (la passation en demande deux, la suivante au tour d'après).
+    if (gpuStarted_) gpu_.frame(genieMesh(effect_, src_, from_, to_, edge_, restore ? 1.0 : 0.0, rows_));
     QueryPerformanceCounter(&q3);
     if (diagnosticCapture()) {
         LARGE_INTEGER q4;
