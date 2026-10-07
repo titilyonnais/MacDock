@@ -271,6 +271,12 @@ J'ai repris les mineurs reportés qui se voient à l'usage (ils sont retirés de
 - **Coins actifs** : un coin contre un écran décalé d'un pixel ne compte plus (test) ; l'économiseur sans économiseur réglé le dit dans le journal.
 - **Alt+Tab** : sans aucune app ouverte, relâcher Alt n'ouvre plus le menu de l'app au premier plan ; une app fermée juste avant l'affichage ne laisse plus de case vide ; les raccourcis de la sélection déjà pris sont journalisés.
 - **Pastille du volume** : la couleur du texte de la barre est relevée de nouveau si la pastille a interrompu un relevé ; `"hud": false` cache toujours la pastille ; une sortie audio débranchée la cache ; plus de minuterie inutile pendant le maintien.
+- **Relecture finale** : 0 critique, 3 importants, corrigés : un émoji pouvait encore être coupé à la limite de 128 caractères (collage, frappe) ; un faux coin restait une colonne plus loin avec des écrans décalés ; le fondu de la pastille pouvait être sauté (tests pour les deux premiers).
+
+## Mineurs reportés — plan 19
+- Le relevé de la couleur du texte relancé après la pastille peut se perdre si une touche de volume ou un menu arrive dans les 0,8 s.
+- Casque débranché, haut-parleurs qui prennent le relais : la pastille garde le nom du casque jusqu'au fondu.
+- L'économiseur « (Aucun) » n'est peut-être pas détecté (Windows garde l'économiseur « actif »).
 
 ## Décisions prises sans toi (plan 18)
 - Aucun coin actif par défaut ; à régler dans `settings.json`.
