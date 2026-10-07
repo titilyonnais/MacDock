@@ -42,6 +42,7 @@ struct Settings {
     std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
     std::wstring spotlightHotkey = L"alt+space";   // Spotlight : alt+space, ctrl+space ou off
     std::wstring missionControlHotkey = L"ctrl+alt+up";   // Mission Control : ctrl+alt+up, ctrl+up, f3 ou off
+    std::wstring appSwitcherHotkey = L"alt+tab";          // sélecteur d'apps : alt+tab ou off
     std::vector<PinnedEntry> pinned;
     bool pinnedInitialized = false;  // false => importer les épingles par défaut
 };

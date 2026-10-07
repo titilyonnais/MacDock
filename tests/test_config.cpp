@@ -188,3 +188,12 @@ TEST_CASE(settings_mission_hotkey) {
     s.missionControlHotkey = L"ctrl+up";
     CHECK(md::settingsFromJson(md::settingsToJson(s)).missionControlHotkey == L"ctrl+up");
 }
+
+TEST_CASE(settings_switcher_hotkey) {
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).appSwitcherHotkey == L"alt+tab");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appSwitcherHotkey\":\"OFF\"}")).appSwitcherHotkey == L"off");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appSwitcherHotkey\":\"bizarre\"}")).appSwitcherHotkey == L"alt+tab");
+    md::Settings s;
+    s.appSwitcherHotkey = L"off";
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).appSwitcherHotkey == L"off");
+}
