@@ -43,6 +43,29 @@ RECT sourceStrip(SIZE src, DockPosition edge, LONG k0, LONG k1) {
     }
 }
 
+// Forme du génie à l'instant t, comme sur macOS : le bas de la fenêtre plonge d'abord jusqu'au Dock en se
+// resserrant vers la case (les côtés deviennent des courbes en S), puis le haut suit dans l'entonnoir.
+struct Shape {
+    Local w, c;
+    double p, top, bottom, span;
+    // Ligne f (0 : bord le plus éloigné du Dock, 1 : le plus proche) : bornes u0, u1 et position v.
+    void row(double f, double& u0, double& u1, double& v) const {
+        v = lerp(top, bottom, f);
+        const double bend = (span > 0 ? smooth(clamp01((v - w.v0) / span)) : 1.0) * p;
+        u0 = lerp(w.u0, c.u0, bend);
+        u1 = lerp(w.u1, c.u1, bend);
+    }
+};
+
+Shape genieShape(const RECT& from, const RECT& to, DockPosition edge, double t) {
+    Shape s{toLocal(from, edge), toLocal(to, edge), 0, 0, 0, 0};
+    s.p = easeInOut(clamp01(t / 0.4));                                            // courbure
+    s.bottom = lerp(s.w.v1, s.c.v1, easeInOut(clamp01(t / 0.5)));                // le bas plonge vers la case
+    s.top = lerp(s.w.v0, s.c.v0, easeInOut(clamp01((t - 0.2) / 0.8)));          // le haut suit
+    s.span = s.c.v0 - s.w.v0;
+    return s;
+}
+
 } // namespace
 
 std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
@@ -56,20 +79,16 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
                                                         px(lerp(from.right, to.right, k)), px(lerp(from.bottom, to.bottom, k))}});
         return out;
     }
-    const Local w = toLocal(from, edge), c = toLocal(to, edge);
+    const Shape shape = genieShape(from, to, edge, t);
     const LONG extent = edge == DockPosition::Bottom ? src.cy : src.cx;
     const int n = std::max(1, std::min(slices, int(extent)));
-    const double p = easeInOut(clamp01(t / 0.45));          // courbure : le bas se resserre vers la case
-    const double q = easeInOut(clamp01((t - 0.2) / 0.8));   // glissement dans la case
-    const double top = lerp(w.v0, c.v0, q), bottom = lerp(w.v1, c.v1, q);
-    const double span = c.v0 - w.v0;
-    const auto weight = [&](double v) { return span > 0 ? smooth(clamp01((v - w.v0) / span)) : 1.0; };
     out.reserve(std::size_t(n));
     for (int k = 0; k < n; ++k) {
         const double f0 = double(k) / n, f1 = double(k + 1) / n;
-        const double a = lerp(top, bottom, f0), b = lerp(top, bottom, f1);
-        const double bend = weight((a + b) / 2) * p;
-        const double left = lerp(w.u0, c.u0, bend), right = lerp(w.u1, c.u1, bend);
+        double l0, r0, a, l1, r1, b, left, right, v;
+        shape.row(f0, l0, r0, a);
+        shape.row(f1, l1, r1, b);
+        shape.row((f0 + f1) / 2, left, right, v);   // largeur prise au milieu de la bande
         const LONG k0 = px(extent * f0), k1 = px(extent * f1);
         out.push_back({sourceStrip(src, edge, k0, k1), toScreen(px(left), px(right), px(a), px(b), edge)});
     }
@@ -89,19 +108,13 @@ std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from,
                     r = float(lerp(from.right, to.right, k)), b = float(lerp(from.bottom, to.bottom, k));
         return {{l, tp, 0, 0}, {r, tp, 1, 0}, {l, b, 0, 1}, {r, b, 1, 1}};
     }
-    const Local w = toLocal(from, edge), c = toLocal(to, edge);
+    const Shape shape = genieShape(from, to, edge, t);
     const int n = std::max(1, rows);
-    const double p = easeInOut(clamp01(t / 0.45));          // mêmes courbes que minimizeFrame
-    const double q = easeInOut(clamp01((t - 0.2) / 0.8));
-    const double top = lerp(w.v0, c.v0, q), bottom = lerp(w.v1, c.v1, q);
-    const double span = c.v0 - w.v0;
-    const auto weight = [&](double v) { return span > 0 ? smooth(clamp01((v - w.v0) / span)) : 1.0; };
     out.reserve(std::size_t(n + 1) * 2);
     for (int k = 0; k <= n; ++k) {
         const double f = double(k) / n;
-        const double v = lerp(top, bottom, f);
-        const double bend = weight(v) * p;
-        const double u0 = lerp(w.u0, c.u0, bend), u1 = lerp(w.u1, c.u1, bend);
+        double u0, u1, v;
+        shape.row(f, u0, u1, v);
         const float ff = float(f);
         switch (edge) {   // repère local → écran ; texture : la ligne (ou colonne) f de la source
             case DockPosition::Left:
