@@ -1,8 +1,13 @@
 // HUD du volume et de la luminosité : pas, fondu, place, garde, rendu hors écran.
 #include <windows.h>
+#include <objbase.h>
+
+#include <cstdlib>
 
 #include "minitest.h"
 #include "../src/hud/hud_logic.h"
+#include "../src/hud/hud_window.h"
+#include "../src/theme/wallpaper_art.h"
 
 TEST_CASE(hud_volume_step_grid) {
     CHECK_NEAR(md::volumeStep(0.5f, 1, false), 0.5625, 1e-6);
@@ -51,4 +56,25 @@ TEST_CASE(hud_brightness_gate) {
     g.noteOwnChange(10);
     CHECK(!g.accept(10.5, false));
     CHECK(g.accept(11.1, false));
+}
+
+TEST_CASE(hud_snapshot_draws_panel) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    md::HudContent c;
+    c.level = 0.5f;
+    c.detail = L"Haut-parleurs";
+    auto img = md::hudSnapshot(c, true, 800, 300);
+    REQUIRE(img.w == 800);
+    REQUIRE(img.px.size() == std::size_t(800) * 300 * 4);
+    // Le panneau (en haut à droite, sous une barre de 24 pt) change le fond Tahoe ; ailleurs, le fond est intact.
+    const md::BgraImage wall = md::tahoeWallpaper(800, 300, true);
+    auto diff = [&](int x, int y) {
+        const std::size_t i = (std::size_t(y) * 800 + x) * 4;
+        return std::abs(int(img.px[i]) - int(wall.px[i])) + std::abs(int(img.px[i + 1]) - int(wall.px[i + 1])) +
+               std::abs(int(img.px[i + 2]) - int(wall.px[i + 2]));
+    };
+    CHECK(diff(800 - 12 - 270, 24 + 8 + 4) > 20);   // coin du panneau, hors texte et jauge
+    CHECK(diff(100, 250) < 4);
+    auto empty = md::hudSnapshot(c, false, 0, 0);
+    CHECK(empty.px.empty());
 }
