@@ -7,6 +7,7 @@
 
 #include "minitest.h"
 #include "../src/apps/app_catalog.h"
+#include "../src/apps/apps_layout.h"
 
 TEST_CASE(apps_listed_filters_docs_and_uninstallers) {
     CHECK(md::isListedApp({L"Paint", L"Microsoft.Paint_8wekyb3d8bbwe!App"}));
@@ -51,4 +52,60 @@ TEST_CASE(apps_search_groups_and_folding) {
     REQUIRE(r.size() == 1);                               // espaces autour ignorés
     CHECK(md::searchApps(apps, L"zzz").empty());
     CHECK(md::foldForSearch(L"ÉcOle Œuvre") == L"ecole œuvre");
+}
+
+TEST_CASE(apps_layout_large_and_small) {
+    auto g = md::appsLayout(1920, 1080, 80);
+    CHECK(g.columns == 7 && g.rows == 5 && g.perPage == 35 && g.pages == 3);
+    CHECK(g.icon == 96);
+    CHECK(g.searchTop > 0 && g.gridTop > g.searchTop + g.searchH);
+    CHECK(g.gridLeft + g.columns * g.cellW <= 1920 - g.gridLeft + 0.01);
+    CHECK(g.dotsY > g.gridTop + g.rows * g.cellH && g.dotsY < 1080);
+    auto s = md::appsLayout(1024, 640, 80);
+    CHECK(s.columns >= 4 && s.columns < 7 && s.rows >= 2 && s.rows < 5);
+    CHECK(s.icon >= 48 && s.icon <= 96);
+    CHECK(s.pages == int((80 + s.perPage - 1) / s.perPage));
+    CHECK(md::appsLayout(1920, 1080, 0).pages == 1);
+}
+
+TEST_CASE(apps_hit_last_page) {
+    auto g = md::appsLayout(1920, 1080, 37);   // page 2 : 2 apps
+    const double cx = g.gridLeft + g.cellW / 2, cy = g.gridTop + g.cellH / 2;
+    CHECK(md::appsHit(g, 0, cx, cy, 37) == 0);
+    CHECK(md::appsHit(g, 0, cx + 2 * g.cellW, cy + g.cellH, 37) == 9);
+    CHECK(md::appsHit(g, 1, cx + g.cellW, cy, 37) == 36);
+    CHECK(md::appsHit(g, 1, cx + 2 * g.cellW, cy, 37) == -1);   // case vide
+    CHECK(md::appsHit(g, 0, g.gridLeft - 5, cy, 37) == -1);
+    CHECK(md::appsHit(g, 0, cx, g.gridTop - 5, 37) == -1);
+}
+
+TEST_CASE(apps_keys_move_across_pages) {
+    auto g = md::appsLayout(1920, 1080, 37);
+    md::AppsCursor c;
+    c = md::appsKey(g, c, VK_RIGHT, 37);
+    CHECK(c.selected == 0 && c.page == 0);          // première flèche : première app de la page
+    c = md::appsKey(g, c, VK_DOWN, 37);
+    CHECK(c.selected == 7);
+    c = md::appsKey(g, c, VK_UP, 37);
+    CHECK(c.selected == 0);
+    c = md::appsKey(g, c, VK_UP, 37);
+    CHECK(c.selected == 0);                          // déjà en haut
+    c = md::appsKey(g, c, VK_LEFT, 37);
+    CHECK(c.selected == 0);                          // déjà au début
+    c = md::appsKey(g, {0, 34}, VK_RIGHT, 37);
+    CHECK(c.selected == 35 && c.page == 1);          // passe à la page suivante
+    c = md::appsKey(g, c, VK_DOWN, 37);
+    CHECK(c.selected == 35);                         // rien en dessous
+    c = md::appsKey(g, c, VK_RIGHT, 37);
+    c = md::appsKey(g, c, VK_RIGHT, 37);
+    CHECK(c.selected == 36);                         // dernière app
+    c = md::appsKey(g, {0, -1}, VK_NEXT, 37);
+    CHECK(c.page == 1 && c.selected == -1);          // page suivante sans sélection
+    c = md::appsKey(g, {1, 36}, VK_PRIOR, 37);
+    CHECK(c.page == 0 && c.selected == 0);           // page précédente : sa première app
+    c = md::appsKey(g, {0, 5}, VK_END, 37);
+    CHECK(c.page == 1 && c.selected == 36);
+    c = md::appsKey(g, c, VK_HOME, 37);
+    CHECK(c.page == 0 && c.selected == 0);
+    CHECK(md::appsKey(g, {0, -1}, VK_RIGHT, 0).selected == -1);   // aucune app
 }
