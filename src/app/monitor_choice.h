@@ -23,4 +23,19 @@ std::optional<std::size_t> pushedMonitor(const std::vector<MonitorInfo>& monitor
 // Écran enregistré s'il existe encore (casse ignorée), sinon le principal (ou le premier).
 std::size_t initialMonitor(const std::vector<MonitorInfo>& monitors, const std::wstring& saved);
 
+// Poussée contre le bord du Dock sur un autre écran : la souris doit continuer de bouger contre le bord
+// (événements reçus sans interruption) pendant kPushSeconds ; une souris simplement posée au bord n'en
+// produit aucun et ne déplace pas le Dock.
+class ScreenPush {
+public:
+    static constexpr double kPushSeconds = 0.35;
+    static constexpr double kMaxSilence = 0.15;   // un silence plus long recommence la poussée
+    // À chaque événement souris : écran visé (vide = aucun). Renvoie l'écran à adopter, une fois, à la confirmation.
+    std::wstring update(const std::wstring& target, double now);
+
+private:
+    std::wstring target_;
+    double since_ = 0, last_ = 0;
+};
+
 } // namespace md

@@ -300,3 +300,39 @@ TEST_CASE(controller_vertical_drag_remove) {
     auto along = g.c.pointerUp(POINT{gb.x, gb.y - 200});
     CHECK(along.kind != md::DragOutcome::Kind::Remove);
 }
+
+TEST_CASE(controller_dock_shrinks_to_fit_axis) {
+    // Comme macOS : trop d'éléments pour l'écran → tout le Dock rétrécit, rien ne sort de la fenêtre.
+    for (auto edge : {md::DockPosition::Left, md::DockPosition::Right, md::DockPosition::Bottom}) {
+        md::AppModel model;
+        md::DockController c;
+        md::Settings s;
+        md::Metrics m;
+        md::IconProvider icons;
+        s.showRecents = false;
+        s.position = edge;
+        model.setShowRecents(false);
+        std::vector<md::PinnedEntry> pins;
+        for (int i = 0; i < 25; ++i) {
+            std::wstring exe = L"c:\app" + std::to_wstring(i) + L".exe";
+            pins.push_back({md::PinKind::App, exe, exe, L"A"});
+        }
+        model.loadPinned(pins);
+        c.init(s, m, &model);
+        const UINT thick = UINT(md::DockController::windowHeightPx(s, m, 1));
+        const bool vertical = edge != md::DockPosition::Bottom;
+        c.setViewport(vertical ? thick : 700, vertical ? 700 : thick, 1);
+        auto f = c.buildFrame(false, icons);
+        if (vertical) {
+            CHECK(f.bgTop >= 0);
+            CHECK(f.bgBottom <= 700);
+        } else {
+            CHECK(f.bgLeft >= 0);
+            CHECK(f.bgRight <= 700);
+        }
+        REQUIRE(!f.icons.empty());
+        CHECK(f.icons.front().size < 48);   // cases réduites
+        auto hit = c.hitTest(POINT{LONG(f.icons.back().cx), LONG(f.icons.back().cy)});
+        CHECK(hit.has_value());             // la dernière icône (Corbeille) reste atteignable
+    }
+}

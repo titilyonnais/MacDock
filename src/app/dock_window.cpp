@@ -43,8 +43,6 @@ constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS" : vérification périodique du plein écran
-constexpr UINT_PTR kScreenPushTimer = 0x5350;   // "SP" : fin de la poussée vers un autre écran
-constexpr UINT kScreenPushMs = 350;             // durée de poussée contre le bord pour changer d'écran
 
 BOOL CALLBACK collectMonitor(HMONITOR mon, HDC, LPRECT, LPARAM lp) {
     MONITORINFOEXW mi{};
@@ -219,8 +217,12 @@ void DockApp::removeAppBar() {
 
 HMONITOR DockApp::dockMonitor() {
     monitors_ = enumMonitors();
-    // Écran courant s'il existe encore ; sinon l'écran enregistré, sinon le principal.
-    std::size_t i = initialMonitor(monitors_, screenName_.empty() ? settings_.screen : screenName_);
+    // Écran enregistré s'il est branché (il revient dès qu'on le rebranche), sinon l'écran courant, sinon le principal.
+    std::wstring wanted = settings_.screen;
+    if (wanted.empty() || std::none_of(monitors_.begin(), monitors_.end(),
+                                       [&](const MonitorInfo& m) { return toLower(m.name) == toLower(wanted); }))
+        wanted = screenName_;
+    std::size_t i = initialMonitor(monitors_, wanted);
     if (i >= monitors_.size()) return MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     if (monitors_[i].name != screenName_) {
         screenName_ = monitors_[i].name;
@@ -233,11 +235,15 @@ HMONITOR DockApp::dockMonitor() {
 void DockApp::checkScreenPush(POINT screen) {
     auto hit = pushedMonitor(monitors_, screen, settings_.position, int(metrics_.autohideEdgePx));
     std::wstring target = hit ? monitors_[*hit].name : std::wstring();
-    if (target == screenName_) target.clear();   // poussée sur l'écran du Dock : rien à faire
-    if (target == pushTarget_) return;
-    pushTarget_ = target;
-    if (target.empty()) KillTimer(hwnd_, kScreenPushTimer);
-    else SetTimer(hwnd_, kScreenPushTimer, kScreenPushMs, nullptr);
+    // Poussée sur l'écran du Dock, ou pendant un menu, une pile ou un glisser : rien à faire.
+    if (target == screenName_ || menuOpen_ || controller_.dragging()) target.clear();
+    std::wstring chosen = screenPush_.update(target, nowSeconds());
+    if (chosen.empty()) return;
+    screenName_ = chosen;
+    settings_.screen = chosen;
+    saveSettings();
+    log::info(L"[trace] écran du Dock : %s (poussée)", chosen.c_str());
+    onDisplayChanged();
 }
 
 void DockApp::onDisplayChanged() {
@@ -568,7 +574,6 @@ void DockApp::openStack(std::size_t index) {
             r.dockEdge = origin_.y + LONG(std::lround(frame.bgTop));
     }
     r.tile = settings_.tileSize;
-    r.icons = &icons_;
     if (trace_) log::info(L"[trace] pile %s : %zu éléments", item.key.c_str(), r.items.size());
     MenuWindow::Env env = popupEnv();
     controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant que la pile est ouverte
@@ -1048,22 +1053,6 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kVisibilityTimer) {
                 KillTimer(hwnd_, kVisibilityTimer);
                 requestFrame();
-                return 0;
-            }
-            if (wp == kScreenPushTimer) {
-                KillTimer(hwnd_, kScreenPushTimer);
-                POINT cursor;
-                GetCursorPos(&cursor);
-                auto hit = pushedMonitor(monitors_, cursor, settings_.position, int(metrics_.autohideEdgePx));
-                // Toujours poussé contre le bord du même écran : le Dock y passe et s'en souvient.
-                if (hit && monitors_[*hit].name == pushTarget_ && pushTarget_ != screenName_) {
-                    screenName_ = pushTarget_;
-                    settings_.screen = screenName_;
-                    saveSettings();
-                    log::info(L"[trace] écran du Dock : %s (poussée)", screenName_.c_str());
-                    onDisplayChanged();
-                }
-                pushTarget_.clear();
                 return 0;
             }
             if (wp == kFullscreenTimer) {

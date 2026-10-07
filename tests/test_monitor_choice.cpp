@@ -43,3 +43,24 @@ TEST_CASE(monitor_choice_falls_back_to_primary) {
     CHECK_EQ(md::initialMonitor(m, L"\\\\.\\display2"), std::size_t(0));   // casse ignorée
     CHECK_EQ(md::initialMonitor({}, L""), std::size_t(0));
 }
+
+TEST_CASE(monitor_push_requires_motion) {
+    md::ScreenPush push;
+    const std::wstring b = L"B";
+    // Souris posée au bord puis immobile : aucun événement, pas de changement d'écran.
+    CHECK(push.update(b, 0.0).empty());
+    CHECK(push.update(b, 0.6).empty());   // après un silence, la poussée repart de zéro
+    // Poussée continue (événements toutes les 20 ms) : confirmée après 0,35 s, une seule fois.
+    std::wstring got;
+    double t = 0.62;
+    for (; t < 1.2 && got.empty(); t += 0.02) got = push.update(b, t);
+    CHECK(got == b);
+    CHECK(t > 0.6 + 0.35);
+    CHECK(push.update(b, t + 0.02).empty());
+    // Changer d'écran visé, ou quitter le bord, remet à zéro.
+    md::ScreenPush other;
+    for (double u = 0; u < 0.3; u += 0.02) other.update(b, u);
+    CHECK(other.update(L"C", 0.32).empty());
+    CHECK(other.update(L"", 0.34).empty());
+    CHECK(other.update(b, 0.36).empty());
+}

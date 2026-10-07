@@ -11,6 +11,8 @@ struct FanSlot {
 };
 // Emplacements de bas en haut ; au plus kFanMaxItems.
 std::vector<FanSlot> fanLayout(std::size_t count, double tile);
+// Nombre d'emplacements de l'éventail dont l'icône tient dans roomPt au-dessus du centre de la pile (1 au moins).
+std::size_t fanCapacity(double tile, double roomPt);
 
 struct GridGeometry {
     int columns = 0, rows = 0, visibleRows = 0;

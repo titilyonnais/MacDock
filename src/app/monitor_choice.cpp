@@ -53,4 +53,18 @@ std::size_t initialMonitor(const std::vector<MonitorInfo>& monitors, const std::
     return 0;
 }
 
+std::wstring ScreenPush::update(const std::wstring& target, double now) {
+    if (target.empty() || target != target_ || now - last_ > kMaxSilence) {
+        target_ = target;
+        since_ = now;
+        last_ = now;
+        return {};
+    }
+    last_ = now;
+    if (now - since_ < kPushSeconds) return {};
+    std::wstring chosen = target_;
+    target_.clear();   // une seule fois par poussée
+    return chosen;
+}
+
 } // namespace md

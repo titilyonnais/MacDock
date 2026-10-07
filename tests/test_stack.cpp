@@ -87,3 +87,15 @@ TEST_CASE(stack_grid_columns_capped_at_five) {
     CHECK_EQ(all.visibleRows, all.rows);
     CHECK(all.width > 4 * 48);
 }
+
+TEST_CASE(stack_fan_capacity_fits_screen) {
+    CHECK_EQ(md::fanCapacity(48, 5000), md::kFanMaxItems);
+    const double room = 400;   // petit écran : place au-dessus de l'icône de la pile (points)
+    std::size_t cap = md::fanCapacity(48, room);
+    REQUIRE(cap >= 1);
+    CHECK(cap < md::kFanMaxItems);
+    auto slots = md::fanLayout(cap, 48);
+    CHECK(-slots.back().dy + 24 <= room);                         // le plus haut tient
+    CHECK(-md::fanLayout(cap + 1, 48).back().dy + 24 > room);    // un de plus ne tiendrait pas
+    CHECK_EQ(md::fanCapacity(48, 10), std::size_t(1));           // toujours au moins « Ouvrir dans l'Explorateur »
+}

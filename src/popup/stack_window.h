@@ -24,9 +24,9 @@ public:
         POINT iconCenter{};                                // écran : centre de l'icône de la pile
         LONG dockEdge = 0;                                 // écran : bord extérieur du Dock, côté ouverture
         double tile = 48;                                  // taille des cases du Dock (points)
-        IconProvider* icons = nullptr;
     };
     // Chemin choisi (un élément, ou le dossier pour « Ouvrir dans l'Explorateur ») ; vide si fermée sans choix.
+    // Si la fenêtre ne peut pas s'ouvrir, renvoie le dossier : le clic sur la pile l'ouvre dans l'Explorateur.
     static std::wstring track(const Env& env, const Request& request);
 };
 

@@ -29,6 +29,14 @@ std::vector<FanSlot> fanLayout(std::size_t count, double tile) {
     return out;
 }
 
+std::size_t fanCapacity(double tile, double roomPt) {
+    std::size_t n = 0;
+    for (const FanSlot& s : fanLayout(kFanMaxItems, tile))
+        if (-s.dy + tile / 2 <= roomPt) ++n;   // les emplacements montent : le premier qui dépasse arrête tout
+        else break;
+    return std::max<std::size_t>(n, 1);
+}
+
 GridGeometry gridLayout(std::size_t count, double tile, double maxHeight) {
     GridGeometry g;
     const std::size_t n = std::min(count, kGridMaxItems);

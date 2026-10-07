@@ -8,6 +8,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
@@ -24,6 +27,7 @@ template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 
 constexpr wchar_t kClass[] = L"MacDockStack";
 constexpr UINT WM_STACK_BACKDROP = WM_APP + 7;
+constexpr UINT WM_STACK_ICON = WM_APP + 8;   // wParam : index ; lParam : IconProvider::ImagePtr* à reprendre
 constexpr double kFanOpenSeconds = 0.24;   // les icônes jaillissent de la pile le long de l'arc
 constexpr double kGridFadeSeconds = 0.14;
 constexpr float kLabelFont = 13, kNameFont = 11, kTitleFont = 13;
@@ -55,6 +59,13 @@ struct Entry {
     float cx = 0, cy = 0, angle = 0;   // éventail : centre de l'icône (fenêtre) et inclinaison
 };
 
+// Images extraites hors du thread de l'interface : une vignette peut prendre des secondes, et ce thread porte
+// le hook souris bas niveau de la pile (Windows le retire s'il ne répond plus). hwnd nul = pile fermée.
+struct Loader {
+    std::mutex mutex;
+    HWND hwnd = nullptr;
+};
+
 struct Session {
     StackWindow::Env env;
     const StackWindow::Request* req = nullptr;
@@ -82,7 +93,7 @@ struct Session {
     HWND hwnd = nullptr;
     RECT rc{};                 // fenêtre (écran)
     std::vector<Entry> entries;
-    std::size_t nextIcon = 0;  // chargement progressif des images
+    std::shared_ptr<Loader> loader;
     int iconPx = 48;
     POINT origin{};            // éventail : centre de l'icône de la pile (fenêtre)
 
@@ -104,11 +115,12 @@ struct Session {
 
     bool init();
     Com<IDWriteTextFormat> makeFormat(float size, DWRITE_FONT_WEIGHT weight, bool center, bool wrap);
-    void buildEntries();
+    void buildEntries(std::size_t fanSlots);
     void layoutFan(const RECT& mon);
     void layoutGrid(const RECT& mon);
     bool createWindow();
-    void loadNextIcon();
+    void startLoading();
+    void stopLoading();
     ID2D1Bitmap1* bitmapOf(Entry& e);
     double progress() const;
     void render();
@@ -186,9 +198,9 @@ Com<IDWriteTextFormat> Session::makeFormat(float size, DWRITE_FONT_WEIGHT weight
 
 // Éléments affichés : ceux du dossier (plafonnés), puis « Ouvrir dans l'Explorateur » (en haut de l'éventail,
 // en bas de la grille).
-void Session::buildEntries() {
+void Session::buildEntries(std::size_t fanSlots) {
     const auto& items = req->items;
-    const std::size_t cap = fan ? kFanMaxItems - 1 : kGridMaxItems;
+    const std::size_t cap = fan ? std::max<std::size_t>(fanSlots, 1) - 1 : kGridMaxItems;
     const std::size_t n = std::min(items.size(), cap);
     for (std::size_t i = 0; i < n; ++i) entries.push_back({items[i].path, items[i].name});
     Entry open{req->folder, L"Ouvrir dans l'Explorateur"};
@@ -282,12 +294,43 @@ bool Session::createWindow() {
     return true;
 }
 
-void Session::loadNextIcon() {
-    if (nextIcon >= entries.size() || !req->icons) return;
-    Entry& e = entries[nextIcon++];
-    e.image = req->icons->file(e.path, iconPx);
-    e.loaded = true;
+void Session::startLoading() {
+    loader = std::make_shared<Loader>();
+    loader->hwnd = hwnd;
+    std::vector<std::wstring> paths;
+    for (const auto& e : entries) paths.push_back(e.path);
+    std::thread([l = loader, paths = std::move(paths), px = iconPx] {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        {
+            IconProvider icons;   // propre à ce thread : le cache du Dock n'est pas partagé
+            for (std::size_t i = 0; i < paths.size(); ++i) {
+                {
+                    std::lock_guard lock(l->mutex);
+                    if (!l->hwnd) break;
+                }
+                auto* box = new IconProvider::ImagePtr(icons.file(paths[i], px));
+                bool posted = false;
+                {
+                    std::lock_guard lock(l->mutex);
+                    posted = l->hwnd && PostMessageW(l->hwnd, WM_STACK_ICON, i, reinterpret_cast<LPARAM>(box));
+                }
+                if (!posted) delete box;
+            }
+        }
+        CoUninitialize();
+    }).detach();
 }
+
+void Session::stopLoading() {
+    if (loader) {
+        std::lock_guard lock(loader->mutex);
+        loader->hwnd = nullptr;
+    }
+    MSG msg;
+    while (hwnd && PeekMessageW(&msg, hwnd, WM_STACK_ICON, WM_STACK_ICON, PM_REMOVE))
+        delete reinterpret_cast<IconProvider::ImagePtr*>(msg.lParam);
+}
+
 
 ID2D1Bitmap1* Session::bitmapOf(Entry& e) {
     if (e.bitmap || !e.image) return e.bitmap.Get();
@@ -504,6 +547,16 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ACTIVATE:
             if (LOWORD(wp) == WA_INACTIVE) done = true;
             return 0;
+        case WM_STACK_ICON: {
+            std::unique_ptr<IconProvider::ImagePtr> box(reinterpret_cast<IconProvider::ImagePtr*>(lp));
+            if (wp < entries.size()) {
+                entries[wp].image = *box;
+                entries[wp].loaded = true;
+                entries[wp].bitmap.Reset();
+                render();
+            }
+            return 0;
+        }
         case WM_STACK_BACKDROP:
             if (screen.take(env.device) && screen.copyTo(env.device, rc, backdrop)) render();
             return 0;
@@ -527,18 +580,22 @@ std::wstring StackWindow::track(const Env& env, const Request& request) {
     s.req = &request;
     s.fan = request.view != StackView::Grid;
     if (!s.init()) {
-        log::warn(L"Pile : initialisation graphique impossible");
-        return {};
+        log::warn(L"Pile : initialisation graphique impossible ; ouverture dans l'Explorateur");
+        return request.folder;
     }
-    s.buildEntries();
     HMONITOR mon = MonitorFromPoint(request.iconCenter, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{sizeof mi};
     GetMonitorInfoW(mon, &mi);
+    // Éventail : seulement les emplacements qui tiennent sous le haut de l'écran (« N de plus » compris).
+    const double room = double(request.iconCenter.y - mi.rcMonitor.top) / env.scale - 24;
+    s.buildEntries(fanCapacity(request.tile, room));
     if (s.fan) s.layoutFan(mi.rcMonitor);
     else s.layoutGrid(mi.rcMonitor);
     if (!s.createWindow()) {
-        log::warn(L"Pile : création de la fenêtre impossible");
-        return {};
+        log::warn(L"Pile : création de la fenêtre impossible ; ouverture dans l'Explorateur");
+        if (s.hwnd) DestroyWindow(s.hwnd);
+        s.hwnd = nullptr;
+        return request.folder;
     }
 
     g_session = &s;
@@ -549,6 +606,7 @@ std::wstring StackWindow::track(const Env& env, const Request& request) {
         ~Cleanup() {
             if (h) UnhookWindowsHookEx(h);
             g_session = nullptr;
+            s.stopLoading();
             s.screen.stop();
             if (s.hwnd) DestroyWindow(s.hwnd);
         }
@@ -584,15 +642,15 @@ std::wstring StackWindow::track(const Env& env, const Request& request) {
             log::info(L"[trace] pile : élément %zu (%s) x=%ld y=%ld", i, s.entries[i].name.c_str(), x, y);
         }
     }
+    s.startLoading();
     s.render();
     ShowWindow(s.hwnd, SW_SHOW);
     forceForeground(s.hwnd);   // Échap et la molette vont à la pile
     SetFocus(s.hwnd);
 
-    // Boucle modale : animation d'ouverture, chargement progressif des images, entrées.
+    // Boucle modale : animation d'ouverture et entrées (les images arrivent par WM_STACK_ICON).
     while (!s.done) {
         const bool animating = s.progress() < 1;
-        const bool loading = s.nextIcon < s.entries.size();
         MSG msg;
         if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
@@ -601,12 +659,6 @@ std::wstring StackWindow::track(const Env& env, const Request& request) {
             }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
-            continue;
-        }
-        if (loading) {
-            // Quelques images par tour : les vignettes peuvent être lentes, la fenêtre reste réactive.
-            for (int k = 0; k < 4 && s.nextIcon < s.entries.size(); ++k) s.loadNextIcon();
-            s.render();
             continue;
         }
         if (animating) {

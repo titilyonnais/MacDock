@@ -7,6 +7,10 @@
 
 namespace md {
 
+namespace {
+constexpr double kFitMarginPt = 4;   // marge laissée à chaque bout de l'axe quand le Dock doit rétrécir
+} // namespace
+
 void DockController::init(const Settings& s, const Metrics& m, AppModel* model) {
     model_ = model;
     setSettings(s);
@@ -85,6 +89,17 @@ DockController::Laid DockController::layout() const {
     in.separatorWidth = metrics_.separatorWidth;
     in.separatorMargin = metrics_.separatorMargin;
     in.rangeTiles = metrics_.magnifyRangeTiles;
+    // Trop d'éléments pour l'axe (Dock vertical sur un portable…) : tout le Dock rétrécit, cases, écarts et
+    // marges ensemble, comme sur macOS — la longueur au repos est proportionnelle à ces mesures.
+    const double room = width_ / scale_ - 2 * kFitMarginPt;
+    if (const double rest = computeLayout(in).restLength; room > 0 && rest > room) {
+        const double f = room / rest;
+        in.tileSize *= f;
+        in.largeSize *= f;
+        in.gap *= f;
+        in.padding *= f;
+        in.separatorMargin *= f;
+    }
     in.amount = amount_.value();
     in.cursor = cursor_;
     out.r = computeLayout(in);
