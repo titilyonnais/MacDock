@@ -57,10 +57,14 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
     edge_ = edge;
     effect_ = effect;
     restore_ = restore;
-    // Assez de bandes pour une courbe lisse (une toutes les 2 px de la fenêtre) : sans marches visibles.
+    UnionRect(&box_, &from_, &to_);
+    InflateRect(&box_, 2, 2);
+    // Rendu GPU lancé d'abord (capture sur un fil) ; les bandes couvrent l'attente : peu s'il doit arriver vite,
+    // toutes (une toutes les 4 px) s'il est absent, ou s'il tarde (growStrips).
+    gpuStarted_ = gpu_.begin(instance, source, box_);
     const LONG extent = edge == DockPosition::Bottom ? from.bottom - from.top : from.right - from.left;
-    // GPU prêt : les bandes ne couvrent que les premières images (la capture arrive vers 60 ms), 48 suffisent.
-    slices_ = effect == MinimizeEffect::Scale ? 1 : gpu_.ready() ? std::min(48, genieSliceCount(extent)) : genieSliceCount(extent);
+    fullSlices_ = effect == MinimizeEffect::Scale ? 1 : genieSliceCount(extent);
+    slices_ = genieStripTarget(fullSlices_, gpuStarted_, 0);
     rows_ = effect == MinimizeEffect::Scale ? 1 : std::clamp(int(extent / 3), 48, 256);   // maillage GPU : une rangée / 3 px
     for (int i = 1; i < slices_; ++i) {
         HTHUMBNAIL t = nullptr;
@@ -70,13 +74,11 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
         }
         thumbs_.push_back(t);
     }
-    UnionRect(&box_, &from_, &to_);
-    InflateRect(&box_, 2, 2);
     start_ = now;
+    elapsed_ = 0;
     duration_ = minimizeDuration(effect, slow);
     running_ = true;
     stripsHidden_ = false;
-    gpu_.begin(instance, source, box_);   // capture lancée ; les bandes couvrent l'attente
     show(restore ? 1.0 : 0.0);   // première image posée avant d'afficher la fenêtre : pas d'éclair
     SetWindowPos(hwnd_, HWND_TOPMOST, box_.left, box_.top, box_.right - box_.left, box_.bottom - box_.top,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -92,7 +94,9 @@ void GenieWindow::show(double t) {
     if (stripsHidden_) {   // GPU perdu en route : les bandes reprennent
         ShowWindow(hwnd_, SW_SHOWNA);
         stripsHidden_ = false;
+        gpuStarted_ = false;
     }
+    growStrips();
     const auto slices = minimizeFrame(effect_, src_, from_, to_, edge_, t, slices_);
     for (std::size_t i = 0; i < thumbs_.size(); ++i) {
         DWM_THUMBNAIL_PROPERTIES p{};
@@ -110,8 +114,19 @@ void GenieWindow::show(double t) {
     }
 }
 
+void GenieWindow::growStrips() {
+    const int want = genieStripTarget(fullSlices_, gpuStarted_, elapsed_);
+    while (int(thumbs_.size()) < want) {
+        HTHUMBNAIL t = nullptr;
+        if (FAILED(DwmRegisterThumbnail(hwnd_, source_, &t))) break;
+        thumbs_.push_back(t);
+    }
+    slices_ = int(thumbs_.size());
+}
+
 bool GenieWindow::step(double now) {
     if (!running_) return false;
+    elapsed_ = now - start_;
     if (!IsWindow(source_)) {   // fenêtre fermée pendant l'animation
         finish();
         return false;

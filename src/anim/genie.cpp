@@ -142,6 +142,10 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
     return out;
 }
 
+int genieStripTarget(int full, bool gpuPending, double elapsed) {
+    return gpuPending && elapsed < 0.15 ? std::min(48, full) : full;
+}
+
 int genieSliceCount(long extent) { return std::clamp(int(extent / 4), 16, 128); }
 
 std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,

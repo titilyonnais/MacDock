@@ -26,6 +26,7 @@ public:
     bool poll(const std::function<void(ID3D11Texture2D*, UINT, UINT)>& use);
     void stop();   // ferme la capture, retire la miniature, cache le relais
     bool active() const;
+    HMONITOR monitor() const;   // écran le plus proche du relais (son blanc SDR est celui de la capture)
 
 private:
     struct Impl;

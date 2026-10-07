@@ -34,6 +34,9 @@ std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from,
 
 // Durée en secondes (Maj enfoncée : ralenti × 8) ; 0 pour l'effet Windows.
 double minimizeDuration(MinimizeEffect e, bool slow);
+// Bandes à tenir pour une fenêtre qui en vaut full : 48 au plus tant que le rendu GPU est attendu (il couvre
+// l'animation vers 70 ms), toutes s'il est absent ou encore là au bout de 150 ms (capture ratée).
+int genieStripTarget(int full, bool gpuPending, double elapsed);
 // Bandes du repli par miniatures DWM (un appel à DWM par bande et par image) : une toutes les 4 px, 16 à 128.
 int genieSliceCount(long extent);
 

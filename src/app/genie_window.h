@@ -33,6 +33,7 @@ public:
 private:
     bool ensureWindow(HINSTANCE instance);
     void show(double t);
+    void growStrips();   // bandes ajoutées si le GPU tarde ou fait défaut
 
     HWND hwnd_ = nullptr;
     std::vector<HTHUMBNAIL> thumbs_;
@@ -41,7 +42,9 @@ private:
     SIZE src_{};
     DockPosition edge_ = DockPosition::Bottom;
     MinimizeEffect effect_ = MinimizeEffect::Genie;
-    int slices_ = 48, rows_ = 1;
+    int slices_ = 48, rows_ = 1, fullSlices_ = 48;
+    bool gpuStarted_ = false;   // capture GPU lancée pour cette animation
+    double elapsed_ = 0;        // secondes depuis le départ
     GenieSurface gpu_;
     bool stripsHidden_ = false;   // le GPU a pris le relais : fenêtre des bandes cachée
     bool restore_ = false, running_ = false;

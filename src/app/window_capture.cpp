@@ -110,6 +110,10 @@ struct WindowCapture::Impl {
     }
 
     void run() {   // fil de travail
+        // La miniature vient d'être posée sur le relais : deux compositions de DWM avant de capturer, sinon la
+        // première image peut être vide (et la fenêtre disparaîtrait en pleine animation).
+        DwmFlush();
+        DwmFlush();
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         try {
             auto interop = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
@@ -159,6 +163,8 @@ bool WindowCapture::supported() {
 
 bool WindowCapture::active() const { return impl_->thumb != nullptr; }
 
+HMONITOR WindowCapture::monitor() const { return MonitorFromWindow(impl_->relay, MONITOR_DEFAULTTONEAREST); }
+
 void WindowCapture::prepare(HINSTANCE instance) {
     if (supported()) impl_->ensureRelay(instance);
 }
@@ -169,6 +175,10 @@ bool WindowCapture::start(HINSTANCE instance, ID3D11Device* dev, HWND source) {
     stop();
     Impl& m = *impl_;
     if (!dev || !IsWindow(source) || !supported() || !m.ensureRelay(instance) || !m.ensureDevice(dev)) return false;
+    // Fenêtre protégée contre la capture (gestionnaire de mots de passe, banque…) : la capture serait noire ou vide ;
+    // les bandes DWM, elles, l'affichent.
+    DWORD affinity = WDA_NONE;
+    if (GetWindowDisplayAffinity(source, &affinity) && affinity != WDA_NONE) return false;
     if (FAILED(DwmRegisterThumbnail(m.relay, source, &m.thumb))) {
         m.thumb = nullptr;
         return false;

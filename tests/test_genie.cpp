@@ -319,3 +319,11 @@ TEST_CASE(genie_mesh_scale_and_windows) {
     CHECK(md::genieMesh(md::MinimizeEffect::Windows, kSrc, kWin, kTile, md::DockPosition::Bottom, 0.5, 64).empty());
     CHECK(md::genieMesh(md::MinimizeEffect::Genie, SIZE{0, 0}, kWin, kTile, md::DockPosition::Bottom, 0.5, 64).empty());
 }
+
+TEST_CASE(genie_strip_target_grows_when_gpu_is_late) {   // relecture n° 1 : capture ratée → toutes les bandes
+    CHECK_EQ(md::genieStripTarget(128, true, 0.0), 48);     // GPU attendu : peu de bandes au début
+    CHECK_EQ(md::genieStripTarget(128, true, 0.149), 48);
+    CHECK_EQ(md::genieStripTarget(128, true, 0.15), 128);   // toujours rien après 150 ms : qualité complète
+    CHECK_EQ(md::genieStripTarget(128, false, 0.0), 128);   // GPU absent ou en échec
+    CHECK_EQ(md::genieStripTarget(20, true, 0.0), 20);      // petite fenêtre : jamais plus que le plein
+}

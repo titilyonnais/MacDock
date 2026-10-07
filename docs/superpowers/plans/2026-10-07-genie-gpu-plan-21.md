@@ -3,13 +3,13 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans. Étapes en `- [ ]`.
 
 **Goal :** un effet génie (et échelle) fluide et net comme sur macOS : une seule capture de la fenêtre, déformée
-sur la carte graphique par un maillage lisse, avec mipmaps et anticrénelage, au lieu de centaines de miniatures DWM.
+sur la carte graphique par un maillage lisse, avec mipmaps et anticrénelage (dans le shader, sans MSAA), au lieu de centaines de miniatures DWM.
 
 **Architecture :** la fenêtre réduite n'est plus capturable directement (Windows.Graphics.Capture ne donne aucune
 image d'une fenêtre réduite), mais sa miniature DWM l'est : une fenêtre relais hors écran porte la miniature à
 taille réelle, WGC capture le relais (10 à 20 ms, sondé). La texture (mipmaps générées) est dessinée par D3D11 dans
-une chaîne d'échange DirectComposition (MSAA 4×), maillage de `genieMesh` (logique pure, sous-pixel). Pendant
-l'attente de la première image, l'ancien rendu par bandes (au plus 128) assure l'animation ; repli complet sur lui
+une chaîne d'échange DirectComposition, maillage de `genieMesh` (logique pure, sous-pixel). Pendant
+l'attente de la première image, l'ancien rendu par bandes (48, toutes au-delà de 150 ms) assure l'animation ; repli complet sur lui
 si WGC est indisponible ou échoue.
 
 **Tech Stack :** C++20/MSVC, D3D11, DXGI, DirectComposition, C++/WinRT (Windows.Graphics.Capture), DWM.

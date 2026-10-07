@@ -67,6 +67,10 @@ bool GenieSurface::prepare(HINSTANCE instance) {
 
 bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
     end();
+    if (dev_ && FAILED(dev_->GetDeviceRemovedReason())) {   // perdu au repos (pilote, veille, changement de carte)
+        log::info(L"Génie : périphérique GPU perdu, recréé");
+        reset();
+    }
     if (!prepare(instance)) return false;
     const UINT w = UINT(std::max<LONG>(1, box.right - box.left)), h = UINT(std::max<LONG>(1, box.bottom - box.top));
     if (!swap_ || w != sw_ || h != sh_) {
@@ -101,9 +105,10 @@ bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
         sh_ = h;
     }
     box_ = box;
-    gpu_.setWhite(BackdropCapture::querySdrWhite(MonitorFromRect(&box, MONITOR_DEFAULTTONEAREST)));
     SetWindowPos(hwnd_, HWND_TOPMOST, box.left, box.top, LONG(w), LONG(h), SWP_NOACTIVATE);
     capturing_ = capture_.start(instance, dev_.Get(), source);   // démarrage de la capture sur un fil : retour immédiat
+    // La capture scRGB porte le blanc SDR de l'écran du relais (le plus à gauche), pas celui de l'animation.
+    if (capturing_) gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
     return capturing_;
 }
 
@@ -118,7 +123,9 @@ bool GenieSurface::frame(const std::vector<GenieVertex>& mesh) {
     Com<ID3D11Texture2D> back;
     if (FAILED(swap_->GetBuffer(0, IID_PPV_ARGS(&back))) ||
         !gpu_.draw(ctx_.Get(), back.Get(), sw_, sh_, POINT{box_.left, box_.top}, mesh)) {
+        back.Reset();
         end();
+        if (FAILED(dev_->GetDeviceRemovedReason())) reset();   // recréé à la prochaine animation
         return false;
     }
     back.Reset();

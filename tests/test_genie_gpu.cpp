@@ -1,4 +1,4 @@
-// Génie sur le GPU : maillage texturé (mipmaps, MSAA), rendu hors écran sur WARP.
+// Génie sur le GPU : maillage texturé (mipmaps, bords anticrénelés dans le shader), rendu hors écran sur WARP.
 #include "minitest.h"
 #include <windows.h>
 #include <objbase.h>
@@ -72,7 +72,7 @@ TEST_CASE(genie_gpu_shrunk_source_keeps_colour) {
     REQUIRE(!out.empty());
     const auto* p = at(out, 64, 24, 20);
     CHECK(p[2] > 245 && p[1] < 10 && p[0] < 10 && p[3] > 245);
-    // Bord du maillage anticrénelé : un pixel partiellement couvert (MSAA) existe sur un bord en biais.
+    // Bord du maillage anticrénelé : un pixel partiellement couvert existe sur un bord en biais.
     const auto bent = md::genieMesh(md::MinimizeEffect::Genie, SIZE{256, 192}, RECT{0, 0, 256, 192}, RECT{100, 300, 132, 324},
                                     md::DockPosition::Bottom, 0.4, 64);
     const auto edge = md::genieRenderToBgra(src, bent, 256, 330, POINT{0, 0});
