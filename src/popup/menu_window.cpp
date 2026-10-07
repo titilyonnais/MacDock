@@ -47,6 +47,7 @@ struct Panel {
     const MenuModel* model = nullptr;
     MenuLayout layout;
     std::vector<Com<IDWriteTextLayout>> texts;
+    std::vector<Com<IDWriteTextLayout>> shortcuts;   // raccourcis (alignés à droite), nullptr si aucun
     std::vector<Com<ID2D1Bitmap1>> icons;   // icônes des entrées, créées au premier rendu
     HWND hwnd = nullptr;
     RECT rc{};                 // fenêtre (écran), marge d'ombre comprise
@@ -94,6 +95,7 @@ struct Session {
     bool done = false;
     UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
     MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal
+    const MenuWindow::BarLink* bar = nullptr;           // barre de menus (titres voisins), sinon nullptr
     double hoverSince = 0;
 
     float s() const { return env.scale; }
@@ -149,6 +151,14 @@ struct Session {
         for (auto& p : panels) render(*p);
     }
     void activate(Panel& p, int index);
+    // Barre de menus : ferme le menu pour ouvrir le titre voisin (dir = -1 ou +1) ; false sans barre.
+    bool switchTitle(int dir) {
+        if (!bar || bar->titles.size() < 2 || bar->current < 0) return false;
+        const int n = int(bar->titles.size());
+        result = menuSwitchResult(((bar->current + dir) % n + n) % n);
+        done = true;
+        return true;
+    }
     void openSubmenu(Panel& p, int index, bool selectFirst);
     LRESULT handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp);
 };
@@ -161,6 +171,16 @@ LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && g_session && g_session->swallowUp && wp == g_session->swallowUp) {
         g_session->swallowUp = 0;
         return 1;
+    }
+    if (code == HC_ACTION && g_session && wp == WM_MOUSEMOVE && g_session->bar && !g_session->done) {
+        // Barre de menus : le survol d'un autre titre ouvre son menu, comme sur macOS.
+        POINT pt = reinterpret_cast<MSLLHOOKSTRUCT*>(lp)->pt;
+        int k = barTitleAt(g_session->bar->titles, pt, g_session->bar->current);
+        if (k >= 0) {
+            g_session->result = menuSwitchResult(k);
+            g_session->done = true;
+            if (!g_session->panels.empty()) PostMessageW(g_session->panels.front()->hwnd, WM_NULL, 0, 0);
+        }
     }
     if (code == HC_ACTION && g_session &&
         (wp == WM_LBUTTONDOWN || wp == WM_RBUTTONDOWN || wp == WM_MBUTTONDOWN || wp == WM_XBUTTONDOWN)) {
@@ -197,18 +217,26 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->session = this;
     p->owned = std::move(owned);
     p->model = p->owned ? p->owned.get() : &model;
-    float maxText = 0;
+    float maxText = 0, maxShortcut = 0;
     for (auto& it : p->model->items) {
-        Com<IDWriteTextLayout> t;
+        Com<IDWriteTextLayout> t, k;
         if (!it.separator() &&
             SUCCEEDED(dwrite->CreateTextLayout(it.text.c_str(), UINT32(it.text.size()), format.Get(), 4000, 200, &t))) {
             DWRITE_TEXT_METRICS tm{};
             t->GetMetrics(&tm);
             maxText = std::max(maxText, tm.width);
         }
+        if (!it.separator() && !it.shortcut.empty() &&
+            SUCCEEDED(dwrite->CreateTextLayout(it.shortcut.c_str(), UINT32(it.shortcut.size()), format.Get(), 4000, 200,
+                                               &k))) {
+            DWRITE_TEXT_METRICS km{};
+            k->GetMetrics(&km);
+            maxShortcut = std::max(maxShortcut, km.width);
+        }
         p->texts.push_back(t);
+        p->shortcuts.push_back(k);
     }
-    p->layout = layoutMenu(*p->model, maxText / s());
+    p->layout = layoutMenu(*p->model, maxText / s(), maxShortcut / s());
     p->margin = std::ceil(float(env.metrics.shadowBlur) * 1.5f * s() + 4);
     const LONG w = LONG(std::ceil(p->layout.width * s() + 2 * p->margin));
     const LONG h = LONG(std::ceil(p->layout.height * s() + 2 * p->margin));
@@ -232,6 +260,9 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         } else if (side == MenuWindow::Side::Left) {
             left = anchor.x - w + LONG(p->margin);
             top = anchor.y - h / 2;
+        } else if (side == MenuWindow::Side::Below) {
+            left = anchor.x - LONG(p->margin);
+            top = anchor.y - LONG(p->margin);
         }
     }
     left = std::clamp(left, m.left - LONG(p->margin), std::max(m.left, m.right - w + LONG(p->margin)));
@@ -437,12 +468,14 @@ void Session::render(Panel& p) {
     d->DrawRoundedRectangle(rr, border.Get(), std::max(1.0f, sc * 0.5f));
 
     // Entrées.
-    Com<ID2D1SolidColorBrush> text, disabled, accent, white, sep;
+    Com<ID2D1SolidColorBrush> text, disabled, accent, white, sep, keyInk, keyHot;
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &text);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.30f * opacity) : rgba(0, 0, 0, 0.28f * opacity), &disabled);
     d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);   // bleu macOS
     d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.12f * opacity) : rgba(0, 0, 0, 0.10f * opacity), &sep);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.45f * opacity) : rgba(0, 0, 0, 0.45f * opacity), &keyInk);
+    d->CreateSolidColorBrush(rgba(1, 1, 1, 0.70f * opacity), &keyHot);
     const float x0 = panel.left + float(kMenuPadding) * sc;
     const float x1 = panel.right - float(kMenuPadding) * sc;
     for (size_t i = 0; i < p.model->items.size(); ++i) {
@@ -481,6 +514,12 @@ void Session::render(Panel& p) {
             DWRITE_TEXT_METRICS tm{};
             p.texts[i]->GetMetrics(&tm);
             d->DrawTextLayout({textX + float(p.layout.iconSpace) * sc, top + (rowH - tm.height) / 2}, p.texts[i].Get(), ink);
+        }
+        if (i < p.shortcuts.size() && p.shortcuts[i] && it.submenu.empty()) {   // raccourci, aligné à droite
+            DWRITE_TEXT_METRICS km{};
+            p.shortcuts[i]->GetMetrics(&km);
+            ID2D1SolidColorBrush* kInk = !it.enabled ? disabled.Get() : hot ? keyHot.Get() : keyInk.Get();
+            d->DrawTextLayout({x1 - 8 * sc - km.width, top + (rowH - km.height) / 2}, p.shortcuts[i].Get(), kInk);
         }
         if (!it.submenu.empty()) {   // chevron ›
             float cx = x1 - 10 * sc, cy = top + rowH / 2, a = 3.5f * sc;
@@ -568,12 +607,17 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
                     render(deep);
                     break;
                 case VK_RIGHT:
-                    if (deep.hover >= 0) openSubmenu(deep, deep.hover, true);
+                    if (deep.hover >= 0 && !deep.model->items[size_t(deep.hover)].submenu.empty())
+                        openSubmenu(deep, deep.hover, true);
+                    else
+                        switchTitle(+1);
                     break;
                 case VK_LEFT:
                     if (panels.size() > 1) {
                         closeBelow(int(panels.size()) - 2);
                         render(*panels.back());
+                    } else {
+                        switchTitle(-1);
                     }
                     break;
                 case VK_RETURN:
@@ -603,7 +647,7 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side) {
+int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar) {
     if (model.items.empty()) return 0;
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = panelProc;
@@ -615,6 +659,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
     Session session;
     session.env = env;
     session.side = side;
+    session.bar = bar;
     g_session = &session;
     HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, outsideClickHook, env.instance, 0);
     struct Unhook {

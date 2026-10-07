@@ -10,6 +10,8 @@
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/shortcut.h"
 
+#include <set>
+
 namespace {
 md::BarLayoutInput wideBar(double width) {
     md::BarLayoutInput in;
@@ -232,4 +234,139 @@ TEST_CASE(menubar_settings_clamped) {
     auto d = md::menuBarSettingsFromJson(md::json::Value(42));
     CHECK_NEAR(d.metrics.height, 24, 1e-9);
     CHECK(d.showSound);
+}
+
+// ---- Menus de la barre ----
+#include "../src/menubar/app_menus.h"
+
+namespace {
+const md::MenuItem* findItem(const md::BarMenu& menu, const std::wstring& text) {
+    for (auto& it : menu.model.items)
+        if (it.text == text) return &it;
+    return nullptr;
+}
+const md::BarMenu* findMenu(const md::BarMenus& b, const std::wstring& title) {
+    for (auto& m : b.menus)
+        if (m.title == title) return &m;
+    return nullptr;
+}
+md::MenuAction actionOf(const md::BarMenus& b, const md::MenuItem* it) {
+    if (!it) return {};
+    auto f = b.actions.find(it->id);
+    return f == b.actions.end() ? md::MenuAction{} : f->second;
+}
+md::BarContext appContext() {
+    md::BarContext c;
+    c.appName = L"Notes";
+    c.userName = L"Camille";
+    return c;
+}
+} // namespace
+
+TEST_CASE(menus_logo_has_system_actions) {
+    auto b = md::buildBarMenus(appContext());
+    REQUIRE(!b.menus.empty());
+    const auto& logo = b.menus[0];
+    CHECK(logo.logo);
+    CHECK(actionOf(b, findItem(logo, L"Éteindre…")).kind == md::ActionKind::Shutdown);
+    CHECK(actionOf(b, findItem(logo, L"Redémarrer…")).kind == md::ActionKind::Restart);
+    CHECK(actionOf(b, findItem(logo, L"Suspendre")).kind == md::ActionKind::Sleep);
+    auto* lock = findItem(logo, L"Verrouiller l'écran");
+    REQUIRE(lock != nullptr);
+    CHECK(lock->shortcut == L"Win+L");
+    CHECK(actionOf(b, lock).kind == md::ActionKind::Lock);
+    CHECK(actionOf(b, findItem(logo, L"Fermer la session de Camille…")).kind == md::ActionKind::SignOut);
+    auto about = actionOf(b, findItem(logo, L"À propos de ce PC"));
+    CHECK(about.kind == md::ActionKind::OpenUri);
+    CHECK(about.arg == L"ms-settings:about");
+}
+
+TEST_CASE(menus_app_named_and_bold) {
+    auto b = md::buildBarMenus(appContext());
+    REQUIRE(b.menus.size() == 7);   // logo, app, Fichier, Édition, Présentation, Fenêtre, Aide
+    CHECK(b.menus[1].bold);
+    CHECK(b.menus[1].title == L"Notes");
+    CHECK(actionOf(b, findItem(b.menus[1], L"Quitter Notes")).kind == md::ActionKind::QuitApp);
+    CHECK(actionOf(b, findItem(b.menus[1], L"Masquer Notes")).kind == md::ActionKind::HideApp);
+    const wchar_t* titles[] = {L"Fichier", L"Édition", L"Présentation", L"Fenêtre", L"Aide"};
+    for (std::size_t i = 0; i < 5; ++i) {
+        CHECK(b.menus[i + 2].title == titles[i]);
+        CHECK(!b.menus[i + 2].bold);
+    }
+    auto save = findItem(b.menus[2], L"Enregistrer");
+    REQUIRE(save != nullptr);
+    CHECK(save->shortcut == L"Ctrl+S");
+    auto a = actionOf(b, save);
+    CHECK(a.kind == md::ActionKind::Shortcut);
+    CHECK(a.arg == L"Ctrl+S");
+}
+
+TEST_CASE(menus_generic_shortcuts_parse) {
+    md::BarContext explorer = appContext();
+    explorer.appName = L"Explorateur";
+    explorer.explorer = true;
+    for (const auto& ctx : {appContext(), explorer}) {
+        auto b = md::buildBarMenus(ctx);
+        std::set<int> ids;
+        for (auto& m : b.menus)
+            for (auto& it : m.model.items) {
+                if (it.separator()) continue;
+                CHECK(ids.insert(it.id).second);                         // identifiants uniques
+                CHECK(b.actions.count(it.id) == 1);                      // chaque entrée a son action
+                if (!it.shortcut.empty()) CHECK(md::parseShortcut(it.shortcut).has_value());
+                auto a = b.actions[it.id];
+                if (a.kind == md::ActionKind::Shortcut) CHECK(md::parseShortcut(a.arg).has_value());
+            }
+    }
+}
+
+TEST_CASE(menus_explorer_has_go_menu) {
+    md::BarContext c = appContext();
+    c.appName = L"Explorateur";
+    c.explorer = true;
+    auto b = md::buildBarMenus(c);
+    auto* go = findMenu(b, L"Aller");
+    REQUIRE(go != nullptr);
+    auto dl = actionOf(b, findItem(*go, L"Téléchargements"));
+    CHECK(dl.kind == md::ActionKind::GoTo);
+    CHECK(dl.arg == L"shell:Downloads");
+    CHECK(findItem(b.menus[1], L"Quitter Explorateur") == nullptr);   // comme le Finder : on ne le quitte pas
+    CHECK(actionOf(b, findItem(b.menus[1], L"Vider la Corbeille…")).kind == md::ActionKind::EmptyTrash);
+    CHECK(findMenu(b, L"Fichier") != nullptr && findMenu(b, L"Fenêtre") != nullptr);
+}
+
+TEST_CASE(menus_desktop_close_disabled) {
+    md::BarContext c = appContext();
+    c.appName = L"Explorateur";
+    c.explorer = true;
+    c.desktop = true;   // Alt+F4 sur le bureau ouvrirait la boîte d'arrêt de Windows
+    auto b = md::buildBarMenus(c);
+    auto* close = findItem(*findMenu(b, L"Fichier"), L"Fermer la fenêtre");
+    REQUIRE(close != nullptr);
+    CHECK(!close->enabled);
+    CHECK(!findItem(*findMenu(b, L"Aller"), L"Précédent")->enabled);
+    auto app = md::buildBarMenus(appContext());
+    auto* appClose = findItem(*findMenu(app, L"Fichier"), L"Fermer la fenêtre");
+    REQUIRE(appClose != nullptr);
+    CHECK(appClose->enabled);
+    CHECK(actionOf(app, appClose).kind == md::ActionKind::CloseWindow);
+}
+
+TEST_CASE(menus_window_list_checks_active) {
+    md::BarContext c = appContext();
+    c.windows = {{1, L"Courses"}, {2, L""}};
+    c.activeWindow = 2;
+    auto b = md::buildBarMenus(c);
+    auto* win = findMenu(b, L"Fenêtre");
+    REQUIRE(win != nullptr);
+    auto* first = findItem(*win, L"Courses");
+    auto* second = findItem(*win, L"(sans titre)");
+    REQUIRE(first != nullptr);
+    REQUIRE(second != nullptr);
+    CHECK(!first->checked);
+    CHECK(second->checked);
+    auto a = actionOf(b, first);
+    CHECK(a.kind == md::ActionKind::ActivateWindow);
+    CHECK_EQ(a.window, std::uint64_t(1));
+    CHECK(actionOf(b, findItem(*win, L"Réduire")).kind == md::ActionKind::Minimize);
 }
