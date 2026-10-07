@@ -17,6 +17,8 @@
 //               panneau Spotlight hors écran (vraies apps, documents de l'index en lecture seule, aucune fenêtre)
 //   MacDock.exe --mission-snapshot f.png [--count n] [--hover i] [--theme light|dark]
 //               Mission Control hors écran avec des fenêtres factices (aucune fenêtre réelle touchée)
+//   MacDock.exe --switcher-snapshot f.png [--count n] [--select i] [--theme light|dark]
+//               sélecteur d'apps hors écran avec des apps factices (aucun raccourci enregistré)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
@@ -32,6 +34,7 @@
 #include "../calib/png_io.h"
 #include "../mission/mission_view.h"
 #include "../spotlight/file_search.h"
+#include "../switcher/switcher_window.h"
 #include "../spotlight/spotlight_window.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
@@ -90,7 +93,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                     !themeAction.empty() || !themeSnapshot.empty() ||
                     args.find(L"--apps-snapshot") != std::wstring::npos ||
                     args.find(L"--spotlight-snapshot") != std::wstring::npos ||
-                    args.find(L"--mission-snapshot") != std::wstring::npos;
+                    args.find(L"--mission-snapshot") != std::wstring::npos ||
+                    args.find(L"--switcher-snapshot") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -109,8 +113,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
-        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot, missionSnapshot;
-        int missionCount = 6, missionHover = -1;
+        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot, missionSnapshot, switcherSnapshot;
+        int countArg = -1, missionHover = -1, switcherSelect = 1;   // countArg < 0 : nombre par défaut
         int appsPage = 0;
         md::MinimizeEffect effect = md::MinimizeEffect::Genie;
         md::DockPosition edge = md::DockPosition::Bottom;
@@ -120,7 +124,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--apps-snapshot") == 0) appsSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--spotlight-snapshot") == 0) spotSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--mission-snapshot") == 0) missionSnapshot = argv[i + 1];
-            if (wcscmp(argv[i], L"--count") == 0) missionCount = std::clamp(_wtoi(argv[i + 1]), 0, 60);
+            if (wcscmp(argv[i], L"--switcher-snapshot") == 0) switcherSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--select") == 0) switcherSelect = std::max(0, _wtoi(argv[i + 1]));
+            if (wcscmp(argv[i], L"--count") == 0) countArg = std::clamp(_wtoi(argv[i + 1]), 0, 60);
             if (wcscmp(argv[i], L"--hover") == 0) missionHover = _wtoi(argv[i + 1]);
             if (wcscmp(argv[i], L"--query") == 0) appsQuery = argv[i + 1];
             if (wcscmp(argv[i], L"--page") == 0) appsPage = _wtoi(argv[i + 1]);
@@ -131,9 +137,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                                                             : md::DockPosition::Bottom;
         }
         LocalFree(argv);
-        if (!missionSnapshot.empty()) {
+        if (!switcherSnapshot.empty()) {
+            static const wchar_t* kNames[] = {L"Explorateur", L"Navigateur", L"Terminal", L"Éditeur de code", L"Musique",
+                                              L"Photos", L"Courrier", L"Calendrier", L"Notes", L"Calculatrice"};
+            std::vector<std::wstring> names;
+            const int count = countArg < 0 ? 4 : countArg;
+            for (int i = 0; i < count; ++i) names.push_back(kNames[i % std::size(kNames)]);
+            const md::BgraImage im = md::switcherSnapshot(names, std::size_t(switcherSelect), options.dark.value_or(false), 1920, 1080);
+            code = md::writePng(switcherSnapshot, im.px.data(), UINT(im.w), UINT(im.h)) ? 0 : 1;
+        } else if (!missionSnapshot.empty()) {
             std::vector<md::MissionRect> wins;   // fenêtres factices, toujours les mêmes
-            for (int i = 0; i < missionCount; ++i)
+            for (int i = 0, n = countArg < 0 ? 6 : countArg; i < n; ++i)
                 wins.push_back({double(i * 211 % 1200), double(i * 131 % 600), 640.0 + i * 173 % 700, 420.0 + i * 97 % 420});
             const md::BgraImage im = md::missionSnapshot(wins, options.dark.value_or(false), 1920, 1080, missionHover);
             code = md::writePng(missionSnapshot, im.px.data(), UINT(im.w), UINT(im.h)) ? 0 : 1;

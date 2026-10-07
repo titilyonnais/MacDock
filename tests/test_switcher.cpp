@@ -2,10 +2,12 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <cstring>
 #include <string>
 #include <vector>
 
 #include "minitest.h"
+#include "../src/switcher/switcher_window.h"
 #include "../src/switcher/switcher_logic.h"
 
 TEST_CASE(switcher_mru_order) {
@@ -60,4 +62,17 @@ TEST_CASE(switcher_hotkey_parse) {
     CHECK(a->mods == MOD_ALT && a->vk == VK_TAB);
     CHECK(!md::parseSwitcherHotkey(L"off"));
     CHECK(!md::parseSwitcherHotkey(L"ctrl+tab"));
+}
+
+TEST_CASE(switcher_snapshot_draws_panel) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const std::vector<std::wstring> names{L"Un", L"Deux", L"Trois"};
+    auto a = md::switcherSnapshot(names, 1, false, 1280, 800);
+    auto b = md::switcherSnapshot(names, 2, false, 1280, 800);
+    auto none = md::switcherSnapshot({}, 0, false, 1280, 800);
+    REQUIRE(a.w == 1280 && a.h == 800);
+    const std::size_t c = (std::size_t(400) * 1280 + 640) * 4;   // centre : l'icône du milieu
+    CHECK(std::memcmp(&a.px[c], &none.px[c], 4) != 0);
+    CHECK(a.px != b.px);   // la sélection change le dessin
+    CoUninitialize();
 }
