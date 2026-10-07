@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/spotlight/file_search.h"
 #include "../src/spotlight/spot_results.h"
 #include "../src/spotlight/spot_calc.h"
 
@@ -82,4 +83,22 @@ TEST_CASE(spot_hotkey_parse) {
     CHECK(!md::parseSpotlightHotkey(L"off"));
     CHECK(!md::parseSpotlightHotkey(L"win+space"));
     CHECK(!md::parseSpotlightHotkey(L""));
+}
+
+TEST_CASE(spot_file_search_real_readonly) {   // index de Windows, lecture seule ; peut être vide
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    wchar_t profile[MAX_PATH] = {};
+    GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+    const ULONGLONG t0 = GetTickCount64();
+    auto r = md::searchFiles(L"desktop", profile, 5);
+    CHECK(r.size() <= 5);
+    for (auto& f : r) CHECK(f.kind == md::SpotKind::File && !f.target.empty() && !f.title.empty());
+    for (auto& f : r) {   // vrai chemin (pas le chemin traduit de l'Explorateur), ni caché ni système
+        const DWORD a = GetFileAttributesW(f.target.c_str());
+        CHECK(a != INVALID_FILE_ATTRIBUTES);
+        CHECK(a == INVALID_FILE_ATTRIBUTES || !(a & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)));
+    }
+    CHECK(md::searchFiles(L"", profile, 5).empty());
+    CHECK(GetTickCount64() - t0 < 20000);
+    CoUninitialize();
 }
