@@ -588,6 +588,8 @@ std::vector<HWND> MenuBarApp::appWindows() const {
 BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     BarContext c;
     c.appName = active_.name.empty() ? L"Explorateur" : active_.name;
+    if (const auto slash = active_.exePath.find_last_of(L"\\/"); !active_.exePath.empty())
+        c.exe = slash == std::wstring::npos ? active_.exePath : active_.exePath.substr(slash + 1);
     c.userName = userDisplayName();
     c.explorer = active_.explorer || active_.name.empty();
     c.desktop = active_.desktop || active_.name.empty();
