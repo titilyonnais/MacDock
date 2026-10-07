@@ -12,6 +12,8 @@
 
 #include "../app/visibility.h"
 #include "../config/metrics.h"
+#include "../hud/hud_logic.h"
+#include "../hud/hud_window.h"
 #include "../ipc/pipe_server.h"
 #include "../icons/icon_provider.h"
 #include "../model/app_model.h"
@@ -135,7 +137,13 @@ private:
     void updateClock();
     void startSample(Screen& s);
     void startSamples();
-    void stopSamples();   // avant un menu : il capture l'écran à son tour
+    void stopSamples();   // avant un menu : il capture l'écran à son tour (la pastille du HUD aussi)
+    void registerVolumeKeys();          // touches de volume reprises selon settings_.hud (échec journalisé)
+    void onVolumeKey(int id);           // volume +, −, sourdine : réglage puis pastille
+    void showHud(const HudContent& c);  // pastille sur l'écran du curseur, ravivée
+    void stepHud();                     // minuterie du fondu
+    void hideHud();
+    HudContent volumeContent();         // volume et sortie actuels
     void onSample(Screen& s);
     void finishSample(Screen& s, std::optional<double> luminance);
     bool detectFullscreen(const Screen& s) const;
@@ -189,6 +197,13 @@ private:
     Screen* menuScreen_ = nullptr;   // barre du menu ouvert (sa capsule)
     int highlight_ = -1;
     std::vector<HWND> hidden_;   // fenêtres masquées par « Masquer… »
+
+    HudWindow hud_;                        // pastille du volume et de la luminosité
+    HudFade hudFade_;
+    BrightnessGate brightnessGate_;
+    HPOWERNOTIFY brightnessNotify_ = nullptr;
+    bool volumeKeys_ = false;              // touches de volume reprises (sinon : avis Core Audio)
+    std::wstring outputName_;              // nom de la sortie par défaut (vide : à relire)
 
     bool menuOpen_ = false;
     bool menuSession_ = false;     // openMenu ou menu de la barre en cours (menuOpen_ retombe entre deux titres)
