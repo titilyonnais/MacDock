@@ -20,7 +20,7 @@ enum MenuCmd : int {
     kCmdDisplayStack, kCmdDisplayFolder,                               // pile : Afficher comme
     kCmdViewList,                                                      // pile : … en liste
     kCmdEffectGenie, kCmdEffectScale, kCmdEffectWindows,               // séparateur : Effet de réduction
-    kCmdThemeApply, kCmdThemeRestore,                                  // séparateur : Thème macOS
+    kCmdThemeApply, kCmdThemeRestore, kCmdThemeWallpaper,                                // séparateur : Thème macOS
     kCmdStartMenu,                                                     // bouton Apps : le menu de Windows
     kCmdWindowBase = 1000   // + index dans MenuContext::windows
 };

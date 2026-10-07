@@ -123,7 +123,7 @@ TEST_CASE(theme_windows_loads_our_cursors) {   // fichiers temporaires seulement
 }
 
 TEST_CASE(theme_wallpaper) {
-    auto light = md::tahoeWallpaper(320, 180, false), dark = md::tahoeWallpaper(320, 180, true);
+    auto light = md::macWallpaper(320, 180, false), dark = md::macWallpaper(320, 180, true);
     REQUIRE(light.w == 320 && light.h == 180 && light.px.size() == 320u * 180 * 4);
     double l = 0, d = 0;
     bool opaque = true;
@@ -134,7 +134,25 @@ TEST_CASE(theme_wallpaper) {
     }
     CHECK(opaque);
     CHECK(l > d * 1.5);
-    CHECK(light.px[0] != light.px[(179 * 320 + 319) * 4]);   // pas uni
+    const std::size_t corner = (179 * 320 + 319) * 4;   // pas uni
+    CHECK(light.px[0] + light.px[1] + light.px[2] != light.px[corner] + light.px[corner + 1] + light.px[corner + 2]);
+}
+
+TEST_CASE(theme_wallpaper_golden_gate_warm_left_cool_right) {
+    // Golden Gate : plis or sablé et champagne en bas à gauche, gris puis indigo et lavande en haut à droite.
+    for (bool dark : {false, true}) {
+        const auto wall = md::macWallpaper(320, 180, dark);
+        auto mean = [&](int x0, int y0, int x1, int y1, int c) {
+            double sum = 0;
+            for (int y = y0; y < y1; ++y)
+                for (int x = x0; x < x1; ++x) sum += wall.px[(std::size_t(y) * 320 + x) * 4 + c];
+            return sum / ((x1 - x0) * (y1 - y0));
+        };
+        const double warmR = mean(0, 140, 60, 180, 2), warmB = mean(0, 140, 60, 180, 0);
+        const double coolR = mean(260, 0, 320, 40, 2), coolB = mean(260, 0, 320, 40, 0);
+        CHECK(warmR > warmB);   // bas gauche : or
+        CHECK(coolB > coolR);   // haut droit : indigo
+    }
 }
 
 TEST_CASE(theme_dump_for_eyes) {   // MACDOCK_DUMP=dossier : fonds d'écran et curseurs pour un contrôle à l'œil
@@ -142,7 +160,7 @@ TEST_CASE(theme_dump_for_eyes) {   // MACDOCK_DUMP=dossier : fonds d'écran et c
     if (!GetEnvironmentVariableW(L"MACDOCK_DUMP", dump, MAX_PATH)) return;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     for (bool dark : {false, true}) {
-        auto wall = md::tahoeWallpaper(1920, 1080, dark);
+        auto wall = md::macWallpaper(1920, 1080, dark);
         CHECK(md::writePng(std::wstring(dump) + (dark ? L"\\wall-dark.png" : L"\\wall-light.png"), wall.px.data(), 1920, 1080));
     }
     md::BgraImage sheet{10 * 72, 72, std::vector<std::uint8_t>(10 * 72 * 72 * 4, 0)};
@@ -225,6 +243,24 @@ TEST_CASE(theme_apply_twice_then_restore) {
     CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
     CHECK(t.reg[L"Wait"].empty());                             // absente à l'origine : curseur de Windows
     CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\a.jpg");
+}
+
+TEST_CASE(theme_wallpaper_only_keeps_user_cursors) {
+    // « Fond d'écran seul » : les curseurs choisis par l'utilisateur (un curseur Golden Gate installé à part) restent.
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup, md::ThemeParts{.cursors = false}).ok);
+    CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
+    CHECK(t.reg.count(L"Wait") == 0);
+    CHECK(t.reloads == 0);
+    CHECK(t.walls[L"mon1"].starts_with(L"D:\\theme\\wallpaper-"));
+    CHECK(backup->cursors.empty());
+    CHECK(t.files.size() == 2);   // deux fonds, aucun curseur écrit
+    REQUIRE(md::restoreTheme(api, *backup, L"D:\\theme").ok);
+    CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\a.jpg");
+    CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
 }
 
 TEST_CASE(theme_restore_skips_missing_monitor) {

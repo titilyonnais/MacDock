@@ -355,7 +355,7 @@ BgraImage hudSnapshot(const HudContent& content, bool dark, int width, int heigh
                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, fmt),
                                 &readback)))
         return out;
-    const BgraImage wall = tahoeWallpaper(width, height, dark);
+    const BgraImage wall = macWallpaper(width, height, dark);
     dc->CreateBitmap(size, wall.px.data(), UINT32(width * 4), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, fmt), &wallBmp);
     Com<ID2D1Effect> blur;
     if (wallBmp && SUCCEEDED(dc->CreateEffect(CLSID_D2D1GaussianBlur, &blur))) {

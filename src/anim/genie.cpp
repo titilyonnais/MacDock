@@ -219,7 +219,8 @@ std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from,
 }
 
 double minimizeDuration(MinimizeEffect e, bool slow) {
-    const double base = e == MinimizeEffect::Genie ? 0.55 : e == MinimizeEffect::Scale ? 0.3 : 0.0;
+    // Golden Gate : ~12 % plus court que Tahoe (0,55 s et 0,3 s).
+    const double base = e == MinimizeEffect::Genie ? 0.48 : e == MinimizeEffect::Scale ? 0.26 : 0.0;
     return slow ? base * 8 : base;
 }
 

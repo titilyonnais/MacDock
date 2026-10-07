@@ -35,7 +35,7 @@ constexpr wchar_t kClass[] = L"MacDockApps";
 constexpr UINT WM_APPS_BACKDROP = WM_APP + 21;
 constexpr UINT WM_APPS_ICON = WM_APP + 22;   // wParam : indice de l'app ; lParam : IconProvider::ImagePtr* à reprendre
 constexpr UINT_PTR kCaretTimer = 1;
-constexpr double kAppearSeconds = 0.2;
+constexpr double kAppearSeconds = 0.18;
 constexpr double kWheelPause = 0.25;          // une page par geste de molette
 constexpr float kNameFont = 12, kSearchFont = 15, kEmptyFont = 17;
 constexpr float kLabelH = 32, kLabelGap = 6;  // nom sous l'icône, deux lignes au plus
@@ -693,7 +693,7 @@ BgraImage appsSnapshot(const std::vector<AppEntry>& apps, const std::wstring& qu
                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, fmt),
                                 &readback)))
         return out;
-    const BgraImage wall = tahoeWallpaper(width, height, dark);   // opaque : non prémultiplié = prémultiplié
+    const BgraImage wall = macWallpaper(width, height, dark);   // opaque : non prémultiplié = prémultiplié
     dc->CreateBitmap(size, wall.px.data(), UINT32(width * 4), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, fmt),
                      &wallBmp);
     Com<ID2D1Effect> blur;

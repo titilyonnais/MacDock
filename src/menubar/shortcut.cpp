@@ -28,6 +28,7 @@ std::optional<WORD> mainKey(const std::wstring& t) {
             default: return std::nullopt;
         }
     }
+    if (t == L"fin") return WORD(VK_END);   // avant les touches de fonction (F + chiffres)
     if (t.size() >= 2 && t.size() <= 3 && t[0] == L'f') {
         int n = 0;
         for (std::size_t i = 1; i < t.size(); ++i) {
@@ -44,6 +45,9 @@ std::optional<WORD> mainKey(const std::wstring& t) {
     if (t == L"espace") return WORD(VK_SPACE);
     if (t == L"plus") return WORD(VK_ADD);        // pavé numérique : même effet quelle que soit la disposition
     if (t == L"moins") return WORD(VK_SUBTRACT);
+    if (t == L"origine") return WORD(VK_HOME);
+    if (t == L"pg.préc" || t == L"pg.prec") return WORD(VK_PRIOR);
+    if (t == L"pg.suiv") return WORD(VK_NEXT);
     return std::nullopt;
 }
 

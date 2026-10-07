@@ -80,11 +80,12 @@ std::optional<ThemeBackup> themeBackupFromJson(const json::Value& v) {
     return b;
 }
 
-ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<ThemeBackup>& backup) {
+ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<ThemeBackup>& backup, const ThemeParts& parts) {
     ThemeResult r;
     // 1. Les fichiers d'abord : rien n'est changé si l'un d'eux ne peut pas être écrit.
     std::map<std::wstring, std::wstring> cursorPaths;
     for (CursorKind k : kThemeCursors) {
+        if (!parts.cursors) break;
         const std::wstring path = joinPath(dir, cursorFileName(k));
         if (!api.writeFile(path, cursorFile(k))) {
             r.message = L"Impossible d'écrire " + path;
@@ -93,12 +94,12 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
         cursorPaths[cursorRegistryName(k)] = path;
     }
     const bool dark = api.darkMode();
-    const std::vector<std::wstring> screens = api.monitors();
+    const std::vector<std::wstring> screens = parts.wallpaper ? api.monitors() : std::vector<std::wstring>{};
     std::map<std::wstring, std::wstring> wallPaths;
     for (std::size_t i = 0; i < screens.size(); ++i) {
         SIZE sz = api.monitorSize(screens[i]);
         if (sz.cx <= 0 || sz.cy <= 0 || sz.cx > 16384 || sz.cy > 16384) sz = SIZE{1920, 1080};
-        const BgraImage wall = tahoeWallpaper(sz.cx, sz.cy, dark);
+        const BgraImage wall = macWallpaper(sz.cx, sz.cy, dark);
         const std::wstring path =
             joinPath(dir, L"wallpaper-" + std::to_wstring(i + 1) + (dark ? L"-dark.png" : L"-light.png"));
         if (!api.writeFile(path, encodePng(wall.px.data(), UINT(wall.w), UINT(wall.h)))) {
@@ -123,7 +124,7 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
             changed = true;
         }
     };
-    for (CursorKind k : kThemeCursors) remember(b.cursors, cursorRegistryName(k), api.readCursor(cursorRegistryName(k)).value_or(L""));
+    for (const auto& [name, path] : cursorPaths) remember(b.cursors, name, api.readCursor(name).value_or(L""));
     for (const std::wstring& id : screens) remember(b.wallpapers, id, api.getWallpaper(id));
     if (changed) {
         if (api.saveBackup && !api.saveBackup(b)) {
@@ -139,7 +140,7 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
             r.ok = false;
             note(r, L"Curseur non changé : " + name);
         }
-    if (!api.reloadCursors()) {
+    if (!cursorPaths.empty() && !api.reloadCursors()) {
         r.ok = false;
         note(r, L"Windows n'a pas rechargé les curseurs");
     }
@@ -164,7 +165,7 @@ ThemeResult restoreTheme(ThemeApi& api, const ThemeBackup& backup, const std::ws
             note(r, L"Curseur non rétabli : " + name);
         }
     }
-    if (!api.reloadCursors()) {
+    if (!backup.cursors.empty() && !api.reloadCursors()) {   // « fond d'écran seul » : aucun curseur à recharger
         r.ok = false;
         note(r, L"Windows n'a pas rechargé les curseurs");
     }

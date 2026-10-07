@@ -132,7 +132,7 @@ void DockApp::loadConfig(bool initial) {
     if (m.fromFile && !m.wasInvalid && jsonVersion(m.value) < kMetricsVersion) {
         m.value = migrateMetricsJson(m.value);
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", m.value);
-        log::info(L"dock-metrics.json migré de la v1 à la v%d", kMetricsVersion);
+        log::info(L"dock-metrics.json migré vers la v%d", kMetricsVersion);
     }
     if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
     // Fichier absent ou incomplet (mesures ajoutées par une version plus récente) : on l'écrit complet.
@@ -1403,9 +1403,12 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             applySettings();
             break;
         case kCmdThemeApply:
+        case kCmdThemeWallpaper:
         case kCmdThemeRestore: {   // à la demande seulement ; plusieurs secondes en Debug : hors du fil de l'interface
-            const bool apply = cmd == kCmdThemeApply;
-            if (!themeJob_.start([apply] { return apply ? applyMacTheme() : restoreWindowsTheme(); }, hwnd_, WM_APP_THEME))
+            const bool apply = cmd != kCmdThemeRestore;
+            const ThemeParts parts{.cursors = cmd == kCmdThemeApply};
+            if (!themeJob_.start([apply, parts] { return apply ? applyMacTheme(parts) : restoreWindowsTheme(); }, hwnd_,
+                                 WM_APP_THEME))
                 log::info(L"Thème : une application ou un rétablissement est déjà en cours");
             break;
         }

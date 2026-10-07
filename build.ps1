@@ -31,7 +31,7 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp', 'src\app\min_animate.cpp', 'src\app\cli_args.cpp', 'src\app\genie_gpu.cpp',
                   'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\stack\*.cpp',
                   'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
-                  'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
+                  'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\menu_catalog.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
                   'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp', 'src\menubar\uia_menu.cpp', 'src\menubar\recent_items.cpp',
                   'src\menubar\status_audio.cpp', 'src\menubar\status_power.cpp', 'src\menubar\status_network.cpp', 'src\menubar\status_winrt.cpp', 'src\menubar\status_brightness.cpp', 'src\menubar\status_hub.cpp', 'src\menubar\status_menus.cpp', 'src\menubar\tray_model.cpp', 'src\menubar\bar_screens.cpp', 'src\menubar\traffic_lights.cpp')
 

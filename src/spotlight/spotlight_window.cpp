@@ -40,7 +40,7 @@ constexpr UINT WM_SPOT_ICON = WM_APP + 32;    // lParam : IconPost* à reprendre
 constexpr UINT WM_SPOT_FILES = WM_APP + 33;   // FileSearcher::take
 constexpr UINT_PTR kCaretTimer = 1, kSearchTimer = 2;
 constexpr UINT kSearchDelayMs = 150;
-constexpr double kAppearSeconds = 0.12;
+constexpr double kAppearSeconds = 0.1;
 
 // Mesures en points (spec : Spotlight sur Tahoe).
 constexpr float kPanelW = 680, kFieldH = 52, kRadius = 24;
@@ -152,7 +152,7 @@ struct Painter {
         d->DrawLine({mx + 5.4f, my + 3.9f}, {mx + 10.5f, my + 9}, grey.Get(), 2.4f);
         const bool placeholder = v.query.empty();
         const float textX = 46, textW = kPanelW - textX - 20;
-        const float w = text(d, field.Get(), placeholder ? L"Recherche Spotlight" : v.query, textX, 0, textW, kFieldH,
+        const float w = text(d, field.Get(), placeholder ? L"Rechercher ou demander" : v.query, textX, 0, textW, kFieldH,
                              placeholder ? grey.Get() : ink.Get());
         if (v.caret) {
             const float x = placeholder ? textX - 2 : textX + w + 1;   // avant l'invite, comme macOS
@@ -736,7 +736,7 @@ BgraImage spotlightSnapshot(const std::wstring& query, const std::vector<AppEntr
                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, fmt),
                                 &readback)))
         return out;
-    const BgraImage wall = tahoeWallpaper(width, height, dark);   // opaque : non prémultiplié = prémultiplié
+    const BgraImage wall = macWallpaper(width, height, dark);   // opaque : non prémultiplié = prémultiplié
     dc->CreateBitmap(size, wall.px.data(), UINT32(width * 4), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, fmt),
                      &wallBmp);
     Com<ID2D1Effect> blur;

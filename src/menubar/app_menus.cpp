@@ -2,6 +2,8 @@
 
 #include <cwctype>
 
+#include "menu_catalog.h"
+
 namespace md {
 namespace {
 
@@ -81,11 +83,13 @@ void logoMenu(Builder& b, const BarContext& c) {
           {ActionKind::SignOut});
 }
 
-void appMenu(Builder& b, const BarContext& c) {
+void appMenu(Builder& b, const BarContext& c, const MenuCatalog* cat) {
     BarMenu& m = b.menu(c.appName, true);
     b.add(m, L"À propos de " + c.appName, {ActionKind::AboutApp});
     Builder::separator(m);
-    b.key(m, L"Réglages…", L"Ctrl+,", !c.explorer);
+    if (!cat) b.key(m, L"Réglages…", L"Ctrl+,", !c.explorer);
+    else if (!cat->settingsUri.empty()) b.add(m, L"Réglages…", {ActionKind::OpenUri, cat->settingsUri});
+    else if (!cat->settingsShortcut.empty()) b.key(m, L"Réglages…", cat->settingsShortcut);
     if (c.explorer) {
         Builder::separator(m);
         b.add(m, L"Vider la Corbeille…", {ActionKind::EmptyTrash});
@@ -125,9 +129,25 @@ void viewMenu(Builder& b) {
     b.key(m, L"Taille réelle", L"Ctrl+0");
 }
 
-void windowMenu(Builder& b, const BarContext& c) {
+MenuItem catalogItem(Builder& b, const CatalogItem& it) {
+    if (it.text.empty()) return {};
+    if (!it.submenu.empty()) {
+        MenuItem m;
+        m.text = it.text;
+        for (const auto& child : it.submenu) m.submenu.push_back(catalogItem(b, child));
+        return m;
+    }
+    if (!it.uri.empty()) return b.item(it.text, {ActionKind::OpenUri, it.uri});
+    return b.item(it.text, {ActionKind::Shortcut, it.shortcut}, it.shortcut);
+}
+
+void windowMenu(Builder& b, const BarContext& c, const std::vector<CatalogItem>& extras = {}) {
     BarMenu& m = b.menu(L"Fenêtre");
     const bool hasWindow = !c.desktop;
+    if (!extras.empty()) {   // comme les navigateurs sur macOS : Téléchargements… en tête
+        for (const auto& e : extras) m.model.items.push_back(catalogItem(b, e));
+        Builder::separator(m);
+    }
     b.add(m, L"Réduire", {ActionKind::Minimize}, {}, hasWindow);
     b.add(m, L"Zoom", {ActionKind::Zoom}, {}, hasWindow);
     Builder::separator(m);
@@ -164,6 +184,24 @@ void genericMenus(Builder& b, const BarContext& c) {
     editMenu(b);
     viewMenu(b);
     windowMenu(b, c);
+    helpMenu(b, c);
+}
+
+bool isHelpTitle(const std::wstring& t);
+
+// Menus du catalogue, Fenêtre juste avant l'Aide (celle de l'app, sinon la générique).
+void catalogMenus(Builder& b, const BarContext& c, const MenuCatalog& cat) {
+    bool help = false;
+    for (const auto& menu : cat.menus) {
+        if (isHelpTitle(menu.title)) {
+            windowMenu(b, c, cat.windowExtras);
+            help = true;
+        }
+        BarMenu& m = b.menu(menu.title);
+        for (const auto& it : menu.items) m.model.items.push_back(catalogItem(b, it));
+    }
+    if (help) return;
+    windowMenu(b, c, cat.windowExtras);
     helpMenu(b, c);
 }
 
@@ -262,10 +300,13 @@ void realMenus(Builder& b, const BarContext& c) {
 BarMenus buildBarMenus(const BarContext& c) {
     BarMenus out;
     Builder b(out);
+    const bool real = c.source != MenuSource::Generic && !c.real.empty();
+    const MenuCatalog* cat = real || c.explorer ? nullptr : menuCatalogFor(c.exe);
     logoMenu(b, c);
-    appMenu(b, c);
-    if (c.source != MenuSource::Generic && !c.real.empty()) realMenus(b, c);
+    appMenu(b, c, cat);
+    if (real) realMenus(b, c);
     else if (c.explorer) explorerMenus(b, c);
+    else if (cat) catalogMenus(b, c, *cat);
     else genericMenus(b, c);
     return out;
 }

@@ -16,7 +16,7 @@ ThemeApi realThemeApi();
 std::wstring themeBackupPath();   // %APPDATA%\MacDock\theme-backup.json
 std::wstring themeDir();          // %APPDATA%\MacDock\theme : nos curseurs et fonds
 bool themeBackupExists();         // le thème macOS est appliqué : on peut rétablir
-ThemeResult applyMacTheme();        // fichiers dans %APPDATA%\MacDock\theme, sauvegarde écrite une seule fois
+ThemeResult applyMacTheme(const ThemeParts& parts = {});        // fichiers dans %APPDATA%\MacDock\theme, sauvegarde écrite une seule fois
 ThemeResult restoreWindowsTheme();  // rend la sauvegarde ; l'efface si tout est rendu, sinon garde le reste
 // Planche des curseurs (32 et 64 px, fonds clair et sombre) et les deux fonds d'écran, sans rien appliquer.
 bool writeThemeSnapshot(const std::wstring& dir);

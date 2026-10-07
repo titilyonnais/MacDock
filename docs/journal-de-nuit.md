@@ -319,6 +319,35 @@ Mesuré sur ton écran avec un enregistreur maison (Desktop Duplication en scRGB
 - **Relecture finale (Opus)** : 0 critique, 2 importants corrigés (surface GPU qui pouvait rester affichée si la capture est refusée ; crochet souris qui pouvait attendre un appel DWM lent), 6 mineurs corrigés.
 - **Barre noire en bas** : c'est la bande réservée au Dock, où l'on voit le bureau ; ton bureau n'a pas de fond d'écran (noir uni). Le menu du séparateur du Dock → **Thème macOS** pose un fond d'écran ; je ne l'ai pas appliqué à ta place.
 
+### Plan 25 — macOS Golden Gate : feux tricolores partout, menus par app, fond d'écran, verre
+
+Cible : macOS 27 « Golden Gate » (sorti le 14 septembre 2026). La recherche (sources et valeurs) a guidé tous les choix ci-dessous ; aucune ressource Apple n'est copiée.
+- **Menus de la barre adaptés à chaque app** : catalogue pour Chrome, Brave, Edge, Firefox, Terminal, VS Code, Discord, Telegram, Notion, Spotify, Steam et les apps Electron courantes. Fichier, Édition, Présentation… contiennent leurs vraies commandes et raccourcis, et un menu Fenêtre est placé avant Aide.
+- **Feux tricolores sur toutes les fenêtres**, même celles qui dessinent leur propre barre de titre (Chrome, Brave, Discord, VS Code…). MacDock repère les boutons réduire / agrandir / fermer de Windows, soit par les bornes DWM, soit en interrogeant la fenêtre (`WM_NCHITTEST`, en lecture seule, 60 ms au plus).
+  - Si la gauche de la barre est libre, les pastilles s'y placent et un second calque cache les boutons de Windows.
+  - Sinon (onglets, menus), elles se placent sur les boutons de Windows.
+  - Style Golden Gate : 14 pt, 23 pt d'écart, verre façon Aqua avec reflets, liseré, couleurs désaturées, état appuyé et petit rebond au relâchement.
+  - Vérifié sur ton écran : l'Explorateur agrandi (pastilles sur les boutons) et une fenêtre de copie (pastilles à gauche, bouton fermer de Windows caché).
+- **Fond d'écran Golden Gate** dessiné par le code : grands plis en croissants qui se chevauchent, de l'or sablé et du champagne en bas à gauche vers l'argent, l'indigo et la lavande ; ombres douces et liseré clair (bleu argenté en sombre). Il est calculé sur tous les cœurs.
+  - Nouvelle entrée dans le menu du séparateur du Dock → Thème macOS : **« Fond d'écran Golden Gate seul »**. Elle garde ton curseur Golden Gate installé à part.
+  - Le fond sert aussi de repli à Mission Control, à Launchpad et à Spotlight.
+- **Verre** plus opaque, reflet plus vif, fin bord sombre (Golden Gate a choisi « moyen » par défaut). Ton `dock-metrics.json` est migré en v3, mais seules les valeurs restées aux anciens défauts changent.
+- **Animations environ 12 % plus courtes** : génie, échelle, Mission Control, Launchpad, piles, Spotlight, masquage du Dock.
+- **Spotlight** affiche « Rechercher ou demander » (« Search or Ask » de macOS 27).
+- **Rien à retirer pour les icônes des menus** : Golden Gate a supprimé les icônes que Tahoe avait ajoutées à presque chaque entrée, mais MacDock n'en avait pas mis. Seuls les éléments récents gardent l'icône de leur fichier, comme sur macOS.
+- **Pastilles absentes après une restauration depuis le Dock** : la fenêtre devenait active alors qu'elle était encore réduite, si bien qu'elle était écartée pour de bon. Elle est maintenant suivie et reçoit ses pastilles en réapparaissant.
+- **Relecture finale (Opus)** : 0 critique et 3 importants, tous corrigés.
+  - Le cache des boutons Windows ne réagissait pas à la souris : ses messages partaient vers le mauvais calque.
+  - Sur une fenêtre agrandie, une bande de 3 pt laissait atteindre les vrais boutons Windows au-dessus des pastilles. Un test couvre ce cas.
+  - Une activation arrivant au milieu d'une sonde était traitée en pleine sonde ; elle est maintenant reportée juste après.
+  - 7 mineurs ont aussi été corrigés : sonde interrompue, DPI dans le cache, glissement, rechargement des curseurs, fils du fond d'écran, verre de la barre de menus, libellés Firefox et Spotify.
+
+## Mineurs reportés — plan 25
+- Après « Fond d'écran Golden Gate seul », la coche se met sur « Appliquer (curseurs et fond d'écran) », alors que les curseurs n'ont pas changé.
+- `leftCaptionFree` ne sonde que trois rangées, alors que le calque de gauche couvre toute la hauteur de la barre de titre (28 pt par défaut quand la barre est dessinée par l'app). Pour un dialogue à un seul bouton, la zone élargie n'est pas sondée.
+- Une fenêtre toujours au premier plan (`WS_EX_TOPMOST`) passe au-dessus de ses pastilles. Le problème existait déjà avant ce plan.
+- À vérifier : « Diviser » de Windows Terminal (`Alt+Maj+Plus` envoyé avec le + du pavé numérique), et Ctrl+, dans Spotify et Telegram.
+
 ## Mineurs reportés — plan 24
 - Sous forte charge DWM (menu en verre ouvert), chaque placement de miniature coûte 4 à 9 ms : avec 9 fenêtres réduites, une image du Dock de 55 ms. À passer sur un fil à part.
 - `WM_NCHITTEST` (40 ms au plus) interrogé sur le fil du Dock à l'appui dans le coin des boutons d'une app qui les dessine elle-même.

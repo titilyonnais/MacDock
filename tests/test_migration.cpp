@@ -11,7 +11,7 @@ TEST_CASE(metrics_migrate_v1_updates_old_defaults) {
     CHECK_NEAR(m.separatorLengthRatio, 0.80, 1e-9);
     CHECK_NEAR(m.tooltipGap, 10, 1e-9);
     CHECK(v.find("indicatorInset") == nullptr);
-    CHECK_EQ(md::jsonVersion(v), 2);
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
 }
 
 TEST_CASE(metrics_migrate_v1_keeps_user_values) {
@@ -20,9 +20,30 @@ TEST_CASE(metrics_migrate_v1_keeps_user_values) {
     CHECK_NEAR(m.iconGap, 9, 1e-9);
 }
 
-TEST_CASE(metrics_v2_is_not_migrated) {
+TEST_CASE(metrics_v2_keeps_v1_values) {   // les changements de la v1 ne s'appliquent plus à un fichier v2
     auto m = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"iconGap":6})")));
     CHECK_NEAR(m.iconGap, 6, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
+    // Golden Gate : verre plus opaque et reflet plus vif ; les valeurs choisies par l'utilisateur restent.
+    auto v = md::migrateMetricsJson(*md::json::parse(
+        R"({"version":2,"glassTintLight":0.22,"glassTintDark":0.3,"glassSpecular":0.55,"iconGap":6,)"
+        R"("autohideShowSeconds":0.45,"autohideHideSeconds":0.45,"poofSeconds":0.35})"));
+    auto m = md::metricsFromJson(v);
+    CHECK_NEAR(m.autohideShowSeconds, 0.40, 1e-9);   // animations ~12 % plus courtes
+    CHECK_NEAR(m.autohideHideSeconds, 0.40, 1e-9);
+    CHECK_NEAR(m.poofSeconds, 0.31, 1e-9);
+    CHECK_NEAR(m.glassTintLight, 0.30, 1e-9);
+    CHECK_NEAR(m.glassTintDark, 0.38, 1e-9);
+    CHECK_NEAR(m.glassSpecular, 0.70, 1e-9);
+    CHECK_NEAR(m.iconGap, 6, 1e-9);
+    CHECK_EQ(md::jsonVersion(v), 3);
+    auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"glassTintLight":0.5})")));
+    CHECK_NEAR(kept.glassTintLight, 0.5, 1e-9);
+    const md::Metrics defaults;
+    CHECK_NEAR(defaults.glassTintLight, 0.30, 1e-9);
+    CHECK_NEAR(defaults.glassSpecular, 0.70, 1e-9);
 }
 
 TEST_CASE(settings_migrate_v1_large_size) {

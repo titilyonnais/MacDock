@@ -88,9 +88,13 @@ float4 main(VSOut i) : SV_Target {
     if (l2 > hi) col *= hi / l2;
     else if (l2 < lo) col = lerp(col, 1.0.xxx, (lo - l2) / max(1 - l2, 1e-3));
 
+    // Golden Gate : fin bord sombre tout au bord, qui détache le verre du fond ; le liseré clair juste à l'intérieur.
+    float edge = exp(-(-d) / (0.6 * scale));
+    col = lerp(col, 0.0.xxx, (dark > 0.5 ? 0.30 : 0.16) * strength * edge);
+
     // Fresnel et liseré spéculaire (lumière venant d'en haut à gauche, reflet plus faible en bas à droite).
     col += fresnel * strength * k * k * k;
-    float rim = exp(-(-d) / (0.75 * scale));
+    float rim = exp(-abs(-d - 1.1 * scale) / (0.75 * scale));
     float2 light = normalize(float2(-1, -1));
     col += specular * strength * rim * (0.35 + 0.65 * saturate(dot(n, light)) + 0.26 * saturate(dot(n, -light)));
     col = saturate(col);

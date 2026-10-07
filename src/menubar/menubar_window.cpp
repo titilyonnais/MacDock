@@ -130,7 +130,8 @@ void MenuBarApp::loadSettings(bool initial) {
     if (!f.fromFile && !f.wasInvalid && !f.unreadable && ctl_) saveJsonFileAtomic(path, menuBarSettingsToJson(settings_));
     fileTime(path, settingsTime_);
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
-    if (m.fromFile && !m.wasInvalid) glassMetrics_ = metricsFromJson(m.value);
+    // Migré en mémoire : le Dock, lancé en même temps, n'a peut-être pas encore réécrit le fichier.
+    if (m.fromFile && !m.wasInvalid) glassMetrics_ = metricsFromJson(migrateMetricsJson(m.value));
 }
 
 void MenuBarApp::checkSettingsFile() {
@@ -588,6 +589,8 @@ std::vector<HWND> MenuBarApp::appWindows() const {
 BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     BarContext c;
     c.appName = active_.name.empty() ? L"Explorateur" : active_.name;
+    if (const auto slash = active_.exePath.find_last_of(L"\\/"); !active_.exePath.empty())
+        c.exe = slash == std::wstring::npos ? active_.exePath : active_.exePath.substr(slash + 1);
     c.userName = userDisplayName();
     c.explorer = active_.explorer || active_.name.empty();
     c.desktop = active_.desktop || active_.name.empty();

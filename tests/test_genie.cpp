@@ -116,10 +116,10 @@ TEST_CASE(genie_degenerate_inputs) {
     for (auto& x : odd) CHECK(x.dst.right >= x.dst.left && x.dst.bottom >= x.dst.top);
 }
 
-TEST_CASE(genie_durations) {
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, false), 0.55, 1e-9);
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Scale, false), 0.3, 1e-9);
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, true), 4.4, 1e-9);
+TEST_CASE(genie_durations) {   // Golden Gate : animations ~12 % plus courtes que Tahoe
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, false), 0.48, 1e-9);
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Scale, false), 0.26, 1e-9);
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, true), 0.48 * 8, 1e-9);
     CHECK_EQ(md::minimizeDuration(md::MinimizeEffect::Windows, false), 0.0);
 }
 

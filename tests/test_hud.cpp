@@ -104,7 +104,7 @@ TEST_CASE(hud_snapshot_draws_panel) {
     REQUIRE(img.w == 800);
     REQUIRE(img.px.size() == std::size_t(800) * 300 * 4);
     // Le panneau (en haut à droite, sous une barre de 24 pt) change le fond Tahoe ; ailleurs, le fond est intact.
-    const md::BgraImage wall = md::tahoeWallpaper(800, 300, true);
+    const md::BgraImage wall = md::macWallpaper(800, 300, true);
     auto diff = [&](int x, int y) {
         const std::size_t i = (std::size_t(y) * 800 + x) * 4;
         return std::abs(int(img.px[i]) - int(wall.px[i])) + std::abs(int(img.px[i + 1]) - int(wall.px[i + 1])) +

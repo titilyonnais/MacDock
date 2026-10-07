@@ -50,6 +50,7 @@ struct BarMenu {
 
 struct BarContext {
     std::wstring appName, userName;
+    std::wstring exe;        // nom de l'exécutable de l'app (« brave.exe ») : ses menus du catalogue
     bool explorer = false;   // l'Explorateur ou le bureau a le premier plan
     bool desktop = false;    // le bureau lui-même : pas de fenêtre à fermer ni d'historique
     std::vector<std::pair<std::uint64_t, std::wstring>> windows;   // fenêtres de l'app (id, titre)
