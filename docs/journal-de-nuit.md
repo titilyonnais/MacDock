@@ -213,6 +213,35 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - le fond d'écran était gardé en mémoire en pleine résolution (jusqu'à 133 Mo pour un fond 8K, pour toute la vie du Dock) : il est maintenant mis à la taille de l'écran avant d'être gardé (corrigé avec un test) ;
   - la spec promettait un élément Mission Control dans le Dock : sur macOS il n'y en a pas par défaut, j'ai retiré cette promesse ; les coins actifs serviront d'entrée à la souris.
 
+### Plan 16 — Sélecteur d'apps façon Cmd+Tab (sous-projet 9)
+
+- **Alt+Tab** : une rangée d'icônes en verre au centre de l'écran, les apps ouvertes de la plus récemment utilisée à la plus ancienne, le nom de l'app choisie sous son icône. Le panneau n'apparaît qu'après 0,15 s : un `Alt+Tab` rapide bascule simplement vers l'app précédente.
+- **Pendant la sélection** (Alt enfoncé) : Tab, → avancent ; Maj+Tab, ← reculent ; Q ferme l'app choisie (elle quitte la rangée) ; H la masque ; Échap annule ; un clic sur une icône la choisit. Relâcher Alt active l'app : une app masquée revient avec toutes ses fenêtres, sinon ses fenêtres non réduites passent devant (ou la première réduite est restaurée).
+- **Raccourci** : `Alt+Tab` est repris par un raccourci global ordinaire (pas de crochet clavier). Si un autre outil le tient déjà, celui de Windows reste et le journal le dit. `appSwitcherHotkey: "off"` dans `settings.json` rend `Alt+Tab` à Windows.
+- **Vérifié hors écran** : `--switcher-snapshot` (4 apps en clair, 25 apps en sombre : les icônes rétrécissent pour tenir dans l'écran) et les tests de la session (ordre, pas en boucle, panneau différé, relâchement rapide, Q, choix des fenêtres à activer). **Je n'ai pas appuyé sur Alt+Tab à ta place et je n'ai activé aucune fenêtre.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. ouvre trois apps, passe de l'une à l'autre, puis `Alt+Tab` rapide : tu reviens à l'app précédente ;
+  2. garde Alt enfoncé : le panneau apparaît ; Tab plusieurs fois, puis relâche : l'app choisie passe devant ;
+  3. pendant la sélection, Q sur une app sans document en cours : elle se ferme et quitte la rangée ;
+  4. relâcher Alt seul après une sélection n'ouvre pas le menu de l'app au premier plan.
+- **Relecture finale** : 0 critique, 3 importants, tous corrigés :
+  - H (masquer) pendant la sélection était défait au relâchement d'Alt : l'app masquée reste masquée (test) ;
+  - depuis le bureau, un Alt+Tab rapide sautait l'app la plus récente : il y revient maintenant (test) ;
+  - un menu, une pile, Spotlight ou Mission Control ouverts pendant la sélection (clic droit sur le Dock, coin actif) terminent la sélection sans rien activer.
+
+## Décisions prises sans toi (plan 16)
+- `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
+- Le panneau s'affiche sur l'écran du curseur.
+- Pendant la sélection, Alt+Espace n'ouvre pas Spotlight.
+- Les apps dont les fenêtres sont sur un autre bureau virtuel restent dans la rangée (les choisir change de bureau, comme les Spaces de macOS).
+
+## Mineurs reportés — plan 16
+- Sans aucune app ouverte, Alt+Tab puis relâcher Alt ouvre le menu de l'app au premier plan.
+- Une app fermée dans les 0,15 s avant l'affichage laisse une case vide.
+- Alt+Q ou Alt+H pris par un autre outil : rien n'est journalisé.
+- La spec du sélecteur décrit encore un découpage de fichiers et des mesures que le plan a remplacés.
+
+
 ## Décisions prises sans toi (plan 15)
 - Raccourci `Ctrl+Alt+↑` par défaut (`Win+Tab` impossible sans crochet clavier) ; si ton pilote Intel fait pivoter l'écran avec ce raccourci, prends `ctrl+up` ou `f3`.
 - Pas de barre des bureaux virtuels (Windows ne donne pas la liste des bureaux par une API publique) : seules les fenêtres du bureau courant.

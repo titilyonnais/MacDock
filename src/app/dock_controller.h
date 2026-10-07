@@ -56,6 +56,8 @@ public:
     bool tick(double dt);                            // true tant qu'une animation est en cours
     RenderFrame buildFrame(bool dark, IconProvider& icons);
     bool consumeDirty();                             // un nouveau rendu est nécessaire
+    // Icône d'une app du Dock à la taille de l'agrandissement (même cache) ; nullptr si elle n'y est pas.
+    IconProvider::ImagePtr appIcon(const std::wstring& appId, IconProvider& icons) const;
 
     // Glisser-déposer interne. pointerMove reçoit aussi les positions hors du Dock (capture de la souris).
     void pointerDown(POINT clientPx);

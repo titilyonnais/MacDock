@@ -21,6 +21,8 @@
 #include "../popup/stack_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
+#include "../switcher/switcher_logic.h"
+#include "../switcher/switcher_window.h"
 #include "../theme/theme_system.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
@@ -71,6 +73,10 @@ private:
     void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
     void openMissionControl();                                 // Mission Control ; ferme celui qui est ouvert
     void registerMissionHotkey();                              // raccourci du réglage missionControlHotkey
+    void registerSwitcherHotkey();                             // Alt+Tab et Alt+Maj+Tab (réglage appSwitcherHotkey)
+    void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
+    void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
+    void endSwitch(bool activate);                             // fin de session ; active l'app choisie
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
     void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
     std::size_t listCapacity(const StackWindow::Request& r) const;
@@ -138,6 +144,12 @@ private:
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
     std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
     std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
+    std::wstring switcherHotkeyOn_;      // raccourci enregistré (vide : aucun)
+    AppMru mru_;                         // apps de la plus récemment activée à la plus ancienne
+    SwitchSession switch_;               // Alt+Tab en cours
+    std::vector<std::wstring> switchApps_;   // rangée de la session (appId)
+    SwitcherWindow switcher_;
+    bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     bool running_ = true;
     bool wakeAnimation_ = true;
     std::atomic<bool> wakePosted_{false};
