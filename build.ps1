@@ -33,7 +33,7 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
                   'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
                   'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp', 'src\menubar\uia_menu.cpp', 'src\menubar\recent_items.cpp',
-                  'src\menubar\status_audio.cpp', 'src\menubar\status_power.cpp', 'src\menubar\status_network.cpp', 'src\menubar\status_winrt.cpp', 'src\menubar\status_brightness.cpp', 'src\menubar\status_hub.cpp', 'src\menubar\status_menus.cpp')
+                  'src\menubar\status_audio.cpp', 'src\menubar\status_power.cpp', 'src\menubar\status_network.cpp', 'src\menubar\status_winrt.cpp', 'src\menubar\status_brightness.cpp', 'src\menubar\status_hub.cpp', 'src\menubar\status_menus.cpp', 'src\menubar\tray_model.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
