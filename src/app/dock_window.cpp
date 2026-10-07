@@ -24,6 +24,7 @@
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
+#include "../spotlight/spotlight_window.h"
 #include "dock_menus.h"
 #include "drop_target.h"
 #include "thumbnails.h"
@@ -67,7 +68,7 @@ std::vector<MonitorInfo> enumMonitors() {
     return out;
 }
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
-constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
+constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4;
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -145,6 +146,7 @@ void DockApp::applySettings() {
     if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     updateGlass();   // réglage glass modifié à chaud
+    if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     requestFrame();
 }
 
@@ -642,13 +644,7 @@ void DockApp::openApps() {
     AppsWindow::Request r;
     r.apps = std::move(list);
     r.monitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY);
-    r.icons.strict = settings_.tahoeStrictIcons;
-    r.icons.dark = dark_;
-    r.icons.shapeRatio = metrics_.iconShapeRatio;
-    r.icons.cornerRatio = metrics_.iconCornerRatio;
-    r.icons.jailInset = metrics_.iconJailInset;
-    r.icons.shadowOpacity = metrics_.iconShadowOpacity;
-    r.icons.customDir = dataDir_ + L"\\icons";
+    r.icons = appsIconStyle();
     const AppsIconStyle& st = r.icons;
     appsIcons_->setStyle(std::to_wstring(st.strict) + L"|" + std::to_wstring(st.dark) + L"|" + std::to_wstring(st.shapeRatio) +
                          L"|" + std::to_wstring(st.cornerRatio) + L"|" + std::to_wstring(st.jailInset) + L"|" +
@@ -672,6 +668,96 @@ void DockApp::openApps() {
     }
     apps_.refreshAsync();   // une app installée entre-temps sera là la prochaine fois
     requestFrame();
+}
+
+AppsIconStyle DockApp::appsIconStyle() const {
+    AppsIconStyle st;
+    st.strict = settings_.tahoeStrictIcons;
+    st.dark = dark_;
+    st.shapeRatio = metrics_.iconShapeRatio;
+    st.cornerRatio = metrics_.iconCornerRatio;
+    st.jailInset = metrics_.iconJailInset;
+    st.shadowOpacity = metrics_.iconShadowOpacity;
+    st.customDir = dataDir_ + L"\\icons";
+    return st;
+}
+
+namespace {
+bool copyText(HWND owner, const std::wstring& text) {   // résultat d'un calcul de Spotlight
+    if (!OpenClipboard(owner)) return false;
+    EmptyClipboard();
+    bool ok = false;
+    if (HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t))) {
+        if (auto* p = static_cast<wchar_t*>(GlobalLock(h))) {
+            std::copy(text.c_str(), text.c_str() + text.size() + 1, p);
+            GlobalUnlock(h);
+            ok = SetClipboardData(CF_UNICODETEXT, h) != nullptr;
+        }
+        if (!ok) GlobalFree(h);
+    }
+    CloseClipboard();
+    return ok;
+}
+} // namespace
+
+// Spotlight sur l'écran du curseur ; un second appui (raccourci ou loupe) le ferme.
+void DockApp::openSpotlight() {
+    if (SpotlightWindow::isOpen()) {
+        SpotlightWindow::closeOpen();
+        return;
+    }
+    if (menuOpen_) return;   // une autre fenêtre modale est ouverte
+    SpotlightWindow::Request r;
+    r.apps = apps_.get(500);
+    POINT pt{};
+    GetCursorPos(&pt);
+    r.monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+    wchar_t profile[MAX_PATH] = {};
+    GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+    r.profile = profile;
+    r.icons = appsIconStyle();
+    MenuWindow::Env env = popupEnv();
+    UINT dpiX = 96, dpiY = 96;
+    if (SUCCEEDED(GetDpiForMonitor(r.monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY))) env.scale = float(dpiX) / 96.0f;
+    controller_.setCursor(std::nullopt);
+    requestFrame();
+    pauseCapture();   // une seule duplication de l'écran par processus
+    menuOpen_ = true;
+    const std::optional<SpotlightWindow::Choice> choice = SpotlightWindow::track(env, r);
+    menuOpen_ = false;
+    resumeCapture();
+    if (choice) {
+        const SpotItem& it = choice->item;
+        switch (it.kind) {
+            case SpotKind::Calc:
+                if (!copyText(hwnd_, it.target)) log::warn(L"Spotlight : presse-papiers indisponible");
+                break;
+            case SpotKind::App:
+                if (!launch(it.target)) log::warn(L"Spotlight : lancement impossible de %s", it.title.c_str());
+                break;
+            case SpotKind::File:
+                if (choice->reveal) revealInExplorer(it.target);
+                else launch(it.target);
+                break;
+        }
+    }
+    apps_.refreshAsync();
+    requestFrame();
+}
+
+void DockApp::registerSpotlightHotkey() {
+    if (settings_.spotlightHotkey == spotlightHotkeyOn_) return;
+    UnregisterHotKey(hwnd_, kHotSpotlight);
+    spotlightHotkeyOn_ = settings_.spotlightHotkey;
+    const auto spec = parseSpotlightHotkey(spotlightHotkeyOn_);
+    if (!spec) {
+        log::info(L"Spotlight : raccourci désactivé");
+    } else if (!RegisterHotKey(hwnd_, kHotSpotlight, spec->mods | MOD_NOREPEAT, spec->vk)) {
+        log::warn(L"Spotlight : raccourci %s déjà pris par une autre app (%lu) ; la loupe de la barre reste disponible",
+                  spotlightHotkeyOn_.c_str(), GetLastError());
+    } else {
+        log::info(L"Spotlight : raccourci %s", spotlightHotkeyOn_.c_str());
+    }
 }
 
 // Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
@@ -1200,6 +1286,10 @@ LRESULT CALLBACK DockApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
+    if (msg == spotlightMsg_ && spotlightMsg_) {
+        openSpotlight();
+        return 0;
+    }
     if (msg == taskbarCreated_ && taskbarCreated_) {
         log::info(L"Explorateur redémarré : réenregistrement");
         removeAppBar();
@@ -1435,6 +1525,10 @@ int DockApp::runSnapshot(const Options& options) {
 }
 
 void DockApp::onHotKey(int id) {
+    if (id == kHotSpotlight) {
+        openSpotlight();
+        return;
+    }
     if (id == kHotOverlay) {
         if (overlay_) {
             overlay_.reset();
@@ -1544,6 +1638,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     RegisterHotKey(hwnd_, kHotOverlay, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, 'O');
     RegisterHotKey(hwnd_, kHotOpacityUp, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_UP);
     RegisterHotKey(hwnd_, kHotOpacityDown, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_DOWN);
+    spotlightMsg_ = RegisterWindowMessageW(L"MacDockSpotlight");
+    ChangeWindowMessageFilterEx(hwnd_, spotlightMsg_, MSGFLT_ALLOW, nullptr);
+    registerSpotlightHotkey();
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);

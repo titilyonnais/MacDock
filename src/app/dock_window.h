@@ -10,6 +10,7 @@
 
 #include "../apps/apps_folder.h"
 #include "../apps/apps_icon_cache.h"
+#include "../apps/apps_window.h"
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
@@ -66,6 +67,9 @@ private:
     void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
     void openApps();                                           // écran Apps (repli : menu Démarrer)
+    void openSpotlight();                                      // Spotlight ; ferme celui qui est ouvert
+    void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
+    AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
     void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
     std::size_t listCapacity(const StackWindow::Request& r) const;
     MenuWindow::Env popupEnv();                               // environnement des menus et des piles
@@ -128,6 +132,8 @@ private:
     bool appBar_ = false;
     std::optional<std::size_t> pressed_;
     UINT taskbarCreated_ = 0;
+    UINT spotlightMsg_ = 0;              // « MacDockSpotlight » : loupe de la barre de menus
+    std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
     bool running_ = true;
     bool wakeAnimation_ = true;
     std::atomic<bool> wakePosted_{false};

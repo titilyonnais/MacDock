@@ -435,6 +435,16 @@ void disableAll(std::vector<RawMenuItem>& items) {
         disableAll(it.children);
     }
 }
+
+// Loupe : Spotlight du Dock (message enregistré « MacDockSpotlight ») ; false si le Dock ne tourne pas.
+bool askDockForSpotlight() {
+    HWND dock = FindWindowW(L"MacDockWindow", nullptr);
+    if (!dock) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(dock, &pid);
+    AllowSetForegroundWindow(pid);   // le panneau doit prendre le clavier
+    return PostMessageW(dock, RegisterWindowMessageW(L"MacDockSpotlight"), 0, 0) != FALSE;
+}
 } // namespace
 
 // Barre de menus Win32 de la fenêtre au premier plan, ou de sa fenêtre principale quand un dialogue est devant
@@ -909,7 +919,9 @@ void MenuBarApp::onPress(Screen& s, POINT client, bool doubleClick) {
         const StatusKind k = status_[j].kind;
         if (opensMenu(k)) {
             openMenu(s, s.layout.leftVisible + j);
-        } else {   // recherche de Windows (Win+S) ; horloge : centre de notifications (Win+N)
+        } else if (k == StatusKind::Search && askDockForSpotlight()) {
+            // Spotlight du Dock
+        } else {   // recherche de Windows (Win+S) si le Dock ne tourne pas ; horloge : centre de notifications (Win+N)
             auto inputs = shortcutInputs(*parseShortcut(k == StatusKind::Search ? L"Win+S" : L"Win+N"));
             SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
         }

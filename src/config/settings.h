@@ -40,6 +40,7 @@ struct Settings {
     MinimizeEffect minimizeEffect = MinimizeEffect::Genie;   // réduction des fenêtres dans le Dock
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
+    std::wstring spotlightHotkey = L"alt+space";   // Spotlight : alt+space, ctrl+space ou off
     std::vector<PinnedEntry> pinned;
     bool pinnedInitialized = false;  // false => importer les épingles par défaut
 };
