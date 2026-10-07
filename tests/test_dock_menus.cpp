@@ -138,3 +138,16 @@ TEST_CASE(dock_menus_stack_full) {
     // Les choix de tri et de présentation sont dans des sous-menus, pas à plat.
     CHECK(std::none_of(m.items.begin(), m.items.end(), [](const md::MenuItem& it) { return it.id == md::kCmdSortName; }));
 }
+
+TEST_CASE(dock_menus_login_enabled_for_aumid) {
+    auto c = appContext(true, true);
+    c.exePath = L"C:\\Program Files\\WindowsApps\\Microsoft.WindowsCalculator_11.0_x64__8wekyb3d8bbwe\\Calc.exe";
+    c.aumid = L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+    auto m = md::buildDockMenu(c);
+    REQUIRE(find(m.items, md::kCmdLogin) != nullptr);
+    CHECK(find(m.items, md::kCmdLogin)->enabled);
+    CHECK(!find(m.items, md::kCmdLogin)->checked);
+    CHECK(!find(m.items, md::kCmdReveal)->enabled);   // l'exe empaqueté ne s'ouvre pas dans l'Explorateur
+    c.openAtLogin = true;
+    CHECK(find(md::buildDockMenu(c).items, md::kCmdLogin)->checked);
+}

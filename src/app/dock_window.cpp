@@ -619,8 +619,17 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     ctx.settings = settings_;
     const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
-        if (auto id = model_.identityOf(item.appId)) ctx.exePath = id->exePath;
-        ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        std::optional<AppIdentity> id = model_.identityOf(item.appId);
+        if (id) ctx.exePath = id->exePath;
+        if (isPackagedApp(ctx.exePath, item.launch)) {
+            // AUMID connu par la fenêtre, sinon tiré de la cible épinglée (shell:AppsFolder\<AUMID>).
+            const std::wstring prefix = L"shell:appsfolder\\";
+            if (id && !id->aumid.empty()) ctx.aumid = id->aumid;
+            else if (toLower(item.launch).starts_with(prefix)) ctx.aumid = item.launch.substr(prefix.size());
+            ctx.openAtLogin = isPackagedOpenAtLogin(item.name);
+        } else {
+            ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        }
         for (WindowId w : model_.windowsOf(item.appId)) ctx.windows.emplace_back(w, model_.titleOf(w));
     } else if (item.kind == ItemKind::Trash) {
         ctx.trashFull = recycleBinHasItems();
@@ -691,7 +700,8 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             }
             break;
         case kCmdLogin:
-            setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
+            if (!ctx.aumid.empty()) setPackagedOpenAtLogin(ctx.aumid, item.name, !ctx.openAtLogin);
+            else setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
             break;
         case kCmdReveal:
             if (item.kind == ItemKind::Stack) openFolder(item.launch);

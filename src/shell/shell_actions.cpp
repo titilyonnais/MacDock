@@ -240,4 +240,54 @@ std::wstring downloadsFolder() {
     return out;
 }
 
+std::wstring startupShortcutName(const std::wstring& displayName) {
+    std::wstring name;
+    for (wchar_t c : displayName) name += (c < 32 || std::wstring_view(L"<>:\"/\\|?*").find(c) != std::wstring_view::npos) ? L'_' : c;
+    while (!name.empty() && (name.back() == L'.' || name.back() == L' ')) name.pop_back();   // refusés en fin de nom
+    return L"MacDock - " + (name.empty() ? std::wstring(L"App") : name) + L".lnk";
+}
+
+namespace {
+
+std::wstring startupShortcutPath(const std::wstring& displayName, const std::wstring& folder) {
+    std::wstring dir = folder;
+    if (dir.empty()) {
+        PWSTR path = nullptr;
+        if (FAILED(SHGetKnownFolderPath(FOLDERID_Startup, 0, nullptr, &path))) return {};
+        dir = path;
+        CoTaskMemFree(path);
+    }
+    return dir + L"\\" + startupShortcutName(displayName);
+}
+
+} // namespace
+
+bool isPackagedOpenAtLogin(const std::wstring& displayName, const std::wstring& folder) {
+    std::wstring path = startupShortcutPath(displayName, folder);
+    return !path.empty() && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+bool setPackagedOpenAtLogin(const std::wstring& aumid, const std::wstring& displayName, bool on,
+                            const std::wstring& folder) {
+    std::wstring path = startupShortcutPath(displayName, folder);
+    if (path.empty()) return false;
+    if (!on) return DeleteFileW(path.c_str()) || GetLastError() == ERROR_FILE_NOT_FOUND;
+    if (aumid.empty()) return false;
+    // Raccourci vers l'élément du dossier Applications : Windows lance l'app empaquetée par son AUMID.
+    PIDLIST_ABSOLUTE pidl = nullptr;
+    if (FAILED(SHParseDisplayName((L"shell:AppsFolder\\" + aumid).c_str(), nullptr, &pidl, 0, nullptr))) {
+        log::warn(L"Ouverture à la connexion : application introuvable (%s)", aumid.c_str());
+        return false;
+    }
+    ComPtr<IShellLinkW> link;
+    ComPtr<IPersistFile> file;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link));
+    if (SUCCEEDED(hr)) hr = link->SetIDList(pidl);
+    if (SUCCEEDED(hr)) hr = link.As(&file);
+    if (SUCCEEDED(hr)) hr = file->Save(path.c_str(), TRUE);
+    CoTaskMemFree(pidl);
+    if (FAILED(hr)) log::warn(L"Ouverture à la connexion de %s : erreur 0x%08lx", aumid.c_str(), static_cast<unsigned long>(hr));
+    return SUCCEEDED(hr);
+}
+
 } // namespace md

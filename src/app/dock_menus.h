@@ -24,6 +24,7 @@ struct MenuContext {
     DockItem item;                  // copie de l'élément cliqué (Separator pour le séparateur)
     std::wstring exePath;           // App : exécutable (vide pour une app empaquetée)
     bool openAtLogin = false;       // App : déjà ouverte à la connexion
+    std::wstring aumid;             // App empaquetée : AUMID (ouverture à la connexion par raccourci)
     bool trashFull = false;
     StackView stackView = StackView::Auto;        // Stack : réglages de la pile épinglée
     StackSort stackSort = StackSort::DateAdded;

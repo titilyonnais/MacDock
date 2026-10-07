@@ -22,6 +22,12 @@ void revealInExplorer(const std::wstring& path);
 bool isOpenAtLogin(const std::wstring& exePath);
 bool runCommandLaunches(const std::wstring& command, const std::wstring& exePath);   // casse ignorée
 bool setOpenAtLogin(const std::wstring& exePath, const std::wstring& name, bool on);
+// Apps empaquetées (sans exe lançable) : raccourci « MacDock - <nom>.lnk » vers shell:AppsFolder\<AUMID> dans le
+// dossier Démarrage (folder vide), ou dans folder (tests).
+std::wstring startupShortcutName(const std::wstring& displayName);   // caractères interdits remplacés
+bool isPackagedOpenAtLogin(const std::wstring& displayName, const std::wstring& folder = {});
+bool setPackagedOpenAtLogin(const std::wstring& aumid, const std::wstring& displayName, bool on,
+                            const std::wstring& folder = {});
 
 // Dépôt de fichiers. openWith : AUMID non vide → activation de l'app empaquetée, sinon exe.
 bool openWith(const std::wstring& exePath, const std::wstring& aumid, const std::vector<std::wstring>& paths);
