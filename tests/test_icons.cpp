@@ -66,3 +66,17 @@ TEST_CASE(icons_trash_full_differs) {
     CHECK(opaquePixels(*full) > 96 * 96 / 4);
     CHECK(empty->bgra != full->bgra);
 }
+
+TEST_CASE(icons_file_image_is_plain_and_sized) {
+    // Élément de pile : image Shell (vignette ou icône du type), sans plaque ni forme de Dock.
+    ComScope com;
+    md::IconProvider p;
+    wchar_t win[MAX_PATH];
+    GetWindowsDirectoryW(win, MAX_PATH);
+    auto img = p.file(std::wstring(win) + L"\\notepad.exe", 64);
+    REQUIRE(img != nullptr);
+    CHECK_EQ(img->size, 64);
+    CHECK_EQ(img->bgra.size(), std::size_t(64 * 64 * 4));
+    CHECK(opaquePixels(*img) > 64 * 64 / 8);
+    CHECK(p.file(L"C:\\nexiste\\pas.zzz", 64) != nullptr);   // fichier absent : icône générique du type
+}

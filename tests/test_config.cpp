@@ -38,6 +38,29 @@ TEST_CASE(settings_roundtrip_with_pins) {
     CHECK(back.pinnedInitialized);
 }
 
+TEST_CASE(settings_screen_roundtrip) {
+    md::Settings s;
+    s.screen = L"\\\\.\\DISPLAY2";
+    auto back = md::settingsFromJson(md::settingsToJson(s));
+    CHECK(back.screen == L"\\\\.\\DISPLAY2");
+    CHECK(md::settingsFromJson(md::json::Object{}).screen.empty());
+}
+
+TEST_CASE(settings_stack_options_roundtrip) {
+    md::Settings s;
+    md::PinnedEntry e{md::PinKind::Stack, L"", L"C:\\D", L"D"};
+    e.stackView = md::StackView::Grid;
+    e.stackSort = md::StackSort::Name;
+    s.pinned.push_back(e);
+    s.pinned.push_back({md::PinKind::Stack, L"", L"C:\\E", L"E"});
+    auto back = md::settingsFromJson(md::settingsToJson(s));
+    REQUIRE(back.pinned.size() == 2);
+    CHECK(back.pinned[0].stackView == md::StackView::Grid);
+    CHECK(back.pinned[0].stackSort == md::StackSort::Name);
+    CHECK(back.pinned[1].stackView == md::StackView::Auto);
+    CHECK(back.pinned[1].stackSort == md::StackSort::DateAdded);
+}
+
 TEST_CASE(metrics_partial_override) {
     auto m = md::metricsFromJson(*md::json::parse(R"({"dockCornerRadius":30,"unknown":1})"));
     CHECK_NEAR(m.dockCornerRadius, 30, 1e-9);

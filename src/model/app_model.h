@@ -55,6 +55,8 @@ public:
     bool pin(const std::wstring& appId, std::size_t index);
     bool unpin(const std::wstring& key);
     bool movePinned(std::size_t from, std::size_t to);
+    // Présentation et tri d'une pile épinglée (clé "stack:…") ; false si elle n'est pas épinglée.
+    bool setStackOptions(const std::wstring& key, StackView view, StackSort sort);
     // Index dans pinnedEntries() de l'élément de clé key ("app:…", "apps", "stack:…") ; nullopt s'il n'est pas épinglé.
     std::optional<std::size_t> pinnedIndexOf(const std::wstring& key) const;
 

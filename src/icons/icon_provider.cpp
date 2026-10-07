@@ -4,6 +4,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <commoncontrols.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -100,13 +101,9 @@ Pixels shellImage(const std::wstring& parsingName, int& size) {
     return bitmapPixels(hbmp, size);
 }
 
-// Icône système (SHSTOCKICONID) extraite en 256 px depuis son emplacement (imageres.dll…).
-Pixels stockImage(SHSTOCKICONID id, int& size) {
+// Pixels d'une icône (détruite au passage), prémultipliés.
+Pixels iconPixels(HICON icon, int& size) {
     size = 0;
-    SHSTOCKICONINFO info{sizeof info};
-    if (FAILED(SHGetStockIconInfo(id, SHGSI_ICONLOCATION, &info))) return {};
-    HICON icon = nullptr;
-    if (SHDefExtractIconW(info.szPath, info.iIcon, 0, &icon, nullptr, MAKELONG(256, 0)) != S_OK || !icon) return {};
     ICONINFO ii{};
     BOOL ok = GetIconInfo(icon, &ii);
     DestroyIcon(icon);
@@ -118,6 +115,43 @@ Pixels stockImage(SHSTOCKICONID id, int& size) {
     for (size_t i = 0; i + 3 < px.size(); i += 4)
         for (int c = 0; c < 3; ++c) px[i + c] = std::uint8_t((px[i + c] * px[i + 3] + 127) / 255);
     return px;
+}
+
+// Icône système (SHSTOCKICONID) extraite en 256 px depuis son emplacement (imageres.dll…).
+Pixels stockImage(SHSTOCKICONID id, int& size) {
+    size = 0;
+    SHSTOCKICONINFO info{sizeof info};
+    if (FAILED(SHGetStockIconInfo(id, SHGSI_ICONLOCATION, &info))) return {};
+    HICON icon = nullptr;
+    if (SHDefExtractIconW(info.szPath, info.iIcon, 0, &icon, nullptr, MAKELONG(256, 0)) != S_OK || !icon) return {};
+    return iconPixels(icon, size);
+}
+
+// Vignette (images, vidéos, PDF…) ou, à défaut, icône du fichier.
+Pixels thumbnailImage(const std::wstring& path, int& size) {
+    size = 0;
+    ComPtr<IShellItemImageFactory> factory;
+    if (FAILED(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&factory)))) return {};
+    HBITMAP hbmp = nullptr;
+    SIZE req{256, 256};
+    if (FAILED(factory->GetImage(req, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK, &hbmp)) &&
+        FAILED(factory->GetImage(req, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &hbmp)))
+        return {};
+    return bitmapPixels(hbmp, size);
+}
+
+// Icône générique du type de fichier (d'après l'extension seule), en 256 px.
+Pixels typeIcon(const std::wstring& path, int& size) {
+    size = 0;
+    SHFILEINFOW sfi{};
+    if (!SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi, SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES))
+        return {};
+    ComPtr<IImageList> list;
+    HICON icon = nullptr;
+    if (FAILED(SHGetImageList(SHIL_JUMBO, IID_PPV_ARGS(&list))) || FAILED(list->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &icon)) ||
+        !icon)
+        return {};
+    return iconPixels(icon, size);
 }
 
 Pixels loadPng(const std::wstring& path, int& size) {
@@ -339,6 +373,22 @@ IconProvider::ImagePtr IconProvider::build(const std::wstring& key, const std::w
 IconProvider::ImagePtr IconProvider::trash(bool full, int px) {
     return full ? get(L"trash-full", L"stock:" + std::to_wstring(int(SIID_RECYCLERFULL)), px)
                 : get(L"trash", L"stock:" + std::to_wstring(int(SIID_RECYCLER)), px);
+}
+
+IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px) {
+    px = std::clamp(px, 16, 512);
+    std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px);
+    if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (cache_.size() > 1500) clear();   // les piles changent sans cesse : pas de croissance sans fin
+    int srcSize = 0;
+    Pixels src = thumbnailImage(path, srcSize);
+    if (src.empty()) src = typeIcon(path, srcSize);
+    if (src.empty() || srcSize <= 0) return nullptr;
+    auto img = std::make_shared<Image>();
+    img->size = px;
+    img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
+    cache_[cacheKey] = img;
+    return img;
 }
 
 IconProvider::ImagePtr IconProvider::appsButton(int px) {

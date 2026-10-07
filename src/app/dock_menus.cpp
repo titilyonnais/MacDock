@@ -30,10 +30,12 @@ void appMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     if (!c.windows.empty()) out.push_back({});
 
     MenuItem options{-1, L"Options"};   // identifiant non nul : entrée à sous-menu
-    // Apps empaquetées : ouverture à la connexion au plan 4 (raccourci vers l'AUMID).
-    const bool exeUsable = !c.exePath.empty() && !isPackagedApp(c.exePath, item.launch);
+    // App empaquetée : pas d'exe utilisable ; l'ouverture à la connexion passe par un raccourci vers l'AUMID.
+    const bool packaged = isPackagedApp(c.exePath, item.launch);
+    const bool exeUsable = !c.exePath.empty() && !packaged;
+    const bool loginUsable = exeUsable || (packaged && !c.aumid.empty());
     options.submenu = {entry(kCmdKeep, L"Garder dans le Dock", true, item.pinned),
-                       entry(kCmdLogin, L"Ouvrir à la connexion", exeUsable, c.openAtLogin),
+                       entry(kCmdLogin, L"Ouvrir à la connexion", loginUsable, c.openAtLogin),
                        entry(kCmdReveal, L"Afficher dans l'Explorateur", exeUsable)};
     out.push_back(options);
     out.push_back({});
@@ -51,13 +53,30 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     out.push_back(entry(kCmdAutohide, s.autohide ? L"Désactiver le masquage" : L"Activer le masquage"));
     out.push_back(entry(kCmdMagnify, s.magnification ? L"Désactiver l'agrandissement" : L"Activer l'agrandissement"));
     MenuItem pos{-1, L"Position à l'écran"};
-    // Gauche et Droite arrivent avec le plan 4 (la mise en page n'a encore qu'un axe).
-    pos.submenu = {entry(kCmdPosLeft, L"Gauche", false, s.position == DockPosition::Left),
+    pos.submenu = {entry(kCmdPosLeft, L"Gauche", true, s.position == DockPosition::Left),
                    entry(kCmdPosBottom, L"En bas", true, s.position == DockPosition::Bottom),
-                   entry(kCmdPosRight, L"Droite", false, s.position == DockPosition::Right)};
+                   entry(kCmdPosRight, L"Droite", true, s.position == DockPosition::Right)};
     out.push_back(pos);
     out.push_back({});
     out.push_back(entry(kCmdSettings, L"Réglages du Dock…"));
+}
+
+void stackMenu(const MenuContext& c, std::vector<MenuItem>& out) {
+    MenuItem sort{-1, L"Trier par"};
+    sort.submenu = {entry(kCmdSortName, L"Nom", true, c.stackSort == StackSort::Name),
+                    entry(kCmdSortDateAdded, L"Date d'ajout", true, c.stackSort == StackSort::DateAdded),
+                    entry(kCmdSortModified, L"Date de modification", true, c.stackSort == StackSort::Modified),
+                    entry(kCmdSortKind, L"Type", true, c.stackSort == StackSort::Kind)};
+    out.push_back(sort);
+    MenuItem view{-1, L"Présenter le contenu comme"};
+    view.submenu = {entry(kCmdViewFan, L"Éventail", true, c.stackView == StackView::Fan),
+                    entry(kCmdViewGrid, L"Grille", true, c.stackView == StackView::Grid),
+                    entry(kCmdViewAuto, L"Automatiquement", true, c.stackView == StackView::Auto)};
+    out.push_back(view);
+    out.push_back({});
+    out.push_back(entry(kCmdReveal, L"Ouvrir dans l'Explorateur"));
+    out.push_back({});
+    out.push_back(entry(kCmdRemove, L"Retirer du Dock"));
 }
 
 } // namespace
@@ -78,11 +97,7 @@ MenuModel buildDockMenu(const MenuContext& c) {
             out.push_back({});
             out.push_back(entry(kCmdTrashEmpty, L"Vider la Corbeille", c.trashFull));
             break;
-        case ItemKind::Stack:
-            out.push_back(entry(kCmdReveal, L"Ouvrir dans l'Explorateur"));
-            out.push_back({});
-            out.push_back(entry(kCmdRemove, L"Retirer du Dock"));
-            break;
+        case ItemKind::Stack: stackMenu(c, out); break;
         case ItemKind::AppsButton: out.push_back(entry(kCmdRemove, L"Retirer du Dock")); break;
         case ItemKind::MinimizedWindow:
             out.push_back(entry(kCmdRestore, L"Restaurer"));

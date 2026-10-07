@@ -69,7 +69,12 @@ TEST_CASE(menu_separator_toggles_settings) {
     CHECK(find(m.items, md::kCmdMagnify)->text == L"Désactiver l'agrandissement");
     CHECK(find(m.items, md::kCmdAutohide)->text == L"Activer le masquage");
     CHECK(find(m.items, md::kCmdPosBottom)->checked);
-    CHECK(!find(m.items, md::kCmdPosLeft)->enabled);   // positions latérales : plan 4
+    CHECK(find(m.items, md::kCmdPosLeft)->enabled);
+    CHECK(find(m.items, md::kCmdPosRight)->enabled);
+    c.settings.position = md::DockPosition::Left;
+    auto left = md::buildDockMenu(c);
+    CHECK(find(left.items, md::kCmdPosLeft)->checked);
+    CHECK(!find(left.items, md::kCmdPosBottom)->checked);
     CHECK(find(m.items, md::kCmdSettings) != nullptr);
 }
 
@@ -114,4 +119,35 @@ TEST_CASE(menu_packaged_app_login_and_reveal_disabled) {
     CHECK(!find(ms.items, md::kCmdLogin)->enabled);
     CHECK(md::isPackagedApp(L"", L"shell:AppsFolder\\X!App"));
     CHECK(!md::isPackagedApp(L"C:\\Tools\\x.exe", L"C:\\Tools\\x.lnk"));
+}
+
+TEST_CASE(dock_menus_stack_full) {
+    md::MenuContext c;
+    c.item.kind = md::ItemKind::Stack;
+    c.item.key = L"stack:C:\\D";
+    c.stackSort = md::StackSort::Name;
+    c.stackView = md::StackView::Grid;
+    auto m = md::buildDockMenu(c);
+    for (int id : {md::kCmdSortDateAdded, md::kCmdSortName, md::kCmdSortModified, md::kCmdSortKind, md::kCmdViewAuto,
+                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdReveal, md::kCmdRemove})
+        REQUIRE(find(m.items, id) != nullptr);
+    CHECK(find(m.items, md::kCmdSortName)->checked);
+    CHECK(!find(m.items, md::kCmdSortDateAdded)->checked);
+    CHECK(find(m.items, md::kCmdViewGrid)->checked);
+    CHECK(!find(m.items, md::kCmdViewAuto)->checked);
+    // Les choix de tri et de présentation sont dans des sous-menus, pas à plat.
+    CHECK(std::none_of(m.items.begin(), m.items.end(), [](const md::MenuItem& it) { return it.id == md::kCmdSortName; }));
+}
+
+TEST_CASE(dock_menus_login_enabled_for_aumid) {
+    auto c = appContext(true, true);
+    c.exePath = L"C:\\Program Files\\WindowsApps\\Microsoft.WindowsCalculator_11.0_x64__8wekyb3d8bbwe\\Calc.exe";
+    c.aumid = L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+    auto m = md::buildDockMenu(c);
+    REQUIRE(find(m.items, md::kCmdLogin) != nullptr);
+    CHECK(find(m.items, md::kCmdLogin)->enabled);
+    CHECK(!find(m.items, md::kCmdLogin)->checked);
+    CHECK(!find(m.items, md::kCmdReveal)->enabled);   // l'exe empaqueté ne s'ouvre pas dans l'Explorateur
+    c.openAtLogin = true;
+    CHECK(find(md::buildDockMenu(c).items, md::kCmdLogin)->checked);
 }

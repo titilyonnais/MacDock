@@ -232,6 +232,14 @@ bool DockRenderer::tooltipLayout(const RenderFrame& f, const Metrics& m, const s
     float padX = float(m.tooltipPadX) * f.scale, padY = float(m.tooltipPadY) * f.scale;
     float w = tm.width + 2 * padX, h = tm.height + 2 * padY;
     float maxRight = float(width_ ? width_ : 4000);
+    if (t.side == TooltipSide::Right) {
+        rect = D2D1::RectF(t.cx, t.bottom - h / 2, t.cx + w, t.bottom + h / 2);
+        return true;
+    }
+    if (t.side == TooltipSide::Left) {
+        rect = D2D1::RectF(t.cx - w, t.bottom - h / 2, t.cx, t.bottom + h / 2);
+        return true;
+    }
     float left = std::clamp(t.cx - w / 2, 2.0f, std::max(2.0f, maxRight - w - 2));
     rect = D2D1::RectF(left, t.bottom - h, left + w, t.bottom);
     return true;
@@ -447,8 +455,9 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
     for (auto& icon : f.icons) {
         if (icon.separator) {
             float half = icon.sepLength / 2;
-            dc->DrawLine(D2D1::Point2F(icon.cx, icon.cy - half), D2D1::Point2F(icon.cx, icon.cy + half),
-                         sepBrush.Get(), std::max(1.0f, float(m.separatorWidth) * f.scale));
+            auto from = icon.sepHorizontal ? D2D1::Point2F(icon.cx - half, icon.cy) : D2D1::Point2F(icon.cx, icon.cy - half);
+            auto to = icon.sepHorizontal ? D2D1::Point2F(icon.cx + half, icon.cy) : D2D1::Point2F(icon.cx, icon.cy + half);
+            dc->DrawLine(from, to, sepBrush.Get(), std::max(1.0f, float(m.separatorWidth) * f.scale));
             continue;
         }
         if (ID2D1Bitmap1* bmp = bitmapFor(icon.image)) {
@@ -471,7 +480,8 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
         }
         if (icon.indicator) {
             float r = float(m.indicatorDiameter) * f.scale / 2;
-            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(icon.cx, icon.indicatorY), r, r), dotBrush.Get());
+            const float dotX = std::isnan(icon.indicatorX) ? icon.cx : icon.indicatorX;
+            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(dotX, icon.indicatorY), r, r), dotBrush.Get());
         }
     }
 

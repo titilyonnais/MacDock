@@ -9,6 +9,9 @@ namespace md {
 
 enum class DockPosition { Bottom, Left, Right };
 enum class PinKind { App, AppsButton, Stack };
+// Pile : présentation du contenu (automatique = éventail jusqu'à 9 éléments, grille au-delà) et tri.
+enum class StackView { Auto, Fan, Grid };
+enum class StackSort { DateAdded, Name, Modified, Kind };
 
 struct PinnedEntry {
     PinKind kind = PinKind::App;
@@ -16,6 +19,8 @@ struct PinnedEntry {
     std::wstring launch;   // App : cible lancée ; Stack : chemin du dossier
     std::wstring name;
     std::wstring exePath;  // App : exécutable cible, pour rattacher les fenêtres sans AUMID
+    StackView stackView = StackView::Auto;        // Stack
+    StackSort stackSort = StackSort::DateAdded;   // Stack
 };
 
 struct Settings {
@@ -28,6 +33,7 @@ struct Settings {
     double largeSize = 80;    // borné à [tileSize, 128]
     bool glass = true;        // verre Liquid Glass (capture de l'arrière-plan) ; false = verre dépoli simple
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
+    std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
     std::vector<PinnedEntry> pinned;
     bool pinnedInitialized = false;  // false => importer les épingles par défaut
 };

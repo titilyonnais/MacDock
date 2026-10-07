@@ -14,6 +14,7 @@
 #include "../interact/drop_rules.h"
 #include "../layout/dock_geometry.h"
 #include "../layout/dock_layout.h"
+#include "../layout/edge_frame.h"
 #include "../model/app_model.h"
 #include "../render/dock_renderer.h"
 
@@ -128,6 +129,10 @@ private:
     double toPx(double points) const { return width_ / 2.0 + points * scale_; }
     double bounceOffset(const std::wstring& appId) const;   // en points
     double hideOffsetPx(const LayoutResult& r) const;       // décalage vers le bas du masquage
+    // Repère local (« comme en bas ») : les méthodes publiques convertissent les points de la fenêtre.
+    bool insideLocal(POINT local) const;
+    std::optional<std::size_t> hitLocal(POINT local) const;
+    void toWindow(RenderFrame& f) const;
     std::optional<std::size_t> hoveredIndex() const;
     bool appRunning(const std::wstring& appId) const;
 
@@ -146,6 +151,7 @@ private:
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;
     double shown_ = 1;
+    EdgeFrame edge_;
     std::optional<std::size_t> dropItem_;   // icône visée par un dépôt
 
     std::optional<POINT> pressPoint_;

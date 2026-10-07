@@ -28,6 +28,9 @@ public:
     ImagePtr get(const std::wstring& key, const std::wstring& parsingName, int px);
     ImagePtr appsButton(int px);            // icône « Apps » dessinée par le code
     ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
+    // Élément de pile : vignette Shell (images…) ou icône du fichier, telle quelle (ni plaque ni forme),
+    // px x px ; icône générique du type si le fichier n'existe plus.
+    ImagePtr file(const std::wstring& path, int px);
     void clear() { cache_.clear(); }
 
 private:

@@ -15,6 +15,7 @@
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
+#include "../popup/stack_window.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -42,6 +43,21 @@ constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS" : vérification périodique du plein écran
+
+BOOL CALLBACK collectMonitor(HMONITOR mon, HDC, LPRECT, LPARAM lp) {
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof mi;
+    if (GetMonitorInfoW(mon, &mi))
+        reinterpret_cast<std::vector<MonitorInfo>*>(lp)->push_back(
+            {mi.szDevice, mi.rcMonitor, (mi.dwFlags & MONITORINFOF_PRIMARY) != 0});
+    return TRUE;
+}
+
+std::vector<MonitorInfo> enumMonitors() {
+    std::vector<MonitorInfo> out;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitor, reinterpret_cast<LPARAM>(&out));
+    return out;
+}
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
@@ -117,6 +133,7 @@ void DockApp::applySettings() {
     visibility_.setTimings({metrics_.autohideDelay, metrics_.autohideLeaveDelay, metrics_.autohideShowSeconds,
                             metrics_.autohideHideSeconds});
     syncAppBar();
+    if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
     updateGlass();   // réglage glass modifié à chaud
     requestFrame();
 }
@@ -198,8 +215,58 @@ void DockApp::removeAppBar() {
     appBar_ = false;
 }
 
+HMONITOR DockApp::dockMonitor() {
+    monitors_ = enumMonitors();
+    // Écran enregistré s'il est branché (il revient dès qu'on le rebranche), sinon l'écran courant, sinon le principal.
+    std::wstring wanted = settings_.screen;
+    if (wanted.empty() || std::none_of(monitors_.begin(), monitors_.end(),
+                                       [&](const MonitorInfo& m) { return toLower(m.name) == toLower(wanted); }))
+        wanted = screenName_;
+    std::size_t i = initialMonitor(monitors_, wanted);
+    if (i >= monitors_.size()) return MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    if (monitors_[i].name != screenName_) {
+        screenName_ = monitors_[i].name;
+        log::info(L"[trace] écran du Dock : %s", screenName_.c_str());
+    }
+    const RECT& r = monitors_[i].rect;
+    return MonitorFromPoint(POINT{(r.left + r.right) / 2, (r.top + r.bottom) / 2}, MONITOR_DEFAULTTOPRIMARY);
+}
+
+void DockApp::checkScreenPush(POINT screen) {
+    auto hit = pushedMonitor(monitors_, screen, settings_.position, int(metrics_.autohideEdgePx));
+    std::wstring target = hit ? monitors_[*hit].name : std::wstring();
+    // Poussée sur l'écran du Dock, ou pendant un menu, une pile ou un glisser : rien à faire.
+    if (target == screenName_ || menuOpen_ || controller_.dragging()) target.clear();
+    std::wstring chosen = screenPush_.update(target, nowSeconds());
+    if (chosen.empty()) return;
+    screenName_ = chosen;
+    settings_.screen = chosen;
+    saveSettings();
+    log::info(L"[trace] écran du Dock : %s (poussée)", chosen.c_str());
+    onDisplayChanged();
+}
+
+void DockApp::onDisplayChanged() {
+    icons_.clear();
+    renderer_.releaseImages();
+    reposition();
+    captureFailed_ = false;
+    if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
+        // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
+        capture_.stop();
+        glassLive_ = false;
+        if (initRenderer()) {
+            RECT rc;
+            GetClientRect(hwnd_, &rc);
+            renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+        }
+    }
+    if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
+    updateGlass();
+}
+
 void DockApp::reposition() {
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR mon = dockMonitor();
     MONITORINFO mi{sizeof mi};
     GetMonitorInfoW(mon, &mi);
     monitor_ = mi.rcMonitor;
@@ -207,24 +274,40 @@ void DockApp::reposition() {
     GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
     scale_ = float(dpiX) / 96.0f;
 
-    int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
-    int height = int(DockController::windowHeightPx(settings_, metrics_, scale_));
-    int width = monitor_.right - monitor_.left;
+    const int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
+    const int thick = int(DockController::windowHeightPx(settings_, metrics_, scale_));   // épaisseur de la fenêtre
+    const DockPosition edge = settings_.position;
 
-    int bottom = monitor_.bottom;
+    // Bande du bord occupée par le Dock ; la barre d'application la décale des autres barres (barre Windows…).
+    RECT band = monitor_;
+    if (edge == DockPosition::Left) band.right = band.left + reserve;
+    else if (edge == DockPosition::Right) band.left = band.right - reserve;
+    else band.top = band.bottom - reserve;
     if (appBar_) {
         APPBARDATA abd{};
         abd.cbSize = sizeof abd;
         abd.hWnd = hwnd_;
-        abd.uEdge = ABE_BOTTOM;
-        abd.rc = {monitor_.left, monitor_.bottom - reserve, monitor_.right, monitor_.bottom};
-        SHAppBarMessage(ABM_QUERYPOS, &abd);   // évite les autres barres (barre Windows si le mod est absent)
-        abd.rc.top = abd.rc.bottom - reserve;
+        abd.uEdge = edge == DockPosition::Left ? ABE_LEFT : edge == DockPosition::Right ? ABE_RIGHT : ABE_BOTTOM;
+        abd.rc = band;
+        SHAppBarMessage(ABM_QUERYPOS, &abd);
+        if (edge == DockPosition::Left) abd.rc.right = abd.rc.left + reserve;
+        else if (edge == DockPosition::Right) abd.rc.left = abd.rc.right - reserve;
+        else abd.rc.top = abd.rc.bottom - reserve;
         SHAppBarMessage(ABM_SETPOS, &abd);
-        bottom = abd.rc.bottom;
+        band = abd.rc;
     }
-    origin_ = POINT{monitor_.left, bottom - height};
-    if (trace_) log::info(L"[trace] zone réservée : %d px", appBar_ ? reserve : 0);
+    int width, height;
+    if (edge == DockPosition::Bottom) {
+        width = monitor_.right - monitor_.left;
+        height = thick;
+        origin_ = POINT{monitor_.left, band.bottom - height};
+    } else {
+        width = thick;
+        height = band.bottom - band.top;   // hauteur disponible le long du bord (hors barre Windows)
+        origin_ = POINT{edge == DockPosition::Left ? band.left : band.right - width, band.top};
+    }
+    placedPosition_ = edge;
+    if (trace_) log::info(L"[trace] zone réservée : %d px (bord %d)", appBar_ ? reserve : 0, int(edge));
     SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
@@ -235,7 +318,7 @@ void DockApp::reposition() {
 }
 
 bool DockApp::initRenderer() {
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR mon = hwnd_ ? MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY) : dockMonitor();
     auto adapter = BackdropCapture::adapterFor(mon);
     return renderer_.init(hwnd_, adapter.Get());
 }
@@ -340,8 +423,19 @@ void DockApp::setTransparent(bool transparent) {
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     bool inside = controller_.isInsideInteractiveZone(client);
-    bool atEdge = screen.y >= monitor_.bottom - LONG(metrics_.autohideEdgePx) && screen.x >= monitor_.left &&
-                  screen.x < monitor_.right;
+    const LONG edgePx = LONG(metrics_.autohideEdgePx);
+    bool atEdge = false;
+    switch (settings_.position) {
+        case DockPosition::Left:
+            atEdge = screen.x <= monitor_.left + edgePx && screen.y >= monitor_.top && screen.y < monitor_.bottom;
+            break;
+        case DockPosition::Right:
+            atEdge = screen.x >= monitor_.right - 1 - edgePx && screen.y >= monitor_.top && screen.y < monitor_.bottom;
+            break;
+        default:
+            atEdge = screen.y >= monitor_.bottom - 1 - edgePx && screen.x >= monitor_.left && screen.x < monitor_.right;
+    }
+    checkScreenPush(screen);
     if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
         cursorAtEdge_ = atEdge;
         cursorInDock_ = inside;
@@ -427,7 +521,71 @@ bool DockApp::stepPoof(double now) {
 }
 
 void DockApp::onClick(std::size_t index) {
-    if (const DockItem* p = controller_.itemAt(index)) activateItem(*p);
+    const DockItem* p = controller_.itemAt(index);
+    if (p && p->kind == ItemKind::Stack) openStack(index);
+    else if (p) activateItem(*p);
+}
+
+MenuWindow::Env DockApp::popupEnv() {
+    MenuWindow::Env env;
+    env.instance = instance_;
+    env.device = renderer_.device();
+    env.dark = dark_;
+    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
+    env.scale = scale_;
+    env.font = renderer_.fontName(settings_.font);
+    env.metrics = metrics_;
+    env.trace = trace_;
+    return env;
+}
+
+void DockApp::openStack(std::size_t index) {
+    const DockItem* p = controller_.itemAt(index);
+    if (!p) return;
+    const DockItem item = *p;
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (index >= frame.icons.size()) return;
+    StackView view = StackView::Auto;
+    StackSort sort = StackSort::DateAdded;
+    if (auto i = model_.pinnedIndexOf(item.key)) {
+        const PinnedEntry e = model_.pinnedEntries()[*i];
+        view = e.stackView;
+        sort = e.stackSort;
+    }
+    StackWindow::Request r;
+    r.folder = item.launch;
+    r.title = item.name;
+    r.items = sortStack(listFolder(item.launch), sort);
+    // Dock vertical : la grille s'ouvre à côté (l'éventail ne monte que d'un Dock en bas, comme sur macOS).
+    r.view = settings_.position == DockPosition::Bottom ? resolveView(view, r.items.size()) : StackView::Grid;
+    const RenderIcon& icon = frame.icons[index];
+    r.iconCenter = {origin_.x + LONG(std::lround(icon.cx)), origin_.y + LONG(std::lround(icon.cy))};
+    switch (settings_.position) {
+        case DockPosition::Left:
+            r.side = MenuWindow::Side::Right;
+            r.dockEdge = origin_.x + LONG(std::lround(frame.bgRight));
+            break;
+        case DockPosition::Right:
+            r.side = MenuWindow::Side::Left;
+            r.dockEdge = origin_.x + LONG(std::lround(frame.bgLeft));
+            break;
+        default:
+            r.side = MenuWindow::Side::Above;
+            r.dockEdge = origin_.y + LONG(std::lround(frame.bgTop));
+    }
+    r.tile = settings_.tileSize;
+    if (trace_) log::info(L"[trace] pile %s : %zu éléments", item.key.c_str(), r.items.size());
+    MenuWindow::Env env = popupEnv();
+    controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant que la pile est ouverte
+    requestFrame();
+    pauseCapture();   // une seule duplication de l'écran par processus
+    menuOpen_ = true;
+    std::wstring chosen = StackWindow::track(env, r);
+    menuOpen_ = false;
+    resumeCapture();
+    if (chosen == r.folder) openFolder(chosen);
+    else if (!chosen.empty()) launch(chosen);
+    requestFrame();
 }
 
 // Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
@@ -466,41 +624,60 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     ctx.settings = settings_;
     const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
-        if (auto id = model_.identityOf(item.appId)) ctx.exePath = id->exePath;
-        ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        std::optional<AppIdentity> id = model_.identityOf(item.appId);
+        if (id) ctx.exePath = id->exePath;
+        if (isPackagedApp(ctx.exePath, item.launch)) {
+            // AUMID connu par la fenêtre, sinon tiré de la cible épinglée (shell:AppsFolder\<AUMID>).
+            const std::wstring prefix = L"shell:appsfolder\\";
+            if (id && !id->aumid.empty()) ctx.aumid = id->aumid;
+            else if (toLower(item.launch).starts_with(prefix)) ctx.aumid = item.launch.substr(prefix.size());
+            ctx.openAtLogin = isPackagedOpenAtLogin(item.name);
+        } else {
+            ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        }
         for (WindowId w : model_.windowsOf(item.appId)) ctx.windows.emplace_back(w, model_.titleOf(w));
     } else if (item.kind == ItemKind::Trash) {
         ctx.trashFull = recycleBinHasItems();
+    } else if (item.kind == ItemKind::Stack) {
+        if (auto i = model_.pinnedIndexOf(item.key)) {
+            const PinnedEntry e = model_.pinnedEntries()[*i];
+            ctx.stackView = e.stackView;
+            ctx.stackSort = e.stackSort;
+        }
     }
 
-    // Ancrage : centré au-dessus de l'icône (ou du curseur, hors icône), juste au-dessus du Dock.
+    // Ancrage : face à l'icône (ou au curseur, hors icône), juste au-delà du Dock, côté écran.
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     POINT cursor;
     GetCursorPos(&cursor);
-    float top = frame.bgTop;
-    LONG x = cursor.x;
-    if (index && *index < frame.icons.size()) {
-        const RenderIcon& icon = frame.icons[*index];
-        x = origin_.x + LONG(std::lround(icon.cx));
-        if (!icon.separator) top = std::min(top, icon.cy - icon.size / 2);
+    const RenderIcon* icon = index && *index < frame.icons.size() ? &frame.icons[*index] : nullptr;
+    const float gap = 6 * scale_;
+    const float half = icon && !icon->separator ? icon->size / 2 : 0;
+    POINT anchor{};
+    MenuWindow::Side side = MenuWindow::Side::Above;
+    switch (settings_.position) {
+        case DockPosition::Left:
+            side = MenuWindow::Side::Right;
+            anchor.x = origin_.x + LONG(std::lround(std::max(frame.bgRight, icon ? icon->cx + half : 0.0f) + gap));
+            anchor.y = icon ? origin_.y + LONG(std::lround(icon->cy)) : cursor.y;
+            break;
+        case DockPosition::Right:
+            side = MenuWindow::Side::Left;
+            anchor.x = origin_.x + LONG(std::lround(std::min(frame.bgLeft, icon ? icon->cx - half : frame.bgLeft) - gap));
+            anchor.y = icon ? origin_.y + LONG(std::lround(icon->cy)) : cursor.y;
+            break;
+        default:
+            anchor.x = icon ? origin_.x + LONG(std::lround(icon->cx)) : cursor.x;
+            anchor.y = origin_.y + LONG(std::lround(std::min(frame.bgTop, icon ? icon->cy - half : frame.bgTop) - gap));
     }
-    POINT anchor{x, origin_.y + LONG(std::lround(top - 6 * scale_))};
 
-    MenuWindow::Env env;
-    env.instance = instance_;
-    env.device = renderer_.device();
-    env.dark = dark_;
-    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
-    env.scale = scale_;
-    env.font = renderer_.fontName(settings_.font);
-    env.metrics = metrics_;
-    env.trace = trace_;
+    MenuWindow::Env env = popupEnv();
     controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant le menu, comme sur macOS
     requestFrame();
     // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
     pauseCapture();
     menuOpen_ = true;
-    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor);
+    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor, side);
     menuOpen_ = false;
     resumeCapture();
     if (trace_) log::info(L"[trace] menu %s : commande %d", item.key.c_str(), cmd);
@@ -528,7 +705,8 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             }
             break;
         case kCmdLogin:
-            setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
+            if (!ctx.aumid.empty()) setPackagedOpenAtLogin(ctx.aumid, item.name, !ctx.openAtLogin);
+            else setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
             break;
         case kCmdReveal:
             if (item.kind == ItemKind::Stack) openFolder(item.launch);
@@ -555,7 +733,11 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         case kCmdPosLeft:
         case kCmdPosBottom:
         case kCmdPosRight:
-            break;   // Gauche et Droite : plan 4
+            settings_.position = cmd == kCmdPosLeft ? DockPosition::Left
+                                 : cmd == kCmdPosRight ? DockPosition::Right : DockPosition::Bottom;
+            saveSettings();
+            applySettings();   // déplace le Dock (reposition) si le bord a changé
+            break;
         case kCmdSettings: {
             std::wstring path = L"\"" + dataDir_ + L"\\settings.json\"";
             ShellExecuteW(nullptr, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
@@ -566,6 +748,24 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         case kCmdRemove:
             if (model_.unpin(item.key)) savePinned();
             break;
+        case kCmdSortDateAdded:
+        case kCmdSortName:
+        case kCmdSortModified:
+        case kCmdSortKind: {
+            const StackSort sort = cmd == kCmdSortName       ? StackSort::Name
+                                   : cmd == kCmdSortModified ? StackSort::Modified
+                                   : cmd == kCmdSortKind     ? StackSort::Kind
+                                                             : StackSort::DateAdded;
+            if (model_.setStackOptions(item.key, ctx.stackView, sort)) savePinned();
+            break;
+        }
+        case kCmdViewAuto:
+        case kCmdViewFan:
+        case kCmdViewGrid: {
+            const StackView view = cmd == kCmdViewFan ? StackView::Fan : cmd == kCmdViewGrid ? StackView::Grid : StackView::Auto;
+            if (model_.setStackOptions(item.key, view, ctx.stackSort)) savePinned();
+            break;
+        }
         case kCmdRestore:
             restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
             break;
@@ -882,22 +1082,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DISPLAYCHANGE:
         case WM_DPICHANGED:
-            icons_.clear();
-            renderer_.releaseImages();
-            reposition();
-            captureFailed_ = false;
-            if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
-                // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
-                capture_.stop();
-                glassLive_ = false;
-                if (initRenderer()) {
-                    RECT rc;
-                    GetClientRect(hwnd_, &rc);
-                    renderer_.resize(UINT(rc.right), UINT(rc.bottom));
-                }
-            }
-            if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
-            updateGlass();
+            onDisplayChanged();
             return 0;
         case WM_APP_BACKDROP:
             onBackdrop();

@@ -13,10 +13,12 @@
 #include "../icons/icon_provider.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
+#include "../popup/menu_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "monitor_choice.h"
 #include "thumbnails.h"
 #include "visibility.h"
 #include "sprite_window.h"
@@ -46,6 +48,9 @@ private:
     void savePinned();
     void saveSettings();
     void reposition();
+    HMONITOR dockMonitor();              // écran choisi (enregistré, sinon principal), liste des écrans rafraîchie
+    void onDisplayChanged();             // écran, résolution ou DPI changés : icônes, place, carte, capture
+    void checkScreenPush(POINT screen);  // curseur poussé contre le bord du Dock sur un autre écran
     void registerAppBar();
     void removeAppBar();
     void onMouse(POINT screen);
@@ -53,6 +58,8 @@ private:
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
+    void openStack(std::size_t index);                        // pile ouverte en éventail ou en grille
+    MenuWindow::Env popupEnv();                               // environnement des menus et des piles
     void renderNow();
     void requestFrame();
     void startMouseThread();
@@ -95,6 +102,9 @@ private:
     ipc::PipeServer pipe_;
 
     RECT monitor_{};
+    std::vector<MonitorInfo> monitors_;   // écrans connus (rafraîchis à chaque placement)
+    std::wstring screenName_;             // écran où le Dock est placé (\\.\DISPLAYn)
+    ScreenPush screenPush_;               // poussée en cours vers un autre écran
     POINT origin_{};
     float scale_ = 1;
     bool dark_ = false;
@@ -123,8 +133,8 @@ private:
     double poofStart_ = -1;
     std::uint64_t loggedRevision_ = 0;   // [trace] dernière révision du modèle dont les positions ont été journalisées
     POINT poofCenter_{};
-    bool captureFailed_ = false;
-    ULONG trashNotify_ = 0;
+    bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
+    ULONG trashNotify_ = 0;        // SHChangeNotifyRegister sur la Corbeille
     class DropTarget* dropTarget_ = nullptr;
     struct PendingDrop {
         DropHover hover;
@@ -135,7 +145,8 @@ private:
     Visibility visibility_;
     Thumbnails thumbnails_;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
-    bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
+    bool loggedHidden_ = false;
+    DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

@@ -7,6 +7,10 @@
 
 namespace md {
 
+namespace {
+constexpr double kFitMarginPt = 4;   // marge laissée à chaque bout de l'axe quand le Dock doit rétrécir
+} // namespace
+
 void DockController::init(const Settings& s, const Metrics& m, AppModel* model) {
     model_ = model;
     setSettings(s);
@@ -17,6 +21,9 @@ void DockController::init(const Settings& s, const Metrics& m, AppModel* model) 
 
 void DockController::setSettings(const Settings& s) {
     settings_ = s;
+    edge_.edge = s.position;
+    width_ = edge_.axis();
+    height_ = edge_.cross();
     dirty_ = true;
 }
 
@@ -29,8 +36,10 @@ void DockController::setMetrics(const Metrics& m) {
 }
 
 void DockController::setViewport(UINT width, UINT height, float scale) {
-    width_ = width;
-    height_ = height;
+    // Fenêtre réelle ; les calculs se font dans le repère local (« comme en bas »).
+    edge_ = EdgeFrame{settings_.position, double(width), double(height)};
+    width_ = edge_.axis();
+    height_ = edge_.cross();
     scale_ = scale > 0 ? scale : 1;
     dirty_ = true;
 }
@@ -41,8 +50,9 @@ double DockController::reservePx(const Settings& s, const Metrics& m, float scal
 
 double DockController::windowHeightPx(const Settings& s, const Metrics& m, float scale) {
     double large = s.magnification ? std::max(s.largeSize, s.tileSize) : s.tileSize;
-    double headroom = (large - s.tileSize) + m.attentionBounceHeight * s.tileSize + m.tooltipGap +
-                      m.tooltipFontSize * 1.6 + 2 * m.tooltipPadY + 8;
+    // Dock vertical : l'infobulle se pose à côté de l'icône, il faut la place de sa largeur.
+    double tooltip = s.position == DockPosition::Bottom ? m.tooltipFontSize * 1.6 + 2 * m.tooltipPadY : 240;
+    double headroom = (large - s.tileSize) + m.attentionBounceHeight * s.tileSize + m.tooltipGap + tooltip + 8;
     return reservePx(s, m, scale) + std::ceil(headroom * scale);
 }
 
@@ -79,13 +89,28 @@ DockController::Laid DockController::layout() const {
     in.separatorWidth = metrics_.separatorWidth;
     in.separatorMargin = metrics_.separatorMargin;
     in.rangeTiles = metrics_.magnifyRangeTiles;
+    // Trop d'éléments pour l'axe (Dock vertical sur un portable…) : tout le Dock rétrécit, cases, écarts et
+    // marges ensemble, comme sur macOS — la longueur au repos est proportionnelle à ces mesures.
+    const double room = width_ / scale_ - 2 * kFitMarginPt;
+    if (const double rest = computeLayout(in).restLength; room > 0 && rest > room) {
+        const double f = room / rest;
+        in.tileSize *= f;
+        in.largeSize *= f;
+        in.gap *= f;
+        in.padding *= f;
+        in.separatorMargin *= f;
+    }
     in.amount = amount_.value();
     in.cursor = cursor_;
     out.r = computeLayout(in);
     return out;
 }
 
-bool DockController::isInsideInteractiveZone(POINT p) const {
+bool DockController::isInsideInteractiveZone(POINT p) const { return insideLocal(edge_.toLocal(p)); }
+
+std::optional<std::size_t> DockController::hitTest(POINT p) const { return hitLocal(edge_.toLocal(p)); }
+
+bool DockController::insideLocal(POINT p) const {
     if (width_ <= 0) return false;
     LayoutResult r = layout().r;
     double left = toPx(r.bgStart), right = toPx(r.bgEnd);
@@ -109,8 +134,8 @@ double DockController::hideOffsetPx(const LayoutResult& r) const {
     return (1 - shown_) * (height_ - restTop + 2 * metrics_.shadowBlur * scale_);
 }
 
-std::optional<std::size_t> DockController::hitTest(POINT p) const {
-    if (!isInsideInteractiveZone(p)) return std::nullopt;
+std::optional<std::size_t> DockController::hitLocal(POINT p) const {
+    if (!insideLocal(p)) return std::nullopt;
     Laid l = layout();
     double x = toPoints(p.x);
     double halfGap = metrics_.iconGap / 2;
@@ -124,9 +149,10 @@ std::optional<std::size_t> DockController::hitTest(POINT p) const {
     return std::nullopt;
 }
 
-std::optional<std::size_t> DockController::hitTestAny(POINT p) const {
-    if (auto hit = hitTest(p)) return hit;
-    if (!isInsideInteractiveZone(p)) return std::nullopt;
+std::optional<std::size_t> DockController::hitTestAny(POINT window) const {
+    const POINT p = edge_.toLocal(window);
+    if (auto hit = hitLocal(p)) return hit;
+    if (!insideLocal(p)) return std::nullopt;
     Laid l = layout();
     double x = toPoints(p.x);
     // Le séparateur occupe son trait et ses marges.
@@ -143,12 +169,14 @@ const DockItem* DockController::itemAt(std::size_t index) const {
 std::optional<std::size_t> DockController::hoveredIndex() const {
     if (drag_ || !cursorInside_ || !cursor_) return std::nullopt;
     POINT p{LONG(std::lround(toPx(*cursor_))), LONG(std::lround(bgBottomPx() - 1))};
-    return hitTest(p);
+    return hitLocal(p);
 }
 
-void DockController::setCursor(std::optional<POINT> clientPx) {
+void DockController::setCursor(std::optional<POINT> window) {
     refreshItems();
-    bool inside = clientPx && isInsideInteractiveZone(*clientPx);
+    std::optional<POINT> clientPx;
+    if (window) clientPx = edge_.toLocal(*window);
+    bool inside = clientPx && insideLocal(*clientPx);
     if (inside) {
         double c = toPoints(clientPx->x);
         if (!cursorInside_ || !cursor_ || *cursor_ != c) dirty_ = true;
@@ -364,13 +392,14 @@ void DockController::openGap(const std::wstring& target) {
     dirty_ = true;
 }
 
-DropHover DockController::dropOver(POINT p, const std::vector<std::wstring>& paths) {
+DropHover DockController::dropOver(POINT window, const std::vector<std::wstring>& paths) {
     refreshItems();
+    const POINT p = edge_.toLocal(window);
     DropHover h;
     std::optional<std::size_t> item;
     bool between = false;
-    if (isInsideInteractiveZone(p)) {
-        item = hitTest(p);
+    if (insideLocal(p)) {
+        item = hitLocal(p);
         Laid l = layout();
         const double x = toPoints(p.x);
         // Un dépôt vise l'icône elle-même, pas l'intervalle qui la sépare de sa voisine.
@@ -431,15 +460,17 @@ void DockController::updateDragTarget(POINT p) {
     openGap(d.hasSlot ? gapKey(d.section, d.slot) : std::wstring());
 }
 
-void DockController::pointerDown(POINT p) {
+void DockController::pointerDown(POINT window) {
     refreshItems();
+    const POINT p = edge_.toLocal(window);
     pressPoint_ = p;
-    pressIndex_ = hitTest(p);
+    pressIndex_ = hitLocal(p);
     drag_.reset();
     dirty_ = true;   // icône pressée assombrie
 }
 
-void DockController::pointerMove(POINT p) {
+void DockController::pointerMove(POINT window) {
+    const POINT p = edge_.toLocal(window);
     if (drag_) {
         updateDragTarget(p);
         return;
@@ -469,7 +500,8 @@ void DockController::pointerMove(POINT p) {
     updateDragTarget(p);
 }
 
-DragOutcome DockController::pointerUp(POINT p) {
+DragOutcome DockController::pointerUp(POINT window) {
+    const POINT p = edge_.toLocal(window);
     DragOutcome o;
     if (drag_) {
         updateDragTarget(p);
@@ -505,7 +537,7 @@ DragOutcome DockController::pointerUp(POINT p) {
             collapse_.snap(1);
             gaps_.clear();
         }
-    } else if (pressIndex_ && hitTest(p) == pressIndex_) {
+    } else if (pressIndex_ && hitLocal(p) == pressIndex_) {
         o.kind = DragOutcome::Kind::Click;
         o.index = *pressIndex_;
     }
@@ -608,8 +640,32 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         }
         f.tooltip.bottom += off;
     }
+    for (auto& icon : f.icons) icon.indicatorX = icon.cx;
+    if (edge_.vertical()) toWindow(f);
     dirty_ = false;
     return f;
+}
+
+// Repère local → fenêtre réelle (Dock à gauche ou à droite).
+void DockController::toWindow(RenderFrame& f) const {
+    auto a = edge_.toWindow(f.bgLeft, f.bgTop), b = edge_.toWindow(f.bgRight, f.bgBottom);
+    f.bgLeft = float(std::min(a.x, b.x));
+    f.bgRight = float(std::max(a.x, b.x));
+    f.bgTop = float(std::min(a.y, b.y));
+    f.bgBottom = float(std::max(a.y, b.y));
+    for (auto& icon : f.icons) {
+        auto c = edge_.toWindow(icon.cx, icon.cy);
+        auto dot = edge_.toWindow(icon.indicatorX, icon.indicatorY);
+        icon.cx = float(c.x);
+        icon.cy = float(c.y);
+        icon.indicatorX = float(dot.x);
+        icon.indicatorY = float(dot.y);
+        icon.sepHorizontal = icon.separator;
+    }
+    auto t = edge_.toWindow(f.tooltip.cx, f.tooltip.bottom);
+    f.tooltip.cx = float(t.x);
+    f.tooltip.bottom = float(t.y);
+    f.tooltip.side = edge_.edge == DockPosition::Left ? TooltipSide::Right : TooltipSide::Left;
 }
 
 } // namespace md

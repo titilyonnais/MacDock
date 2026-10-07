@@ -232,3 +232,14 @@ TEST_CASE(model_trash_full_changes_revision_and_item) {
     m.setTrashFull(true);   // sans changement : pas de nouveau rendu
     CHECK(m.revision() == r);
 }
+
+TEST_CASE(model_stack_options_update) {
+    md::AppModel m;
+    m.loadPinned({{md::PinKind::Stack, L"", L"C:\\D", L"D"}});
+    auto rev = m.revision();
+    CHECK(m.setStackOptions(L"stack:C:\\D", md::StackView::Fan, md::StackSort::Kind));
+    CHECK(m.revision() != rev);
+    CHECK(m.pinnedEntries()[0].stackView == md::StackView::Fan);
+    CHECK(m.pinnedEntries()[0].stackSort == md::StackSort::Kind);
+    CHECK(!m.setStackOptions(L"stack:C:\\X", md::StackView::Fan, md::StackSort::Kind));
+}

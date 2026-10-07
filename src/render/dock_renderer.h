@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -21,11 +22,15 @@
 
 namespace md {
 
+enum class TooltipSide { Above, Right, Left };
+
 struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
     float cx = 0, cy = 0, size = 0;
     IconProvider::ImagePtr image;
     bool indicator = false;
-    float indicatorY = 0;      // centre du point indicateur
+    float indicatorX = std::numeric_limits<float>::quiet_NaN();   // NaN : sous l'icône (cx)
+    float indicatorY = 0;                                         // centre du point indicateur
+    bool sepHorizontal = false;             // séparateur d'un Dock vertical
     bool separator = false;
     float sepLength = 0;
     float opacity = 1;
@@ -37,7 +42,10 @@ struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
 struct RenderTooltip {
     bool visible = false;
     std::wstring text;
+    // Ancrage (cx, bottom) : Above = milieu du bas de la bulle ; Right = milieu de son bord gauche ;
+    // Left = milieu de son bord droit (Dock vertical).
     float cx = 0, bottom = 0, opacity = 0;
+    TooltipSide side = TooltipSide::Above;
 };
 
 struct OverlayImage {          // image de référence superposée (calibration)
