@@ -8,6 +8,8 @@
 namespace md {
 
 enum class DockPosition { Bottom, Left, Right };
+// Réduction des fenêtres : effet génie ou échelle (comme macOS), ou animation de Windows (rien n'est coupé).
+enum class MinimizeEffect { Genie, Scale, Windows };
 enum class PinKind { App, AppsButton, Stack };
 // Pile : présentation du contenu (automatique = éventail jusqu'à 9 éléments, grille au-delà) et tri.
 enum class StackView { Auto, Fan, Grid, List };   // List : jamais choisie automatiquement
