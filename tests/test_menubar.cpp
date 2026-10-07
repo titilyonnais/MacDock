@@ -11,6 +11,7 @@
 #include "../src/menubar/shortcut.h"
 
 #include <set>
+#include <thread>
 
 namespace {
 md::BarLayoutInput wideBar(double width) {
@@ -423,8 +424,57 @@ TEST_CASE(bar_actions_ignore_missing_window) {
     // Une commande vers une fenêtre disparue ne fait rien (et ne plante pas).
     md::SystemActions sys;
     md::ActionContext ctx;
-    ctx.target.window = reinterpret_cast<HWND>(std::uintptr_t(0x7FFFFFF0));
+    // Handle certainement mort : une fenêtre créée puis détruite (jamais une vraie fenêtre de l'utilisateur).
+    HWND dead = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, nullptr, nullptr);
+    REQUIRE(dead != nullptr);
+    DestroyWindow(dead);
+    REQUIRE(!IsWindow(dead));
+    ctx.target.window = dead;
     CHECK(!md::runAction({md::ActionKind::Shortcut, L"Ctrl+S"}, ctx, sys));
     CHECK(!md::runAction({md::ActionKind::CloseWindow}, ctx, sys));
     CHECK(!md::runAction({md::ActionKind::Minimize}, ctx, sys));
+}
+
+TEST_CASE(bar_actions_dont_wait_for_hung_window) {
+    // « Tout afficher » sur la fenêtre d'une app figée (son fil ne traite plus de messages) : la barre n'attend pas.
+    HANDLE created = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    HANDLE release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    HWND hung = nullptr;
+    std::thread owner([&] {
+        // Réduite, hors écran, jamais activée.
+        hung = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"STATIC", L"", WS_POPUP | WS_MINIMIZE, -3000, -3000,
+                               10, 10, nullptr, nullptr, nullptr, nullptr);
+        SetEvent(created);
+        WaitForSingleObject(release, 5000);   // fil figé
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+        DestroyWindow(hung);
+    });
+    WaitForSingleObject(created, 2000);
+    bool ready = hung && IsIconic(hung);
+    std::vector<HWND> hidden{hung};
+    md::ActionContext ctx;
+    ctx.hidden = &hidden;
+    md::SystemActions sys;
+    const ULONGLONG t0 = GetTickCount64();
+    if (ready) md::runAction({md::ActionKind::ShowAll}, ctx, sys);
+    const ULONGLONG elapsed = GetTickCount64() - t0;
+    SetEvent(release);
+    owner.join();
+    CloseHandle(created);
+    CloseHandle(release);
+    REQUIRE(ready);
+    CHECK(elapsed < 1000);
+}
+
+// ---- Rendu ----
+#include "../src/menubar/bar_renderer.h"
+
+TEST_CASE(bar_renderer_detects_device_loss) {
+    CHECK(md::isDeviceLost(DXGI_ERROR_DEVICE_REMOVED));
+    CHECK(md::isDeviceLost(DXGI_ERROR_DEVICE_RESET));
+    CHECK(md::isDeviceLost(DXGI_ERROR_DEVICE_HUNG));
+    CHECK(md::isDeviceLost(D2DERR_RECREATE_TARGET));
+    CHECK(!md::isDeviceLost(S_OK));
+    CHECK(!md::isDeviceLost(E_INVALIDARG));
 }

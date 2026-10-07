@@ -53,6 +53,8 @@ private:
     void onForeground(HWND h);
     void relayout();
     void render();
+    void recoverDevice();   // device perdu : recréé ; sinon sortie en erreur (le lanceur relance la barre)
+    void restoreTargetFocus();   // menu fermé sans choix : le clavier retourne à l'app
     BarFrame frame() const;
     void onPress(POINT client);
     void onRightClick(POINT client);
@@ -108,6 +110,9 @@ private:
 
     Visibility visibility_;
     bool fullscreen_ = false, menuOpen_ = false, visibilityTimer_ = false;
+    bool layoutPending_ = false;   // relayout demandé pendant un menu : fait à sa fermeture (menus_ reste stable)
+    int renderFailures_ = 0;
+    int exitCode_ = 0;
     static MenuBarApp* self_;
 };
 

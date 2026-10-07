@@ -15,6 +15,11 @@ D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g
 
 } // namespace
 
+bool isDeviceLost(HRESULT hr) {
+    return hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || hr == DXGI_ERROR_DEVICE_HUNG ||
+           hr == D2DERR_RECREATE_TARGET;
+}
+
 bool BarRenderer::createFactories() {
     if (d2d_) return true;
     D2D1_FACTORY_OPTIONS opts{};
@@ -179,18 +184,37 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
     }
 }
 
+void BarRenderer::reset() {
+    surface_.Reset();
+    visual_.Reset();
+    target_.Reset();
+    dcomp_.Reset();
+    dc_.Reset();
+    d2dDevice_.Reset();
+    d3d_.Reset();
+    logoBitmap_.Reset();
+    logoOwner_ = nullptr;
+    logoBitmapStale_ = true;
+}
+
 bool BarRenderer::render(const BarFrame& f) {
+    lastError_ = S_OK;
     if (!surface_) return false;
     POINT offset{};
     Com<ID2D1DeviceContext> d;
-    if (FAILED(surface_->BeginDraw(nullptr, IID_PPV_ARGS(&d), &offset))) return false;
+    if (HRESULT hr = surface_->BeginDraw(nullptr, IID_PPV_ARGS(&d), &offset); FAILED(hr)) {
+        lastError_ = hr;
+        return false;
+    }
     d->SetDpi(96, 96);
     d->SetTransform(D2D1::Matrix3x2F::Translation(float(offset.x), float(offset.y)));
     d->Clear(rgba(0, 0, 0, 0));
     draw(d.Get(), f, float(height_));
     if (logoOwner_ == d.Get()) logoOwner_ = nullptr;   // contexte propre à ce BeginDraw : recréer au prochain
     HRESULT hr = surface_->EndDraw();
-    dcomp_->Commit();
+    if (SUCCEEDED(hr)) hr = dcomp_->Commit();
+    if (SUCCEEDED(hr) && d3d_) hr = d3d_->GetDeviceRemovedReason();
+    lastError_ = hr;
     return SUCCEEDED(hr);
 }
 

@@ -34,6 +34,8 @@ void exitWindows(UINT flags, const wchar_t* what) {
 SystemActions realSystemActions() {
     SystemActions s;
     s.sleep = [] {
+        // SetSuspendState exige aussi le privilège d'arrêt. Sur une machine en veille moderne (S0), il n'a pas d'effet.
+        if (!enableShutdownPrivilege()) log::warn(L"Barre : privilège d'arrêt refusé (veille)");
         if (!SetSuspendState(FALSE, FALSE, FALSE)) log::error(L"Barre : mise en veille impossible (%lu)", GetLastError());
     };
     s.lock = [] { LockWorkStation(); };

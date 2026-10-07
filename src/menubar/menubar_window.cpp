@@ -199,14 +199,20 @@ void MenuBarApp::reposition() {
 
 void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
+    // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
+    // premier plan (un dialogue « Enregistrer sous » reçoit Ctrl+V, pas sa fenêtre principale désactivée).
     HWND root = GetAncestor(h, GA_ROOTOWNER);
     if (!root) root = h;
+    HWND top = GetAncestor(h, GA_ROOT);
+    if (!top) top = h;
     wchar_t cls[256] = {};
     GetClassNameW(root, cls, 256);
     DWORD pid = 0;
     GetWindowThreadProcessId(root, &pid);
     const std::wstring exe = processExe(pid);
     const ForegroundKind kind = classifyForeground(cls, fileName(exe), pid == GetCurrentProcessId());
+    if (trace_) log::info(L"[trace] barre : premier plan %p (%s, %s) → %s", h, cls, fileName(exe).c_str(),
+                          kind == ForegroundKind::Ignore ? L"ignoré" : kind == ForegroundKind::Explorer ? L"Explorateur" : L"app");
     if (kind == ForegroundKind::Ignore) return;
     Active a;
     if (kind == ForegroundKind::Explorer) {
@@ -224,7 +230,7 @@ void MenuBarApp::onForeground(HWND h) {
         a.appId = id->appId;
         a.exePath = id->exePath;
     }
-    target_ = keepTarget(target_, root, kind, a.appId);
+    target_ = keepTarget(target_, top, kind, a.appId);
     const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop;
     active_ = a;
     checkFullscreen();
@@ -256,6 +262,12 @@ BarContext MenuBarApp::context() const {
 // ---- Mise en page et rendu ----
 
 void MenuBarApp::relayout() {
+    // Pendant un menu, MenuWindow lit le modèle ouvert : menus_ ne doit pas changer (heure, app, réglages…).
+    if (menuOpen_) {
+        layoutPending_ = true;
+        return;
+    }
+    layoutPending_ = false;
     menus_ = buildBarMenus(context());
     const MenuBarMetrics& m = settings_.metrics;
     const double pad = m.titlePadding;
@@ -299,7 +311,33 @@ BarFrame MenuBarApp::frame() const {
 
 void MenuBarApp::render() {
     if (!hwnd_) return;
-    if (!renderer_.render(frame())) log::warn(L"Barre : rendu impossible");
+    if (renderer_.render(frame())) {
+        renderFailures_ = 0;
+        return;
+    }
+    log::warn(L"Barre : rendu impossible (0x%08lX)", static_cast<unsigned long>(renderer_.lastError()));
+    if (isDeviceLost(renderer_.lastError()) || ++renderFailures_ >= 3) recoverDevice();
+}
+
+void MenuBarApp::recoverDevice() {
+    if (menuOpen_) return;   // le menu ouvert utilise encore le device : on réessaiera au prochain rendu
+    log::warn(L"Barre : device graphique perdu, recréation");
+    renderer_.reset();
+    renderFailures_ = 0;
+    if (!renderer_.init(hwnd_)) {
+        log::error(L"Barre : recréation du device impossible, arrêt (le lanceur relancera la barre)");
+        exitCode_ = 3;
+        PostQuitMessage(3);
+        return;
+    }
+    font_.clear();
+    reposition();   // surface à la bonne taille, police, mise en page, puis rendu
+}
+
+void MenuBarApp::restoreTargetFocus() {
+    HWND t = target_.window;
+    if (!t || !IsWindow(t) || GetAncestor(GetForegroundWindow(), GA_ROOT) == GetAncestor(t, GA_ROOT)) return;
+    SetForegroundWindow(t);   // notre menu vient d'avoir le premier plan : permis, sans frappe Alt synthétique
 }
 
 void MenuBarApp::updateClock() {
@@ -444,11 +482,16 @@ void MenuBarApp::onRightClick(POINT client) {
     m.items.push_back({});
     m.items.push_back({kCmdBarQuit, L"Quitter la barre des menus"});
     POINT anchor{client.x + monitor_.left, monitor_.top + heightPx_ + LONG(std::lround(scale_))};
-    menuOpen_ = true;
     if (sampler_.running()) finishSample(std::nullopt);
+    menuOpen_ = true;
     ReleaseCapture();
     const int r = MenuWindow::track(menuEnv(), m, anchor, MenuWindow::Side::Below);
     menuOpen_ = false;
+    if (layoutPending_) {
+        relayout();
+        render();
+    }
+    if (r <= 0) restoreTargetFocus();
     switch (r) {
         case kCmdBarSettings:
             ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr,
@@ -468,11 +511,16 @@ void MenuBarApp::onRightClick(POINT client) {
 
 void MenuBarApp::openMenu(std::size_t index) {
     if (sampler_.running()) finishSample(std::nullopt);   // une seule duplication de l'écran par processus
-    menuOpen_ = true;
     int current = int(index);
+    const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     for (;;) {
+        menuOpen_ = false;
         menus_ = buildBarMenus(context());   // liste des fenêtres à jour
+        menuOpen_ = true;
         if (current < 0 || std::size_t(current) >= layout_.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
+        // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.
+        const MenuModel model = menus_.menus[std::size_t(current)].model;
+        const std::map<int, MenuAction> actions = menus_.actions;
         highlight_ = current;
         render();
         RECT win{};
@@ -487,21 +535,26 @@ void MenuBarApp::openMenu(std::size_t index) {
         POINT anchor{link.titles[std::size_t(current)].left, win.bottom + LONG(std::lround(scale_))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
         if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
-        const int r = MenuWindow::track(menuEnv(), menus_.menus[std::size_t(current)].model, anchor,
-                                        MenuWindow::Side::Below, &link);
+        const int r = MenuWindow::track(menuEnv(), model, anchor, MenuWindow::Side::Below, &link);
         if (auto next = menuSwitchTarget(r)) {
             current = *next;
             continue;
         }
-        highlight_ = -1;
-        render();
         menuOpen_ = false;
-        if (r > 0)
-            if (auto it = menus_.actions.find(r); it != menus_.actions.end()) execute(it->second);
+        highlight_ = -1;
+        if (layoutPending_) relayout();
+        render();
+        target_ = target;
+        if (r > 0) {
+            if (auto it = actions.find(r); it != actions.end()) execute(it->second);
+        } else {
+            restoreTargetFocus();
+        }
         return;
     }
     highlight_ = -1;
     menuOpen_ = false;
+    if (layoutPending_) relayout();
     render();
 }
 
@@ -667,7 +720,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.closed = [this](HWND h) { model_.windowClosed(toId(h)); };
     ev.minimized = [this](HWND h, bool m) { model_.windowMinimized(toId(h), m); };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
-    ev.activated = [this](HWND h) { onForeground(h); };
+    ev.foreground = [this](HWND h) { onForeground(h); };   // bureau et dialogues compris
     ev.flashed = [](HWND) {};
     tracker_.start(hwnd_, ev);
     onForeground(GetForegroundWindow());
@@ -696,7 +749,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     tracker_.stop();
     removeAppBar();
     DestroyWindow(hwnd_);
-    return 0;
+    return exitCode_;
 }
 
 } // namespace md

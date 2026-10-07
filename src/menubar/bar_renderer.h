@@ -17,6 +17,9 @@
 
 namespace md {
 
+// Erreurs de rendu qui exigent de recréer le device (pilote mis à jour, réinitialisation du GPU, veille).
+bool isDeviceLost(HRESULT hr);
+
 struct BarDrawItem {      // pixels de la barre
     std::wstring text;
     bool bold = false, logo = false;
@@ -41,6 +44,7 @@ class BarRenderer {
 
 public:
     bool init(HWND hwnd);    // device matériel (aussi celui des menus en verre) + DirectComposition
+    void reset();            // libère device et composition (avant un nouvel init après une perte du device)
     bool initOffscreen();    // sans fenêtre ni device D3D (cible WIC)
     void resize(UINT w, UINT h);
     ID3D11Device* device() const { return d3d_.Get(); }
@@ -49,6 +53,7 @@ public:
     float measure(const std::wstring& text, bool bold);   // largeur en pixels
     void setLogo(LogoImage logo) { logo_ = std::move(logo); logoBitmapStale_ = true; }
     bool render(const BarFrame& f);
+    HRESULT lastError() const { return lastError_; }   // échec du dernier render (isDeviceLost : recréer)
     // Hors écran : la barre dessinée sur background (BGRA prémultiplié w x h) ; out reçoit l'image BGRA.
     bool renderToImage(const BarFrame& f, const std::vector<std::uint8_t>& background, UINT w, UINT h,
                        std::vector<std::uint8_t>& out);
@@ -76,6 +81,7 @@ private:
     Com<ID2D1Bitmap> logoBitmap_;
     ID2D1RenderTarget* logoOwner_ = nullptr;   // cible pour laquelle logoBitmap_ a été créé
     bool logoBitmapStale_ = true;
+    HRESULT lastError_ = S_OK;
 };
 
 } // namespace md

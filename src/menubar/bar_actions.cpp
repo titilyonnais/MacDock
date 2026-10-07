@@ -96,6 +96,11 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             if (!s || !liveWindow(target)) return false;
             forceForeground(target);
             Sleep(40);   // le temps que l'app reçoive l'activation avant les touches
+            // Jamais de frappe vers une autre fenêtre : Ctrl+W ou Ctrl+X n'ont rien à faire ailleurs.
+            if (GetAncestor(GetForegroundWindow(), GA_ROOT) != GetAncestor(target, GA_ROOT)) {
+                log::warn(L"Barre : premier plan refusé, raccourci %s non envoyé", a.arg.c_str());
+                return false;
+            }
             auto inputs = shortcutInputs(*s);
             return SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
         }
@@ -104,11 +109,11 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             return PostMessageW(target, WM_CLOSE, 0, 0) != FALSE;
         case ActionKind::Minimize:
             if (!liveWindow(target)) return false;
-            ShowWindow(target, SW_MINIMIZE);
+            ShowWindowAsync(target, SW_MINIMIZE);   // asynchrone : une app figée ne bloque pas la barre
             return true;
         case ActionKind::Zoom:
             if (!liveWindow(target)) return false;
-            ShowWindow(target, IsZoomed(target) ? SW_RESTORE : SW_MAXIMIZE);
+            ShowWindowAsync(target, IsZoomed(target) ? SW_RESTORE : SW_MAXIMIZE);
             forceForeground(target);
             return true;
         case ActionKind::BringAllToFront:
@@ -118,7 +123,7 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         case ActionKind::ActivateWindow: {
             HWND h = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(a.window));
             if (!liveWindow(h)) return false;
-            if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+            if (IsIconic(h)) ShowWindowAsync(h, SW_RESTORE);
             return forceForeground(h);
         }
         case ActionKind::HideApp:
@@ -129,14 +134,14 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         case ActionKind::HideOthers: {
             OthersCollect col{&c.appWindows, {}};
             EnumWindows(collectOthers, reinterpret_cast<LPARAM>(&col));
-            for (HWND h : col.others) ShowWindow(h, SW_SHOWMINNOACTIVE);
+            for (HWND h : col.others) ShowWindowAsync(h, SW_SHOWMINNOACTIVE);
             if (c.hidden) c.hidden->insert(c.hidden->end(), col.others.begin(), col.others.end());
             return !col.others.empty();
         }
         case ActionKind::ShowAll: {
             if (!c.hidden || c.hidden->empty()) return false;
             for (HWND h : *c.hidden)
-                if (liveWindow(h) && IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE);
+                if (liveWindow(h) && IsIconic(h)) ShowWindowAsync(h, SW_SHOWNOACTIVATE);
             c.hidden->clear();
             return true;
         }

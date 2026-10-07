@@ -15,7 +15,8 @@ public:
     struct Events {
         std::function<void(HWND, const AppIdentity&)> opened;
         std::function<void(HWND)> closed;
-        std::function<void(HWND)> activated;
+        std::function<void(HWND)> activated;    // fenêtre suivie (éligible au Dock) passée au premier plan
+        std::function<void(HWND)> foreground;   // tout changement de premier plan, fenêtre éligible ou non (bureau, dialogue)
         std::function<void(HWND)> flashed;
         std::function<void(HWND, bool)> minimized;
         std::function<void(HWND, const std::wstring&)> titleChanged;

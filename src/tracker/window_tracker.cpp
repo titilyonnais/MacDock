@@ -89,6 +89,7 @@ void WindowTracker::onEvent(DWORD event, HWND hwnd) {
             break;
         case EVENT_SYSTEM_FOREGROUND:
             foreground_ = hwnd;
+            if (events_.foreground) events_.foreground(hwnd);
             if (!known_.contains(hwnd)) evaluate(hwnd);
             if (known_.contains(hwnd) && events_.activated) events_.activated(hwnd);
             break;
