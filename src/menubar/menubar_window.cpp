@@ -230,14 +230,60 @@ void MenuBarApp::onForeground(HWND h) {
         a.appId = id->appId;
         a.exePath = id->exePath;
     }
+    if (!a.explorer) readRealMenus(top, root, a);
     target_ = keepTarget(target_, top, kind, a.appId);
-    const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop;
+    const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop ||
+                         a.menuOwner != active_.menuOwner || a.real.size() != active_.real.size() ||
+                         !std::equal(a.real.begin(), a.real.end(), active_.real.begin(),
+                                     [](const RawMenuItem& x, const RawMenuItem& y) { return x.text == y.text; });
     active_ = a;
     checkFullscreen();
     if (!changed) return;
-    if (trace_) log::info(L"[trace] barre : app active « %s » (%s)", a.name.c_str(), a.appId.c_str());
+    if (trace_) log::info(L"[trace] barre : app active « %s » (%s), %zu vrais menus", a.name.c_str(), a.appId.c_str(), a.real.size());
     relayout();
     render();
+}
+
+namespace {
+void disableAll(std::vector<RawMenuItem>& items) {
+    for (auto& it : items) {
+        it.enabled = false;
+        disableAll(it.children);
+    }
+}
+} // namespace
+
+// Barre de menus Win32 de la fenêtre au premier plan, ou de sa fenêtre principale quand un dialogue est devant
+// (menus alors grisés, comme une app macOS pendant une feuille modale).
+void MenuBarApp::readRealMenus(HWND top, HWND root, Active& a) {
+    HWND owner = top;
+    HMENU bar = GetMenu(top);
+    if (!bar || !IsMenu(bar)) {
+        owner = root;
+        bar = root != top ? GetMenu(root) : nullptr;
+    }
+    if (!bar || !IsMenu(bar)) return;
+    auto real = readWin32Menu(bar);
+    if (real.empty()) return;
+    if (!IsWindowEnabled(owner))
+        for (auto& title : real) disableAll(title.children);
+    a.menuOwner = owner;
+    a.source = MenuSource::Win32;
+    a.real = std::move(real);
+}
+
+void MenuBarApp::refreshRealMenu(int real) {
+    if (active_.source != MenuSource::Win32 || real < 0 || std::size_t(real) >= active_.real.size()) return;
+    HWND owner = active_.menuOwner;
+    HMENU bar = IsWindow(owner) ? GetMenu(owner) : nullptr;
+    if (!bar || !IsMenu(bar)) return;
+    RawMenuItem& title = active_.real[std::size_t(real)];
+    if (!refreshWin32Popup(owner, bar, title.position))
+        log::warn(L"Barre : l'app ne prépare pas son menu « %s » à temps", title.text.c_str());
+    HMENU sub = GetSubMenu(bar, title.position);
+    if (!sub) return;
+    title.children = readWin32Menu(sub);
+    if (!IsWindowEnabled(owner)) disableAll(title.children);
 }
 
 std::vector<HWND> MenuBarApp::appWindows() const {
@@ -256,6 +302,9 @@ BarContext MenuBarApp::context() const {
     if (!c.desktop)
         for (WindowId id : model_.windowsOf(active_.appId)) c.windows.push_back({id, model_.titleOf(id)});
     c.activeWindow = toId(target_.window);
+    c.source = active_.source;
+    c.real = active_.real;
+    c.menuOwner = toId(active_.menuOwner);
     return c;
 }
 
@@ -515,7 +564,8 @@ void MenuBarApp::openMenu(std::size_t index) {
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     for (;;) {
         menuOpen_ = false;
-        menus_ = buildBarMenus(context());   // liste des fenêtres à jour
+        if (current >= 0 && std::size_t(current) < menus_.menus.size()) refreshRealMenu(menus_.menus[std::size_t(current)].real);
+        menus_ = buildBarMenus(context());   // liste des fenêtres et vrais menus à jour
         menuOpen_ = true;
         if (current < 0 || std::size_t(current) >= layout_.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
         // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.

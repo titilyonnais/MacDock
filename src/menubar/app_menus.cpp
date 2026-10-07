@@ -1,5 +1,7 @@
 #include "app_menus.h"
 
+#include <cwctype>
+
 namespace md {
 namespace {
 
@@ -12,14 +14,19 @@ public:
         return out_.menus.back();
     }
 
-    MenuItem& add(BarMenu& m, std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
+    // Entrée avec son action, pas encore placée dans un menu.
+    MenuItem item(std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
         MenuItem it;
         it.id = next_++;
         it.text = std::move(text);
         it.shortcut = std::move(shortcut);
         it.enabled = enabled;
-        out_.actions[it.id] = std::move(action);
-        m.model.items.push_back(std::move(it));
+        if (action.kind != ActionKind::None) out_.actions[it.id] = std::move(action);
+        return it;
+    }
+
+    MenuItem& add(BarMenu& m, std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
+        m.model.items.push_back(item(std::move(text), std::move(action), std::move(shortcut), enabled));
         return m.model.items.back();
     }
 
@@ -169,6 +176,54 @@ void explorerMenus(Builder& b, const BarContext& c) {
     helpMenu(b, c);
 }
 
+std::wstring lower(std::wstring s) {
+    for (auto& ch : s) ch = wchar_t(std::towlower(ch));
+    return s;
+}
+
+bool isWindowTitle(const std::wstring& t) {
+    const std::wstring l = lower(t);
+    return l == L"fenêtre" || l == L"fenetre" || l == L"window" || l == L"fenêtres" || l == L"windows";
+}
+
+bool isHelpTitle(const std::wstring& t) {
+    const std::wstring l = lower(t);
+    return l == L"aide" || l == L"help" || l == L"?";
+}
+
+MenuItem realItem(Builder& b, const RawMenuItem& r, const BarContext& c) {
+    if (r.separator) return {};
+    if (r.popup) {
+        MenuItem it;
+        if (r.children.empty()) {
+            it = b.item(r.text, {}, {}, false);   // sous-menu vide : rien à montrer
+        } else {
+            it.text = r.text;
+            it.enabled = r.enabled;
+            for (const auto& child : r.children) it.submenu.push_back(realItem(b, child, c));
+        }
+        return it;
+    }
+    MenuAction a{ActionKind::MenuCommand, {}, c.menuOwner, int(r.id)};
+    MenuItem it = b.item(r.text, std::move(a), r.shortcut, r.enabled);
+    it.checked = r.checked;
+    return it;
+}
+
+void realMenus(Builder& b, const BarContext& c) {
+    bool hasWindow = false;
+    for (const auto& title : c.real) hasWindow = hasWindow || isWindowTitle(title.text);
+    // Comme sur macOS, Fenêtre se place juste avant l'Aide.
+    const std::size_t helpAt = !c.real.empty() && isHelpTitle(c.real.back().text) ? c.real.size() - 1 : c.real.size();
+    for (std::size_t i = 0; i < c.real.size(); ++i) {
+        if (i == helpAt && !hasWindow) windowMenu(b, c);
+        BarMenu& m = b.menu(c.real[i].text);
+        m.real = int(i);
+        for (const auto& child : c.real[i].children) m.model.items.push_back(realItem(b, child, c));
+    }
+    if (helpAt == c.real.size() && !hasWindow) windowMenu(b, c);
+}
+
 } // namespace
 
 BarMenus buildBarMenus(const BarContext& c) {
@@ -176,7 +231,8 @@ BarMenus buildBarMenus(const BarContext& c) {
     Builder b(out);
     logoMenu(b, c);
     appMenu(b, c);
-    if (c.explorer) explorerMenus(b, c);
+    if (c.source != MenuSource::Generic && !c.real.empty()) realMenus(b, c);
+    else if (c.explorer) explorerMenus(b, c);
     else genericMenus(b, c);
     return out;
 }

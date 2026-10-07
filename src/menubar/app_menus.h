@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../popup/menu_model.h"
+#include "win32_menu.h"
 
 namespace md {
 
@@ -23,18 +24,23 @@ enum class ActionKind {
     OpenUri,          // arg : ms-settings:…, exécutable, dossier
     GoTo,             // arg : dossier (shell:…) ; dans la fenêtre de l'Explorateur active, sinon une nouvelle
     Sleep, Lock, SignOut, Restart, Shutdown,
+    MenuCommand,      // vrai menu Win32 : WM_COMMAND (command) à la fenêtre window
 };
+
+enum class MenuSource { Generic, Win32, Uia };
 
 struct MenuAction {
     ActionKind kind = ActionKind::None;
     std::wstring arg;
     std::uint64_t window = 0;
+    int command = 0;
 };
 
 struct BarMenu {
     std::wstring title;   // vide pour le logo
     MenuModel model;
     bool bold = false, logo = false;
+    int real = -1;   // index dans BarContext::real (vrai menu de l'app), -1 sinon
 };
 
 struct BarContext {
@@ -43,6 +49,10 @@ struct BarContext {
     bool desktop = false;    // le bureau lui-même : pas de fenêtre à fermer ni d'historique
     std::vector<std::pair<std::uint64_t, std::wstring>> windows;   // fenêtres de l'app (id, titre)
     std::uint64_t activeWindow = 0;
+    // Vrais menus de l'app (titres et leurs entrées), à la place des menus génériques.
+    MenuSource source = MenuSource::Generic;
+    std::vector<RawMenuItem> real;
+    std::uint64_t menuOwner = 0;   // fenêtre qui possède le menu
 };
 
 struct BarMenus {

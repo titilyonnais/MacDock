@@ -37,6 +37,9 @@ private:
     struct Active {               // app affichée dans la barre
         std::wstring name, appId, exePath;
         bool explorer = false, desktop = false;
+        HWND menuOwner = nullptr;   // fenêtre dont la barre montre les vrais menus
+        MenuSource source = MenuSource::Generic;
+        std::vector<RawMenuItem> real;
     };
 
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
@@ -51,6 +54,8 @@ private:
     void removeAppBar();
     void syncAppBar();
     void onForeground(HWND h);
+    static void readRealMenus(HWND top, HWND root, Active& a);
+    void refreshRealMenu(int real);   // à l'ouverture d'un vrai menu : l'app le prépare, la barre le relit
     void relayout();
     void render();
     void recoverDevice();   // device perdu : recréé ; sinon sortie en erreur (le lanceur relance la barre)
