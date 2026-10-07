@@ -24,6 +24,8 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
 
 // Durée en secondes (Maj enfoncée : ralenti × 8) ; 0 pour l'effet Windows.
 double minimizeDuration(MinimizeEffect e, bool slow);
+// Nombre de bandes pour une fenêtre de extent pixels dans l'axe du Dock : une toutes les 2 px, 16 à 400.
+int genieSliceCount(long extent);
 
 // Rectangle écran d'une fenêtre réduite avant sa réduction. rcNormalPosition est en coordonnées de la zone de
 // travail (sauf fenêtre outil) ; réduite depuis l'état agrandi : la zone de travail, débordée des bordures

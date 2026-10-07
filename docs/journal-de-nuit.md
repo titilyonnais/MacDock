@@ -273,6 +273,13 @@ J'ai repris les mineurs reportés qui se voient à l'usage (ils sont retirés de
 - **Pastille du volume** : la couleur du texte de la barre est relevée de nouveau si la pastille a interrompu un relevé ; `"hud": false` cache toujours la pastille ; une sortie audio débranchée la cache ; plus de minuterie inutile pendant le maintien.
 - **Relecture finale** : 0 critique, 3 importants, corrigés : un émoji pouvait encore être coupé à la limite de 128 caractères (collage, frappe) ; un faux coin restait une colonne plus loin avec des écrans décalés ; le fondu de la pastille pouvait être sauté (tests pour les deux premiers).
 
+### Plan 20 — Tes retours
+
+- **Alt+Tab ouvrait toujours le sélecteur de Windows** : Windows refuse de céder Alt+Tab à une autre app (erreur 1409). Le Dock lit maintenant le clavier avec un crochet (le même fil que celui de la souris) et ne garde que Tab avec Alt, puis Échap, flèches, Q et H pendant le sélecteur ; tout le reste passe tel quel (test).
+- **Génie pixelisé** : la fenêtre était découpée en bandes de 6 px, d'où les marches sur les bords courbes. Une bande toutes les 2 px maintenant (400 au plus) (tests).
+- **Lenteurs** : je t'avais fait lancer la version Debug (non optimisée). La version Release est compilée dans `build\Release`.
+- **La barre des tâches sous le Dock** : c'est le mod Windhawk de MacDock qui la cache, il n'est pas encore installé (étape 2 du README).
+
 ## Mineurs reportés — plan 19
 - Le relevé de la couleur du texte relancé après la pastille peut se perdre si une touche de volume ou un menu arrive dans les 0,8 s.
 - Casque débranché, haut-parleurs qui prennent le relais : la pastille garde le nom du casque jusqu'au fondu.

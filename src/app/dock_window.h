@@ -52,6 +52,7 @@ public:
 private:
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK mouseHookProc(int code, WPARAM wp, LPARAM lp);
+    static LRESULT CALLBACK keyboardHookProc(int code, WPARAM wp, LPARAM lp);   // Alt+Tab du sélecteur
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
 
     void loadConfig(bool initial);
@@ -211,6 +212,8 @@ private:
     DWORD mouseThreadId_ = 0;
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
+    std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
+    std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::thread configThread_;
     HANDLE stopEvent_ = nullptr;
     static DockApp* self_;

@@ -52,9 +52,9 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
     edge_ = edge;
     effect_ = effect;
     restore_ = restore;
-    // Assez de bandes pour une courbe lisse (une tous les 6 px de la fenêtre), sans en abuser.
+    // Assez de bandes pour une courbe lisse (une toutes les 2 px de la fenêtre) : sans marches visibles.
     const LONG extent = edge == DockPosition::Bottom ? from.bottom - from.top : from.right - from.left;
-    slices_ = effect == MinimizeEffect::Scale ? 1 : std::clamp(int(extent / 6), 16, 128);
+    slices_ = effect == MinimizeEffect::Scale ? 1 : genieSliceCount(extent);
     for (int i = 1; i < slices_; ++i) {
         HTHUMBNAIL t = nullptr;
         if (FAILED(DwmRegisterThumbnail(hwnd_, source, &t))) {

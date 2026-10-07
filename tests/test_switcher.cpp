@@ -160,3 +160,27 @@ TEST_CASE(switcher_session_front_not_first) {
     REQUIRE(s.begin(3, true, 0.0, false));
     CHECK(s.selected() == 2);
 }
+
+TEST_CASE(switcher_hook_keys) {
+    using md::SwitchKey;
+    const UINT tab = VK_TAB;
+    // Alt+Tab, Alt+Maj+Tab : avalés, la session avance ou recule ; le relâchement de Tab est avalé aussi.
+    CHECK(md::switcherKeyAction(tab, true, true, false, false, false, false) == SwitchKey::Next);
+    CHECK(md::switcherKeyAction(tab, true, true, true, false, false, false) == SwitchKey::Prev);
+    CHECK(md::switcherKeyAction(tab, true, true, false, true, true, false) == SwitchKey::Next);   // Tab maintenu : défile
+    CHECK(md::switcherKeyAction(tab, false, true, false, true, false, false) == SwitchKey::Swallow);
+    // Sans Alt, ou frappe injectée (touche neutre du Dock, autres outils) : laissée passer.
+    CHECK(md::switcherKeyAction(tab, true, false, false, false, false, false) == SwitchKey::Pass);
+    CHECK(md::switcherKeyAction(tab, true, true, false, false, false, true) == SwitchKey::Pass);
+    // Échap, flèches, Q, H : seulement pendant une session, Alt enfoncé.
+    CHECK(md::switcherKeyAction(VK_ESCAPE, true, true, false, false, false, false) == SwitchKey::Pass);
+    CHECK(md::switcherKeyAction(VK_ESCAPE, true, true, false, true, false, false) == SwitchKey::Cancel);
+    CHECK(md::switcherKeyAction(VK_LEFT, true, true, false, true, false, false) == SwitchKey::Left);
+    CHECK(md::switcherKeyAction(VK_RIGHT, true, true, false, true, true, false) == SwitchKey::Right);
+    CHECK(md::switcherKeyAction('Q', true, true, false, true, false, false) == SwitchKey::Quit);
+    CHECK(md::switcherKeyAction('Q', true, true, false, true, true, false) == SwitchKey::Swallow);   // répétition : une seule app fermée
+    CHECK(md::switcherKeyAction('H', true, true, false, true, false, false) == SwitchKey::Hide);
+    CHECK(md::switcherKeyAction('Q', false, true, false, true, false, false) == SwitchKey::Swallow);
+    CHECK(md::switcherKeyAction('X', true, true, false, true, false, false) == SwitchKey::Pass);
+    CHECK(md::switcherKeyAction(VK_MENU, false, false, false, true, false, false) == SwitchKey::Pass);   // Alt relâché : passe
+}
