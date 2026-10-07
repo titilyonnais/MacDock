@@ -229,11 +229,11 @@ Toucher un curseur, un interrupteur, une tuile ou un bouton de lecture ne ferme 
 - **Batterie** : pourcentage, source d'alimentation, « Réglages de la batterie… ».
 - **Centre de contrôle** :
   - tuiles « Réseau » (Wi-Fi activable, ou Ethernet) et « Bluetooth » (activable si une radio existe) ;
-  - tuile « Ne pas déranger » (ouvre les réglages de notification) et tuile « Recopie de l'écran » (`Win+K`) ;
+  - tuile « Concentration » (Ne pas déranger : ouvre les réglages de notification) et tuile « Recopie d'écran » (`Win+K`) ;
   - curseur « Écran » (luminosité, s'il y a moyen de la régler) ;
   - curseur « Son » ;
   - lecture en cours, s'il y en a une ;
-  - « Réglages du Centre de contrôle… ».
+  - « Réglages de la barre des menus… » (ouvre `menubar.json`).
 
 **Sources** (fichiers `src/menubar/status_*`) :
 - **Son** : Core Audio (`IAudioEndpointVolume`), avec notification de changement. La sortie par défaut change par l'interface `IPolicyConfig` de Windows (non documentée mais stable depuis Windows 7). Si elle échoue, les réglages Son s'ouvrent.

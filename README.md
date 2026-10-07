@@ -5,7 +5,7 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de l'écran, avec le menu du système, le nom de l'app active, ses menus, et la date et l'heure.
 
-> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7) ; viennent ensuite les icônes d'état et le Centre de contrôle (plan 8), les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
+> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8) ; viennent ensuite les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -61,7 +61,12 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - sinon, des menus génériques Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Les apps Chromium, Electron et Firefox gardent toujours ces menus génériques. Le menu Fenêtre liste les fenêtres de l'app ;
   - sur le bureau ou dans l'Explorateur, les menus de l'Explorateur, avec **Aller** (Téléchargements, Documents, Applications, Corbeille…), comme le Finder.
 - **Ouvrir un menu** : un clic sur un titre ; tant qu'un menu est ouvert, survoler un autre titre l'ouvre aussi, et les flèches ← → passent au voisin. Le clavier reste à ton app : la commande choisie lui est envoyée.
-- **À droite** : la date et l'heure (`mer. 7 oct. 14:32`) ; un clic ouvre le centre de notifications.
+- **À droite**, comme sur macOS : le son, le Wi-Fi (s'il y a une carte Wi-Fi), la batterie (s'il y en a une), la recherche (`Win+S`), le Centre de contrôle, puis la date et l'heure (`mer. 7 oct. 14:32`, un clic ouvre le centre de notifications). Les icônes sont dessinées dans la couleur du texte et suivent l'état réel (volume, sourdine, signal, charge).
+  - **Son** : curseur du volume, choix de la sortie (un clic en fait la sortie par défaut), « Réglages Son… ».
+  - **Wi-Fi** : interrupteur, réseaux connus (un clic connecte), autres réseaux (ouvrent les réglages), « Réglages Wi-Fi… ».
+  - **Batterie** : charge, source d'alimentation, réglages.
+  - **Centre de contrôle** : tuiles Wi-Fi ou Ethernet, Bluetooth (s'il y a une radio), Concentration, Recopie d'écran (`Win+K`) ; curseurs de luminosité (si l'écran se règle par WMI ou DDC/CI) et du son ; lecture en cours avec précédent, lecture/pause et suivant.
+  - Curseurs, interrupteurs, tuiles et boutons agissent sans fermer le menu, qui se met à jour pendant qu'il est ouvert. Survoler une icône ou un titre passe de l'un à l'autre.
 - **Plein écran** : la barre s'efface et revient quand le curseur touche le haut de l'écran.
 - **Clic droit dans le vide de la barre** : réglages, masquage automatique, quitter la barre.
 - **Logo** : par défaut celui de Windows. Pour le remplacer, mets une image `menubar-logo.png` dans `%APPDATA%\MacDock\` ; seule sa transparence compte, elle prend la couleur du texte.
@@ -75,7 +80,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 | `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
-| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), mesures (`metrics` : hauteur, taille du texte, marges…). |
+| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
 | `menubar-logo.png` | Logo personnalisé du menu du système (facultatif). |
 | `menubar-recent.json` | Apps récentes du menu du système, écrit par la barre (les documents viennent du dossier Récents de Windows, jamais modifié). |
 | `logs\` | Journaux (`logs\menubar\` pour la barre de menus). |

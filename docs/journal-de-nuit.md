@@ -58,6 +58,44 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - les icônes des documents ne lisent plus le disque à chaque mise en page.
 - **À vérifier toi-même** : le chemin UIA (déplier le menu de l'app, lire, replier, invoquer) est testé sur une app factice, pas sur une vraie. Aucune app concernée n'était ouverte, et l'essai réel aurait affiché des menus pendant que tu travaillais. Ouvre le Bloc-notes de Windows 11 : la barre doit montrer Fichier, Modifier, Affichage, et leurs entrées.
 
+### Plan 8 — Icônes d'état et Centre de contrôle (fusionné dans `main`)
+
+- **Partie droite** comme sur macOS : son, Wi-Fi, batterie, recherche, Centre de contrôle, horloge. Un élément sans matériel est masqué (sur ton poste : ni Wi-Fi, ni batterie, ni Bluetooth, ni luminosité réglable, donc son, recherche, Centre de contrôle et horloge).
+- **Menus enrichis** en verre : intitulés, curseurs, interrupteurs, tuiles bleues quand elles sont actives, lecture en cours avec ses boutons. Ils agissent sans se fermer et se mettent à jour toutes les 500 ms.
+- **Sources** :
+  - Core Audio pour le son, avec notification (l'icône suit la touche volume) ;
+  - WlanAPI pour le Wi-Fi, `Windows.Devices.Radios` pour le Bluetooth ;
+  - la lecture en cours de Windows (navigateur, Spotify…) ;
+  - WMI, puis DDC/CI, pour la luminosité, relue toutes les 30 s ou à l'ouverture d'un menu.
+  
+  Tout ce qui est lent tourne sur un fil à part ; la barre ne l'attend jamais.
+- **Vérifié à l'œil, hors écran** : la barre (`--snapshot`) et les quatre menus (images du test `status_menus_render_offscreen` avec `MACDOCK_DUMP`). Rien n'a été affiché devant toi, et aucun réglage (volume, sortie, Wi-Fi…) n'a été touché.
+- **Relecture finale** : 6 problèmes importants, tous corrigés avec un test :
+  - un menu ouvert garde ses lignes. Avant, l'interrupteur Wi-Fi pouvait mentir, un clic pouvait viser le mauvais réseau, et le menu se figeait dès qu'une ligne apparaissait ;
+  - l'icône du son suit les changements tout de suite ;
+  - WMI et DDC/CI ne sont plus interrogés toutes les 2 s ;
+  - si Windows refuse une sortie audio, les réglages Son s'ouvrent.
+- **À vérifier toi-même** :
+  1. le clic sur l'icône du son, puis le curseur et le choix d'une sortie ;
+  2. le Centre de contrôle, avec ta vidéo en cours (titre, pause, suivant) ;
+  3. sur un portable : le Wi-Fi, la batterie et le Bluetooth (absents ici).
+
+## Décisions prises sans toi (plan 8)
+- Les tuiles Wi-Fi et Bluetooth ne basculent pas d'avance : elles prennent l'état du relevé suivant, une seconde au plus après le clic.
+- Les titres des tuiles sont « Concentration » et « Recopie d'écran », et le Centre de contrôle fait 340 pt de large. Avec les titres d'origine, le texte était tronqué.
+- Aux flèches du clavier, la recherche et l'horloge sont sautées : elles n'ont pas de menu.
+- La structure d'un menu ouvert ne change pas. Une lecture apparue pendant qu'il est ouvert s'affichera à la prochaine ouverture.
+- `--snapshot` ne lit ni les radios, ni la lecture en cours, ni la luminosité.
+
+## Mineurs reportés — plan 8
+- Le bouton lecture/pause peut clignoter un instant après un clic.
+- Au démarrage, la partie droite peut rester incomplète pendant 2 s.
+- La luminosité avance par paliers quand on glisse le curseur.
+- Un clic sur le réseau déjà connecté relance la connexion.
+- Les menus d'état s'ouvrent depuis le bord gauche de l'icône ; la spec demande un alignement à droite.
+- Pendant un glisser, le pictogramme du curseur ne suit qu'au rafraîchissement suivant.
+- La logique qui saute la recherche et l'horloge n'a pas de test automatique.
+
 ## Décisions prises sans toi (plan 7)
 - Les apps récentes sont dans `menubar-recent.json` et non dans `menubar.json` : la barre réécrirait sinon ton fichier de réglages à chaque changement d'app.
 - Documents récents : seuls les raccourcis dont le nom porte une extension (« rapport.docx ») ; les dossiers récents sont écartés.
