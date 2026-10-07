@@ -35,7 +35,8 @@ struct TrayPost {
     UINT msg;
 };
 
-// Messages à poster à e.hwnd pour un clic (bouton 0 gauche, 1 droit) au point écran pt, au format de e.version.
+// Messages à poster à e.hwnd pour un clic (bouton 0 gauche, 1 droit, 2 double-clic gauche) au point écran pt, au
+// format de e.version.
 std::vector<TrayPost> trayClick(const ipc::TrayIconEvent& e, int button, POINT pt);
 
 } // namespace md

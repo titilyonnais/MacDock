@@ -22,6 +22,7 @@
 #include "bar_actions.h"
 #include "bar_layout.h"
 #include "bar_renderer.h"
+#include "bar_screens.h"
 #include "menubar_settings.h"
 #include "status_audio.h"
 #include "status_hub.h"
@@ -73,6 +74,7 @@ private:
         Visibility visibility;
         bool fullscreen = false, visibilityTimer = false;
         int renderFailures = 0;
+        std::size_t trayFirst = 0;   // icônes d'apps affichées : trayLaid_[trayFirst…] (les autres n'ont pas la place)
     };
 
     static LRESULT CALLBACK controlProc(HWND, UINT, WPARAM, LPARAM);
@@ -112,7 +114,7 @@ private:
     void restoreTargetFocus();   // menu fermé sans choix : le clavier retourne à l'app
     void afterMenu();            // menu fermé : capsule ôtée, mises en page et écrans en attente appliqués
     BarFrame frame(const Screen& s) const;
-    void onPress(Screen& s, POINT client);
+    void onPress(Screen& s, POINT client, bool doubleClick = false);
     void onRightClick(Screen& s, POINT client);
     void openMenu(Screen& s, std::size_t index);   // titre (gauche) ou icône d'état (leftVisible + j)
     MenuWindow::BarLink barLink(const Screen& s, int current) const;   // titres puis icônes d'état (sans menu : vides)
@@ -137,6 +139,7 @@ private:
     void finishSample(Screen& s, std::optional<double> luminance);
     bool detectFullscreen(const Screen& s) const;
     void checkFullscreen();
+    std::size_t trayShown(const Screen& s) const;   // icônes d'apps de cette barre (cases 0… de la droite)
     void stepVisibility(Screen& s);
     void stepVisibilityAll();
     int runSnapshot(const Options& options);
@@ -153,7 +156,7 @@ private:
 
     std::vector<std::unique_ptr<Screen>> screens_;   // l'écran principal d'abord
     std::size_t activeScreen_ = 0;                   // barre pleine ; les autres sont atténuées
-    bool screensPending_ = false;                    // écrans changés pendant un menu
+    RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
     WindowTracker tracker_;
     AppModel model_;

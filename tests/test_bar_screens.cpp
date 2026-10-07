@@ -79,3 +79,52 @@ TEST_CASE(bar_renderer_dims_inactive) {   // barre d'un écran inactif : 60 %
     }
     CoUninitialize();
 }
+
+TEST_CASE(menubar_screens_plan_keeps_and_replaces) {   // écrans branchés ou débranchés : rien de nul en cours de route
+    const std::vector<RECT> existing{{0, 0, 1920, 1080}, {1920, 0, 3840, 1080}};
+    const std::vector<md::ScreenInfo> wanted{screen(0, 0, 1920, 1080, 96, true), screen(-1280, 0, 0, 1024)};
+    const auto plan = md::planScreens(existing, wanted);
+    REQUIRE(plan.keep.size() == 2);
+    CHECK_EQ(plan.keep[0], 0);    // principal gardé
+    CHECK_EQ(plan.keep[1], -1);   // nouvel écran : barre à créer
+    REQUIRE(plan.drop.size() == 1);
+    CHECK_EQ(plan.drop[0], std::size_t(1));   // écran débranché
+    const auto same = md::planScreens(existing, {screen(0, 0, 1920, 1080, 96, true), screen(1920, 0, 3840, 1080)});
+    CHECK(same.drop.empty());
+    CHECK(same.keep == (std::vector<int>{0, 1}));
+}
+
+TEST_CASE(menubar_screens_rebuild_gate) {   // refaire les écrans : jamais imbriqué, jamais sous un menu
+    md::RebuildGate g;
+    CHECK(!g.tryBegin(true));   // menu ouvert : plus tard
+    CHECK(g.pending);
+    CHECK(g.tryBegin(false));
+    CHECK(!g.pending);
+    CHECK(!g.tryBegin(false));   // WM_DISPLAYCHANGE envoyé pendant SHAppBarMessage : pas d'imbrication
+    CHECK(g.end());              // une demande est arrivée pendant : il faut recommencer
+    CHECK(g.tryBegin(false));
+    CHECK(!g.end());
+}
+
+TEST_CASE(menubar_screens_top_edge_stacked) {   // écran du bas sous un écran du haut : le curseur en haut de l'écran du
+    const RECT top{0, 0, 1920, 1080};            // haut ne fait pas apparaître la barre du bas
+    const RECT bottom{0, 1080, 1920, 2160};
+    CHECK(md::cursorAtTopEdge(bottom, POINT{500, 1080}));
+    CHECK(!md::cursorAtTopEdge(bottom, POINT{500, 10}));
+    CHECK(md::cursorAtTopEdge(top, POINT{500, 0}));
+    CHECK(md::cursorInBar(bottom, 48, POINT{500, 1100}));
+    CHECK(!md::cursorInBar(bottom, 48, POINT{500, 20}));
+}
+
+TEST_CASE(menubar_tray_fit) {   // trop d'icônes d'apps : les plus à gauche sont écartées, le logo et l'app restent
+    md::BarLayoutInput in;
+    in.barWidth = 1280;
+    in.leftWidths = {34, 80, 60, 60};
+    in.rightWidths = {30, 30, 150};   // icônes système et horloge
+    CHECK_EQ(md::trayFit(in, 5, 30), std::size_t(5));
+    const std::size_t fit = md::trayFit(in, 60, 30);
+    CHECK(fit < 60);
+    in.rightWidths.insert(in.rightWidths.begin(), fit, 30.0);
+    const auto l = md::layoutBar(in);
+    CHECK(l.rightX.front() >= in.leftMargin + 34 + 80 + in.minGap - 1e-9);   // rien sous le logo ni le nom de l'app
+}

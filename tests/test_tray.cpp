@@ -156,6 +156,15 @@ TEST_CASE(tray_click_versions) {
     REQUIRE(right.size() == 3);
     CHECK(LOWORD(right[2].lp) == WM_CONTEXTMENU);
 
+    auto dbl = md::trayClick(e, 2, POINT{100, 12});   // double-clic gauche (apps qui s'ouvrent ainsi)
+    REQUIRE(!dbl.empty());
+    CHECK(LOWORD(dbl[0].lp) == WM_LBUTTONDBLCLK);
+    e.version = 3;
+    dbl = md::trayClick(e, 2, POINT{100, 12});
+    REQUIRE(!dbl.empty());
+    CHECK(dbl[0].lp == WM_LBUTTONDBLCLK);
+    CHECK(dbl[0].wp == 7);
+
     e.flags &= ~NIF_MESSAGE;   // pas de message de rappel : rien à poster
     CHECK(md::trayClick(e, 0, POINT{0, 0}).empty());
 }
