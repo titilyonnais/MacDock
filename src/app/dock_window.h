@@ -14,6 +14,7 @@
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
+#include "../popup/stack_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
@@ -58,7 +59,8 @@ private:
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
-    void openStack(std::size_t index);                        // pile ouverte en éventail ou en grille
+    void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
+    std::size_t listCapacity(const StackWindow::Request& r) const;
     MenuWindow::Env popupEnv();                               // environnement des menus et des piles
     void renderNow();
     void requestFrame();

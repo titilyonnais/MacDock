@@ -129,7 +129,7 @@ TEST_CASE(dock_menus_stack_full) {
     c.stackView = md::StackView::Grid;
     auto m = md::buildDockMenu(c);
     for (int id : {md::kCmdSortDateAdded, md::kCmdSortName, md::kCmdSortModified, md::kCmdSortKind, md::kCmdViewAuto,
-                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdReveal, md::kCmdRemove})
+                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdViewList, md::kCmdReveal, md::kCmdRemove})
         REQUIRE(find(m.items, id) != nullptr);
     CHECK(find(m.items, md::kCmdSortName)->checked);
     CHECK(!find(m.items, md::kCmdSortDateAdded)->checked);

@@ -141,15 +141,16 @@ Pixels thumbnailImage(const std::wstring& path, int& size) {
     return bitmapPixels(hbmp, size);
 }
 
-// Icône générique du type de fichier (d'après l'extension seule), en 256 px.
-Pixels typeIcon(const std::wstring& path, int& size) {
+// Icône de la liste système : du type d'après l'extension seule (byType), ou du fichier lui-même (exe, .lnk…).
+Pixels typeIcon(const std::wstring& path, int& size, bool byType = true, int list = SHIL_JUMBO) {
     size = 0;
     SHFILEINFOW sfi{};
-    if (!SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi, SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES))
+    if (!SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi,
+                        SHGFI_SYSICONINDEX | (byType ? SHGFI_USEFILEATTRIBUTES : 0)))
         return {};
-    ComPtr<IImageList> list;
+    ComPtr<IImageList> images;
     HICON icon = nullptr;
-    if (FAILED(SHGetImageList(SHIL_JUMBO, IID_PPV_ARGS(&list))) || FAILED(list->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &icon)) ||
+    if (FAILED(SHGetImageList(list, IID_PPV_ARGS(&images))) || FAILED(images->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &icon)) ||
         !icon)
         return {};
     return iconPixels(icon, size);
@@ -425,6 +426,21 @@ void drawLayer(Pixels& dst, int ds, const Pixels& src, int ss, double cx, double
 }
 
 } // namespace
+
+IconProvider::ImagePtr IconProvider::fileIcon(const std::wstring& path, int px) {
+    px = std::clamp(px, 16, 512);
+    std::wstring cacheKey = L"#ficon|" + path + L"|" + std::to_wstring(px);
+    if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    int srcSize = 0;
+    Pixels src = typeIcon(path, srcSize, false, px <= 48 ? SHIL_EXTRALARGE : SHIL_JUMBO);
+    if (src.empty()) src = typeIcon(path, srcSize);
+    if (src.empty() || srcSize <= 0) return nullptr;
+    auto img = std::make_shared<Image>();
+    img->size = px;
+    img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
+    cache_[cacheKey] = img;
+    return img;
+}
 
 IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const std::vector<std::wstring>& paths,
                                                   int px) {

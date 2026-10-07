@@ -17,6 +17,7 @@
 #include "../popup/menu_window.h"
 #include "../popup/stack_window.h"
 #include "../stack/stack_icon.h"
+#include "../stack/stack_list.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -544,6 +545,16 @@ MenuWindow::Env DockApp::popupEnv() {
     return env;
 }
 
+// Entrées de la liste d'une pile qui tiennent à l'écran (le menu ne défile pas), séparateur et lien compris.
+std::size_t DockApp::listCapacity(const StackWindow::Request& r) const {
+    MONITORINFO mi{sizeof mi};
+    GetMonitorInfoW(MonitorFromPoint(r.iconCenter, MONITOR_DEFAULTTONEAREST), &mi);
+    const double room = r.side == MenuWindow::Side::Above ? double(r.dockEdge - mi.rcMonitor.top)
+                                                          : double(mi.rcMonitor.bottom - mi.rcMonitor.top);
+    const double rows = (room / scale_ - 2 * kMenuPadding - kMenuSeparatorHeight - 16) / kMenuItemHeight - 1;
+    return std::size_t(std::max(1.0, std::floor(rows)));
+}
+
 void DockApp::openStack(std::size_t index) {
     const DockItem* p = controller_.itemAt(index);
     if (!p) return;
@@ -562,7 +573,8 @@ void DockApp::openStack(std::size_t index) {
     r.title = item.name;
     r.items = sortStack(listFolder(item.launch), sort);
     // Dock vertical : la grille s'ouvre à côté (l'éventail ne monte que d'un Dock en bas, comme sur macOS).
-    r.view = settings_.position == DockPosition::Bottom ? resolveView(view, r.items.size()) : StackView::Grid;
+    if (view == StackView::List) r.view = StackView::List;
+    else r.view = settings_.position == DockPosition::Bottom ? resolveView(view, r.items.size()) : StackView::Grid;
     const RenderIcon& icon = frame.icons[index];
     r.iconCenter = {origin_.x + LONG(std::lround(icon.cx)), origin_.y + LONG(std::lround(icon.cy))};
     switch (settings_.position) {
@@ -585,7 +597,33 @@ void DockApp::openStack(std::size_t index) {
     requestFrame();
     pauseCapture();   // une seule duplication de l'écran par processus
     menuOpen_ = true;
-    std::wstring chosen = StackWindow::track(env, r);
+    std::wstring chosen;
+    if (r.view == StackView::List) {
+        // Liste : menu en verre, icônes de la liste système (rapides), sous-dossiers en sous-menus.
+        std::vector<std::wstring> paths;
+        MenuModel menu = stackListMenu(r.folder, r.items,
+                                       [&](const std::wstring& p) { return sortStack(listFolder(p), sort); }, paths,
+                                       listCapacity(r));
+        const int px = int(std::lround(kMenuIconSize * scale_));
+        int budget = 400;   // borne le travail pour un dossier rempli de sous-dossiers pleins
+        std::function<void(std::vector<MenuItem>&)> addIcons = [&](std::vector<MenuItem>& entries) {
+            for (auto& e : entries) {
+                if (e.id >= kStackListBase && std::size_t(e.id - kStackListBase) < paths.size() && budget-- > 0)
+                    e.icon = icons_.fileIcon(paths[std::size_t(e.id - kStackListBase)], px);
+                addIcons(e.submenu);
+            }
+        };
+        addIcons(menu.items);
+        const LONG gap = LONG(std::lround(6 * scale_));
+        POINT anchor = r.side == MenuWindow::Side::Right  ? POINT{r.dockEdge + gap, r.iconCenter.y}
+                       : r.side == MenuWindow::Side::Left ? POINT{r.dockEdge - gap, r.iconCenter.y}
+                                                          : POINT{r.iconCenter.x, r.dockEdge - gap};
+        int cmd = MenuWindow::track(env, menu, anchor, r.side);
+        if (cmd >= kStackListBase && std::size_t(cmd - kStackListBase) < paths.size())
+            chosen = paths[std::size_t(cmd - kStackListBase)];
+    } else {
+        chosen = StackWindow::track(env, r);
+    }
     menuOpen_ = false;
     resumeCapture();
     if (chosen == r.folder) openFolder(chosen);
@@ -767,8 +805,12 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         }
         case kCmdViewAuto:
         case kCmdViewFan:
-        case kCmdViewGrid: {
-            const StackView view = cmd == kCmdViewFan ? StackView::Fan : cmd == kCmdViewGrid ? StackView::Grid : StackView::Auto;
+        case kCmdViewGrid:
+        case kCmdViewList: {
+            const StackView view = cmd == kCmdViewFan    ? StackView::Fan
+                                   : cmd == kCmdViewGrid ? StackView::Grid
+                                   : cmd == kCmdViewList ? StackView::List
+                                                         : StackView::Auto;
             if (model_.setStackOptions(item.key, view, ctx.stackSort)) savePinned();
             break;
         }

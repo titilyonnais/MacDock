@@ -10,7 +10,7 @@ namespace md {
 enum class DockPosition { Bottom, Left, Right };
 enum class PinKind { App, AppsButton, Stack };
 // Pile : présentation du contenu (automatique = éventail jusqu'à 9 éléments, grille au-delà) et tri.
-enum class StackView { Auto, Fan, Grid };
+enum class StackView { Auto, Fan, Grid, List };   // List : jamais choisie automatiquement
 enum class StackSort { DateAdded, Name, Modified, Kind };
 // Pile : icône dans le Dock = ses derniers éléments empilés (macOS par défaut) ou l'icône du dossier.
 enum class StackDisplay { Stack, Folder };

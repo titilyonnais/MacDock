@@ -148,8 +148,10 @@ TEST_CASE(settings_stack_display_roundtrip) {
     e.stackDisplay = md::StackDisplay::Folder;
     s.pinned.push_back(e);
     s.pinned.push_back({md::PinKind::Stack, L"", L"C:\\E", L"E"});
+    s.pinned[1].stackView = md::StackView::List;
     auto back = md::settingsFromJson(md::settingsToJson(s));
     REQUIRE(back.pinned.size() == 2);
+    CHECK(back.pinned[1].stackView == md::StackView::List);
     CHECK(back.pinned[0].stackDisplay == md::StackDisplay::Folder);
     CHECK(back.pinned[1].stackDisplay == md::StackDisplay::Stack);   // par défaut, comme sur macOS
 }

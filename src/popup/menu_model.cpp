@@ -14,7 +14,9 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax) {
     }
     l.height = y + kMenuPadding;
     double text = std::isfinite(textWidthMax) ? std::max(0.0, textWidthMax) : 0.0;
-    l.width = std::max(kMenuMinWidth, std::ceil(2 * kMenuPadding + kMenuTextLeft + text + kMenuTextRight));
+    if (std::any_of(m.items.begin(), m.items.end(), [](const MenuItem& it) { return it.icon != nullptr; }))
+        l.iconSpace = kMenuIconSize + kMenuIconGap;
+    l.width = std::max(kMenuMinWidth, std::ceil(2 * kMenuPadding + kMenuTextLeft + l.iconSpace + text + kMenuTextRight));
     return l;
 }
 

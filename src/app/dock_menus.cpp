@@ -75,6 +75,7 @@ void stackMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     MenuItem view{-1, L"Présenter le contenu comme"};
     view.submenu = {entry(kCmdViewFan, L"Éventail", true, c.stackView == StackView::Fan),
                     entry(kCmdViewGrid, L"Grille", true, c.stackView == StackView::Grid),
+                    entry(kCmdViewList, L"Liste", true, c.stackView == StackView::List),
                     entry(kCmdViewAuto, L"Automatiquement", true, c.stackView == StackView::Auto)};
     out.push_back(view);
     out.push_back({});

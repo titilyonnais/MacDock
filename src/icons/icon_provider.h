@@ -33,6 +33,8 @@ public:
     ImagePtr file(const std::wstring& path, int px);
     // Pile « comme Pile » : images des éléments (le premier au-dessus) empilées dans la forme d'icône, avec
     // l'ombre des icônes du Dock ; nullptr si aucune image.
+    // Icône du fichier telle que l'Explorateur la montre (liste système, rapide : jamais de vignette), px x px.
+    ImagePtr fileIcon(const std::wstring& path, int px);
     ImagePtr composeStack(const std::wstring& key, const std::vector<std::wstring>& paths, int px);
     void clear() { cache_.clear(); }
 

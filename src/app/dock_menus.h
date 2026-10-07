@@ -18,6 +18,7 @@ enum MenuCmd : int {
     kCmdSortDateAdded, kCmdSortName, kCmdSortModified, kCmdSortKind,   // pile : Trier par
     kCmdViewAuto, kCmdViewFan, kCmdViewGrid,                           // pile : Présenter le contenu comme
     kCmdDisplayStack, kCmdDisplayFolder,                               // pile : Afficher comme
+    kCmdViewList,                                                      // pile : … en liste
     kCmdWindowBase = 1000   // + index dans MenuContext::windows
 };
 
