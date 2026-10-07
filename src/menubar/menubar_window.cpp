@@ -875,7 +875,7 @@ void MenuBarApp::showHud(const HudContent& c) {
     if (!at && !screens_.empty()) at = screens_.front().get();
     if (!at) return;
     // Sous la barre visible ; barre masquée (masquage automatique, plein écran) : sous le haut de l'écran.
-    const int barBottom = at->rect.top + std::max(0, at->heightPx + at->yOffsetPx);
+    const int barBottom = hudBarBottom(at->rect.top, at->heightPx, at->yOffsetPx);
     for (auto& s : screens_)   // une seule duplication d'écran par processus : la pastille capture à son tour
         if (s->sampler.running()) finishSample(*s, std::nullopt);
     if (!hud_.show(menuEnv(*at), at->monitor, hudPlace(at->rect, barBottom, at->scale), c)) return;
@@ -1347,12 +1347,15 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             onVolumeKey(int(wp));
             return 0;
         case WM_POWERBROADCAST:
+            if (wp == PBT_APMRESUMEAUTOMATIC) brightnessGate_.noteSystemChange(hudNow());   // le niveau est réappliqué
             if (wp == PBT_POWERSETTINGCHANGE && lp) {
                 const auto* p = reinterpret_cast<const POWERBROADCAST_SETTING*>(lp);
+                if (IsEqualGUID(p->PowerSetting, GUID_CONSOLE_DISPLAY_STATE) || IsEqualGUID(p->PowerSetting, GUID_ACDC_POWER_SOURCE))
+                    brightnessGate_.noteSystemChange(hudNow());   // écran rallumé, secteur ou batterie : niveau du profil
+                DWORD pct = 0;
                 if (IsEqualGUID(p->PowerSetting, GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS) && p->DataLength >= sizeof(DWORD) &&
-                    brightnessGate_.accept(hudNow(), menuOpen_ || menuSession_) && settings_.hud) {
-                    DWORD pct = 0;
-                    memcpy(&pct, p->Data, sizeof pct);
+                    (memcpy(&pct, p->Data, sizeof pct), brightnessGate_.accept(hudNow(), menuOpen_ || menuSession_, int(pct))) &&
+                    settings_.hud) {
                     HudContent c;
                     c.kind = HudKind::Brightness;
                     c.level = float(std::min<DWORD>(pct, 100)) / 100.0f;
@@ -1532,6 +1535,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     audio_.watch(ctl_, WM_APP_VOLUME);
     registerVolumeKeys();
     brightnessNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS, DEVICE_NOTIFY_WINDOW_HANDLE);
+    displayNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
+    powerNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_ACDC_POWER_SOURCE, DEVICE_NOTIFY_WINDOW_HANDLE);
     if (!hub_.start(ctl_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
     trayPipe_.setConnectionHandler([ctl = ctl_](bool) { PostMessageW(ctl, WM_APP_TRAY, 1, 0); });
     trayPipe_.start(L"\\\\.\\pipe\\MacMenuBar", [ctl = ctl_](const ipc::Message& m) {
@@ -1566,7 +1571,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     log::info(L"MacMenuBar s'arrête");
     hideHud();
     for (int id : {kHotVolUp, kHotVolDown, kHotMute, kHotVolUpFine, kHotVolDownFine}) UnregisterHotKey(ctl_, id);
-    if (brightnessNotify_) UnregisterPowerSettingNotification(brightnessNotify_);
+    for (HPOWERNOTIFY n : {brightnessNotify_, displayNotify_, powerNotify_})
+        if (n) UnregisterPowerSettingNotification(n);
     tracker_.stop();
     uia_.stop();
     hub_.stop();

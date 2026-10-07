@@ -201,7 +201,7 @@ private:
     HudWindow hud_;                        // pastille du volume et de la luminosité
     HudFade hudFade_;
     BrightnessGate brightnessGate_;
-    HPOWERNOTIFY brightnessNotify_ = nullptr;
+    HPOWERNOTIFY brightnessNotify_ = nullptr, displayNotify_ = nullptr, powerNotify_ = nullptr;
     bool volumeKeys_ = false;              // touches de volume reprises (sinon : avis Core Audio)
     std::wstring outputName_;              // nom de la sortie par défaut (vide : à relire)
 

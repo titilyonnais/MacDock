@@ -18,6 +18,10 @@ struct WindowBackdrop {   // portion de l'écran capturé située sous une fenê
     float white = 1;
 };
 
+// La ressource a été créée sur dev (chaque barre de menus a son propre device : une texture ne passe pas de l'un à
+// l'autre).
+bool onDevice(ID3D11DeviceChild* resource, ID3D11Device* dev);
+
 class ScreenBackdrop {
 public:
     // Capture tout l'écran mon (monitorRect) ; notifyMsg est posté à notify à chaque image.

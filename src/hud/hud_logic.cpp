@@ -28,13 +28,18 @@ HudPlace hudPlace(const RECT& monitor, int barBottom, float scale) {
     return p;
 }
 
-bool BrightnessGate::accept(double now, bool menuOpen) {
+int hudBarBottom(int top, int heightPx, int yOffsetPx) { return top + std::max(0, heightPx - yOffsetPx); }
+
+bool BrightnessGate::accept(double now, bool menuOpen, int percent) {
+    const bool changed = percent != last_;
+    last_ = percent;
     if (!armed_) {
         armed_ = true;
         return false;
     }
-    if (menuOpen) return false;
-    return !(ownSet_ && now - own_ < 1.0);
+    if (!changed || menuOpen) return false;
+    if (ownSet_ && now - own_ < 1.0) return false;
+    return !(systemSet_ && now - system_ < 2.0);
 }
 
 } // namespace md

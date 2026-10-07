@@ -13,7 +13,15 @@ void ScreenBackdrop::start(HWND notify, UINT notifyMsg, HMONITOR mon, const RECT
     capture_.start(notify, notifyMsg, mon, {monitorRect.left, monitorRect.top, monitorRect.right, monitorRect.bottom});
 }
 
+bool onDevice(ID3D11DeviceChild* resource, ID3D11Device* dev) {
+    if (!resource || !dev) return false;
+    ComPtr<ID3D11Device> owner;
+    resource->GetDevice(&owner);
+    return owner.Get() == dev;
+}
+
 bool ScreenBackdrop::take(ID3D11Device* dev) {
+    if (screen_ && !onDevice(screen_.Get(), dev)) screen_.Reset();   // autre écran, ou device recréé
     ComPtr<ID3D11DeviceContext> ctx;
     dev->GetImmediateContext(&ctx);
     bool scRgb = false;
@@ -42,7 +50,7 @@ bool ScreenBackdrop::take(ID3D11Device* dev) {
 }
 
 bool ScreenBackdrop::copyTo(ID3D11Device* dev, const RECT& wr, WindowBackdrop& out) const {
-    if (!screen_) return false;
+    if (!screen_ || !onDevice(screen_.Get(), dev)) return false;
     const UINT W = UINT(wr.right - wr.left), H = UINT(wr.bottom - wr.top);
     D3D11_TEXTURE2D_DESC sd{};
     screen_->GetDesc(&sd);

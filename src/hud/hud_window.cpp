@@ -116,12 +116,13 @@ struct HudWindow::Impl {
 
     HWND hwnd = nullptr;
     RECT rc{};
+    D2D1_POINT_2F panelOrigin{};   // coin de la pastille dans la fenêtre (pixels)
 
     UINT width() const { return UINT(rc.right - rc.left); }
     UINT height() const { return UINT(rc.bottom - rc.top); }
     bool ensureDevice();
     bool ensureWindow();
-    bool place(const HudPlace& p);
+    bool place(const HudPlace& p, const RECT& monitorRc);
     void render();
     static LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp);
 };
@@ -139,6 +140,7 @@ bool HudWindow::Impl::ensureDevice() {
     fade.Reset();
     surface.Reset();
     surfW = surfH = 0;
+    screen.stop();
     glassTarget = GlassTarget{};
     backdrop = WindowBackdrop{};
     Com<IDXGIDevice> dxgi;
@@ -163,6 +165,7 @@ LRESULT CALLBACK HudWindow::Impl::proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (!self) return DefWindowProcW(h, msg, wp, lp);
     switch (msg) {
         case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // l'app au premier plan garde le clavier
+        case WM_NCHITTEST: return HTTRANSPARENT;       // les clics vont à la barre dessous (même fil)
         case WM_HUD_BACKDROP:
             if (self->shown && self->screen.take(self->env.device) && self->screen.copyTo(self->env.device, self->rc, self->backdrop))
                 self->render();
@@ -189,9 +192,12 @@ bool HudWindow::Impl::ensureWindow() {
 }
 
 // Fenêtre = pastille + marge d'ombre ; surface à la taille de la fenêtre. false : composition impossible.
-bool HudWindow::Impl::place(const HudPlace& p) {
+bool HudWindow::Impl::place(const HudPlace& p, const RECT& monitorRc) {
     const int m = int(std::lround(kShadow * sc));
-    rc = {p.x - m, p.y - m, p.x + p.w + m, p.y + p.h + m};
+    // Ombre bornée à l'écran (rien sur l'écran voisin) et sous la barre (elle reste cliquable).
+    rc = {std::max(p.x - m, int(monitorRc.left)), std::max(p.y - std::min(m, int(std::lround(8 * sc))), int(monitorRc.top)), std::min(p.x + p.w + m, int(monitorRc.right)),
+          std::min(p.y + p.h + m, int(monitorRc.bottom))};
+    panelOrigin = {float(p.x - rc.left), float(p.y - rc.top)};
     SetWindowPos(hwnd, HWND_TOPMOST, rc.left, rc.top, int(width()), int(height()), SWP_NOACTIVATE);
     if (!target) {
         dcomp->CreateTargetForHwnd(hwnd, TRUE, &target);
@@ -214,8 +220,7 @@ bool HudWindow::Impl::place(const HudPlace& p) {
 
 void HudWindow::Impl::render() {
     if (!surface) return;
-    const float m = kShadow * sc;
-    const D2D1_RECT_F panel{m, m, m + kW * sc, m + kH * sc};
+    const D2D1_RECT_F panel{panelOrigin.x, panelOrigin.y, panelOrigin.x + kW * sc, panelOrigin.y + kH * sc};
     const float radius = float(limitedCornerRadius(panel.right - panel.left, panel.bottom - panel.top, kRadius * sc));
     bool glassDrawn = false;
     if (env.glass && glassReady && backdrop.valid && glassTarget.ensure(env.device, dc.Get(), width(), height())) {
@@ -260,7 +265,7 @@ void HudWindow::Impl::render() {
     Com<ID2D1SolidColorBrush> border;
     d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.14f) : rgba(0, 0, 0, 0.10f), &border);
     if (border) d->DrawRoundedRectangle(rr, border.Get(), std::max(1.0f, sc * 0.5f));
-    d->SetTransform(D2D1::Matrix3x2F::Scale(sc, sc) * D2D1::Matrix3x2F::Translation(m, m) * base);
+    d->SetTransform(D2D1::Matrix3x2F::Scale(sc, sc) * D2D1::Matrix3x2F::Translation(panel.left, panel.top) * base);
     paintHud(d.Get(), dwrite.Get(), env.font, content, env.dark);
     surface->EndDraw();
     dcomp->Commit();
@@ -275,8 +280,8 @@ HudWindow::~HudWindow() {
 
 bool HudWindow::show(const MenuWindow::Env& env, HMONITOR mon, const HudPlace& place, const HudContent& content) {
     Impl& s = *impl_;
-    const bool moved = !s.shown || mon != s.monitor || s.env.device != env.device || s.rc.left + int(std::lround(kShadow * s.sc)) != place.x ||
-                       s.rc.top + int(std::lround(kShadow * s.sc)) != place.y;
+    const bool moved = !s.shown || mon != s.monitor || s.env.device != env.device || s.rc.left + int(s.panelOrigin.x) != place.x ||
+                       s.rc.top + int(s.panelOrigin.y) != place.y;
     s.env = env;
     s.content = content;
     if (!s.ensureDevice() || !s.ensureWindow()) {
@@ -286,11 +291,11 @@ bool HudWindow::show(const MenuWindow::Env& env, HMONITOR mon, const HudPlace& p
     if (moved) {
         s.sc = std::max(0.5f, float(place.w) / kW);
         if (s.shown) hide();
-        if (!s.place(place)) return false;
         MONITORINFO mi{sizeof mi};
+        if (!GetMonitorInfoW(mon, &mi) || !s.place(place, mi.rcMonitor)) return false;
         s.monitor = mon;
         s.backdrop.valid = false;
-        if (env.glass && s.glassReady && GetMonitorInfoW(mon, &mi)) s.screen.start(s.hwnd, WM_HUD_BACKDROP, mon, mi.rcMonitor);
+        if (env.glass && s.glassReady) s.screen.start(s.hwnd, WM_HUD_BACKDROP, mon, mi.rcMonitor);
     }
     s.shown = true;
     setOpacity(1);
