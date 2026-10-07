@@ -17,6 +17,7 @@
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "visibility.h"
 #include "sprite_window.h"
 
 namespace md {
@@ -62,6 +63,10 @@ private:
     void resumeCapture();
     void onBackdrop();
     void watchTrash();
+    void syncAppBar();                 // zone réservée seulement sans masquage automatique
+    bool detectFullscreen() const;
+    void checkFullscreen();
+    bool stepVisibility(double now);
     void refreshTrash();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
     void onPointerUp(POINT client);
@@ -115,7 +120,10 @@ private:
     std::uint64_t loggedRevision_ = 0;   // [trace] dernière révision du modèle dont les positions ont été journalisées
     POINT poofCenter_{};
     bool captureFailed_ = false;
-    ULONG trashNotify_ = 0;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
+    ULONG trashNotify_ = 0;
+    Visibility visibility_;
+    bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
+    bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

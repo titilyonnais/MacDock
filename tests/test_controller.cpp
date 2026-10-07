@@ -157,3 +157,19 @@ TEST_CASE(controller_hit_test_separator) {
     }
     CHECK(found);
 }
+
+TEST_CASE(controller_hidden_dock_slides_out_of_window) {
+    Fixture f;
+    md::IconProvider icons;
+    const float h = float(md::DockController::windowHeightPx(f.s, f.m, 1));
+    CHECK(f.c.hitTest(f.at(0)).has_value());
+    f.c.setShown(0);
+    CHECK(f.c.consumeDirty());
+    auto frame = f.c.buildFrame(false, icons);
+    CHECK(frame.bgTop >= h);                    // fond entièrement sous la fenêtre
+    for (auto& icon : frame.icons) CHECK(icon.cy - icon.size / 2 >= h);
+    CHECK(!f.c.hitTest(f.at(0)).has_value());   // un Dock masqué ne reçoit pas de clic
+    f.c.setShown(0.5);
+    auto half = f.c.buildFrame(false, icons);
+    CHECK(half.bgTop < h);
+}

@@ -92,7 +92,21 @@ bool DockController::isInsideInteractiveZone(POINT p) const {
     double bottom = bgBottomPx();
     double top = bottom - r.thickness * scale_;
     if (amount_.value() > 0.01) top = std::min(top, bottom - (metrics_.dockPadding + r.maxSize) * scale_);
-    return p.x >= left && p.x <= right && p.y >= top && p.y <= height_;
+    const double y = p.y - hideOffsetPx(r);
+    return p.x >= left && p.x <= right && y >= top && y <= height_;
+}
+
+void DockController::setShown(double shown) {
+    if (shown == shown_) return;
+    shown_ = shown;
+    dirty_ = true;
+}
+
+double DockController::hideOffsetPx(const LayoutResult& r) const {
+    if (shown_ >= 1) return 0;
+    // Du haut du Dock au repos jusqu'au bas de la fenêtre, ombre comprise.
+    const double restTop = bgBottomPx() - r.thickness * scale_;
+    return (1 - shown_) * (height_ - restTop + 2 * metrics_.shadowBlur * scale_);
 }
 
 std::optional<std::size_t> DockController::hitTest(POINT p) const {
@@ -497,6 +511,16 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         float visibleTop = icon.cy - icon.size / 2 + icon.size * float(1 - metrics_.iconShapeRatio) / 2;
         f.tooltip.bottom = visibleTop - float(metrics_.tooltipGap) * s;
         f.tooltip.opacity = float(tooltipOpacity_);
+    }
+    // Masquage automatique : tout le Dock glisse vers le bas, hors de la fenêtre.
+    if (const float off = float(hideOffsetPx(r)); off > 0) {
+        f.bgTop += off;
+        f.bgBottom += off;
+        for (auto& icon : f.icons) {
+            icon.cy += off;
+            icon.indicatorY += off;
+        }
+        f.tooltip.bottom += off;
     }
     dirty_ = false;
     return f;

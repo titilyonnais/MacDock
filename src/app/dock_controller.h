@@ -61,6 +61,9 @@ public:
     std::optional<std::size_t> hitTestAny(POINT clientPx) const;
     const DockItem* itemAt(std::size_t index) const;
     bool isInsideInteractiveZone(POINT clientPx) const;
+    // Masquage automatique : 1 = visible, 0 = entièrement sous le bord de l'écran.
+    void setShown(double shown);
+    double shown() const { return shown_; }
 
     void startLaunchBounce(const std::wstring& appId);
     void stopLaunchBounce(const std::wstring& appId);
@@ -107,6 +110,7 @@ private:
     double toPoints(LONG x) const { return (x - width_ / 2.0) / scale_; }
     double toPx(double points) const { return width_ / 2.0 + points * scale_; }
     double bounceOffset(const std::wstring& appId) const;   // en points
+    double hideOffsetPx(const LayoutResult& r) const;       // décalage vers le bas du masquage
     std::optional<std::size_t> hoveredIndex() const;
     bool appRunning(const std::wstring& appId) const;
 
@@ -124,6 +128,7 @@ private:
     double tooltipOpacity_ = 0;
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;
+    double shown_ = 1;
 
     std::optional<POINT> pressPoint_;
     std::optional<std::size_t> pressIndex_;

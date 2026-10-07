@@ -18,6 +18,7 @@
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
 #include "dock_menus.h"
+#include "visibility.h"
 
 namespace md {
 
@@ -35,6 +36,8 @@ constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
+constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
+constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS" : vérification périodique du plein écran
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
@@ -107,7 +110,66 @@ void DockApp::applySettings() {
     icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
+    visibility_.setTimings({metrics_.autohideDelay, metrics_.autohideLeaveDelay, metrics_.autohideShowSeconds,
+                            metrics_.autohideHideSeconds});
+    syncAppBar();
     updateGlass();   // réglage glass modifié à chaud
+    requestFrame();
+}
+
+// Masquage automatique : pas de zone réservée (le Dock passe au-dessus des fenêtres, comme sur macOS).
+void DockApp::syncAppBar() {
+    if (!hwnd_ || snapshot_) return;
+    bool want = !settings_.autohide;
+    if (want == appBar_) return;
+    if (want) registerAppBar();
+    else removeAppBar();
+    reposition();
+}
+
+bool DockApp::detectFullscreen() const {
+    HWND fg = GetForegroundWindow();
+    if (!fg || !IsWindowVisible(fg) || IsIconic(fg)) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    if (pid == GetCurrentProcessId()) return false;   // menus et sprites du Dock
+    wchar_t cls[64] = {};
+    GetClassNameW(fg, cls, 64);
+    for (const wchar_t* shell : {L"Progman", L"WorkerW", L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd"})
+        if (wcscmp(cls, shell) == 0) return false;
+    if (MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY)) return false;
+    RECT rc;
+    bool caption = (GetWindowLongPtrW(fg, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
+    return GetWindowRect(fg, &rc) && isFullscreenWindow(rc, monitor_, IsZoomed(fg) != FALSE, caption);
+}
+
+void DockApp::checkFullscreen() {
+    bool fs = detectFullscreen();
+    if (fs == fullscreen_) return;
+    fullscreen_ = fs;
+    if (trace_) log::info(L"[trace] plein écran : %s", fs ? L"oui" : L"non");
+    requestFrame();
+}
+
+// Entrées du masquage, puis décalage du Dock ; true tant que l'animation continue.
+bool DockApp::stepVisibility(double now) {
+    VisibilityInputs in;
+    in.autohide = settings_.autohide;
+    in.fullscreen = fullscreen_;
+    in.cursorAtEdge = cursorAtEdge_;
+    in.cursorInDock = cursorInDock_;
+    in.menuOpen = menuOpen_;
+    in.dragging = controller_.dragging();
+    bool animating = visibility_.update(in, now);
+    controller_.setShown(visibility_.shown());
+    bool hidden = visibility_.hidden();
+    if (hidden != loggedHidden_) {
+        loggedHidden_ = hidden;
+        if (trace_) log::info(L"[trace] Dock %s", hidden ? L"masqué" : L"visible");
+    }
+    if (double at = visibility_.wakeAt(); at >= 0)
+        SetTimer(hwnd_, kVisibilityTimer, UINT(std::max(1.0, (at - now) * 1000 + 1)), nullptr);
+    return animating;
 }
 
 void DockApp::savePinned() {
@@ -158,6 +220,7 @@ void DockApp::reposition() {
         bottom = abd.rc.bottom;
     }
     origin_ = POINT{monitor_.left, bottom - height};
+    if (trace_) log::info(L"[trace] zone réservée : %d px", appBar_ ? reserve : 0);
     SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
@@ -273,6 +336,13 @@ void DockApp::setTransparent(bool transparent) {
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     bool inside = controller_.isInsideInteractiveZone(client);
+    bool atEdge = screen.y >= monitor_.bottom - LONG(metrics_.autohideEdgePx) && screen.x >= monitor_.left &&
+                  screen.x < monitor_.right;
+    if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
+        cursorAtEdge_ = atEdge;
+        cursorInDock_ = inside;
+        if (settings_.autohide) requestFrame();   // réveille la boucle : le masquage réévalue ses entrées
+    }
     // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
     controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
@@ -422,7 +492,9 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     requestFrame();
     // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
     pauseCapture();
+    menuOpen_ = true;
     int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor);
+    menuOpen_ = false;
     resumeCapture();
     if (trace_) log::info(L"[trace] menu %s : commande %d", item.key.c_str(), cmd);
 
@@ -605,7 +677,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == taskbarCreated_ && taskbarCreated_) {
         log::info(L"Explorateur redémarré : réenregistrement");
         removeAppBar();
-        registerAppBar();
+        if (!settings_.autohide) registerAppBar();
         reposition();
         tracker_.rescan();
         return 0;
@@ -672,6 +744,15 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kVisibilityTimer) {
+                KillTimer(hwnd_, kVisibilityTimer);
+                requestFrame();
+                return 0;
+            }
+            if (wp == kFullscreenTimer) {
+                checkFullscreen();
+                return 0;
+            }
             if (wp == kTrashTimer) {
                 KillTimer(hwnd_, kTrashTimer);
                 refreshTrash();
@@ -691,6 +772,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             break;
         case WM_APP_APPBAR:
             if (wp == ABN_POSCHANGED) reposition();
+            if (wp == ABN_FULLSCREENAPP) checkFullscreen();
             return 0;
         case WM_DISPLAYCHANGE:
         case WM_DPICHANGED:
@@ -864,7 +946,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
     renderer_.setGpuTiming(trace_);
     if (!snapshot_) {
-        registerAppBar();
+        if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);
         poofSprite_.create(instance);
     }
@@ -890,6 +972,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.activated = [this](HWND h) {
         controller_.setAttention(model_.appOfWindow(toId(h)), false);
+        checkFullscreen();
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
@@ -922,6 +1005,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     startMouseThread();
     startConfigWatcher();
     watchTrash();
+    // Plein écran : premier plan (tracker), avis de la barre d'application, et vérification chaque seconde
+    // pour les bascules sans changement de premier plan (F11, vidéo) — sans hook EVENT_OBJECT_LOCATIONCHANGE.
+    if (!snapshot_) SetTimer(hwnd_, kFullscreenTimer, 1000, nullptr);
 
     double last = nowSeconds();
     while (running_) {
@@ -953,6 +1039,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         double dt = std::min(now - last, 0.1);
         last = now;
         bool animating = controller_.tick(dt);
+        if (stepVisibility(now)) animating = true;
         if (stepPoof(now)) animating = true;
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {

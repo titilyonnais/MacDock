@@ -28,7 +28,7 @@ function Get-Sources([string[]]$Patterns) {
 $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp',
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp',
                   'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
-                  'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\popup\menu_model.cpp')
+                  'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp','src\popup\menu_model.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
