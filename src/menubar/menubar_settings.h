@@ -10,6 +10,7 @@ namespace md {
 struct MenuBarMetrics {   // points
     double height = 24, fontSize = 13, leftMargin = 10, titlePadding = 10, logoSize = 14;
     double highlightHeight = 22, highlightRadius = 6, statusWidth = 30, rightMargin = 10;
+    double statusIconSize = 16;   // pictogrammes d'état
 };
 
 struct MenuBarSettings {
@@ -17,6 +18,9 @@ struct MenuBarSettings {
     std::wstring font;       // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     ClockOptions clock;
     bool showSound = true;
+    bool showNetwork = true;    // Wi-Fi (masqué sans carte Wi-Fi)
+    bool showBattery = true;    // masqué sans batterie
+    bool showSearch = true;
     MenuBarMetrics metrics;
 };
 

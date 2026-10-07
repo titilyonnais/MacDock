@@ -7,6 +7,7 @@
 
 #include "../core/log.h"
 #include "../glass/backdrop_capture.h"
+#include "../popup/glyphs.h"
 
 namespace md {
 namespace {
@@ -171,6 +172,15 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
                     rt->FillRectangle(D2D1::RectF(qx, qy, qx + q, qy + q), b);
                 }
             }
+            continue;
+        }
+        if (it.glyph != Glyph::None) {
+            const float size = std::round(float(m.statusIconSize) * s);
+            const float x0 = std::round(it.x + (it.width - size) / 2), y0 = std::round((height - size) / 2);
+            if (withShadow)
+                drawGlyph(rt, it.glyph, D2D1::RectF(x0, y0 + shadowDy, x0 + size, y0 + size + shadowDy), shadow.Get(),
+                          it.level, it.alt);
+            drawGlyph(rt, it.glyph, D2D1::RectF(x0, y0, x0 + size, y0 + size), ink.Get(), it.level, it.alt);
             continue;
         }
         auto l = layoutOf(it.text, it.bold);

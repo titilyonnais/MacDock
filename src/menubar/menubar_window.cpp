@@ -19,6 +19,10 @@
 #include "clock_format.h"
 #include "foreground_rules.h"
 #include "shortcut.h"
+#include "status_brightness.h"
+#include "status_network.h"
+#include "status_power.h"
+#include "status_winrt.h"
 
 namespace md {
 
@@ -30,6 +34,8 @@ constexpr wchar_t kClassName[] = L"MacMenuBarWindow";
 constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
 constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
+constexpr UINT WM_APP_STATUS = WM_APP + 4;       // lParam : StatusSnapshot* (à libérer)
+constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
 
 struct UiaTitles {
@@ -476,8 +482,41 @@ void MenuBarApp::relayout() {
         else layoutIn_.leftWidths.push_back(std::ceil(renderer_.measure(menu.title, menu.bold) / scale_) + 2 * pad);
     }
     updateClock();
-    layoutIn_.rightWidths = {std::ceil(renderer_.measure(clock_, false) / scale_) + 2 * pad};
+    status_ = statusItems(statusState());
+    for (const auto& item : status_)
+        layoutIn_.rightWidths.push_back(item.kind == StatusKind::Clock
+                                            ? std::ceil(renderer_.measure(clock_, false) / scale_) + 2 * pad
+                                            : m.statusWidth);
     layout_ = layoutBar(layoutIn_);
+}
+
+StatusState MenuBarApp::statusState() {
+    StatusState s;
+    s.snap = snap_;
+    s.volume = audio_.volume();
+    s.audio = s.volume >= 0;
+    s.volume = std::max(s.volume, 0.0f);
+    s.muted = s.audio && audio_.muted();
+    s.settings = settings_;
+    s.clock = clock_;
+    return s;
+}
+
+void MenuBarApp::onStatus(LPARAM snapshot) {
+    std::unique_ptr<StatusSnapshot> p(reinterpret_cast<StatusSnapshot*>(snapshot));
+    if (!p) return;
+    snap_ = std::move(*p);
+    auto items = statusItems(statusState());
+    bool sameKinds = items.size() == status_.size(), changed = !sameKinds;
+    for (std::size_t i = 0; sameKinds && i < items.size(); ++i) {
+        sameKinds = items[i].kind == status_[i].kind;
+        changed = changed || items[i].glyph != status_[i].glyph || std::fabs(items[i].level - status_[i].level) > 1e-3f ||
+                  items[i].alt != status_[i].alt;
+    }
+    if (!changed) return;
+    if (sameKinds) status_ = std::move(items);   // mêmes cases : pas de nouvelle mise en page
+    else relayout();                             // icône apparue ou disparue (pendant un menu : à sa fermeture)
+    render();
 }
 
 BarFrame MenuBarApp::frame() const {
@@ -495,12 +534,16 @@ BarFrame MenuBarApp::frame() const {
         it.highlighted = int(i) == highlight_;
         f.items.push_back(std::move(it));
     }
-    if (!layout_.rightX.empty()) {
-        BarDrawItem clock;
-        clock.text = clock_;
-        clock.x = float(layout_.rightX[0]) * scale_;
-        clock.width = float(layoutIn_.rightWidths[0]) * scale_;
-        f.items.push_back(std::move(clock));
+    for (std::size_t j = 0; j < layout_.rightX.size() && j < status_.size(); ++j) {
+        BarDrawItem it;
+        if (status_[j].kind == StatusKind::Clock) it.text = clock_;
+        it.glyph = status_[j].glyph;
+        it.level = status_[j].level;
+        it.alt = status_[j].alt;
+        it.x = float(layout_.rightX[j]) * scale_;
+        it.width = float(layoutIn_.rightWidths[j]) * scale_;
+        it.highlighted = highlight_ == int(layout_.leftVisible + j);
+        f.items.push_back(std::move(it));
     }
     return f;
 }
@@ -661,11 +704,19 @@ void MenuBarApp::onPress(POINT client) {
     const BarHit hit = hitTestBar(layout_, layoutIn_, double(client.x) / scale_);
     if (hit.kind == BarHit::Kind::Left) {
         openMenu(hit.index);
-    } else if (hit.kind == BarHit::Kind::Right) {
-        // Horloge : centre de notifications de Windows (Win+N).
-        auto inputs = shortcutInputs(*parseShortcut(L"Win+N"));
-        SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
+    } else if (hit.kind == BarHit::Kind::Right && hit.index < status_.size()) {
+        const StatusKind k = status_[hit.index].kind;
+        if (opensMenu(k)) {
+            openMenu(layout_.leftVisible + hit.index);
+        } else {   // recherche de Windows (Win+S) ; horloge : centre de notifications (Win+N)
+            auto inputs = shortcutInputs(*parseShortcut(k == StatusKind::Search ? L"Win+S" : L"Win+N"));
+            SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
+        }
     }
+}
+
+void MenuBarApp::openSettingsFile() {
+    ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr, SW_SHOWNORMAL);
 }
 
 void MenuBarApp::onRightClick(POINT client) {
@@ -689,10 +740,7 @@ void MenuBarApp::onRightClick(POINT client) {
     }
     if (r <= 0) restoreTargetFocus();
     switch (r) {
-        case kCmdBarSettings:
-            ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr,
-                          SW_SHOWNORMAL);
-            break;
+        case kCmdBarSettings: openSettingsFile(); break;
         case kCmdBarAutohide:
             settings_.autohide = !settings_.autohide;
             saveJsonFileAtomic(dataDir_ + L"\\menubar.json", menuBarSettingsToJson(settings_));
@@ -707,10 +755,38 @@ void MenuBarApp::onRightClick(POINT client) {
 
 void MenuBarApp::openMenu(std::size_t index) {
     if (sampler_.running()) finishSample(std::nullopt);   // une seule duplication de l'écran par processus
-    int current = int(index);
+    int current = int(index), previous = -1;
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     for (;;) {
         menuOpen_ = false;
+        const int left = int(layout_.leftVisible), n = left + int(status_.size());
+        const auto hasMenu = [&](int i) { return i < left || opensMenu(status_[std::size_t(i - left)].kind); };
+        if (previous >= 0 && current >= 0 && current < n && !hasMenu(current)) {
+            // Flèches du clavier : la recherche et l'horloge n'ont pas de menu, on passe au suivant dans le même sens.
+            const int dir = (previous + 1) % n == current ? 1 : -1;
+            for (int k = 0; k < n && !hasMenu(current); ++k) current = ((current + dir) % n + n) % n;
+        }
+        if (current >= left && current < n) {   // icône d'état
+            if (!hasMenu(current)) break;
+            menuOpen_ = true;
+            highlight_ = current;
+            render();
+            StatusCommand chosen;
+            const int r = trackStatus(std::size_t(current - left), barLink(current), chosen);
+            if (auto next = menuSwitchTarget(r)) {
+                previous = current;
+                current = *next;
+                continue;
+            }
+            menuOpen_ = false;
+            highlight_ = -1;
+            if (layoutPending_) relayout();
+            render();
+            target_ = target;
+            if (chosen.first != StatusAction::None) runStatus(chosen);
+            else restoreTargetFocus();
+            return;
+        }
         if (current >= 0 && std::size_t(current) < menus_.menus.size() && syncRealTitles()) {
             // L'app a changé sa barre (document ouvert, MDI) : le titre cliqué est retrouvé par son texte.
             const std::wstring title = menus_.menus[std::size_t(current)].title;
@@ -730,20 +806,13 @@ void MenuBarApp::openMenu(std::size_t index) {
         const std::map<int, MenuAction> actions = menus_.actions;
         highlight_ = current;
         render();
-        RECT win{};
-        GetWindowRect(hwnd_, &win);
-        MenuWindow::BarLink link;
-        for (std::size_t i = 0; i < layout_.leftVisible; ++i) {
-            const LONG l = win.left + LONG(std::lround(layout_.leftX[i] * scale_));
-            const LONG r = l + LONG(std::lround(layoutIn_.leftWidths[i] * scale_));
-            link.titles.push_back({l, win.top, r, win.bottom});
-        }
-        link.current = current;
-        POINT anchor{link.titles[std::size_t(current)].left, win.bottom + LONG(std::lround(scale_))};
+        const MenuWindow::BarLink link = barLink(current);
+        POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(scale_))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
         if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
         const int r = MenuWindow::track(menuEnv(), model, anchor, MenuWindow::Side::Below, &link);
         if (auto next = menuSwitchTarget(r)) {
+            previous = current;
             current = *next;
             continue;
         }
@@ -763,6 +832,94 @@ void MenuBarApp::openMenu(std::size_t index) {
     menuOpen_ = false;
     if (layoutPending_) relayout();
     render();
+}
+
+MenuWindow::BarLink MenuBarApp::barLink(int current) const {
+    RECT win{};
+    GetWindowRect(hwnd_, &win);
+    MenuWindow::BarLink link;
+    const auto box = [&](double x, double w) {
+        const LONG l = win.left + LONG(std::lround(x * scale_));
+        return RECT{l, win.top, l + LONG(std::lround(w * scale_)), win.bottom};
+    };
+    for (std::size_t i = 0; i < layout_.leftVisible; ++i) link.titles.push_back(box(layout_.leftX[i], layoutIn_.leftWidths[i]));
+    for (std::size_t j = 0; j < status_.size() && j < layout_.rightX.size(); ++j)   // sans menu : rectangle vide
+        link.titles.push_back(opensMenu(status_[j].kind) ? box(layout_.rightX[j], layoutIn_.rightWidths[j]) : RECT{});
+    link.current = current;
+    return link;
+}
+
+int MenuBarApp::trackStatus(std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
+    const StatusKind kind = status_[j].kind;
+    StatusState state = statusState();
+    if (kind == StatusKind::Sound) state.outputs = audio_.outputs();
+    const std::vector<AudioOutput> outputs = state.outputs;   // relue à la prochaine ouverture
+    const StatusMenu menu = statusMenu(kind, state);
+    const auto actionOf = [&menu](int id) {
+        auto it = menu.actions.find(id);
+        return it == menu.actions.end() ? StatusAction::None : it->second.first;
+    };
+    MenuWindow::Live live;
+    live.slider = [this, actionOf](int id, double v) {
+        if (actionOf(id) == StatusAction::Volume) audio_.setVolume(float(v));
+        else if (actionOf(id) == StatusAction::Brightness) hub_.post([v] { setBrightness(v); }, kBrightnessJob);
+    };
+    live.toggle = [this, actionOf](int id, bool on) {
+        if (actionOf(id) == StatusAction::WifiPower) hub_.post([on] { setRadio(false, on); });
+    };
+    live.tile = [this, &menu, &chosen](int id, int k) {
+        auto it = menu.tiles.find(id);
+        if (it == menu.tiles.end() || k < 0 || std::size_t(k) >= it->second.size()) return false;
+        const StatusCommand& c = it->second[std::size_t(k)];
+        if (c.first == StatusAction::WifiPower) {
+            const bool on = !snap_.network.wifiOn;
+            hub_.post([on] { setRadio(false, on); });
+            return false;
+        }
+        if (c.first == StatusAction::Bluetooth) {
+            const bool on = !snap_.radios.btOn;
+            hub_.post([on] { setRadio(true, on); });
+            return false;
+        }
+        chosen = c;   // réglages, recopie de l'écran : le menu se ferme d'abord
+        return true;
+    };
+    live.media = [this](int, int button) { hub_.post([button] { mediaCommand(button); }); };
+    live.refresh = [this, kind, &outputs](MenuModel& m) {
+        StatusState s = statusState();
+        s.outputs = outputs;
+        m = statusMenu(kind, s).model;
+        return true;
+    };
+    hub_.refreshNow();
+    const RECT& box = link.titles[std::size_t(link.current)];
+    POINT anchor{box.left, box.bottom + LONG(std::lround(scale_))};
+    ReleaseCapture();
+    if (trace_) log::info(L"[trace] barre : menu d'état %d ouvert", int(kind));
+    const int r = MenuWindow::track(menuEnv(), menu.model, anchor, MenuWindow::Side::Below, &link, &live);
+    if (r > 0)
+        if (auto it = menu.actions.find(r); it != menu.actions.end()) chosen = it->second;
+    return r;
+}
+
+void MenuBarApp::runStatus(const StatusCommand& c) {
+    bool done = true;
+    switch (c.first) {
+        case StatusAction::Output: done = audio_.setDefault(c.second); break;
+        case StatusAction::WifiConnect: hub_.post([ssid = c.second] { connectWifi(ssid); }); break;
+        case StatusAction::OpenUri:
+            done = INT_PTR(ShellExecuteW(nullptr, L"open", c.second.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+            break;
+        case StatusAction::Shortcut:
+            if (auto sc = parseShortcut(c.second)) {
+                auto inputs = shortcutInputs(*sc);
+                SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
+            }
+            break;
+        case StatusAction::BarSettings: openSettingsFile(); break;
+        default: done = false; break;   // curseurs, interrupteurs, média : déjà faits pendant le menu
+    }
+    if (trace_) log::info(L"[trace] barre : action d'état %d (%s) %s", int(c.first), c.second.c_str(), done ? L"faite" : L"sans effet");
 }
 
 void MenuBarApp::execute(const MenuAction& a) {
@@ -812,6 +969,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_APP_SAMPLE: onSample(); return 0;
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
+        case WM_APP_STATUS: onStatus(lp); return 0;
         case WM_TIMER:
             switch (wp) {
                 case kClockTimer: {
@@ -896,6 +1054,9 @@ int MenuBarApp::runSnapshot(const Options& options) {
     darkText_ = chooseDarkText(lum, false);
     active_.name = options.app.empty() ? L"Notes" : options.app;
     active_.explorer = active_.name == L"Explorateur";
+    audio_.init();
+    snap_.network = readNetwork();   // les radios et la lecture en cours (WinRT, fil MTA) ne servent pas ici
+    snap_.battery = readBattery();
     relayout();
     highlight_ = options.open;
     std::vector<std::uint8_t> out;
@@ -951,6 +1112,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.flashed = [](HWND) {};
     tracker_.start(hwnd_, ev);
     uia_.start();   // sinon : menus Win32 et génériques seulement
+    audio_.init();   // sinon : pas d'icône du son
+    if (!hub_.start(hwnd_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
     loadRecent();
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
@@ -977,11 +1140,14 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     sampler_.stop();
     tracker_.stop();
     uia_.stop();
+    hub_.stop();
     saveRecent();
     removeAppBar();
     DestroyWindow(hwnd_);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_UIA_TITLES, WM_APP_UIA_TITLES, PM_REMOVE);)   // résultats en attente
         delete reinterpret_cast<UiaTitles*>(m.lParam);
+    for (MSG m; PeekMessageW(&m, nullptr, WM_APP_STATUS, WM_APP_STATUS, PM_REMOVE);)
+        delete reinterpret_cast<StatusSnapshot*>(m.lParam);
     return exitCode_;
 }
 

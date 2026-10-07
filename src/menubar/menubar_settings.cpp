@@ -27,6 +27,9 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
     if (!v.isObject()) return s;
     s.autohide = readBool(v, "autohide", s.autohide);
     s.showSound = readBool(v, "showSound", s.showSound);
+    s.showNetwork = readBool(v, "showNetwork", s.showNetwork);
+    s.showBattery = readBool(v, "showBattery", s.showBattery);
+    s.showSearch = readBool(v, "showSearch", s.showSearch);
     if (auto* f = v.find("font")) s.font = fromUtf8(f->asString(""));
     if (auto* c = v.find("clock"); c && c->isObject()) {
         s.clock.weekday = readBool(*c, "weekday", s.clock.weekday);
@@ -45,6 +48,7 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
         t.highlightRadius = readBounded(*m, "highlightRadius", t.highlightRadius, 0, 24);
         t.statusWidth = readBounded(*m, "statusWidth", t.statusWidth, 10, 60);
         t.rightMargin = readBounded(*m, "rightMargin", t.rightMargin, 0, 60);
+        t.statusIconSize = readBounded(*m, "statusIconSize", t.statusIconSize, 8, 32);
     }
     return s;
 }
@@ -61,6 +65,9 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     c.set("hour24", s.clock.hour24);
     v.set("clock", c);
     v.set("showSound", s.showSound);
+    v.set("showNetwork", s.showNetwork);
+    v.set("showBattery", s.showBattery);
+    v.set("showSearch", s.showSearch);
     const MenuBarMetrics& t = s.metrics;
     json::Value m;
     m.set("height", t.height);
@@ -72,6 +79,7 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     m.set("highlightRadius", t.highlightRadius);
     m.set("statusWidth", t.statusWidth);
     m.set("rightMargin", t.rightMargin);
+    m.set("statusIconSize", t.statusIconSize);
     v.set("metrics", m);
     return v;
 }
