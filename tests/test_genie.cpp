@@ -248,3 +248,20 @@ TEST_CASE(genie_start_rect_prefers_last_seen) {   // relecture n° 3 : fenêtre 
     r = md::genieStartRect(RECT{0, 0, 0, 0}, wp, work, monitor, false, SIZE{});   // vide : ignoré
     CHECK(same(r, wp.rcNormalPosition));
 }
+
+TEST_CASE(genie_slice_count_fine) {
+    // Une bande toutes les 2 px : les bords courbes du génie n'ont plus de marches visibles.
+    CHECK(md::genieSliceCount(800) == 400);
+    CHECK(md::genieSliceCount(600) == 300);
+    CHECK(md::genieSliceCount(20) == 16);      // petite fenêtre : un minimum
+    CHECK(md::genieSliceCount(4000) == 400);   // très grande : plafonné (une miniature DWM par bande)
+}
+
+TEST_CASE(genie_strips_tile_without_gaps) {
+    // Bandes jointives à l'écran à tout instant : pas de ligne vide ni de chevauchement entre deux bandes.
+    const RECT from{100, 100, 1100, 900}, to{1500, 1400, 1564, 1464};
+    for (double t : {0.1, 0.3, 0.5, 0.7, 0.9}) {
+        auto s = md::minimizeFrame(md::MinimizeEffect::Genie, SIZE{1000, 800}, from, to, md::DockPosition::Bottom, t, 400);
+        for (std::size_t i = 1; i < s.size(); ++i) CHECK(s[i].dst.top == s[i - 1].dst.bottom);
+    }
+}

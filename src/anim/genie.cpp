@@ -76,6 +76,8 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
     return out;
 }
 
+int genieSliceCount(long extent) { return std::clamp(int(extent / 2), 16, 400); }
+
 double minimizeDuration(MinimizeEffect e, bool slow) {
     const double base = e == MinimizeEffect::Genie ? 0.55 : e == MinimizeEffect::Scale ? 0.3 : 0.0;
     return slow ? base * 8 : base;
