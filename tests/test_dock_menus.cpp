@@ -165,3 +165,18 @@ TEST_CASE(dock_menus_stack_display_checked) {
     CHECK(m.items[0].text == L"Trier par");
     CHECK(m.items[1].text == L"Afficher comme");
 }
+
+TEST_CASE(dock_menu_minimize_effect) {
+    md::MenuContext c;
+    c.item = md::DockItem{md::ItemKind::Separator};
+    c.settings.minimizeEffect = md::MinimizeEffect::Scale;
+    auto m = md::buildDockMenu(c);
+    const md::MenuItem* effect = nullptr;
+    for (auto& it : m.items)
+        if (it.text == L"Effet de réduction") effect = &it;
+    REQUIRE(effect != nullptr);
+    REQUIRE(effect->submenu.size() == 3);
+    CHECK(effect->submenu[0].id == md::kCmdEffectGenie && !effect->submenu[0].checked);
+    CHECK(effect->submenu[1].id == md::kCmdEffectScale && effect->submenu[1].checked);
+    CHECK(effect->submenu[2].id == md::kCmdEffectWindows && effect->submenu[2].text == L"Windows");
+}

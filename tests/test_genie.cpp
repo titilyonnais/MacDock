@@ -8,6 +8,7 @@
 
 #include "../src/anim/genie.h"
 #include "../src/anim/genie_preview.h"
+#include "../src/app/min_animate.h"
 #include "../src/calib/png_io.h"
 
 namespace {
@@ -171,4 +172,46 @@ TEST_CASE(genie_sheet_size) {   // MACDOCK_DUMP=dossier : planches pour un contr
         if (write) CHECK(md::writePng(std::wstring(dump) + L"\\genie-" + name + L".png", sheet.px.data(), UINT(sheet.w), UINT(sheet.h)));
     }
     if (write) CoUninitialize();
+}
+
+TEST_CASE(min_animate_guard_never_takes_own_zero) {
+    bool live = false;   // un Dock précédent a déjà coupé l'animation
+    int sets = 0;
+    md::MinAnimateApi api{[&] { return std::optional<bool>(live); }, [&](bool on) { live = on; ++sets; return true; },
+                          [] { return std::optional<bool>(true); }};   // préférence de l'utilisateur : animée
+    md::MinAnimateGuard g(api);
+    g.apply(md::MinimizeEffect::Genie);
+    CHECK(!live);
+    CHECK(g.suppressed());
+    g.restore();
+    CHECK(live);   // revient à la préférence, pas au 0 trouvé
+}
+
+TEST_CASE(min_animate_guard_switches) {
+    bool live = true;
+    int sets = 0;
+    md::MinAnimateApi api{[&] { return std::optional<bool>(live); }, [&](bool on) { live = on; ++sets; return true; },
+                          [] { return std::optional<bool>(); }};   // registre illisible : défaut 1
+    md::MinAnimateGuard g(api);
+    g.apply(md::MinimizeEffect::Scale);
+    CHECK(!live);
+    g.apply(md::MinimizeEffect::Scale);   // déjà coupée : aucun nouvel appel
+    CHECK_EQ(sets, 1);
+    g.apply(md::MinimizeEffect::Windows);
+    CHECK(live);
+    CHECK(!g.suppressed());
+    g.restore();   // rien à rendre
+    CHECK_EQ(sets, 2);
+}
+
+TEST_CASE(min_animate_guard_user_without_animation) {
+    bool live = false;
+    int sets = 0;
+    md::MinAnimateApi api{[&] { return std::optional<bool>(live); }, [&](bool on) { live = on; ++sets; return true; },
+                          [] { return std::optional<bool>(false); }};   // l'utilisateur a coupé les animations
+    md::MinAnimateGuard g(api);
+    g.apply(md::MinimizeEffect::Genie);
+    g.restore();
+    CHECK(!live);
+    CHECK_EQ(sets, 0);   // rien n'a été touché
 }

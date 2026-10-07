@@ -70,6 +70,9 @@ Settings settingsFromJson(const json::Value& v) {
     s.tileSize = std::clamp(readNumber(v, "tileSize", s.tileSize), 16.0, 128.0);
     s.largeSize = std::clamp(readNumber(v, "largeSize", s.largeSize), s.tileSize, 128.0);
     s.glass = readBool(v, "glass", s.glass);
+    const std::wstring effect = readString(v, "minimizeEffect");
+    if (effect == L"scale") s.minimizeEffect = MinimizeEffect::Scale;
+    else if (effect == L"windows") s.minimizeEffect = MinimizeEffect::Windows;
     s.font = readString(v, "font");
     s.screen = readString(v, "screen");
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
@@ -113,6 +116,9 @@ json::Value settingsToJson(const Settings& s) {
     v.set("tileSize", s.tileSize);
     v.set("largeSize", s.largeSize);
     v.set("glass", s.glass);
+    v.set("minimizeEffect", s.minimizeEffect == MinimizeEffect::Scale     ? "scale"
+                            : s.minimizeEffect == MinimizeEffect::Windows ? "windows"
+                                                                          : "genie");
     v.set("font", toUtf8(s.font));
     if (!s.screen.empty()) v.set("screen", toUtf8(s.screen));
     v.set("pinnedInitialized", s.pinnedInitialized);
