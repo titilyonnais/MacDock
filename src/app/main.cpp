@@ -11,17 +11,23 @@
 //   MacDock.exe --theme apply|restore   applique le thème macOS (curseurs, fond d'écran) ou rétablit celui de Windows,
 //               sans lancer le Dock (sauvegarde : %APPDATA%\MacDock\theme-backup.json ; code de sortie 1 si échec)
 //   MacDock.exe --theme-snapshot dossier   planche des curseurs et fonds d'écran, sans rien appliquer
+//   MacDock.exe --apps-snapshot f.png [--query texte] [--page n] [--theme light|dark]
+//               écran Apps hors écran avec les vraies apps (dossier Apps lu, rien lancé, aucune fenêtre)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
 #include <shellapi.h>
 
 #include <string>
+#include <vector>
 
 #include "../anim/genie_preview.h"
+#include "../apps/apps_folder.h"
+#include "../apps/apps_window.h"
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "cli_args.h"
 #include "../theme/theme_system.h"
 #include "capture_test.h"
 #include "menu_test.h"
@@ -45,6 +51,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         return 0;
     }
 
+    {   // une option de diagnostic sans valeur ne doit jamais démarrer un vrai Dock
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        std::vector<std::wstring> list(argv, argv + (argv ? argc : 0));
+        if (argv) LocalFree(argv);
+        if (const std::wstring bad = md::diagnosticMissingValue(list); !bad.empty()) {
+            md::log::init(md::appDataDir() + L"\\logs");
+            md::log::error(L"Option sans valeur ou mal écrite : %s ; le Dock ne démarre pas", bad.c_str());
+            return 2;
+        }
+    }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     SetUnhandledExceptionFilter(crashFilter);
 
@@ -62,7 +79,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     }
     bool snapshot = args.find(L"--snapshot") != std::wstring::npos || args.find(L"--capture-test") != std::wstring::npos ||
                     args.find(L"--menu-test") != std::wstring::npos || args.find(L"--genie-snapshot") != std::wstring::npos ||
-                    !themeAction.empty() || !themeSnapshot.empty();
+                    !themeAction.empty() || !themeSnapshot.empty() ||
+                    args.find(L"--apps-snapshot") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -81,12 +99,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
-        std::wstring captureTest, genieSnapshot;
+        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery;
+        int appsPage = 0;
         md::MinimizeEffect effect = md::MinimizeEffect::Genie;
         md::DockPosition edge = md::DockPosition::Bottom;
         for (int i = 1; i + 1 < argc; ++i) {
             if (wcscmp(argv[i], L"--capture-test") == 0) captureTest = argv[i + 1];
             if (wcscmp(argv[i], L"--genie-snapshot") == 0) genieSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--apps-snapshot") == 0) appsSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--query") == 0) appsQuery = argv[i + 1];
+            if (wcscmp(argv[i], L"--page") == 0) appsPage = _wtoi(argv[i + 1]);
             if (wcscmp(argv[i], L"--effect") == 0 && wcscmp(argv[i + 1], L"scale") == 0) effect = md::MinimizeEffect::Scale;
             if (wcscmp(argv[i], L"--edge") == 0)
                 edge = wcscmp(argv[i + 1], L"left") == 0    ? md::DockPosition::Left
@@ -94,7 +116,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                                                             : md::DockPosition::Bottom;
         }
         LocalFree(argv);
-        if (!themeSnapshot.empty()) {
+        if (!appsSnapshot.empty()) {
+            md::AppsIconStyle style;
+            style.dark = options.dark.value_or(false);
+            const md::BgraImage im = md::appsSnapshot(md::catalogFrom(md::readAppsFolder()), appsQuery, appsPage,
+                                                      style.dark, 1920, 1080, true, style);
+            code = md::writePng(appsSnapshot, im.px.data(), UINT(im.w), UINT(im.h)) ? 0 : 1;
+        } else if (!themeSnapshot.empty()) {
             code = md::writeThemeSnapshot(themeSnapshot) ? 0 : 1;
         } else if (!themeAction.empty()) {
             md::log::init(md::appDataDir() + L"\\logs");

@@ -10,6 +10,7 @@
 #include <map>
 
 #include "../anim/genie.h"
+#include "../apps/apps_window.h"
 #include "../calib/image_diff.h"
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
@@ -628,6 +629,51 @@ void DockApp::openStack(std::size_t index) {
     requestFrame();
 }
 
+// Écran Apps sur l'écran du Dock ; menu Démarrer si la vue ne peut pas s'ouvrir ou si le catalogue est vide.
+void DockApp::openApps() {
+    if (menuOpen_) return;   // second clic d'un double-clic, ou une autre fenêtre modale déjà ouverte
+    std::vector<AppEntry> list = apps_.get(1500);
+    if (list.empty()) {
+        log::warn(L"Apps : catalogue vide, ouverture du menu Démarrer");
+        openStartMenu();
+        apps_.refreshAsync();
+        return;
+    }
+    AppsWindow::Request r;
+    r.apps = std::move(list);
+    r.monitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY);
+    r.icons.strict = settings_.tahoeStrictIcons;
+    r.icons.dark = dark_;
+    r.icons.shapeRatio = metrics_.iconShapeRatio;
+    r.icons.cornerRatio = metrics_.iconCornerRatio;
+    r.icons.jailInset = metrics_.iconJailInset;
+    r.icons.shadowOpacity = metrics_.iconShadowOpacity;
+    r.icons.customDir = dataDir_ + L"\\icons";
+    const AppsIconStyle& st = r.icons;
+    appsIcons_->setStyle(std::to_wstring(st.strict) + L"|" + std::to_wstring(st.dark) + L"|" + std::to_wstring(st.shapeRatio) +
+                         L"|" + std::to_wstring(st.cornerRatio) + L"|" + std::to_wstring(st.jailInset) + L"|" +
+                         std::to_wstring(st.shadowOpacity) + L"|" + st.customDir);
+    r.cache = appsIcons_;
+    MenuWindow::Env env = popupEnv();
+    controller_.setCursor(std::nullopt);
+    requestFrame();
+    pauseCapture();   // une seule duplication de l'écran par processus
+    menuOpen_ = true;
+    const std::optional<std::wstring> chosen = AppsWindow::track(env, r);
+    menuOpen_ = false;
+    resumeCapture();
+    if (!chosen) {
+        openStartMenu();
+    } else if (!chosen->empty()) {
+        const AppEntry* e = nullptr;
+        for (const AppEntry& a : r.apps)
+            if (a.parsingName == *chosen) e = &a;
+        if (e && !launch(launchTarget(*e))) log::warn(L"Apps : lancement impossible de %s", e->name.c_str());
+    }
+    apps_.refreshAsync();   // une app installée entre-temps sera là la prochaine fois
+    requestFrame();
+}
+
 // Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
 // par index (le Dock a pu changer entre-temps, par exemple pendant un menu).
 void DockApp::activateItem(const DockItem& item) {
@@ -642,7 +688,7 @@ void DockApp::activateItem(const DockItem& item) {
                 if (launch(target)) controller_.startLaunchBounce(item.appId);
             }
             break;
-        case ItemKind::AppsButton: openStartMenu(); break;
+        case ItemKind::AppsButton: openApps(); break;
         case ItemKind::Stack: openFolder(item.launch); break;
         case ItemKind::Trash: openRecycleBin(); break;
         case ItemKind::MinimizedWindow:
@@ -895,6 +941,9 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         }
         case kCmdCloseWindow:
             PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
+            break;
+        case kCmdStartMenu:
+            openStartMenu();
             break;
         case kCmdQuitDock:
             PostMessageW(hwnd_, WM_CLOSE, 0, 0);
@@ -1444,6 +1493,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);
         poofSprite_.create(instance);
+        apps_.refreshAsync();   // prêt pour le premier clic sur le bouton Apps
     }
     reposition();
     updateGlass();

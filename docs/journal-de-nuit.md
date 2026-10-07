@@ -156,6 +156,41 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - deux applications en même temps (Dock et `--theme`) passent l'une après l'autre, et nos propres fichiers ne sont jamais pris pour l'état d'origine ;
   - l'application se fait hors du fil du Dock : il ne se fige plus (en Debug, cela durait plus de 5 s, assez pour que Windhawk rende la barre des tâches).
 
+### Plan 13 — Écran Apps (sous-projet 6, fusionné dans `main`)
+
+- **Le bouton Apps** du Dock ouvre maintenant l'écran **Apps** de macOS Tahoe au lieu du menu Démarrer : vue plein écran en verre, champ de recherche en haut, toutes tes apps en grille (7 × 5 par page sur un écran 1080p), points de pages en bas.
+- **Les apps** viennent du dossier « Apps » de Windows, celui du menu Démarrer : Win32, Store, jeux Steam… Les désinstalleurs, aides, documents et liens web sont écartés (chez toi : 334 entrées, 291 gardées). Le Dock lit la liste au démarrage puis après chaque ouverture, dans un fil à part.
+- **Recherche** : en tapant, le début du nom passe en premier, puis le début d'un mot (« co » trouve « Assetto **Co**rsa »), puis le reste ; majuscules et accents ignorés.
+- **Icônes** : les mêmes que celles du Dock (même plaque et même forme), chargées en arrière-plan, la page affichée d'abord.
+- **Menu Démarrer** : toujours là par un clic droit sur le bouton Apps, et en repli si l'écran Apps ne peut pas s'ouvrir.
+- **Vérifié hors écran** : `--apps-snapshot` avec tes vraies apps (sombre, clair avec recherche, deuxième page), tests du tri, de la recherche, de la grille, du clavier et de la lecture du dossier Apps. **Je n'ai pas ouvert l'écran Apps devant toi et je n'ai lancé aucune app.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. clic sur le bouton Apps : l'écran s'ouvre en fondu sur l'écran du Dock, les icônes arrivent ;
+  2. tape « calc », Entrée : la Calculatrice se lance et l'écran se ferme ;
+  3. molette et flèches : pages suivantes ; Échap, clic dans le vide : fermeture ;
+  4. clic droit sur le bouton Apps → *Ouvrir le menu Démarrer* ;
+  5. double-clic sur le bouton Apps : l'écran reste ouvert (une seule fois).
+- **Relecture finale** : 0 critique, 3 importants, plus 1 mineur que j'ai jugé important. Tous sont corrigés avec un test :
+  - un double-clic sur le bouton Apps ne referme plus l'écran aussitôt et n'en ouvre plus un deuxième ;
+  - après la molette ou un clic sur un point de page, la sélection suit la page (les flèches et Entrée partent de la page affichée) ;
+  - `--apps-snapshot` (comme `--snapshot`, `--genie-snapshot`, `--theme-snapshot`, `--capture-test`, `--theme`) sans valeur ne démarre plus un vrai Dock : erreur dans le journal ;
+  - les icônes sont gardées d'une ouverture à l'autre : elles sont là tout de suite à la deuxième ouverture.
+
+## Décisions prises sans toi (plan 13)
+- Pas de réorganisation à la main ni de dossiers : l'ordre est alphabétique, comme la vue Apps sans dossiers.
+- Les liens web du dossier Apps sont écartés ; les liens `steam://` et autres jeux restent.
+- Le texte de l'écran Apps est toujours blanc sur un verre sombre, en mode clair comme en mode sombre (comme Launchpad).
+- Pas de glisser horizontal à la souris pour changer de page : molette, flèches et points.
+
+## Mineurs reportés — plan 13
+- Une icône personnalisée (`icons\<id>.png`) n'apparaît pas dans l'écran Apps (autre clé que celle du Dock).
+- Alt+F4 ferme l'écran Apps par le chemin du système (quelques icônes en route perdues).
+- Un changement d'écran ou d'échelle pendant que l'écran Apps est ouvert n'est pas suivi.
+- Le verre de tout l'écran est recalculé à chaque clignotement du curseur et à chaque survol.
+- Toute la case compte pour le clic (sur un grand écran, cliquer entre deux icônes lance une app).
+- Pavé tactile : défilement page par page toutes les 0,25 s, glissement horizontal ignoré.
+- Recherche : « oe » ne trouve pas « Œ », l'apostrophe droite ne trouve pas l'apostrophe typographique ; un emoji effacé laisse une demi-paire.
+
 ## Décisions prises sans toi (plan 12)
 - Le thème couvre les curseurs et le fond d'écran seulement : polices, coins et ombres des fenêtres ne se règlent pas proprement sans crochet.
 - Le fond suit le mode **système** de Windows (`SystemUsesLightTheme`, comme le Dock et la barre), pas celui des apps.
