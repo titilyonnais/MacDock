@@ -1581,11 +1581,15 @@ void DockApp::requestFrame() {
 }
 
 void DockApp::renderNow() {
+    const bool timing = diagnosticCapture();
+    const double t0 = timing ? nowSeconds() : 0;
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    const double t1 = timing ? nowSeconds() : 0;
     if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
         loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
         logItemPositions(frame);
     }
+    const double t2 = timing ? nowSeconds() : 0;
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
@@ -1601,8 +1605,12 @@ void DockApp::renderNow() {
         if (icon.window == animated) icon.opacity = 0;   // l'image animée y entre ou en sort
     }
     if (!snapshot_) thumbnails_.sync(hwnd_, frame, !visibility_.hidden());
+    const double t3 = timing ? nowSeconds() : 0;
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
+        if (timing && nowSeconds() - t0 > 0.004)
+            log::info(L"[diag] image du Dock : modèle %.1f ms, positions %.1f, miniatures %.1f, rendu %.1f", (t1 - t0) * 1000,
+                      (t2 - t1) * 1000, (t3 - t2) * 1000, (nowSeconds() - t3) * 1000);
         return;
     }
     log::warn(L"Rendu impossible : recréation du périphérique graphique");
@@ -2224,13 +2232,15 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         syncPointer();
         bool dirty = controller_.consumeDirty();
         // Départ du génie (au plus 150 ms) : la passation au GPU d'abord, l'image du Dock (nouvelle case…) au tour
-        // d'après ; elle prendrait le tour où la deuxième image GPU doit partir.
-        if ((animating || dirty) && genie_.waiting()) {
+        // d'après ; elle prendrait le tour où la deuxième image GPU doit partir. Fin d'une restauration (80 ms) : DWM
+        // compose la fenêtre rendue, chaque appel de miniature y attend une composition (~6 ms mesurées).
+        const bool holdDock = genie_.waiting() || genieSettleUntil_ >= 0;
+        if ((animating || dirty) && holdDock) {
             wakeAnimation_ = true;
             animating = dirty = false;
             overlays = true;
         }
-        if (animating || dirty || wakeAnimation_ && !genie_.waiting()) {
+        if (animating || dirty || wakeAnimation_ && !holdDock) {
             if (trace_) {
                 static int frames = 0, byAnim = 0, byDirty = 0, byWake = 0;
                 static double since = now;
@@ -2259,6 +2269,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         if (animating || overlays) {
             DCompositionWaitForCompositorClock(0, nullptr, 50);
         } else {
+            if (thumbnails_.pending()) thumbnails_.flush();   // au repos : les retraits lents de miniatures DWM
             WaitMessage();
             last = nowSeconds() - 1.0 / 120;   // reprise sans saut d'animation
         }
