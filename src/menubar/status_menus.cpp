@@ -195,4 +195,30 @@ StatusMenu statusMenu(StatusKind kind, const StatusState& s) {
     return out;
 }
 
+MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const StatusState& now) {
+    StatusState s = now;   // valeurs actuelles, présence des lignes de l'ouverture
+    s.audio = opened.audio;
+    s.outputs = opened.outputs;
+    NetworkInfo& n = s.snap.network;
+    n.wifiInterface = opened.snap.network.wifiInterface;
+    n.networks = opened.snap.network.networks;
+    if (kind == StatusKind::Network) n.wifiOn = opened.snap.network.wifiOn;   // la liste des réseaux en dépend
+    s.snap.radios.btPresent = opened.snap.radios.btPresent;
+    if (opened.snap.media.present != now.snap.media.present) {   // session apparue ou fermée : ligne d'origine
+        s.snap.media = opened.snap.media;
+        s.snap.media.playing = false;
+    }
+    if (opened.snap.brightness.has_value() != now.snap.brightness.has_value()) s.snap.brightness = opened.snap.brightness;
+    MenuModel m = statusMenu(kind, s).model;
+    if (kind == StatusKind::Network)
+        for (auto& it : m.items)
+            if (it.row == MenuRow::Toggle) it.on = now.snap.network.wifiOn;
+    return m;
+}
+
+std::optional<StatusCommand> statusFallback(const StatusCommand& c) {
+    if (c.first == StatusAction::Output) return StatusCommand{StatusAction::OpenUri, L"ms-settings:sound"};
+    return std::nullopt;
+}
+
 } // namespace md

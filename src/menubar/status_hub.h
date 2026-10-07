@@ -3,6 +3,8 @@
 #pragma once
 #include <windows.h>
 
+#include <cstdint>
+
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -23,6 +25,11 @@ struct StatusSnapshot {
     std::optional<double> brightness;
     BatteryInfo battery;
 };
+
+// Luminosité (WMI, DDC/CI : coûteux, trafic vers l'écran) : relue au premier relevé, puis toutes les kSlowReadMs, ou
+// tout de suite quand le relevé est demandé (menu ouvert : refreshNow) ou suit une action.
+constexpr std::uint64_t kSlowReadMs = 30000;
+bool slowReadDue(std::uint64_t nowMs, std::uint64_t lastMs, bool forced);
 
 class StatusHub {
 public:
@@ -52,6 +59,8 @@ private:
     std::condition_variable wake_;
     std::deque<Job> jobs_;
     bool stopping_ = false, refresh_ = false;
+    std::uint64_t lastSlow_ = 0;              // fil du hub seulement
+    std::optional<double> brightness_;
 };
 
 } // namespace md

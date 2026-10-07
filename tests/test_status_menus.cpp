@@ -231,3 +231,41 @@ TEST_CASE(status_menus_render_offscreen) {   // chaque menu d'état se dessine (
     }
     CoUninitialize();
 }
+
+TEST_CASE(status_menus_refresh_keeps_structure) {   // un menu ouvert garde ses lignes ; seules les valeurs vivent
+    using K = md::StatusKind;
+    const auto opened = full();
+    auto now = full();
+    std::swap(now.snap.network.networks[0], now.snap.network.networks[1]);   // signal : ordre changé
+    now.snap.network.wifiOn = false;
+    now.snap.media.present = false;
+    now.snap.brightness.reset();
+    now.volume = 0.2f;
+    now.snap.radios.btOn = true;
+
+    const auto wifi = md::statusMenu(K::Network, opened);
+    const auto w2 = md::refreshStatusMenu(K::Network, opened, now);
+    REQUIRE(w2.items.size() == wifi.model.items.size());
+    for (std::size_t i = 0; i < w2.items.size(); ++i) {
+        CHECK(w2.items[i].row == wifi.model.items[i].row);
+        CHECK(w2.items[i].id == wifi.model.items[i].id);
+        CHECK(w2.items[i].text == wifi.model.items[i].text);   // l'action d'un identifiant vise toujours ce réseau
+    }
+    CHECK(!findRow(w2, md::MenuRow::Toggle)->on);   // l'interrupteur suit la radio
+
+    const auto cc = md::statusMenu(K::ControlCenter, opened);
+    const auto c2 = md::refreshStatusMenu(K::ControlCenter, opened, now);
+    REQUIRE(c2.items.size() == cc.model.items.size());
+    for (std::size_t i = 0; i < c2.items.size(); ++i) CHECK(c2.items[i].row == cc.model.items[i].row);
+    CHECK_NEAR(findRow(c2, md::MenuRow::Slider, md::Glyph::Speaker)->value, 0.2, 1e-6);   // touche volume
+    CHECK(findRow(c2, md::MenuRow::Tiles)->tiles[1].on);                                   // Bluetooth allumé ailleurs
+    CHECK(!findRow(c2, md::MenuRow::Tiles)->tiles[0].on);                                  // Wi-Fi coupé
+    CHECK(!findRow(c2, md::MenuRow::Media)->playing);                                      // session fermée
+}
+
+TEST_CASE(status_menus_output_failure_opens_settings) {   // sortie refusée : réglages Son (spec 4.9)
+    auto f = md::statusFallback({md::StatusAction::Output, L"{x}"});
+    REQUIRE(f.has_value());
+    CHECK(*f == std::make_pair(md::StatusAction::OpenUri, std::wstring(L"ms-settings:sound")));
+    CHECK(!md::statusFallback({md::StatusAction::OpenUri, L"ms-settings:sound"}).has_value());
+}

@@ -2,6 +2,7 @@
 // batterie, Centre de contrôle). Un élément sans matériel (Wi-Fi, batterie, Bluetooth, luminosité) est masqué.
 #pragma once
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,5 +60,10 @@ struct StatusMenu {
 };
 
 StatusMenu statusMenu(StatusKind kind, const StatusState& s);
+// Menu ouvert, rafraîchi : les lignes (et donc les actions de chaque identifiant) restent celles de l'ouverture —
+// réseaux listés, lecture en cours, curseurs —, seules les valeurs suivent now (volume, interrupteurs, tuiles…).
+MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const StatusState& now);
+// Action de repli quand c échoue (sortie audio refusée : réglages Son), sinon rien.
+std::optional<StatusCommand> statusFallback(const StatusCommand& c);
 
 } // namespace md

@@ -35,6 +35,7 @@ constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
 constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
 constexpr UINT WM_APP_STATUS = WM_APP + 4;       // lParam : StatusSnapshot* (à libérer)
+constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sortie par défaut changée
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
 
@@ -506,6 +507,10 @@ void MenuBarApp::onStatus(LPARAM snapshot) {
     std::unique_ptr<StatusSnapshot> p(reinterpret_cast<StatusSnapshot*>(snapshot));
     if (!p) return;
     snap_ = std::move(*p);
+    updateStatusItems();
+}
+
+void MenuBarApp::updateStatusItems() {
     auto items = statusItems(statusState());
     bool sameKinds = items.size() == status_.size(), changed = !sameKinds;
     for (std::size_t i = 0; sameKinds && i < items.size(); ++i) {
@@ -851,10 +856,9 @@ MenuWindow::BarLink MenuBarApp::barLink(int current) const {
 
 int MenuBarApp::trackStatus(std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
     const StatusKind kind = status_[j].kind;
-    StatusState state = statusState();
-    if (kind == StatusKind::Sound) state.outputs = audio_.outputs();
-    const std::vector<AudioOutput> outputs = state.outputs;   // relue à la prochaine ouverture
-    const StatusMenu menu = statusMenu(kind, state);
+    StatusState opened = statusState();
+    if (kind == StatusKind::Sound) opened.outputs = audio_.outputs();   // relues à la prochaine ouverture
+    const StatusMenu menu = statusMenu(kind, opened);
     const auto actionOf = [&menu](int id) {
         auto it = menu.actions.find(id);
         return it == menu.actions.end() ? StatusAction::None : it->second.first;
@@ -885,10 +889,8 @@ int MenuBarApp::trackStatus(std::size_t j, const MenuWindow::BarLink& link, Stat
         return true;
     };
     live.media = [this](int, int button) { hub_.post([button] { mediaCommand(button); }); };
-    live.refresh = [this, kind, &outputs](MenuModel& m) {
-        StatusState s = statusState();
-        s.outputs = outputs;
-        m = statusMenu(kind, s).model;
+    live.refresh = [this, kind, &opened](MenuModel& m) {   // mêmes lignes, donc mêmes actions par identifiant
+        m = refreshStatusMenu(kind, opened, statusState());
         return true;
     };
     hub_.refreshNow();
@@ -920,6 +922,8 @@ void MenuBarApp::runStatus(const StatusCommand& c) {
         default: done = false; break;   // curseurs, interrupteurs, média : déjà faits pendant le menu
     }
     if (trace_) log::info(L"[trace] barre : action d'état %d (%s) %s", int(c.first), c.second.c_str(), done ? L"faite" : L"sans effet");
+    if (!done)
+        if (auto f = statusFallback(c)) runStatus(*f);   // sortie refusée : réglages Son
 }
 
 void MenuBarApp::execute(const MenuAction& a) {
@@ -970,6 +974,10 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_SAMPLE: onSample(); return 0;
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
+        case WM_APP_VOLUME:
+            if (wp == 1) audio_.watch(hwnd_, WM_APP_VOLUME);   // nouvelle sortie par défaut : on la suit
+            updateStatusItems();
+            return 0;
         case WM_TIMER:
             switch (wp) {
                 case kClockTimer: {
@@ -1113,6 +1121,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     tracker_.start(hwnd_, ev);
     uia_.start();   // sinon : menus Win32 et génériques seulement
     audio_.init();   // sinon : pas d'icône du son
+    audio_.watch(hwnd_, WM_APP_VOLUME);
     if (!hub_.start(hwnd_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
     loadRecent();
     onForeground(GetForegroundWindow());
@@ -1141,6 +1150,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     tracker_.stop();
     uia_.stop();
     hub_.stop();
+    audio_.unwatch();
     saveRecent();
     removeAppBar();
     DestroyWindow(hwnd_);

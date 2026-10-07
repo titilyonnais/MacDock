@@ -8,6 +8,7 @@
 #include <mmdeviceapi.h>
 #include <propvarutil.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
 
 #include <algorithm>
 
@@ -42,10 +43,47 @@ std::wstring idOf(IMMDevice* d) {
     return out;
 }
 
+class Notifier : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                                                      IAudioEndpointVolumeCallback, IMMNotificationClient> {
+public:
+    Notifier(HWND hwnd, UINT msg) : hwnd_(hwnd), msg_(msg) {}
+    STDMETHODIMP OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA) override { return post(0); }
+    STDMETHODIMP OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR) override {
+        return flow == eRender && role == eConsole ? post(1) : S_OK;   // wParam 1 : rappeler watch
+    }
+    STDMETHODIMP OnDeviceStateChanged(LPCWSTR, DWORD) override { return S_OK; }
+    STDMETHODIMP OnDeviceAdded(LPCWSTR) override { return S_OK; }
+    STDMETHODIMP OnDeviceRemoved(LPCWSTR) override { return S_OK; }
+    STDMETHODIMP OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override { return S_OK; }
+
+private:
+    HRESULT post(WPARAM what) {
+        PostMessageW(hwnd_, msg_, what, 0);   // fil de Core Audio : on ne fait que prévenir la barre
+        return S_OK;
+    }
+    HWND hwnd_;
+    UINT msg_;
+};
+
 } // namespace
+
+ComPtr<IUnknown> makeAudioNotifier(HWND hwnd, UINT msg) {
+    ComPtr<IUnknown> out;
+    Microsoft::WRL::Make<Notifier>(hwnd, msg).As(&out);
+    return out;
+}
 
 struct AudioStatus::Impl {
     ComPtr<IMMDeviceEnumerator> devices;
+    ComPtr<IUnknown> notifier;                // watch : abonnements en cours
+    ComPtr<IMMNotificationClient> client;     // inscrit auprès de devices
+    ComPtr<IAudioEndpointVolume> watched;     // sortie suivie
+    ComPtr<IAudioEndpointVolumeCallback> volumeCallback;
+
+    void stopVolume() {
+        if (watched && volumeCallback) watched->UnregisterControlChangeNotify(volumeCallback.Get());
+        watched.Reset();
+    }
 
     ComPtr<IAudioEndpointVolume> endpoint() {
         ComPtr<IMMDevice> d;
@@ -58,7 +96,7 @@ struct AudioStatus::Impl {
 };
 
 AudioStatus::AudioStatus() : impl_(std::make_unique<Impl>()) {}
-AudioStatus::~AudioStatus() = default;
+AudioStatus::~AudioStatus() { unwatch(); }
 
 bool AudioStatus::init() {
     if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&impl_->devices))))
@@ -126,6 +164,34 @@ bool AudioStatus::setDefault(const std::wstring& id) {
     bool ok = true;
     for (ERole role : {eConsole, eMultimedia, eCommunications}) ok = SUCCEEDED(policy->SetDefaultEndpoint(id.c_str(), role)) && ok;
     return ok;
+}
+
+bool AudioStatus::watch(HWND hwnd, UINT msg) {
+    if (!impl_->devices) return false;
+    if (!impl_->notifier) {
+        impl_->notifier = makeAudioNotifier(hwnd, msg);
+        if (!impl_->notifier || FAILED(impl_->notifier.As(&impl_->volumeCallback)) ||
+            FAILED(impl_->notifier.As(&impl_->client)) ||
+            FAILED(impl_->devices->RegisterEndpointNotificationCallback(impl_->client.Get()))) {
+            impl_->client.Reset();
+            impl_->volumeCallback.Reset();
+            impl_->notifier.Reset();
+            return false;
+        }
+    }
+    impl_->stopVolume();   // la sortie par défaut a pu changer
+    auto e = impl_->endpoint();
+    if (!e || FAILED(e->RegisterControlChangeNotify(impl_->volumeCallback.Get()))) return false;
+    impl_->watched = e;
+    return true;
+}
+
+void AudioStatus::unwatch() {
+    impl_->stopVolume();
+    if (impl_->devices && impl_->client) impl_->devices->UnregisterEndpointNotificationCallback(impl_->client.Get());
+    impl_->client.Reset();
+    impl_->volumeCallback.Reset();
+    impl_->notifier.Reset();
 }
 
 } // namespace md

@@ -83,6 +83,7 @@ private:
     void runStatus(const StatusCommand& c);
     StatusState statusState();
     void onStatus(LPARAM snapshot);
+    void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
     void openSettingsFile();
     void execute(const MenuAction& a);
     BarContext context(bool recentDocs = false) const;   // recentDocs : lit le dossier Récents (ouverture d'un menu)

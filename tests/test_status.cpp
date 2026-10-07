@@ -2,6 +2,9 @@
 // réelles ne changent rien : aucun réglage de l'utilisateur n'est modifié.
 #include <windows.h>
 #include <objbase.h>
+#include <mmdeviceapi.h>
+#include <endpointvolume.h>
+#include <wrl/client.h>
 
 #include <atomic>
 #include <memory>
@@ -154,4 +157,41 @@ TEST_CASE(status_hub_posts_snapshots) {
     CHECK(snapshots >= 2);
     std::lock_guard lock(*mutex);
     CHECK(*log == (std::vector<int>{1, 3}));
+}
+
+TEST_CASE(status_audio_notifier_posts) {   // notification Core Audio : message posté, sans toucher au volume
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        HWND w = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr);
+        REQUIRE(w != nullptr);
+        constexpr UINT kMsg = WM_APP + 77;
+        auto notifier = md::makeAudioNotifier(w, kMsg);
+        REQUIRE(notifier != nullptr);
+        Microsoft::WRL::ComPtr<IAudioEndpointVolumeCallback> volume;
+        Microsoft::WRL::ComPtr<IMMNotificationClient> devices;
+        REQUIRE(SUCCEEDED(notifier.As(&volume)));
+        REQUIRE(SUCCEEDED(notifier.As(&devices)));
+        MSG m;
+        CHECK(!PeekMessageW(&m, w, kMsg, kMsg, PM_REMOVE));
+        AUDIO_VOLUME_NOTIFICATION_DATA data{};
+        volume->OnNotify(&data);
+        CHECK(PeekMessageW(&m, w, kMsg, kMsg, PM_REMOVE));
+        devices->OnDefaultDeviceChanged(eCapture, eConsole, L"micro");   // micro : rien
+        CHECK(!PeekMessageW(&m, w, kMsg, kMsg, PM_REMOVE));
+        devices->OnDefaultDeviceChanged(eRender, eConsole, L"sortie");
+        CHECK(PeekMessageW(&m, w, kMsg, kMsg, PM_REMOVE));
+        md::AudioStatus audio;
+        audio.init();
+        if (audio.volume() >= 0) CHECK(audio.watch(w, kMsg));   // ce poste a une sortie
+        audio.unwatch();
+        DestroyWindow(w);
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(status_hub_paces_slow_reads) {   // luminosité (WMI, DDC/CI) : rarement, sauf à la demande
+    CHECK(md::slowReadDue(5000, 0, false));          // premier relevé
+    CHECK(!md::slowReadDue(7000, 5000, false));      // relevé périodique suivant : non
+    CHECK(md::slowReadDue(7000, 5000, true));        // menu ouvert ou action : oui
+    CHECK(md::slowReadDue(5000 + md::kSlowReadMs, 5000, false));
 }

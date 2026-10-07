@@ -53,13 +53,19 @@ void StatusHub::refreshNow() {
     wake_.notify_one();
 }
 
+bool slowReadDue(std::uint64_t nowMs, std::uint64_t lastMs, bool forced) {
+    return forced || lastMs == 0 || nowMs - lastMs >= kSlowReadMs;
+}
+
 void StatusHub::loop() {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);   // WinRT et WMI : appartement MTA
     for (;;) {
+        bool forced = false;
         {
             std::unique_lock lock(mutex_);
             wake_.wait_for(lock, std::chrono::milliseconds(interval_), [this] { return stopping_ || refresh_ || !jobs_.empty(); });
             if (stopping_) break;
+            forced = refresh_;
             refresh_ = false;
         }
         for (;;) {   // actions en attente, puis un relevé qui en montre l'effet
@@ -71,6 +77,7 @@ void StatusHub::loop() {
                 jobs_.pop_front();
             }
             if (job.run) job.run();
+            forced = true;
         }
         {
             std::lock_guard lock(mutex_);
@@ -80,7 +87,12 @@ void StatusHub::loop() {
         s->network = readNetwork();
         s->radios = readRadios();
         s->media = readMedia();
-        s->brightness = readBrightness();
+        const std::uint64_t now = GetTickCount64();
+        if (slowReadDue(now, lastSlow_, forced)) {
+            brightness_ = readBrightness();
+            lastSlow_ = now;
+        }
+        s->brightness = brightness_;
         s->battery = readBattery();
         if (!notify_ || !PostMessageW(notify_, msg_, 0, reinterpret_cast<LPARAM>(s))) delete s;
     }
