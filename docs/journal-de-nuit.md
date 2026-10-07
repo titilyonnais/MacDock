@@ -197,7 +197,7 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - les documents restent affichés pendant que tu tapes, jusqu'aux nouveaux résultats : le panneau ne saute plus à chaque frappe ;
   - le résultat d'un calcul est copié sans espace entre les milliers (`1234,5`), donc lisible par un tableur.
 
-### Plan 15 — Mission Control (sous-projet 8, en cours)
+### Plan 15 — Mission Control (sous-projet 8, fusionné dans `main`)
 
 - **Mission Control** : `Ctrl+Alt+↑` écarte toutes les fenêtres visibles du bureau virtuel courant, sur chaque écran. Elles glissent de leur place réelle vers une place rangée (0,3 s), sans chevauchement, en miniatures vivantes de Windows, sur ton fond d'écran légèrement assombri.
 - **Survol** : contour bleu et titre de la fenêtre dessous. **Clic** : la fenêtre revient devant, les autres retournent à leur place. **Échap**, clic dans le vide ou second appui : tout revient sans rien changer. Maj : au ralenti.
@@ -209,6 +209,22 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   2. survole-en une (contour bleu, titre), clique : elle passe devant ;
   3. `Ctrl+Alt+↑` puis Échap : tout revient à sa place ;
   4. avec deux écrans : chaque écran range ses fenêtres ; cliquer sur l'autre écran ne ferme pas tout.
+- **Relecture finale** : 0 critique, 2 importants :
+  - le fond d'écran était gardé en mémoire en pleine résolution (jusqu'à 133 Mo pour un fond 8K, pour toute la vie du Dock) : il est maintenant mis à la taille de l'écran avant d'être gardé (corrigé avec un test) ;
+  - la spec promettait un élément Mission Control dans le Dock : sur macOS il n'y en a pas par défaut, j'ai retiré cette promesse ; les coins actifs serviront d'entrée à la souris.
+
+## Décisions prises sans toi (plan 15)
+- Raccourci `Ctrl+Alt+↑` par défaut (`Win+Tab` impossible sans crochet clavier) ; si ton pilote Intel fait pivoter l'écran avec ce raccourci, prends `ctrl+up` ou `f3`.
+- Pas de barre des bureaux virtuels (Windows ne donne pas la liste des bureaux par une API publique) : seules les fenêtres du bureau courant.
+- La barre de menus se cache pendant Mission Control, comme sur macOS.
+- Le fond d'écran est toujours affiché en « remplir », quel que soit ton réglage d'ajustement.
+
+## Mineurs reportés — plan 15
+- Avec deux écrans : deux contours bleus possibles, et Échap peut se perdre après un clic du bouton du milieu sur l'autre écran.
+- Un clic pendant l'animation d'ouverture (0,3 s) vise la place finale ; un clic sur la place d'une fenêtre fermée referme la vue, et le rangement n'est pas refait.
+- Les bordures invisibles de Windows 11 comptent dans les miniatures (contour bleu à quelques pixels du bord visible).
+- Avec le masquage automatique, le Dock se montre brièvement après Mission Control.
+- Un fond en couleur unie est remplacé par le fond Tahoe.
 
 ## Décisions prises sans toi (plan 14)
 - La recherche de documents passe par l'index de Windows (OLE DB, lecture seule) : le dossier `search-ms:` prévu ne s'énumère pas hors de l'Explorateur.
