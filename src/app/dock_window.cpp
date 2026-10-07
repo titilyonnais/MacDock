@@ -117,6 +117,7 @@ void DockApp::applySettings() {
     visibility_.setTimings({metrics_.autohideDelay, metrics_.autohideLeaveDelay, metrics_.autohideShowSeconds,
                             metrics_.autohideHideSeconds});
     syncAppBar();
+    if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
     updateGlass();   // réglage glass modifié à chaud
     requestFrame();
 }
@@ -207,24 +208,40 @@ void DockApp::reposition() {
     GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
     scale_ = float(dpiX) / 96.0f;
 
-    int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
-    int height = int(DockController::windowHeightPx(settings_, metrics_, scale_));
-    int width = monitor_.right - monitor_.left;
+    const int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
+    const int thick = int(DockController::windowHeightPx(settings_, metrics_, scale_));   // épaisseur de la fenêtre
+    const DockPosition edge = settings_.position;
 
-    int bottom = monitor_.bottom;
+    // Bande du bord occupée par le Dock ; la barre d'application la décale des autres barres (barre Windows…).
+    RECT band = monitor_;
+    if (edge == DockPosition::Left) band.right = band.left + reserve;
+    else if (edge == DockPosition::Right) band.left = band.right - reserve;
+    else band.top = band.bottom - reserve;
     if (appBar_) {
         APPBARDATA abd{};
         abd.cbSize = sizeof abd;
         abd.hWnd = hwnd_;
-        abd.uEdge = ABE_BOTTOM;
-        abd.rc = {monitor_.left, monitor_.bottom - reserve, monitor_.right, monitor_.bottom};
-        SHAppBarMessage(ABM_QUERYPOS, &abd);   // évite les autres barres (barre Windows si le mod est absent)
-        abd.rc.top = abd.rc.bottom - reserve;
+        abd.uEdge = edge == DockPosition::Left ? ABE_LEFT : edge == DockPosition::Right ? ABE_RIGHT : ABE_BOTTOM;
+        abd.rc = band;
+        SHAppBarMessage(ABM_QUERYPOS, &abd);
+        if (edge == DockPosition::Left) abd.rc.right = abd.rc.left + reserve;
+        else if (edge == DockPosition::Right) abd.rc.left = abd.rc.right - reserve;
+        else abd.rc.top = abd.rc.bottom - reserve;
         SHAppBarMessage(ABM_SETPOS, &abd);
-        bottom = abd.rc.bottom;
+        band = abd.rc;
     }
-    origin_ = POINT{monitor_.left, bottom - height};
-    if (trace_) log::info(L"[trace] zone réservée : %d px", appBar_ ? reserve : 0);
+    int width, height;
+    if (edge == DockPosition::Bottom) {
+        width = monitor_.right - monitor_.left;
+        height = thick;
+        origin_ = POINT{monitor_.left, band.bottom - height};
+    } else {
+        width = thick;
+        height = band.bottom - band.top;   // hauteur disponible le long du bord (hors barre Windows)
+        origin_ = POINT{edge == DockPosition::Left ? band.left : band.right - width, band.top};
+    }
+    placedPosition_ = edge;
+    if (trace_) log::info(L"[trace] zone réservée : %d px (bord %d)", appBar_ ? reserve : 0, int(edge));
     SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
@@ -340,8 +357,18 @@ void DockApp::setTransparent(bool transparent) {
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     bool inside = controller_.isInsideInteractiveZone(client);
-    bool atEdge = screen.y >= monitor_.bottom - LONG(metrics_.autohideEdgePx) && screen.x >= monitor_.left &&
-                  screen.x < monitor_.right;
+    const LONG edgePx = LONG(metrics_.autohideEdgePx);
+    bool atEdge = false;
+    switch (settings_.position) {
+        case DockPosition::Left:
+            atEdge = screen.x <= monitor_.left + edgePx && screen.y >= monitor_.top && screen.y < monitor_.bottom;
+            break;
+        case DockPosition::Right:
+            atEdge = screen.x >= monitor_.right - 1 - edgePx && screen.y >= monitor_.top && screen.y < monitor_.bottom;
+            break;
+        default:
+            atEdge = screen.y >= monitor_.bottom - 1 - edgePx && screen.x >= monitor_.left && screen.x < monitor_.right;
+    }
     if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
         cursorAtEdge_ = atEdge;
         cursorInDock_ = inside;
@@ -473,18 +500,30 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         ctx.trashFull = recycleBinHasItems();
     }
 
-    // Ancrage : centré au-dessus de l'icône (ou du curseur, hors icône), juste au-dessus du Dock.
+    // Ancrage : face à l'icône (ou au curseur, hors icône), juste au-delà du Dock, côté écran.
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     POINT cursor;
     GetCursorPos(&cursor);
-    float top = frame.bgTop;
-    LONG x = cursor.x;
-    if (index && *index < frame.icons.size()) {
-        const RenderIcon& icon = frame.icons[*index];
-        x = origin_.x + LONG(std::lround(icon.cx));
-        if (!icon.separator) top = std::min(top, icon.cy - icon.size / 2);
+    const RenderIcon* icon = index && *index < frame.icons.size() ? &frame.icons[*index] : nullptr;
+    const float gap = 6 * scale_;
+    const float half = icon && !icon->separator ? icon->size / 2 : 0;
+    POINT anchor{};
+    MenuWindow::Side side = MenuWindow::Side::Above;
+    switch (settings_.position) {
+        case DockPosition::Left:
+            side = MenuWindow::Side::Right;
+            anchor.x = origin_.x + LONG(std::lround(std::max(frame.bgRight, icon ? icon->cx + half : 0.0f) + gap));
+            anchor.y = icon ? origin_.y + LONG(std::lround(icon->cy)) : cursor.y;
+            break;
+        case DockPosition::Right:
+            side = MenuWindow::Side::Left;
+            anchor.x = origin_.x + LONG(std::lround(std::min(frame.bgLeft, icon ? icon->cx - half : frame.bgLeft) - gap));
+            anchor.y = icon ? origin_.y + LONG(std::lround(icon->cy)) : cursor.y;
+            break;
+        default:
+            anchor.x = icon ? origin_.x + LONG(std::lround(icon->cx)) : cursor.x;
+            anchor.y = origin_.y + LONG(std::lround(std::min(frame.bgTop, icon ? icon->cy - half : frame.bgTop) - gap));
     }
-    POINT anchor{x, origin_.y + LONG(std::lround(top - 6 * scale_))};
 
     MenuWindow::Env env;
     env.instance = instance_;
@@ -500,7 +539,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
     pauseCapture();
     menuOpen_ = true;
-    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor);
+    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor, side);
     menuOpen_ = false;
     resumeCapture();
     if (trace_) log::info(L"[trace] menu %s : commande %d", item.key.c_str(), cmd);
@@ -555,7 +594,11 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         case kCmdPosLeft:
         case kCmdPosBottom:
         case kCmdPosRight:
-            break;   // Gauche et Droite : plan 4
+            settings_.position = cmd == kCmdPosLeft ? DockPosition::Left
+                                 : cmd == kCmdPosRight ? DockPosition::Right : DockPosition::Bottom;
+            saveSettings();
+            applySettings();   // déplace le Dock (reposition) si le bord a changé
+            break;
         case kCmdSettings: {
             std::wstring path = L"\"" + dataDir_ + L"\\settings.json\"";
             ShellExecuteW(nullptr, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);

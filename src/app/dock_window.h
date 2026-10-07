@@ -135,7 +135,8 @@ private:
     Visibility visibility_;
     Thumbnails thumbnails_;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
-    bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
+    bool loggedHidden_ = false;
+    DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

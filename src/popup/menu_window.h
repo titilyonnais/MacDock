@@ -23,8 +23,10 @@ public:
         Metrics metrics;
         bool trace = false;
     };
-    // Ouvre le menu au-dessus du point d'ancrage (écran), centré ; renvoie l'identifiant choisi, ou 0.
-    static int track(const Env& env, const MenuModel& model, POINT anchorScreen);
+    // Côté d'ouverture par rapport à l'ancrage : au-dessus (Dock en bas), à droite (Dock à gauche), à gauche.
+    enum class Side { Above, Right, Left };
+    // Ouvre le menu du côté demandé, centré sur le point d'ancrage (écran) ; renvoie l'identifiant choisi, ou 0.
+    static int track(const Env& env, const MenuModel& model, POINT anchorScreen, Side side = Side::Above);
 };
 
 } // namespace md

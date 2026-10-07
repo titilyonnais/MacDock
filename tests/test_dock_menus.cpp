@@ -69,7 +69,12 @@ TEST_CASE(menu_separator_toggles_settings) {
     CHECK(find(m.items, md::kCmdMagnify)->text == L"Désactiver l'agrandissement");
     CHECK(find(m.items, md::kCmdAutohide)->text == L"Activer le masquage");
     CHECK(find(m.items, md::kCmdPosBottom)->checked);
-    CHECK(!find(m.items, md::kCmdPosLeft)->enabled);   // positions latérales : plan 4
+    CHECK(find(m.items, md::kCmdPosLeft)->enabled);
+    CHECK(find(m.items, md::kCmdPosRight)->enabled);
+    c.settings.position = md::DockPosition::Left;
+    auto left = md::buildDockMenu(c);
+    CHECK(find(left.items, md::kCmdPosLeft)->checked);
+    CHECK(!find(left.items, md::kCmdPosBottom)->checked);
     CHECK(find(m.items, md::kCmdSettings) != nullptr);
 }
 

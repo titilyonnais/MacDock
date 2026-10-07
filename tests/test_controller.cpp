@@ -238,3 +238,65 @@ TEST_CASE(controller_pressed_icon_is_dimmed) {
     auto released = f.c.buildFrame(false, icons);
     CHECK_EQ(released.icons[1].dim, 0.0f);
 }
+
+namespace {
+// Dock vertical : fenêtre de l'épaisseur du Dock, haute de 1000 px.
+struct VerticalFixture {
+    md::AppModel model;
+    md::DockController c;
+    md::Settings s;
+    md::Metrics m;
+    md::IconProvider icons;
+    explicit VerticalFixture(md::DockPosition edge) {
+        s.showRecents = false;
+        s.position = edge;
+        model.setShowRecents(false);
+        model.loadPinned({{md::PinKind::App, L"c:\\a.exe", L"C:\\a.exe", L"A"},
+                          {md::PinKind::App, L"c:\\b.exe", L"C:\\b.exe", L"B"},
+                          {md::PinKind::App, L"c:\\c.exe", L"C:\\c.exe", L"C"}});
+        c.init(s, m, &model);
+        c.setViewport(UINT(md::DockController::windowHeightPx(s, m, 1)), 1000, 1);
+    }
+    POINT center(std::size_t i) {
+        auto f = c.buildFrame(false, icons);
+        return POINT{LONG(f.icons[i].cx), LONG(f.icons[i].cy)};
+    }
+};
+} // namespace
+
+TEST_CASE(controller_vertical_hit_test) {
+    for (auto edge : {md::DockPosition::Left, md::DockPosition::Right}) {
+        VerticalFixture f(edge);
+        auto frame = f.c.buildFrame(false, f.icons);
+        const float w = float(md::DockController::windowHeightPx(f.s, f.m, 1));
+        CHECK((frame.bgBottom - frame.bgTop) > (frame.bgRight - frame.bgLeft));   // Dock debout
+        if (edge == md::DockPosition::Left) CHECK(frame.bgLeft < w / 2);           // collé au bord gauche
+        else CHECK(frame.bgRight > w / 2);
+        CHECK(frame.icons[0].cy < frame.icons[1].cy);                             // de haut en bas
+        CHECK(std::abs(frame.icons[0].cx - frame.icons[1].cx) < 0.5f);
+        for (std::size_t i = 0; i < 3; ++i) {
+            auto hit = f.c.hitTest(f.center(i));
+            REQUIRE(hit.has_value());
+            CHECK_EQ(*hit, i);
+        }
+    }
+}
+
+TEST_CASE(controller_vertical_drag_remove) {
+    // Dock à droite : « Supprimer » en s'éloignant du bord (vers la gauche), pas en glissant le long du Dock.
+    VerticalFixture f(md::DockPosition::Right);
+    POINT b = f.center(1);
+    f.c.pointerDown(b);
+    f.c.pointerMove(POINT{b.x - 10, b.y});
+    f.c.pointerMove(POINT{b.x - 200, b.y});
+    auto away = f.c.pointerUp(POINT{b.x - 200, b.y});
+    CHECK(away.kind == md::DragOutcome::Kind::Remove);
+
+    VerticalFixture g(md::DockPosition::Right);
+    POINT gb = g.center(1);
+    g.c.pointerDown(gb);
+    g.c.pointerMove(POINT{gb.x, gb.y - 10});
+    g.c.pointerMove(POINT{gb.x, gb.y - 200});
+    auto along = g.c.pointerUp(POINT{gb.x, gb.y - 200});
+    CHECK(along.kind != md::DragOutcome::Kind::Remove);
+}

@@ -91,7 +91,8 @@ struct Session {
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
-    UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
+    UINT swallowUp = 0;
+    MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
     double hoverSince = 0;
 
     float s() const { return env.scale; }
@@ -224,6 +225,13 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     } else {
         left = anchor.x - w / 2;
         top = above ? anchor.y - h + LONG(p->margin) : anchor.y - LONG(p->margin);
+        if (side == MenuWindow::Side::Right) {
+            left = anchor.x - LONG(p->margin);
+            top = anchor.y - h / 2;
+        } else if (side == MenuWindow::Side::Left) {
+            left = anchor.x - w + LONG(p->margin);
+            top = anchor.y - h / 2;
+        }
     }
     left = std::clamp(left, m.left - LONG(p->margin), std::max(m.left, m.right - w + LONG(p->margin)));
     top = std::clamp(top, m.top - LONG(p->margin), std::max(m.top, m.bottom - h + LONG(p->margin)));
@@ -580,7 +588,7 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor) {
+int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side) {
     if (model.items.empty()) return 0;
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = panelProc;
@@ -591,6 +599,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor) {
 
     Session session;
     session.env = env;
+    session.side = side;
     g_session = &session;
     HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, outsideClickHook, env.instance, 0);
     struct Unhook {

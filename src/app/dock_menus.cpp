@@ -51,10 +51,9 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     out.push_back(entry(kCmdAutohide, s.autohide ? L"Désactiver le masquage" : L"Activer le masquage"));
     out.push_back(entry(kCmdMagnify, s.magnification ? L"Désactiver l'agrandissement" : L"Activer l'agrandissement"));
     MenuItem pos{-1, L"Position à l'écran"};
-    // Gauche et Droite arrivent avec le plan 4 (la mise en page n'a encore qu'un axe).
-    pos.submenu = {entry(kCmdPosLeft, L"Gauche", false, s.position == DockPosition::Left),
+    pos.submenu = {entry(kCmdPosLeft, L"Gauche", true, s.position == DockPosition::Left),
                    entry(kCmdPosBottom, L"En bas", true, s.position == DockPosition::Bottom),
-                   entry(kCmdPosRight, L"Droite", false, s.position == DockPosition::Right)};
+                   entry(kCmdPosRight, L"Droite", true, s.position == DockPosition::Right)};
     out.push_back(pos);
     out.push_back({});
     out.push_back(entry(kCmdSettings, L"Réglages du Dock…"));
