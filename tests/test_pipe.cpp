@@ -74,3 +74,25 @@ TEST_CASE(pipe_no_heartbeat_when_ui_not_alive) {
     server.stop();
     CloseHandle(client);
 }
+
+TEST_CASE(pipe_reports_connections) {   // la barre vide sa liste d'icônes à chaque nouvelle connexion du mod
+    std::wstring name = L"\\\\.\\pipe\\MacDockTest3-" + std::to_wstring(GetCurrentProcessId());
+    std::atomic<int> connects{0}, disconnects{0};
+    md::ipc::PipeServer server;
+    server.setConnectionHandler([&](bool connected) { ++(connected ? connects : disconnects); });
+    REQUIRE(server.start(name, [](const md::ipc::Message&) {}));
+    for (int round = 1; round <= 2; ++round) {
+        HANDLE client = INVALID_HANDLE_VALUE;
+        for (int i = 0; i < 100 && client == INVALID_HANDLE_VALUE; ++i) {
+            client = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+            if (client == INVALID_HANDLE_VALUE) Sleep(20);
+        }
+        REQUIRE(client != INVALID_HANDLE_VALUE);
+        for (int i = 0; i < 100 && connects < round; ++i) Sleep(10);
+        CHECK_EQ(connects.load(), round);
+        CloseHandle(client);
+        for (int i = 0; i < 200 && disconnects < round; ++i) Sleep(10);
+        CHECK_EQ(disconnects.load(), round);
+    }
+    server.stop();
+}

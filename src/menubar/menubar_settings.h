@@ -21,6 +21,7 @@ struct MenuBarSettings {
     bool showNetwork = true;    // Wi-Fi (masqué sans carte Wi-Fi)
     bool showBattery = true;    // masqué sans batterie
     bool showSearch = true;
+    bool showAppIcons = true;   // icônes des autres apps (relayées par le mod Windhawk)
     MenuBarMetrics metrics;
 };
 

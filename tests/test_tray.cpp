@@ -1,11 +1,15 @@
 // Barre de menus : icônes des autres apps (zone de notification relayée par le mod Windhawk).
 #include <windows.h>
 #include <shellapi.h>
+#include <objbase.h>
 
 #include <set>
 
 #include "minitest.h"
+#include "../src/core/json.h"
 #include "../src/ipc/protocol.h"
+#include "../src/menubar/bar_renderer.h"
+#include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/tray_model.h"
 
 namespace {
@@ -154,4 +158,44 @@ TEST_CASE(tray_click_versions) {
 
     e.flags &= ~NIF_MESSAGE;   // pas de message de rappel : rien à poster
     CHECK(md::trayClick(e, 0, POINT{0, 0}).empty());
+}
+
+TEST_CASE(bar_renderer_draws_tray_image) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        r.setFont(L"", 13);
+        md::BarFrame f;
+        md::BarDrawItem icon;
+        auto px = std::make_shared<std::vector<std::uint8_t>>(32 * 32 * 4);
+        for (std::size_t i = 0; i < px->size(); i += 4) (*px)[i] = (*px)[i + 3] = 0xFF;   // bleu opaque
+        icon.image = px;
+        icon.imageW = icon.imageH = 32;
+        icon.x = 100;
+        icon.width = 30;
+        f.items.push_back(icon);
+        const UINT w = 200, h = 24;
+        std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+        REQUIRE(r.renderToImage(f, bg, w, h, out));
+        int inside = 0, outside = 0;
+        for (UINT y = 0; y < h; ++y)
+            for (UINT x = 0; x < w; ++x) {
+                const std::uint8_t* p = &out[(size_t(y) * w + x) * 4];
+                const bool lit = p[3] > 60;
+                (x >= 100 && x < 130 ? inside : outside) += lit;
+                if (lit && x >= 100 && x < 130) CHECK(p[0] > 200 && p[2] < 40);   // couleurs gardées
+            }
+        CHECK(inside >= 16 * 16 - 32);   // 16 pt à l'échelle 1
+        CHECK_EQ(outside, 0);
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(menubar_settings_app_icons_roundtrip) {
+    md::MenuBarSettings s;
+    CHECK(s.showAppIcons);
+    s.showAppIcons = false;
+    auto back = md::menuBarSettingsFromJson(*md::json::parse(md::json::serialize(md::menuBarSettingsToJson(s))));
+    CHECK(!back.showAppIcons);
 }

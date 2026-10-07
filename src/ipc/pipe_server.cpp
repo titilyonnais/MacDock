@@ -81,6 +81,7 @@ void PipeServer::run() {
 
         connected_ = true;
         log::info(L"Mod Windhawk connecté au pipe");
+        if (onConnection_) onConnection_(true);
         Decoder decoder;
         Event readEv;
         OVERLAPPED rov{};
@@ -125,6 +126,7 @@ void PipeServer::run() {
             GetOverlappedResult(pipe, &rov, &dummy, TRUE);
         }
         connected_ = false;
+        if (onConnection_) onConnection_(false);
         // Pas de DisconnectNamedPipe : il jetterait les données non lues (dont Goodbye).
         // Fermer l'instance laisse le client lire la fin du flux, puis recevoir ERROR_BROKEN_PIPE.
         CloseHandle(pipe);

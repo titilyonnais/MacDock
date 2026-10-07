@@ -11,6 +11,7 @@
 
 #include "../app/visibility.h"
 #include "../config/metrics.h"
+#include "../ipc/pipe_server.h"
 #include "../icons/icon_provider.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
@@ -24,6 +25,7 @@
 #include "status_audio.h"
 #include "status_hub.h"
 #include "status_menus.h"
+#include "tray_model.h"
 #include "uia_menu.h"
 
 namespace md {
@@ -84,6 +86,8 @@ private:
     StatusState statusState();
     void onStatus(LPARAM snapshot);
     void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
+    void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
+    void trayClickAt(std::size_t k, int button);
     void openSettingsFile();
     void execute(const MenuAction& a);
     BarContext context(bool recentDocs = false) const;   // recentDocs : lit le dossier Récents (ouverture d'un menu)
@@ -123,7 +127,14 @@ private:
     AudioStatus audio_;                    // son (Core Audio, fil de la barre)
     StatusHub hub_;                        // réseau, radios, lecture en cours, luminosité, batterie (fil de travail)
     StatusSnapshot snap_;                  // dernier relevé du hub
-    std::vector<StatusItem> status_;       // partie droite affichée (alignée sur layoutIn_.rightWidths)
+    std::vector<StatusItem> status_;       // icônes système et horloge (cases trayLaid_.size() + j de la droite)
+    struct TrayShown {                     // icône d'app placée dans la barre
+        ipc::TrayIconEvent e;              // sans ses pixels (dans image)
+        std::shared_ptr<const std::vector<std::uint8_t>> image;
+    };
+    ipc::PipeServer trayPipe_;             // \\.\pipe\MacMenuBar : le mod Windhawk relaie la zone de notification
+    TrayModel tray_;
+    std::vector<TrayShown> trayLaid_;      // icônes d'apps de la mise en page courante, de gauche à droite
 
     RECT monitor_{};
     float scale_ = 1;

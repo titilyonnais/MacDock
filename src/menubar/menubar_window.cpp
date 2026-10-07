@@ -35,6 +35,7 @@ constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
 constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
 constexpr UINT WM_APP_STATUS = WM_APP + 4;       // lParam : StatusSnapshot* (à libérer)
+constexpr UINT WM_APP_TRAY = WM_APP + 6;         // lParam : ipc::Message* (à libérer) ; wParam 1 : connexion
 constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sortie par défaut changée
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
@@ -52,6 +53,8 @@ constexpr UINT_PTR kConfigTimer = 0x4346;       // "CF"
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS"
 constexpr UINT_PTR kRecentTimer = 0x5243;       // "RC" : écriture différée des apps récentes
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
+constexpr UINT_PTR kTrayLayoutTimer = 0x544C;   // "TL" : rafale de messages du mod regroupée
+constexpr UINT_PTR kTrayPruneTimer = 0x5450;    // "TP" : icônes d'apps fermées
 constexpr int kCmdBarSettings = 1, kCmdBarAutohide = 2, kCmdBarQuit = 3;
 
 double nowSeconds() {
@@ -484,6 +487,14 @@ void MenuBarApp::relayout() {
     }
     updateClock();
     status_ = statusItems(statusState());
+    trayLaid_.clear();
+    if (settings_.showAppIcons)
+        for (const TrayIcon* t : tray_.visible()) {
+            TrayShown shown{t->e, std::make_shared<const std::vector<std::uint8_t>>(t->e.bgra)};
+            shown.e.bgra.clear();
+            trayLaid_.push_back(std::move(shown));
+            layoutIn_.rightWidths.push_back(m.statusWidth);
+        }
     for (const auto& item : status_)
         layoutIn_.rightWidths.push_back(item.kind == StatusKind::Clock
                                             ? std::ceil(renderer_.measure(clock_, false) / scale_) + 2 * pad
@@ -539,14 +550,24 @@ BarFrame MenuBarApp::frame() const {
         it.highlighted = int(i) == highlight_;
         f.items.push_back(std::move(it));
     }
-    for (std::size_t j = 0; j < layout_.rightX.size() && j < status_.size(); ++j) {
+    const std::size_t trayN = trayLaid_.size();
+    for (std::size_t k = 0; k < trayN && k < layout_.rightX.size(); ++k) {
+        BarDrawItem it;
+        it.image = trayLaid_[k].image;
+        it.imageW = trayLaid_[k].e.w;
+        it.imageH = trayLaid_[k].e.h;
+        it.x = float(layout_.rightX[k]) * scale_;
+        it.width = float(layoutIn_.rightWidths[k]) * scale_;
+        f.items.push_back(std::move(it));
+    }
+    for (std::size_t j = 0; trayN + j < layout_.rightX.size() && j < status_.size(); ++j) {
         BarDrawItem it;
         if (status_[j].kind == StatusKind::Clock) it.text = clock_;
         it.glyph = status_[j].glyph;
         it.level = status_[j].level;
         it.alt = status_[j].alt;
-        it.x = float(layout_.rightX[j]) * scale_;
-        it.width = float(layoutIn_.rightWidths[j]) * scale_;
+        it.x = float(layout_.rightX[trayN + j]) * scale_;
+        it.width = float(layoutIn_.rightWidths[trayN + j]) * scale_;
         it.highlighted = highlight_ == int(layout_.leftVisible + j);
         f.items.push_back(std::move(it));
     }
@@ -709,10 +730,13 @@ void MenuBarApp::onPress(POINT client) {
     const BarHit hit = hitTestBar(layout_, layoutIn_, double(client.x) / scale_);
     if (hit.kind == BarHit::Kind::Left) {
         openMenu(hit.index);
-    } else if (hit.kind == BarHit::Kind::Right && hit.index < status_.size()) {
-        const StatusKind k = status_[hit.index].kind;
+    } else if (hit.kind == BarHit::Kind::Right && hit.index < trayLaid_.size()) {
+        trayClickAt(hit.index, 0);
+    } else if (hit.kind == BarHit::Kind::Right && hit.index - trayLaid_.size() < status_.size()) {
+        const std::size_t j = hit.index - trayLaid_.size();
+        const StatusKind k = status_[j].kind;
         if (opensMenu(k)) {
-            openMenu(layout_.leftVisible + hit.index);
+            openMenu(layout_.leftVisible + j);
         } else {   // recherche de Windows (Win+S) ; horloge : centre de notifications (Win+N)
             auto inputs = shortcutInputs(*parseShortcut(k == StatusKind::Search ? L"Win+S" : L"Win+N"));
             SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
@@ -725,7 +749,12 @@ void MenuBarApp::openSettingsFile() {
 }
 
 void MenuBarApp::onRightClick(POINT client) {
-    if (hitTestBar(layout_, layoutIn_, double(client.x) / scale_).kind != BarHit::Kind::None) return;
+    const BarHit hit = hitTestBar(layout_, layoutIn_, double(client.x) / scale_);
+    if (hit.kind == BarHit::Kind::Right && hit.index < trayLaid_.size()) {
+        trayClickAt(hit.index, 1);   // menu de l'app
+        return;
+    }
+    if (hit.kind != BarHit::Kind::None) return;
     MenuModel m;
     m.items.push_back({kCmdBarSettings, L"Réglages de la barre des menus…"});
     MenuItem autohide{kCmdBarAutohide, L"Masquer automatiquement la barre des menus"};
@@ -839,6 +868,37 @@ void MenuBarApp::openMenu(std::size_t index) {
     render();
 }
 
+void MenuBarApp::onTray(WPARAM wp, LPARAM lp) {
+    std::unique_ptr<ipc::Message> m(reinterpret_cast<ipc::Message*>(lp));
+    if (wp == 1) {
+        tray_.clear();   // le mod (re)connecté renvoie toute sa liste ; parti, ses icônes ne sont plus à jour
+    } else if (m) {
+        if (auto e = ipc::parseTrayUpdate(*m)) tray_.update(*e);
+        else if (auto r = ipc::parseTrayRemove(*m)) tray_.remove(*r);
+        else return;
+    }
+    SetTimer(hwnd_, kTrayLayoutTimer, 50, nullptr);   // une rafale (connexion) : une seule mise en page
+}
+
+void MenuBarApp::trayClickAt(std::size_t k, int button) {
+    if (k >= trayLaid_.size() || k >= layout_.rightX.size()) return;
+    const ipc::TrayIconEvent& e = trayLaid_[k].e;
+    HWND app = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(e.hwnd));
+    if (!IsWindow(app)) {   // app fermée sans retirer son icône
+        tray_.remove(e);
+        SetTimer(hwnd_, kTrayLayoutTimer, 50, nullptr);
+        return;
+    }
+    RECT win{};
+    GetWindowRect(hwnd_, &win);
+    const POINT anchor{win.left + LONG(std::lround((layout_.rightX[k] + layoutIn_.rightWidths[k] / 2) * scale_)), win.bottom};
+    DWORD pid = 0;
+    GetWindowThreadProcessId(app, &pid);
+    AllowSetForegroundWindow(pid);   // son menu ou sa fenêtre s'ouvre devant
+    for (const TrayPost& p : trayClick(e, button, anchor)) PostMessageW(app, p.msg, p.wp, p.lp);
+    if (trace_) log::info(L"[trace] barre : clic %s sur l'icône « %s »", button ? L"droit" : L"gauche", e.tip.c_str());
+}
+
 MenuWindow::BarLink MenuBarApp::barLink(int current) const {
     RECT win{};
     GetWindowRect(hwnd_, &win);
@@ -848,8 +908,10 @@ MenuWindow::BarLink MenuBarApp::barLink(int current) const {
         return RECT{l, win.top, l + LONG(std::lround(w * scale_)), win.bottom};
     };
     for (std::size_t i = 0; i < layout_.leftVisible; ++i) link.titles.push_back(box(layout_.leftX[i], layoutIn_.leftWidths[i]));
-    for (std::size_t j = 0; j < status_.size() && j < layout_.rightX.size(); ++j)   // sans menu : rectangle vide
-        link.titles.push_back(opensMenu(status_[j].kind) ? box(layout_.rightX[j], layoutIn_.rightWidths[j]) : RECT{});
+    const std::size_t trayN = trayLaid_.size();   // icônes d'apps : leur menu est celui de l'app, hors de la barre
+    for (std::size_t j = 0; j < status_.size() && trayN + j < layout_.rightX.size(); ++j)   // sans menu : rectangle vide
+        link.titles.push_back(opensMenu(status_[j].kind) ? box(layout_.rightX[trayN + j], layoutIn_.rightWidths[trayN + j])
+                                                          : RECT{});
     link.current = current;
     return link;
 }
@@ -974,6 +1036,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_SAMPLE: onSample(); return 0;
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
+        case WM_APP_TRAY: onTray(wp, lp); return 0;
         case WM_APP_VOLUME:
             if (wp == 1) audio_.watch(hwnd_, WM_APP_VOLUME);   // nouvelle sortie par défaut : on la suit
             updateStatusItems();
@@ -995,6 +1058,15 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer: checkFullscreen(); break;
                 case kVisibilityTimer: stepVisibility(); break;
+                case kTrayLayoutTimer:
+                    KillTimer(hwnd_, kTrayLayoutTimer);
+                    relayout();
+                    render();
+                    break;
+                case kTrayPruneTimer:
+                    if (tray_.prune([](std::uint64_t h) { return IsWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(h))) != FALSE; }))
+                        SetTimer(hwnd_, kTrayLayoutTimer, 50, nullptr);
+                    break;
                 default: break;
             }
             return 0;
@@ -1123,6 +1195,13 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     audio_.init();   // sinon : pas d'icône du son
     audio_.watch(hwnd_, WM_APP_VOLUME);
     if (!hub_.start(hwnd_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
+    trayPipe_.setConnectionHandler([bar = hwnd_](bool) { PostMessageW(bar, WM_APP_TRAY, 1, 0); });
+    trayPipe_.start(L"\\\\.\\pipe\\MacMenuBar",[bar = hwnd_](const ipc::Message& m) {
+        if (m.type != ipc::MsgType::TrayUpdate && m.type != ipc::MsgType::TrayRemove) return;
+        auto* copy = new ipc::Message(m);
+        if (!PostMessageW(bar, WM_APP_TRAY, 0, reinterpret_cast<LPARAM>(copy))) delete copy;
+    });
+    SetTimer(hwnd_, kTrayPruneTimer, 5000, nullptr);
     loadRecent();
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
@@ -1150,6 +1229,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     tracker_.stop();
     uia_.stop();
     hub_.stop();
+    trayPipe_.stop();
     audio_.unwatch();
     saveRecent();
     removeAppBar();
@@ -1158,6 +1238,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         delete reinterpret_cast<UiaTitles*>(m.lParam);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_STATUS, WM_APP_STATUS, PM_REMOVE);)
         delete reinterpret_cast<StatusSnapshot*>(m.lParam);
+    for (MSG m; PeekMessageW(&m, nullptr, WM_APP_TRAY, WM_APP_TRAY, PM_REMOVE);)
+        delete reinterpret_cast<ipc::Message*>(m.lParam);
     return exitCode_;
 }
 
