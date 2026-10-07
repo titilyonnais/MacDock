@@ -4,6 +4,7 @@
 #include <dcomp.h>
 #include <dwrite_3.h>
 #include <dxgi1_2.h>
+#include <wincodec.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include "../geom/smooth_rect.h"
 #include "../glass/backdrop_capture.h"
 #include "../glass/glass_renderer.h"
+#include "glyphs.h"
 #include "../shell/shell_actions.h"
 
 namespace md {
@@ -26,6 +28,7 @@ template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 constexpr wchar_t kClass[] = L"MacDockMenu";
 constexpr UINT WM_MENU_BACKDROP = WM_APP + 7;
 constexpr UINT_PTR kSubmenuTimer = 1;
+constexpr UINT_PTR kRefreshTimer = 2;   // lignes enrichies : valeurs relues (Live::refresh)
 constexpr double kFadeSeconds = 0.12;
 constexpr double kSubmenuDelay = 0.2;
 
@@ -96,21 +99,15 @@ struct Session {
     UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
     MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal
     const MenuWindow::BarLink* bar = nullptr;           // barre de menus (titres voisins), sinon nullptr
+    const MenuWindow::Live* live = nullptr;             // lignes enrichies, sinon nullptr
+    int dragging = 0;                                   // identifiant du curseur glissé
+    Com<IDWriteTextFormat> headerFormat, boldFormat, smallFormat;
     double hoverSince = 0;
 
     float s() const { return env.scale; }
 
     bool init() {
-        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3),
-                                       reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()))))
-            return false;
-        const wchar_t* family = env.font.empty() ? L"Segoe UI" : env.font.c_str();
-        if (FAILED(dwrite->CreateTextFormat(family, nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-                                            DWRITE_FONT_STRETCH_NORMAL, float(kMenuFontSize) * s(), L"", &format)))
-            return false;
-        format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-        dwrite->CreateTextFormat(L"Segoe UI Symbol", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL,
-                                 DWRITE_FONT_STRETCH_NORMAL, float(kMenuFontSize) * s(), L"", &symbolFormat);
+        if (!initText()) return false;
         if (!env.device) return false;
         Com<IDXGIDevice> dxgi;
         D2D1_FACTORY_OPTIONS opts{};
@@ -122,6 +119,33 @@ struct Session {
             FAILED(DCompositionCreateDevice2(d2dDevice.Get(), IID_PPV_ARGS(&dcomp))))
             return false;
         glassReady = env.glass && glass.init(env.device);
+        return true;
+    }
+
+    bool initTextImpl() {
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3),
+                                       reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()))))
+            return false;
+        const wchar_t* family = env.font.empty() ? L"Segoe UI" : env.font.c_str();
+        if (FAILED(dwrite->CreateTextFormat(family, nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+                                            DWRITE_FONT_STRETCH_NORMAL, float(kMenuFontSize) * s(), L"", &format)))
+            return false;
+        format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        auto extra = [&](DWRITE_FONT_WEIGHT weight, double size, Com<IDWriteTextFormat>& out) {
+            if (SUCCEEDED(dwrite->CreateTextFormat(family, nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                                                   float(size) * s(), L"", &out))) {
+                out->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+                DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+                Com<IDWriteInlineObject> ellipsis;
+                dwrite->CreateEllipsisTrimmingSign(out.Get(), &ellipsis);
+                out->SetTrimming(&trim, ellipsis.Get());
+            }
+        };
+        extra(DWRITE_FONT_WEIGHT_SEMI_BOLD, 11, headerFormat);
+        extra(DWRITE_FONT_WEIGHT_SEMI_BOLD, kMenuFontSize, boldFormat);
+        extra(DWRITE_FONT_WEIGHT_NORMAL, 11, smallFormat);
+        dwrite->CreateTextFormat(L"Segoe UI Symbol", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL,
+                                 DWRITE_FONT_STRETCH_NORMAL, float(kMenuFontSize) * s(), L"", &symbolFormat);
         return true;
     }
 
@@ -161,6 +185,15 @@ struct Session {
     }
     void openSubmenu(Panel& p, int index, bool selectFirst);
     LRESULT handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp);
+    void measureTexts(Panel& p, float& maxText, float& maxShortcut);
+    void drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& panel, float opacity);
+    bool initText();   // DirectWrite seulement (rendu hors écran)
+    void drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, float x0, float x1, float opacity);
+    // Lignes enrichies : x en points depuis le bord gauche de la ligne ; false si rien n'a réagi.
+    bool pressRow(Panel& p, int idx, double rowX);
+    bool releaseRow(Panel& p, int idx, double rowX);
+    void dragSlider(Panel& p, double rowX);
+    double rowWidth(const Panel& p) const { return p.layout.width - 2 * kMenuPadding; }
 };
 
 // Session ouverte sur ce thread : le hook souris ferme le menu à tout clic hors de ses panneaux,
@@ -172,7 +205,7 @@ LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
         g_session->swallowUp = 0;
         return 1;
     }
-    if (code == HC_ACTION && g_session && wp == WM_MOUSEMOVE && g_session->bar && !g_session->done) {
+    if (code == HC_ACTION && g_session && wp == WM_MOUSEMOVE && g_session->bar && !g_session->done && !g_session->dragging) {
         // Barre de menus : le survol d'un autre titre ouvre son menu, comme sur macOS.
         POINT pt = reinterpret_cast<MSLLHOOKSTRUCT*>(lp)->pt;
         int k = barTitleAt(g_session->bar->titles, pt, g_session->bar->current);
@@ -218,24 +251,7 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->owned = std::move(owned);
     p->model = p->owned ? p->owned.get() : &model;
     float maxText = 0, maxShortcut = 0;
-    for (auto& it : p->model->items) {
-        Com<IDWriteTextLayout> t, k;
-        if (!it.separator() &&
-            SUCCEEDED(dwrite->CreateTextLayout(it.text.c_str(), UINT32(it.text.size()), format.Get(), 4000, 200, &t))) {
-            DWRITE_TEXT_METRICS tm{};
-            t->GetMetrics(&tm);
-            maxText = std::max(maxText, tm.width);
-        }
-        if (!it.separator() && !it.shortcut.empty() &&
-            SUCCEEDED(dwrite->CreateTextLayout(it.shortcut.c_str(), UINT32(it.shortcut.size()), format.Get(), 4000, 200,
-                                               &k))) {
-            DWRITE_TEXT_METRICS km{};
-            k->GetMetrics(&km);
-            maxShortcut = std::max(maxShortcut, km.width);
-        }
-        p->texts.push_back(t);
-        p->shortcuts.push_back(k);
-    }
+    measureTexts(*p, maxText, maxShortcut);
     p->layout = layoutMenu(*p->model, maxText / s(), maxShortcut / s());
     p->margin = std::ceil(float(env.metrics.shadowBlur) * 1.5f * s() + 4);
     const LONG w = LONG(std::ceil(p->layout.width * s() + 2 * p->margin));
@@ -317,6 +333,101 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         SetFocus(raw->hwnd);
     }
     return raw;
+}
+
+bool Session::initText() { return initTextImpl(); }
+
+void Session::measureTexts(Panel& p, float& maxText, float& maxShortcut) {
+    p.texts.clear();
+    p.shortcuts.clear();
+    for (auto& it : p.model->items) {
+        Com<IDWriteTextLayout> t, k;
+        const bool plain = it.row == MenuRow::Normal || it.row == MenuRow::Toggle;   // les autres : mis en page au dessin
+        if (plain && !it.separator() &&
+            SUCCEEDED(dwrite->CreateTextLayout(it.text.c_str(), UINT32(it.text.size()), format.Get(), 4000, 200, &t))) {
+            DWRITE_TEXT_METRICS tm{};
+            t->GetMetrics(&tm);
+            maxText = std::max(maxText, tm.width);
+        }
+        if (plain && !it.separator() && !it.shortcut.empty() &&
+            SUCCEEDED(dwrite->CreateTextLayout(it.shortcut.c_str(), UINT32(it.shortcut.size()), format.Get(), 4000, 200,
+                                               &k))) {
+            DWRITE_TEXT_METRICS km{};
+            k->GetMetrics(&km);
+            maxShortcut = std::max(maxShortcut, km.width);
+        }
+        p.texts.push_back(t);
+        p.shortcuts.push_back(k);
+    }
+}
+
+void Session::drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& panel, float opacity) {
+    const float sc = s();
+    const bool dark = env.dark;
+    // Entrées.
+    Com<ID2D1SolidColorBrush> text, disabled, accent, white, sep, keyInk, keyHot;
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &text);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.30f * opacity) : rgba(0, 0, 0, 0.28f * opacity), &disabled);
+    d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);   // bleu macOS
+    d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.12f * opacity) : rgba(0, 0, 0, 0.10f * opacity), &sep);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.45f * opacity) : rgba(0, 0, 0, 0.45f * opacity), &keyInk);
+    d->CreateSolidColorBrush(rgba(1, 1, 1, 0.70f * opacity), &keyHot);
+    const float x0 = panel.left + float(kMenuPadding) * sc;
+    const float x1 = panel.right - float(kMenuPadding) * sc;
+    for (size_t i = 0; i < p.model->items.size(); ++i) {
+        const MenuItem& it = p.model->items[i];
+        const float top = p.margin + float(p.layout.top[i]) * sc;
+        if (it.separator()) {
+            float y = std::round(top + float(kMenuSeparatorHeight) * sc / 2) + 0.5f;
+            d->DrawLine({x0 + 9 * sc, y}, {x1 - 9 * sc, y}, sep.Get(), std::max(1.0f, sc * 0.5f));
+            continue;
+        }
+        if (it.row != MenuRow::Normal) {
+            drawRow(d, p, i, top, x0, x1, opacity);
+            continue;
+        }
+        const float rowH = float(kMenuItemHeight) * sc;
+        const bool hot = int(i) == p.hover || int(i) == p.openSub;
+        ID2D1SolidColorBrush* ink = !it.enabled ? disabled.Get() : hot ? white.Get() : text.Get();
+        if (hot && it.enabled) {
+            float r = float(kMenuHighlightRadius) * sc;
+            d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x0, top, x1, top + rowH), r, r), accent.Get());
+        }
+        if (it.checked && symbolFormat)
+            d->DrawTextW(L"✓", 1, symbolFormat.Get(), D2D1::RectF(x0 + 5 * sc, top, x0 + 20 * sc, top + rowH), ink);
+        const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+        if (it.icon) {
+            if (p.icons.size() < p.model->items.size()) p.icons.resize(p.model->items.size());
+            if (!p.icons[i]) {
+                auto props = D2D1::BitmapProperties1(
+                    D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+                d->CreateBitmap(D2D1::SizeU(UINT32(it.icon->size), UINT32(it.icon->size)), it.icon->bgra.data(),
+                                UINT32(it.icon->size * 4), &props, &p.icons[i]);
+            }
+            if (p.icons[i]) {
+                const float is = float(kMenuIconSize) * sc, iy = top + (rowH - is) / 2;
+                d->DrawBitmap(p.icons[i].Get(), D2D1::RectF(textX, iy, textX + is, iy + is), opacity,
+                              D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
+            }
+        }
+        if (p.texts[i]) {
+            DWRITE_TEXT_METRICS tm{};
+            p.texts[i]->GetMetrics(&tm);
+            d->DrawTextLayout({textX + float(p.layout.iconSpace) * sc, top + (rowH - tm.height) / 2}, p.texts[i].Get(), ink);
+        }
+        if (i < p.shortcuts.size() && p.shortcuts[i] && it.submenu.empty()) {   // raccourci, aligné à droite
+            DWRITE_TEXT_METRICS km{};
+            p.shortcuts[i]->GetMetrics(&km);
+            ID2D1SolidColorBrush* kInk = !it.enabled ? disabled.Get() : hot ? keyHot.Get() : keyInk.Get();
+            d->DrawTextLayout({x1 - 8 * sc - km.width, top + (rowH - km.height) / 2}, p.shortcuts[i].Get(), kInk);
+        }
+        if (!it.submenu.empty()) {   // chevron ›
+            float cx = x1 - 10 * sc, cy = top + rowH / 2, a = 3.5f * sc;
+            d->DrawLine({cx - a / 2, cy - a}, {cx + a / 2, cy}, ink, 1.4f * sc);
+            d->DrawLine({cx + a / 2, cy}, {cx - a / 2, cy + a}, ink, 1.4f * sc);
+        }
+    }
 }
 
 void Session::onBackdrop() {
@@ -467,68 +578,159 @@ void Session::render(Panel& p) {
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.14f * opacity) : rgba(0, 0, 0, 0.10f * opacity), &border);
     d->DrawRoundedRectangle(rr, border.Get(), std::max(1.0f, sc * 0.5f));
 
-    // Entrées.
-    Com<ID2D1SolidColorBrush> text, disabled, accent, white, sep, keyInk, keyHot;
-    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &text);
-    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.30f * opacity) : rgba(0, 0, 0, 0.28f * opacity), &disabled);
-    d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);   // bleu macOS
-    d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
-    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.12f * opacity) : rgba(0, 0, 0, 0.10f * opacity), &sep);
-    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.45f * opacity) : rgba(0, 0, 0, 0.45f * opacity), &keyInk);
-    d->CreateSolidColorBrush(rgba(1, 1, 1, 0.70f * opacity), &keyHot);
-    const float x0 = panel.left + float(kMenuPadding) * sc;
-    const float x1 = panel.right - float(kMenuPadding) * sc;
-    for (size_t i = 0; i < p.model->items.size(); ++i) {
-        const MenuItem& it = p.model->items[i];
-        const float top = p.margin + float(p.layout.top[i]) * sc;
-        if (it.separator()) {
-            float y = std::round(top + float(kMenuSeparatorHeight) * sc / 2) + 0.5f;
-            d->DrawLine({x0 + 9 * sc, y}, {x1 - 9 * sc, y}, sep.Get(), std::max(1.0f, sc * 0.5f));
-            continue;
-        }
-        const float rowH = float(kMenuItemHeight) * sc;
-        const bool hot = int(i) == p.hover || int(i) == p.openSub;
-        ID2D1SolidColorBrush* ink = !it.enabled ? disabled.Get() : hot ? white.Get() : text.Get();
-        if (hot && it.enabled) {
-            float r = float(kMenuHighlightRadius) * sc;
-            d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x0, top, x1, top + rowH), r, r), accent.Get());
-        }
-        if (it.checked && symbolFormat)
-            d->DrawTextW(L"✓", 1, symbolFormat.Get(), D2D1::RectF(x0 + 5 * sc, top, x0 + 20 * sc, top + rowH), ink);
-        const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
-        if (it.icon) {
-            if (p.icons.size() < p.model->items.size()) p.icons.resize(p.model->items.size());
-            if (!p.icons[i]) {
-                auto props = D2D1::BitmapProperties1(
-                    D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
-                d->CreateBitmap(D2D1::SizeU(UINT32(it.icon->size), UINT32(it.icon->size)), it.icon->bgra.data(),
-                                UINT32(it.icon->size * 4), &props, &p.icons[i]);
-            }
-            if (p.icons[i]) {
-                const float is = float(kMenuIconSize) * sc, iy = top + (rowH - is) / 2;
-                d->DrawBitmap(p.icons[i].Get(), D2D1::RectF(textX, iy, textX + is, iy + is), opacity,
-                              D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
-            }
-        }
-        if (p.texts[i]) {
-            DWRITE_TEXT_METRICS tm{};
-            p.texts[i]->GetMetrics(&tm);
-            d->DrawTextLayout({textX + float(p.layout.iconSpace) * sc, top + (rowH - tm.height) / 2}, p.texts[i].Get(), ink);
-        }
-        if (i < p.shortcuts.size() && p.shortcuts[i] && it.submenu.empty()) {   // raccourci, aligné à droite
-            DWRITE_TEXT_METRICS km{};
-            p.shortcuts[i]->GetMetrics(&km);
-            ID2D1SolidColorBrush* kInk = !it.enabled ? disabled.Get() : hot ? keyHot.Get() : keyInk.Get();
-            d->DrawTextLayout({x1 - 8 * sc - km.width, top + (rowH - km.height) / 2}, p.shortcuts[i].Get(), kInk);
-        }
-        if (!it.submenu.empty()) {   // chevron ›
-            float cx = x1 - 10 * sc, cy = top + rowH / 2, a = 3.5f * sc;
-            d->DrawLine({cx - a / 2, cy - a}, {cx + a / 2, cy}, ink, 1.4f * sc);
-            d->DrawLine({cx + a / 2, cy}, {cx - a / 2, cy + a}, ink, 1.4f * sc);
-        }
-    }
+    drawItems(d.Get(), p, panel, opacity);
     p.surface->EndDraw();
     dcomp->Commit();
+}
+
+namespace {
+void drawText(ID2D1DeviceContext* d, IDWriteFactory3* dw, IDWriteTextFormat* fmt, const std::wstring& text, float x, float y,
+              float maxW, float h, ID2D1Brush* ink, bool centerV = true) {
+    if (!fmt || text.empty() || maxW <= 0) return;
+    Com<IDWriteTextLayout> l;
+    if (FAILED(dw->CreateTextLayout(text.c_str(), UINT32(text.size()), fmt, maxW, h, &l))) return;
+    DWRITE_TEXT_METRICS tm{};
+    l->GetMetrics(&tm);
+    d->DrawTextLayout({x, centerV ? y + (h - tm.height) / 2 : y}, l.Get(), ink);
+}
+} // namespace
+
+void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, float x0, float x1, float opacity) {
+    const MenuItem& it = p.model->items[i];
+    const float sc = s();
+    const float rowH = float(menuRowHeight(it.row)) * sc;
+    const bool dark = env.dark;
+    const float dim = it.enabled ? 1.0f : 0.4f;
+    Com<ID2D1SolidColorBrush> ink, grey, track, accent, white, tileBg, tileOff, line;
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity * dim) : rgba(0, 0, 0, 0.86f * opacity * dim), &ink);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.50f * opacity) : rgba(0, 0, 0, 0.48f * opacity), &grey);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.20f * opacity) : rgba(0, 0, 0, 0.13f * opacity), &track);
+    d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity * dim) : rgba(0.0f, 0.48f, 1.0f, opacity * dim), &accent);
+    d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.09f * opacity) : rgba(1, 1, 1, 0.50f * opacity), &tileBg);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.16f * opacity) : rgba(0, 0, 0, 0.07f * opacity), &tileOff);
+    d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.10f * opacity) : rgba(0, 0, 0, 0.08f * opacity), &line);
+    IDWriteFactory3* dw = dwrite.Get();
+    switch (it.row) {
+        case MenuRow::Normal: break;
+        case MenuRow::Header:
+            drawText(d, dw, headerFormat.Get(), it.text, x0 + 9 * sc, top + 4 * sc, x1 - x0 - 18 * sc, rowH - 4 * sc, grey.Get());
+            break;
+        case MenuRow::Slider: {
+            const float cy = top + rowH / 2, is = 16 * sc;
+            drawGlyph(d, it.glyph, D2D1::RectF(x0 + 10 * sc, cy - is / 2, x0 + 10 * sc + is, cy + is / 2), ink.Get(), it.level,
+                      it.on);
+            const float a = x0 + float(kMenuSliderLeft) * sc, b = x1 - float(kMenuSliderRight) * sc;
+            const float th = 5 * sc, knob = 9 * sc;
+            const float v = float(std::clamp(it.value, 0.0, 1.0));
+            const float kx = a + (b - a) * v;
+            d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(a, cy - th / 2, b, cy + th / 2), th / 2, th / 2), track.Get());
+            d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(a, cy - th / 2, kx, cy + th / 2), th / 2, th / 2), ink.Get());
+            d->FillEllipse(D2D1::Ellipse({kx, cy}, knob, knob), white.Get());
+            d->DrawEllipse(D2D1::Ellipse({kx, cy}, knob, knob), line.Get(), std::max(1.0f, 0.75f * sc));
+            break;
+        }
+        case MenuRow::Toggle: {
+            const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+            if (i < p.texts.size() && p.texts[i]) {
+                DWRITE_TEXT_METRICS tm{};
+                p.texts[i]->GetMetrics(&tm);
+                d->DrawTextLayout({textX, top + (rowH - tm.height) / 2}, p.texts[i].Get(), ink.Get());
+            }
+            const float sw = 30 * sc, sh = 18 * sc, sx = x1 - 10 * sc - sw, sy = top + (rowH - sh) / 2;
+            d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(sx, sy, sx + sw, sy + sh), sh / 2, sh / 2),
+                                    it.on ? accent.Get() : tileOff.Get());
+            const float r = sh / 2 - 2 * sc, kx = it.on ? sx + sw - sh / 2 : sx + sh / 2;
+            d->FillEllipse(D2D1::Ellipse({kx, sy + sh / 2}, r, r), white.Get());
+            break;
+        }
+        case MenuRow::Tiles: {
+            const size_t n = it.tiles.size();
+            if (n == 0) break;
+            const float inset = float(kMenuTileInset) * sc, gap = float(kMenuTileGap) * sc;
+            const float w = ((x1 - x0) - 2 * inset - float(n - 1) * gap) / float(n);
+            for (size_t k = 0; k < n; ++k) {
+                const MenuTile& t = it.tiles[k];
+                const float tx = x0 + inset + float(k) * (w + gap), ty = top + 4 * sc, th = rowH - 8 * sc;
+                const float r = 14 * sc;
+                d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(tx, ty, tx + w, ty + th), r, r), tileBg.Get());
+                const float cs = 30 * sc, cx = tx + 8 * sc + cs / 2, cy = ty + th / 2;
+                d->FillEllipse(D2D1::Ellipse({cx, cy}, cs / 2, cs / 2), t.on ? accent.Get() : tileOff.Get());
+                const float gs = 16 * sc;
+                drawGlyph(d, t.glyph, D2D1::RectF(cx - gs / 2, cy - gs / 2, cx + gs / 2, cy + gs / 2),
+                          t.on ? white.Get() : ink.Get(), 1, false);
+                const float lx = cx + cs / 2 + 8 * sc, lw = tx + w - lx - 6 * sc;
+                drawText(d, dw, boldFormat.Get(), t.title, lx, cy - 17 * sc, lw, 17 * sc, t.enabled ? ink.Get() : grey.Get());
+                drawText(d, dw, smallFormat.Get(), t.subtitle, lx, cy, lw, 15 * sc, grey.Get(), false);
+            }
+            break;
+        }
+        case MenuRow::Media: {
+            const float bx = x1 - float(kMenuMediaRight + 3 * kMenuMediaButton) * sc;
+            const float lx = x0 + 10 * sc, lw = bx - lx - 6 * sc, cy = top + rowH / 2;
+            drawText(d, dw, boldFormat.Get(), it.text, lx, cy - 18 * sc, lw, 17 * sc, ink.Get());
+            drawText(d, dw, smallFormat.Get(), it.subtitle, lx, cy + 1 * sc, lw, 15 * sc, grey.Get(), false);
+            const Glyph glyphs[3] = {Glyph::Previous, it.playing ? Glyph::Pause : Glyph::Play, Glyph::Next};
+            for (int k = 0; k < 3; ++k) {
+                const float cx = bx + (float(k) + 0.5f) * float(kMenuMediaButton) * sc, gs = (k == 1 ? 16 : 14) * sc;
+                drawGlyph(d, glyphs[k], D2D1::RectF(cx - gs / 2, cy - gs / 2, cx + gs / 2, cy + gs / 2), ink.Get());
+            }
+            break;
+        }
+    }
+}
+
+bool Session::pressRow(Panel& p, int idx, double rowX) {
+    if (idx < 0 || !p.owned) return false;
+    MenuItem& it = p.owned->items[size_t(idx)];
+    if (it.row != MenuRow::Slider || !it.enabled) return false;
+    dragging = it.id;
+    SetCapture(p.hwnd);
+    dragSlider(p, rowX);
+    return true;
+}
+
+void Session::dragSlider(Panel& p, double rowX) {
+    if (!dragging || !p.owned) return;
+    for (auto& it : p.owned->items) {
+        if (it.id != dragging || it.row != MenuRow::Slider) continue;
+        const double v = sliderValueAt(rowWidth(p), rowX);
+        if (std::fabs(v - it.value) < 1e-4) return;
+        it.value = v;
+        if (live && live->slider) live->slider(it.id, v);
+        render(p);
+        return;
+    }
+}
+
+bool Session::releaseRow(Panel& p, int idx, double rowX) {
+    if (idx < 0 || !p.owned) return false;
+    MenuItem& it = p.owned->items[size_t(idx)];
+    if (!it.enabled) return it.row != MenuRow::Normal;
+    switch (it.row) {
+        case MenuRow::Normal: return false;
+        case MenuRow::Toggle:
+            it.on = !it.on;
+            if (live && live->toggle) live->toggle(it.id, it.on);
+            render(p);
+            return true;
+        case MenuRow::Tiles: {
+            const int k = tileAt(it.tiles.size(), rowWidth(p), rowX);
+            if (k < 0 || !it.tiles[size_t(k)].enabled) return true;
+            if (live && live->tile && live->tile(it.id, k)) done = true;
+            render(p);
+            return true;
+        }
+        case MenuRow::Media: {
+            const int b = mediaButtonAt(rowWidth(p), rowX);
+            if (b < 0) return true;
+            if (b == 1) it.playing = !it.playing;   // tout de suite ; le prochain rafraîchissement confirme
+            if (live && live->media) live->media(it.id, b);
+            render(p);
+            return true;
+        }
+        default: return true;   // intitulé, curseur (relâché) : rien
+    }
 }
 
 void Session::openSubmenu(Panel& p, int index, bool selectFirst) {
@@ -567,9 +769,22 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEACTIVATE:
             return depthOf(&p) == 0 ? MA_ACTIVATE : MA_NOACTIVATE;
+        case WM_LBUTTONDOWN: {
+            const double y = (double(short(HIWORD(lp))) - p.margin) / s();
+            const double x = (double(short(LOWORD(lp))) - p.margin) / s();
+            pressRow(p, rowAt(p.layout, *p.model, y), x - kMenuPadding);
+            return 0;
+        }
+        case WM_CAPTURECHANGED:
+            dragging = 0;
+            return 0;
         case WM_MOUSEMOVE: {
             double y = (double(short(HIWORD(lp))) - p.margin) / s();
             double x = (double(short(LOWORD(lp))) - p.margin) / s();
+            if (dragging) {
+                dragSlider(p, x - kMenuPadding);
+                return 0;
+            }
             int idx = x >= 0 && x <= p.layout.width ? hitTestMenu(p.layout, *p.model, y) : -1;
             if (idx != p.hover) {
                 p.hover = idx;
@@ -583,6 +798,14 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kRefreshTimer) {
+                if (live && p.owned && applyRefresh(*p.owned, live->refresh, dragging)) {
+                    float t = 0, k = 0;
+                    measureTexts(p, t, k);
+                    render(p);
+                }
+                return 0;
+            }
             if (wp == kSubmenuTimer) {
                 KillTimer(p.hwnd, kSubmenuTimer);
                 if (p.hover >= 0 && !p.model->items[size_t(p.hover)].submenu.empty()) {
@@ -595,6 +818,13 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_LBUTTONUP: {
             double y = (double(short(HIWORD(lp))) - p.margin) / s();
+            double x = (double(short(LOWORD(lp))) - p.margin) / s();
+            if (dragging) {
+                ReleaseCapture();   // WM_CAPTURECHANGED remet dragging à 0
+                dragging = 0;
+                return 0;
+            }
+            if (releaseRow(p, rowAt(p.layout, *p.model, y), x - kMenuPadding)) return 0;
             activate(p, hitTestMenu(p.layout, *p.model, y));
             return 0;
         }
@@ -647,7 +877,49 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar) {
+bool MenuWindow::snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h) {
+    Session session;
+    session.env = env;
+    if (!session.initText()) return false;
+    Panel p;
+    p.session = &session;
+    p.owned = std::make_unique<MenuModel>(model);
+    p.model = p.owned.get();
+    float maxText = 0, maxShortcut = 0;
+    session.measureTexts(p, maxText, maxShortcut);
+    const float sc = env.scale;
+    p.layout = layoutMenu(*p.model, maxText / sc, maxShortcut / sc);
+    w = UINT(std::ceil(p.layout.width * sc));
+    h = UINT(std::ceil(p.layout.height * sc));
+    Com<IWICImagingFactory> wic;
+    Com<IWICBitmap> bmp;
+    Com<ID2D1Factory1> factory;
+    Com<ID2D1RenderTarget> rt;
+    Com<ID2D1DeviceContext> d;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(wic->CreateBitmap(w, h, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp)) ||
+        FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())) ||
+        FAILED(factory->CreateWicBitmapRenderTarget(bmp.Get(), D2D1::RenderTargetProperties(), &rt)) ||
+        FAILED(rt.As(&d)))
+        return false;
+    const D2D1_RECT_F panel{0, 0, float(w), float(h)};
+    const float radius = float(limitedCornerRadius(panel.right, panel.bottom, kMenuRadius * sc));
+    d->BeginDraw();
+    d->Clear(rgba(0, 0, 0, 0));
+    d->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    Com<ID2D1SolidColorBrush> bg, border;   // verre dépoli de repli (pas de capture hors écran)
+    d->CreateSolidColorBrush(env.dark ? rgba(0.15f, 0.15f, 0.16f, 0.94f) : rgba(0.96f, 0.96f, 0.97f, 0.94f), &bg);
+    d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.14f) : rgba(0, 0, 0, 0.10f), &border);
+    d->FillRoundedRectangle(D2D1_ROUNDED_RECT{panel, radius, radius}, bg.Get());
+    d->DrawRoundedRectangle(D2D1_ROUNDED_RECT{panel, radius, radius}, border.Get(), std::max(1.0f, sc * 0.5f));
+    session.drawItems(d.Get(), p, panel, 1);
+    if (FAILED(d->EndDraw())) return false;
+    bgra.resize(size_t(w) * h * 4);
+    WICRect all{0, 0, INT(w), INT(h)};
+    return SUCCEEDED(bmp->CopyPixels(&all, w * 4, UINT(bgra.size()), bgra.data()));
+}
+
+int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar, const Live* live) {
     if (model.items.empty()) return 0;
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = panelProc;
@@ -660,6 +932,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
     session.env = env;
     session.side = side;
     session.bar = bar;
+    session.live = live;
     g_session = &session;
     HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, outsideClickHook, env.instance, 0);
     struct Unhook {
@@ -673,10 +946,13 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
         log::warn(L"Menu : initialisation graphique impossible");
         return 0;
     }
-    if (!session.open(model, anchor, true, nullptr)) {
+    // Lignes enrichies : le menu principal travaille sur sa copie (valeurs modifiées et rafraîchies en direct).
+    Panel* first = session.open(model, anchor, true, nullptr, live ? std::make_unique<MenuModel>(model) : nullptr);
+    if (!first) {
         log::warn(L"Menu : création de la fenêtre impossible");
         return 0;
     }
+    if (live && live->refresh) SetTimer(first->hwnd, kRefreshTimer, 500, nullptr);
 
     // Boucle modale : un clic hors des panneaux (Dock compris) ferme le menu et est absorbé.
     while (!session.done) {

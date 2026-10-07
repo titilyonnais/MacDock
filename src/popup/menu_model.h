@@ -3,11 +3,13 @@
 #pragma once
 #include <windows.h>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "../icons/icon_provider.h"
+#include "glyph_kind.h"
 
 namespace md {
 
@@ -25,6 +27,33 @@ constexpr double kMenuIconSize = 16;          // icône d'entrée (liste d'une p
 constexpr double kMenuIconGap = 6;
 constexpr double kMenuShortcutGap = 24;     // entre le texte le plus long et le raccourci le plus long
 
+// Lignes enrichies (menus d'état de la barre, Centre de contrôle), comme les NSMenuItem à vue de macOS.
+enum class MenuRow {
+    Normal,   // entrée ordinaire (ou séparateur)
+    Header,   // intitulé de section : petit texte gris en gras, inerte
+    Slider,   // curseur (value, 0..1), pictogramme glyph à gauche ; agit en direct
+    Toggle,   // texte et interrupteur (on) à droite
+    Tiles,    // rangée de tuiles (tiles)
+    Media,    // lecture en cours : text (titre), subtitle (artiste), boutons précédent, lecture/pause, suivant
+};
+constexpr double kMenuHeaderHeight = 22;
+constexpr double kMenuSliderHeight = 30;
+constexpr double kMenuToggleHeight = 26;
+constexpr double kMenuTilesHeight = 62;
+constexpr double kMenuMediaHeight = 50;
+constexpr double kMenuSliderLeft = 36;     // début de la piste (après le pictogramme), depuis le bord de la ligne
+constexpr double kMenuSliderRight = 14;
+constexpr double kMenuTileInset = 4;       // marge des tuiles dans la ligne
+constexpr double kMenuTileGap = 8;
+constexpr double kMenuMediaButton = 28;    // largeur d'un bouton de lecture
+constexpr double kMenuMediaRight = 8;
+
+struct MenuTile {
+    std::wstring title, subtitle;
+    Glyph glyph = Glyph::None;
+    bool on = false, enabled = true;
+};
+
 struct MenuItem {
     int id = 0;                    // 0 = séparateur
     std::wstring text;
@@ -32,13 +61,32 @@ struct MenuItem {
     std::vector<MenuItem> submenu;
     IconProvider::ImagePtr icon;   // facultative : affichée devant le texte
     std::wstring shortcut;         // texte du raccourci, aligné à droite en gris (« Ctrl+S »)
-    bool separator() const { return id == 0 && submenu.empty(); }
-    bool selectable() const { return !separator() && enabled; }
+    MenuRow row = MenuRow::Normal;
+    double value = 0;              // curseur
+    bool on = false;               // interrupteur
+    Glyph glyph = Glyph::None;     // pictogramme du curseur
+    float level = 1;               // niveau du pictogramme (ondes du haut-parleur…)
+    std::vector<MenuTile> tiles;
+    std::wstring subtitle;         // média : artiste
+    bool playing = false;          // média
+    bool separator() const { return row == MenuRow::Normal && id == 0 && submenu.empty(); }
+    // Entrée ordinaire, au clavier ou à la souris ; les lignes enrichies ne réagissent qu'à la souris.
+    bool selectable() const { return row == MenuRow::Normal && !separator() && enabled; }
 };
 
 struct MenuModel {
     std::vector<MenuItem> items;
+    double width = 0;   // points ; 0 = selon le texte
 };
+
+double menuRowHeight(MenuRow r);
+// Valeur du curseur sous x (points depuis le bord gauche de la ligne), bornée à [0, 1].
+double sliderValueAt(double rowWidth, double x);
+int tileAt(std::size_t tiles, double rowWidth, double x);   // -1 hors des tuiles
+int mediaButtonAt(double rowWidth, double x);              // 0 précédent, 1 lecture/pause, 2 suivant, -1
+// Rafraîchissement d'un menu ouvert : refresh modifie une copie ; seules les valeurs sont reprises (jamais la
+// structure), et le curseur en cours de glissement (draggingId) garde la sienne. true si le modèle a été repris.
+bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, int draggingId);
 
 struct MenuLayout {
     double width = 0, height = 0;
@@ -52,6 +100,8 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWi
 int nextSelectable(const MenuModel& m, int from, int dir);
 // Entrée sélectionnable sous y (points depuis le haut du panneau), ou -1.
 int hitTestMenu(const MenuLayout& l, const MenuModel& m, double y);
+// Ligne sous y, sélectionnable ou non (séparateurs exclus), ou -1.
+int rowAt(const MenuLayout& l, const MenuModel& m, double y);
 
 // Barre de menus : pendant qu'un menu est ouvert, survoler un autre titre (ou flèche gauche/droite) le ferme
 // et MenuWindow::track renvoie menuSwitchResult(k) pour ouvrir le titre k.

@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <d3d11.h>
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -33,10 +35,21 @@ public:
         std::vector<RECT> titles;
         int current = -1;
     };
+    // Lignes enrichies (curseurs, interrupteurs, tuiles, média) : rappels sur le fil du menu, qui reste ouvert.
+    struct Live {
+        std::function<void(int id, double value)> slider;   // pendant le glisser
+        std::function<void(int id, bool on)> toggle;
+        std::function<bool(int id, int tile)> tile;         // true : refermer le menu (la tuile ouvre une fenêtre)
+        std::function<void(int id, int button)> media;      // 0 précédent, 1 lecture/pause, 2 suivant
+        std::function<bool(MenuModel&)> refresh;            // toutes les 500 ms (voir applyRefresh)
+    };
     // Ouvre le menu du côté demandé, centré sur le point d'ancrage (écran) ; renvoie l'identifiant choisi, 0 si
     // rien n'est choisi, ou menuSwitchResult(k) (barre de menus).
     static int track(const Env& env, const MenuModel& model, POINT anchorScreen, Side side = Side::Above,
-                     const BarLink* bar = nullptr);
+                     const BarLink* bar = nullptr, const Live* live = nullptr);
+    // Rendu hors écran du menu (verre dépoli, sans fenêtre ni capture) : image BGRA prémultipliée w x h pixels
+    // (vérifications, --snapshot de la barre). COM doit être initialisé.
+    static bool snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h);
 };
 
 } // namespace md

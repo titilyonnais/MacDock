@@ -1,0 +1,169 @@
+// Menus en verre : lignes enrichies (intitulés, curseurs, interrupteurs, tuiles, lecture en cours) et pictogrammes.
+#include <windows.h>
+#include <d2d1.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+
+#include "minitest.h"
+#include "../src/calib/png_io.h"
+#include "../src/popup/glyphs.h"
+#include "../src/popup/menu_model.h"
+#include "../src/popup/menu_window.h"
+
+namespace {
+
+md::MenuItem row(md::MenuRow r, int id = 0) {
+    md::MenuItem it;
+    it.row = r;
+    it.id = id;
+    return it;
+}
+
+md::MenuModel controlCenter() {
+    md::MenuModel m;
+    m.width = 300;
+    md::MenuItem tiles = row(md::MenuRow::Tiles, 10);
+    tiles.tiles = {{L"Wi-Fi", L"Maison", md::Glyph::Wifi, true}, {L"Bluetooth", L"Désactivé", md::Glyph::Bluetooth, false}};
+    md::MenuItem header = row(md::MenuRow::Header);
+    header.text = L"Son";
+    md::MenuItem slider = row(md::MenuRow::Slider, 11);
+    slider.glyph = md::Glyph::Speaker;
+    slider.value = 0.4;
+    md::MenuItem toggle = row(md::MenuRow::Toggle, 12);
+    toggle.text = L"Wi-Fi";
+    md::MenuItem media = row(md::MenuRow::Media, 13);
+    media.text = L"Titre";
+    media.subtitle = L"Artiste";
+    md::MenuItem normal;
+    normal.id = 14;
+    normal.text = L"Réglages du Centre de contrôle…";
+    m.items = {tiles, header, slider, toggle, media, {}, normal};
+    return m;
+}
+
+} // namespace
+
+TEST_CASE(menu_rows_layout_heights_and_width) {
+    auto m = controlCenter();
+    auto l = md::layoutMenu(m, 500, 0);   // texte très long : la largeur fixe l'emporte
+    CHECK_NEAR(l.width, 300, 1e-9);
+    REQUIRE(l.top.size() == 7);
+    CHECK_NEAR(l.top[0], md::kMenuPadding, 1e-9);
+    CHECK_NEAR(l.top[1] - l.top[0], md::menuRowHeight(md::MenuRow::Tiles), 1e-9);
+    CHECK_NEAR(l.top[3] - l.top[2], md::menuRowHeight(md::MenuRow::Slider), 1e-9);
+    CHECK_NEAR(l.top[6] - l.top[5], md::kMenuSeparatorHeight, 1e-9);
+    CHECK(md::menuRowHeight(md::MenuRow::Tiles) > md::menuRowHeight(md::MenuRow::Normal));
+    CHECK(!m.items[0].separator());   // une ligne enrichie sans identifiant n'est pas un séparateur
+    CHECK(!m.items[1].separator());
+    CHECK_EQ(md::rowAt(l, m, l.top[2] + 1), 2);   // curseur : touché, bien que non sélectionnable
+    CHECK_EQ(md::hitTestMenu(l, m, l.top[2] + 1), -1);
+}
+
+TEST_CASE(menu_rows_slider_value_clamped) {
+    const double w = 290;
+    CHECK_NEAR(md::sliderValueAt(w, 0), 0, 1e-9);
+    CHECK_NEAR(md::sliderValueAt(w, -50), 0, 1e-9);
+    CHECK_NEAR(md::sliderValueAt(w, 5000), 1, 1e-9);
+    const double left = md::kMenuSliderLeft, right = w - md::kMenuSliderRight;
+    CHECK_NEAR(md::sliderValueAt(w, (left + right) / 2), 0.5, 1e-9);
+    CHECK_NEAR(md::sliderValueAt(w, left), 0, 1e-9);
+}
+
+TEST_CASE(menu_rows_tile_and_media_hit) {
+    const double w = 290;
+    CHECK_EQ(md::tileAt(2, w, 10), 0);
+    CHECK_EQ(md::tileAt(2, w, w - 10), 1);
+    CHECK_EQ(md::tileAt(2, w, w / 2), -1);   // dans l'espace entre les tuiles
+    CHECK_EQ(md::tileAt(0, w, 10), -1);
+    CHECK_EQ(md::mediaButtonAt(w, w - md::kMenuMediaRight - 1), 2);   // suivant, tout à droite
+    CHECK_EQ(md::mediaButtonAt(w, w - md::kMenuMediaRight - md::kMenuMediaButton * 1.5), 1);
+    CHECK_EQ(md::mediaButtonAt(w, w - md::kMenuMediaRight - md::kMenuMediaButton * 2.5), 0);
+    CHECK_EQ(md::mediaButtonAt(w, 20), -1);   // sur le titre
+}
+
+TEST_CASE(menu_rows_header_not_selectable) {
+    auto m = controlCenter();
+    CHECK(!m.items[1].selectable());   // intitulé
+    CHECK(!m.items[2].selectable());   // curseur : à la souris seulement
+    CHECK_EQ(md::nextSelectable(m, -1, +1), 6);   // le clavier va droit aux entrées ordinaires
+}
+
+TEST_CASE(menu_rows_refresh_updates_model) {
+    auto m = controlCenter();
+    auto refresh = [](md::MenuModel& x) {
+        x.items[2].value = 0.9;            // volume changé par les touches
+        x.items[4].text = L"Suivant";      // morceau suivant
+        x.items[0].tiles[1].on = true;
+        return true;
+    };
+    CHECK(md::applyRefresh(m, refresh, 0));
+    CHECK_NEAR(m.items[2].value, 0.9, 1e-9);
+    CHECK(m.items[4].text == L"Suivant");
+    CHECK(m.items[0].tiles[1].on);
+
+    m.items[2].value = 0.3;   // l'utilisateur glisse le curseur : sa valeur l'emporte
+    CHECK(md::applyRefresh(m, refresh, 11));
+    CHECK_NEAR(m.items[2].value, 0.3, 1e-9);
+
+    auto restructure = [](md::MenuModel& x) {   // la structure ne change jamais menu ouvert
+        x.items.pop_back();
+        return true;
+    };
+    CHECK(!md::applyRefresh(m, restructure, 0));
+    CHECK_EQ(m.items.size(), std::size_t(7));
+    CHECK(!md::applyRefresh(m, [](md::MenuModel&) { return false; }, 0));
+}
+
+TEST_CASE(glyphs_draw_every_glyph) {
+    using Microsoft::WRL::ComPtr;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        ComPtr<IWICImagingFactory> wic;
+        REQUIRE(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))));
+        ComPtr<ID2D1Factory> d2d;
+        REQUIRE(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf())));
+        for (int g = int(md::Glyph::Speaker); g <= int(md::Glyph::Next); ++g) {
+            ComPtr<IWICBitmap> bmp;
+            REQUIRE(SUCCEEDED(wic->CreateBitmap(32, 32, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp)));
+            ComPtr<ID2D1RenderTarget> rt;
+            REQUIRE(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(bmp.Get(), D2D1::RenderTargetProperties(), &rt)));
+            ComPtr<ID2D1SolidColorBrush> ink;
+            rt->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), &ink);
+            rt->BeginDraw();
+            rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+            md::drawGlyph(rt.Get(), md::Glyph(g), D2D1::RectF(4, 4, 28, 28), ink.Get(), 0.7f, true);
+            CHECK(SUCCEEDED(rt->EndDraw()));
+            WICRect all{0, 0, 32, 32};
+            std::vector<BYTE> px(32 * 32 * 4);
+            bmp->CopyPixels(&all, 32 * 4, UINT(px.size()), px.data());
+            int opaque = 0;
+            for (size_t i = 3; i < px.size(); i += 4) opaque += px[i] > 40;
+            if (opaque < 12) fprintf(stderr, "pictogramme %d vide (%d)\n", g, opaque);
+            CHECK(opaque >= 12);
+        }
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(menu_rows_snapshot_offscreen) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    md::MenuWindow::Env env;
+    env.scale = 2;
+    env.dark = true;
+    std::vector<std::uint8_t> px;
+    UINT w = 0, h = 0;
+    REQUIRE(md::MenuWindow::snapshot(env, controlCenter(), px, w, h));
+    CHECK_EQ(w, UINT(600));   // largeur fixe 300 pt à l'échelle 2
+    CHECK(h > 2 * (md::kMenuTilesHeight + md::kMenuSliderHeight));
+    REQUIRE(px.size() == size_t(w) * h * 4);
+    CHECK(px[3] < 40);                                   // coin arrondi : transparent
+    CHECK(px[(size_t(h / 2) * w + w / 2) * 4 + 3] > 200);   // milieu du panneau : opaque
+    wchar_t dump[MAX_PATH] = {};   // MACDOCK_DUMP=dossier : image du menu pour un contrôle à l'œil
+    if (GetEnvironmentVariableW(L"MACDOCK_DUMP", dump, MAX_PATH)) {
+        md::writePng(std::wstring(dump) + L"\\menu-rows-dark.png", px.data(), w, h);
+        env.dark = false;
+        if (md::MenuWindow::snapshot(env, controlCenter(), px, w, h))
+            md::writePng(std::wstring(dump) + L"\\menu-rows-light.png", px.data(), w, h);
+    }
+    CoUninitialize();
+}

@@ -1,4 +1,4 @@
-# Construction de MacDock avec MSVC (Visual Studio 2022), sans CMake.
+﻿# Construction de MacDock avec MSVC (Visual Studio 2022), sans CMake.
 #   ./build.ps1 -Target tests -Run
 #   ./build.ps1 -Target all -Config Release
 param(
@@ -29,13 +29,13 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp', 'src\launcher\supervisor.cpp',
                   'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
                   'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp',
-                  'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\stack\*.cpp',
+                  'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\stack\*.cpp',
                   'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
                   'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
                   'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp', 'src\menubar\uia_menu.cpp', 'src\menubar\recent_items.cpp')
 
 $Targets = @{
-    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
+    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
                   Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib', 'oleaut32.lib', 'uiautomationcore.lib',
                       'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
@@ -46,7 +46,7 @@ $Targets = @{
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
     menubar  = @{ Exe = 'MacMenuBar.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
                       'src\icons\*.cpp', 'src\tracker\*.cpp', 'src\shell\*.cpp', 'src\glass\*.cpp', 'src\calib\*.cpp',
-                      'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp'); Subsystem = 'WINDOWS';
+                      'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'shcore.lib', 'dxguid.lib',
