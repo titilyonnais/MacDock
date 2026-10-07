@@ -62,6 +62,10 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
                       entry(kCmdEffectScale, L"Échelle", true, s.minimizeEffect == MinimizeEffect::Scale),
                       entry(kCmdEffectWindows, L"Windows", true, s.minimizeEffect == MinimizeEffect::Windows)};
     out.push_back(effect);
+    MenuItem theme{-1, L"Thème macOS"};   // curseurs et fond d'écran, rendus à l'identique au rétablissement
+    theme.submenu = {entry(kCmdThemeApply, L"Appliquer (curseurs et fond d'écran)", true, c.themeApplied),
+                     entry(kCmdThemeRestore, L"Rétablir le thème Windows", c.themeApplied)};
+    out.push_back(theme);
     out.push_back({});
     out.push_back(entry(kCmdSettings, L"Réglages du Dock…"));
 }

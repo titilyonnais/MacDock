@@ -180,3 +180,21 @@ TEST_CASE(dock_menu_minimize_effect) {
     CHECK(effect->submenu[1].id == md::kCmdEffectScale && effect->submenu[1].checked);
     CHECK(effect->submenu[2].id == md::kCmdEffectWindows && effect->submenu[2].text == L"Windows");
 }
+
+TEST_CASE(dock_menu_theme) {
+    md::MenuContext c;
+    c.item = md::DockItem{md::ItemKind::Separator};
+    c.themeApplied = true;
+    auto m = md::buildDockMenu(c);
+    const md::MenuItem* theme = nullptr;
+    for (auto& it : m.items)
+        if (it.text == L"Thème macOS") theme = &it;
+    REQUIRE(theme != nullptr);
+    REQUIRE(theme->submenu.size() == 2);
+    CHECK(theme->submenu[0].id == md::kCmdThemeApply && theme->submenu[0].checked);
+    CHECK(theme->submenu[1].id == md::kCmdThemeRestore && theme->submenu[1].enabled);
+    c.themeApplied = false;
+    auto off = md::buildDockMenu(c);
+    for (auto& it : off.items)
+        if (it.text == L"Thème macOS") CHECK(!it.submenu[0].checked && !it.submenu[1].enabled);
+}

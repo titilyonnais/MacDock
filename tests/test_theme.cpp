@@ -254,3 +254,23 @@ TEST_CASE(theme_backup_json_roundtrip) {
     CHECK(back->cursors == b.cursors);
     CHECK(back->wallpapers == b.wallpapers);
 }
+
+TEST_CASE(theme_apply_stops_when_backup_not_saved) {   // la sauvegarde est écrite avant le premier changement
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    int saved = 0;
+    api.saveBackup = [&](const md::ThemeBackup& b) { ++saved; return b.cursors.empty(); };   // échoue
+    std::optional<md::ThemeBackup> backup;
+    auto r = md::applyTheme(api, L"D:\\theme", backup);
+    CHECK(!r.ok);
+    CHECK(saved == 1);
+    CHECK(!backup.has_value());
+    CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
+    CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\a.jpg");
+    CHECK(t.reloads == 0);
+    api.saveBackup = [&](const md::ThemeBackup&) { ++saved; return true; };
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    CHECK(saved == 2);                                       // une seule fois, à la première application
+}

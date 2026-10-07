@@ -13,6 +13,12 @@
 
 namespace md {
 
+// Ce que le thème remplace ; une valeur vide = absente à l'origine (curseur par défaut, fond sans fichier).
+struct ThemeBackup {
+    std::map<std::wstring, std::wstring> cursors;
+    std::map<std::wstring, std::wstring> wallpapers;
+};
+
 struct ThemeApi {
     std::function<std::optional<std::wstring>(const std::wstring& name)> readCursor;   // HKCU\Control Panel\Cursors
     std::function<bool(const std::wstring& name, const std::wstring& value)> writeCursor;
@@ -23,12 +29,8 @@ struct ThemeApi {
     std::function<bool(const std::wstring& path, const std::vector<std::uint8_t>& bytes)> writeFile;
     std::function<bool()> darkMode;
     std::function<SIZE(const std::wstring& id)> monitorSize;
-};
-
-// Ce que le thème remplace ; une valeur vide = absente à l'origine (curseur par défaut, fond sans fichier).
-struct ThemeBackup {
-    std::map<std::wstring, std::wstring> cursors;
-    std::map<std::wstring, std::wstring> wallpapers;
+    // Facultatif : écrit la sauvegarde avant le premier changement ; un échec arrête tout.
+    std::function<bool(const ThemeBackup& backup)> saveBackup;
 };
 
 struct ThemeResult {

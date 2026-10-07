@@ -104,6 +104,10 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
         ThemeBackup b;
         for (CursorKind k : kThemeCursors) b.cursors[cursorRegistryName(k)] = api.readCursor(cursorRegistryName(k)).value_or(L"");
         for (const std::wstring& id : screens) b.wallpapers[id] = api.getWallpaper(id);
+        if (api.saveBackup && !api.saveBackup(b)) {
+            r.message = L"Impossible d'enregistrer la sauvegarde du thème Windows : rien n'a été changé";
+            return r;
+        }
         backup = std::move(b);
     }
     // 3. Les changements ; on va au bout et on signale ce qui a échoué.

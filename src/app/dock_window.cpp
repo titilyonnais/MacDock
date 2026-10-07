@@ -19,6 +19,7 @@
 #include "../popup/stack_window.h"
 #include "../stack/stack_icon.h"
 #include "../stack/stack_list.h"
+#include "../theme/theme_system.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -717,6 +718,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     MenuContext ctx;
     ctx.item = p ? *p : DockItem{ItemKind::Separator};
     ctx.settings = settings_;
+    if (ctx.item.kind == ItemKind::Separator) ctx.themeApplied = themeBackupExists();
     const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
         std::optional<AppIdentity> id = model_.identityOf(item.appId);
@@ -883,6 +885,14 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             saveSettings();
             applySettings();
             break;
+        case kCmdThemeApply:
+        case kCmdThemeRestore: {   // à la demande seulement ; le résultat est aussi dans le journal
+            HCURSOR old = SetCursor(LoadCursorW(nullptr, IDC_WAIT));
+            const ThemeResult r = cmd == kCmdThemeApply ? applyMacTheme() : restoreWindowsTheme();
+            SetCursor(old);
+            if (!r.ok) MessageBoxW(hwnd_, r.message.c_str(), L"Thème macOS", MB_OK | MB_ICONWARNING);
+            break;
+        }
         case kCmdCloseWindow:
             PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
             break;
