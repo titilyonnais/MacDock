@@ -1,6 +1,7 @@
 #include "genie_gpu.h"
 
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 
 #include "../core/log.h"
@@ -11,13 +12,22 @@
 namespace md {
 
 namespace {
-struct TargetCb {
+struct ParamsCb {
     float size[2];
-    float pad[2];
+    float toSdr, white;
 };
 struct Vertex {
     float x, y, u, v;
 };
+constexpr float kEdge = 1;   // débord du maillage pour l'anticrénelage (pixels)
+
+// p prolongé de e pixels dans le sens q → p, coordonnées de texture extrapolées ; inchangé si p et q sont confondus.
+GenieVertex extend(const GenieVertex& p, const GenieVertex& q, float e) {
+    const float dx = p.x - q.x, dy = p.y - q.y, len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-4f) return p;
+    const float k = e / len;
+    return {p.x + dx * k, p.y + dy * k, p.u + (p.u - q.u) * k, p.v + (p.v - q.v) * k};
+}
 } // namespace
 
 bool GenieGpu::init(ID3D11Device* dev) {
@@ -35,7 +45,7 @@ bool GenieGpu::init(ID3D11Device* dev) {
         return false;
     }
     D3D11_BUFFER_DESC cb{};
-    cb.ByteWidth = sizeof(TargetCb);
+    cb.ByteWidth = sizeof(ParamsCb);
     cb.Usage = D3D11_USAGE_DYNAMIC;
     cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -61,13 +71,13 @@ bool GenieGpu::init(ID3D11Device* dev) {
     r.FillMode = D3D11_FILL_SOLID;
     r.CullMode = D3D11_CULL_NONE;
     r.DepthClipEnable = TRUE;
-    r.MultisampleEnable = TRUE;
     return SUCCEEDED(dev_->CreateRasterizerState(&r, &raster_));
 }
 
 void GenieGpu::dropSource() {
     src_.Reset();
     srv_.Reset();
+    scRgb_ = false;
 }
 
 bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT w, UINT h) {
@@ -91,30 +101,8 @@ bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT 
     }
     const D3D11_BOX box{0, 0, 0, w, h, 1};
     ctx->CopySubresourceRegion(src_.Get(), 0, 0, 0, 0, frame, 0, &box);
+    scRgb_ = fd.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
     ctx->GenerateMips(srv_.Get());
-    return true;
-}
-
-bool GenieGpu::ensureTarget(UINT w, UINT h, DXGI_FORMAT format) {
-    if (msaa_ && tw_ == w && th_ == h && tf_ == format) return true;
-    msaa_.Reset();
-    msaaRtv_.Reset();
-    UINT quality = 0;
-    samples_ = SUCCEEDED(dev_->CheckMultisampleQualityLevels(format, 4, &quality)) && quality ? 4 : 1;
-    D3D11_TEXTURE2D_DESC d{};
-    d.Width = w;
-    d.Height = h;
-    d.MipLevels = d.ArraySize = 1;
-    d.Format = format;
-    d.SampleDesc.Count = samples_;
-    d.BindFlags = D3D11_BIND_RENDER_TARGET;
-    if (FAILED(dev_->CreateTexture2D(&d, nullptr, &msaa_)) || FAILED(dev_->CreateRenderTargetView(msaa_.Get(), nullptr, &msaaRtv_))) {
-        msaa_.Reset();
-        return false;
-    }
-    tw_ = w;
-    th_ = h;
-    tf_ = format;
     return true;
 }
 
@@ -123,74 +111,80 @@ bool GenieGpu::draw(ID3D11DeviceContext* ctx, ID3D11Texture2D* dst, UINT w, UINT
     if (!dev_ || !ctx || !dst) return false;
     D3D11_TEXTURE2D_DESC dd{};
     dst->GetDesc(&dd);
-    // Cible MSAA de la taille de dst (la résolution l'exige) ; le dessin occupe son coin w x h.
-    if (!w || !h || dd.Width < w || dd.Height < h || !ensureTarget(dd.Width, dd.Height, dd.Format)) return false;
+    Com<ID3D11RenderTargetView> rtv;
+    if (!w || !h || dd.Width < w || dd.Height < h || FAILED(dev_->CreateRenderTargetView(dst, nullptr, &rtv))) return false;
     const float clear[4] = {0, 0, 0, 0};
-    ctx->ClearRenderTargetView(msaaRtv_.Get(), clear);
-    const std::size_t rows = mesh.size() >= 4 ? mesh.size() / 2 - 1 : 0;
-    if (srv_ && rows) {
-        // Deux triangles par rangée, en pixels de la cible.
-        std::vector<Vertex> tri;
-        tri.reserve(rows * 6);
-        const auto put = [&](const GenieVertex& p) {
-            tri.push_back({p.x - float(origin.x), p.y - float(origin.y), p.u, p.v});
-        };
-        for (std::size_t k = 0; k < rows; ++k) {
-            const GenieVertex &a = mesh[2 * k], &b = mesh[2 * k + 1], &c = mesh[2 * k + 2], &d = mesh[2 * k + 3];
-            put(a), put(b), put(c), put(b), put(d), put(c);
-        }
-        const UINT bytes = UINT(tri.size() * sizeof(Vertex));
-        if (bytes > vbCapacity_) {
-            vb_.Reset();
-            D3D11_BUFFER_DESC vd{};
-            vd.ByteWidth = bytes;
-            vd.Usage = D3D11_USAGE_DYNAMIC;
-            vd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-            vd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-            if (FAILED(dev_->CreateBuffer(&vd, nullptr, &vb_))) {
-                vbCapacity_ = 0;
-                return false;
-            }
-            vbCapacity_ = bytes;
-        }
-        D3D11_MAPPED_SUBRESOURCE m{};
-        if (FAILED(ctx->Map(vb_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return false;
-        std::memcpy(m.pData, tri.data(), bytes);
-        ctx->Unmap(vb_.Get(), 0);
-        const TargetCb tc{{float(w), float(h)}, {}};
-        if (SUCCEEDED(ctx->Map(cb_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
-            std::memcpy(m.pData, &tc, sizeof tc);
-            ctx->Unmap(cb_.Get(), 0);
-        }
-        const D3D11_VIEWPORT vp{0, 0, float(w), float(h), 0, 1};
-        const UINT stride = sizeof(Vertex), offset = 0;
-        ID3D11RenderTargetView* rtv = msaaRtv_.Get();
-        ID3D11Buffer* vb = vb_.Get();
-        ID3D11Buffer* cbuf = cb_.Get();
-        ID3D11ShaderResourceView* srv = srv_.Get();
-        ID3D11SamplerState* smp = sampler_.Get();
-        ctx->OMSetRenderTargets(1, &rtv, nullptr);
-        ctx->OMSetBlendState(blend_.Get(), nullptr, 0xffffffff);
-        ctx->RSSetState(raster_.Get());
-        ctx->RSSetViewports(1, &vp);
-        ctx->IASetInputLayout(layout_.Get());
-        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
-        ctx->VSSetShader(vs_.Get(), nullptr, 0);
-        ctx->VSSetConstantBuffers(0, 1, &cbuf);
-        ctx->PSSetShader(ps_.Get(), nullptr, 0);
-        ctx->PSSetShaderResources(0, 1, &srv);
-        ctx->PSSetSamplers(0, 1, &smp);
-        ctx->Draw(UINT(tri.size()), 0);
-        ID3D11ShaderResourceView* none = nullptr;
-        ctx->PSSetShaderResources(0, 1, &none);
-        ctx->OMSetRenderTargets(0, nullptr, nullptr);
+    ctx->ClearRenderTargetView(rtv.Get(), clear);
+    const std::size_t lines = mesh.size() / 2;
+    if (!srv_ || lines < 2) return true;
+    // Lignes du maillage prolongées d'un pixel de chaque côté, plus une ligne avant la première et après la dernière :
+    // la rampe d'anticrénelage du shader tombe hors de la fenêtre.
+    std::vector<GenieVertex> grid;
+    grid.reserve((lines + 2) * 2);
+    const auto widen = [&](const GenieVertex& l, const GenieVertex& r) {
+        grid.push_back(extend(l, r, kEdge));
+        grid.push_back(extend(r, l, kEdge));
+    };
+    widen(extend(mesh[0], mesh[2], kEdge), extend(mesh[1], mesh[3], kEdge));
+    for (std::size_t i = 0; i < lines; ++i) widen(mesh[2 * i], mesh[2 * i + 1]);
+    const std::size_t last = 2 * (lines - 1);
+    widen(extend(mesh[last], mesh[last - 2], kEdge), extend(mesh[last + 1], mesh[last - 1], kEdge));
+
+    std::vector<Vertex> tri;   // deux triangles par rangée, en pixels de la cible
+    tri.reserve((grid.size() / 2 - 1) * 6);
+    const auto put = [&](const GenieVertex& p) { tri.push_back({p.x - float(origin.x), p.y - float(origin.y), p.u, p.v}); };
+    for (std::size_t k = 0; k + 3 < grid.size(); k += 2) {
+        const GenieVertex &a = grid[k], &b = grid[k + 1], &c = grid[k + 2], &d = grid[k + 3];
+        put(a), put(b), put(c), put(b), put(d), put(c);
     }
-    if (samples_ > 1) {
-        ctx->ResolveSubresource(dst, 0, msaa_.Get(), 0, dd.Format);
-    } else {
-        ctx->CopyResource(dst, msaa_.Get());
+    const UINT bytes = UINT(tri.size() * sizeof(Vertex));
+    if (bytes > vbCapacity_) {
+        vb_.Reset();
+        D3D11_BUFFER_DESC vd{};
+        vd.ByteWidth = bytes;
+        vd.Usage = D3D11_USAGE_DYNAMIC;
+        vd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        vd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(dev_->CreateBuffer(&vd, nullptr, &vb_))) {
+            vbCapacity_ = 0;
+            return false;
+        }
+        vbCapacity_ = bytes;
     }
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(ctx->Map(vb_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return false;
+    std::memcpy(m.pData, tri.data(), bytes);
+    ctx->Unmap(vb_.Get(), 0);
+    const bool toSdr = scRgb_ && dd.Format != DXGI_FORMAT_R16G16B16A16_FLOAT;
+    const ParamsCb pc{{float(w), float(h)}, toSdr ? 1.0f : 0.0f, white_};
+    if (SUCCEEDED(ctx->Map(cb_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+        std::memcpy(m.pData, &pc, sizeof pc);
+        ctx->Unmap(cb_.Get(), 0);
+    }
+    const D3D11_VIEWPORT vp{0, 0, float(w), float(h), 0, 1};
+    const UINT stride = sizeof(Vertex), offset = 0;
+    ID3D11RenderTargetView* target = rtv.Get();
+    ID3D11Buffer* vb = vb_.Get();
+    ID3D11Buffer* cbuf = cb_.Get();
+    ID3D11ShaderResourceView* srv = srv_.Get();
+    ID3D11SamplerState* smp = sampler_.Get();
+    ctx->OMSetRenderTargets(1, &target, nullptr);
+    ctx->OMSetBlendState(blend_.Get(), nullptr, 0xffffffff);
+    ctx->RSSetState(raster_.Get());
+    ctx->RSSetViewports(1, &vp);
+    ctx->IASetInputLayout(layout_.Get());
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    ctx->VSSetShader(vs_.Get(), nullptr, 0);
+    ctx->VSSetConstantBuffers(0, 1, &cbuf);
+    ctx->PSSetShader(ps_.Get(), nullptr, 0);
+    ctx->PSSetConstantBuffers(0, 1, &cbuf);
+    ctx->PSSetShaderResources(0, 1, &srv);
+    ctx->PSSetSamplers(0, 1, &smp);
+    ctx->Draw(UINT(tri.size()), 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx->PSSetShaderResources(0, 1, &none);
+    ctx->OMSetRenderTargets(0, nullptr, nullptr);
     return true;
 }
 

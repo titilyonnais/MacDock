@@ -1,7 +1,8 @@
 // Maillage du génie : sommets en pixels de la cible, coordonnées de texture de la fenêtre capturée.
-cbuffer Target : register(b0) {
-    float2 target;   // taille de la cible (pixels)
-    float2 pad;
+cbuffer Params : register(b0) {
+    float2 target;    // taille de la cible (pixels)
+    float toSdr;      // 1 : source scRGB vers une cible 8 bits sRGB
+    float white;      // valeur scRGB du blanc SDR
 };
 
 struct VSIn {

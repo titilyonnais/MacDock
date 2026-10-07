@@ -147,3 +147,56 @@ TEST_CASE(genie_gpu_scrgb_passes_hdr_values) {
     CHECK(a > 0.99f);
     CHECK(outside == 0.0f);
 }
+
+TEST_CASE(genie_gpu_scrgb_to_sdr_target_uses_white) {
+    // Capture scRGB, fenêtre du génie en BGRA 8 bits : le blanc SDR de l'écran (3,2 ici) redevient 255, 0,8 (un quart
+    // du blanc, linéaire) devient 137 en sRGB.
+    using namespace DirectX::PackedVector;
+    Microsoft::WRL::ComPtr<ID3D11Device> dev;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+                                        D3D11_SDK_VERSION, &dev, nullptr, &ctx)));
+    const int sw = 16, sh = 16;
+    std::vector<HALF> px(std::size_t(sw) * sh * 4);
+    for (std::size_t i = 0; i < px.size(); i += 4) {
+        px[i] = XMConvertFloatToHalf(3.2f);
+        px[i + 1] = XMConvertFloatToHalf(0.8f);
+        px[i + 2] = XMConvertFloatToHalf(0.0f);
+        px[i + 3] = XMConvertFloatToHalf(1.0f);
+    }
+    D3D11_TEXTURE2D_DESC d{};
+    d.Width = sw;
+    d.Height = sh;
+    d.MipLevels = d.ArraySize = 1;
+    d.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    d.SampleDesc.Count = 1;
+    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    const D3D11_SUBRESOURCE_DATA init{px.data(), UINT(sw * 8), 0};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> frame, dst, stage;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, &init, &frame)));
+    d.Width = d.Height = 32;
+    d.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    d.BindFlags = D3D11_BIND_RENDER_TARGET;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, nullptr, &dst)));
+    d.BindFlags = 0;
+    d.Usage = D3D11_USAGE_STAGING;
+    d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, nullptr, &stage)));
+    md::GenieGpu gpu;
+    REQUIRE(gpu.init(dev.Get()));
+    gpu.setWhite(3.2f);
+    REQUIRE(gpu.setSource(ctx.Get(), frame.Get(), sw, sh));
+    const auto mesh = md::genieMesh(md::MinimizeEffect::Scale, SIZE{sw, sh}, RECT{8, 8, 24, 24}, RECT{0, 30, 4, 32},
+                                    md::DockPosition::Bottom, 0.0, 1);
+    REQUIRE(gpu.draw(ctx.Get(), dst.Get(), 32, 32, POINT{0, 0}, mesh));
+    ctx->CopyResource(stage.Get(), dst.Get());
+    D3D11_MAPPED_SUBRESOURCE m{};
+    REQUIRE(SUCCEEDED(ctx->Map(stage.Get(), 0, D3D11_MAP_READ, 0, &m)));
+    const auto* p = static_cast<const std::uint8_t*>(m.pData) + m.RowPitch * 16 + 16 * 4;
+    const int b = p[0], g = p[1], r = p[2], a = p[3];
+    ctx->Unmap(stage.Get(), 0);
+    CHECK(r >= 253);
+    CHECK(g >= 133 && g <= 141);
+    CHECK(b <= 2);
+    CHECK(a == 255);
+}
