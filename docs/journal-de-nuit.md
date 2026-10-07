@@ -176,7 +176,7 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - `--apps-snapshot` (comme `--snapshot`, `--genie-snapshot`, `--theme-snapshot`, `--capture-test`, `--theme`) sans valeur ne démarre plus un vrai Dock : erreur dans le journal ;
   - les icônes sont gardées d'une ouverture à l'autre : elles sont là tout de suite à la deuxième ouverture.
 
-### Plan 14 — Spotlight (sous-projet 7, en cours)
+### Plan 14 — Spotlight (sous-projet 7, fusionné dans `main`)
 
 Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'ai donc ouvert une nouvelle série, en autonomie : 7 Spotlight, 8 Mission Control, 9 sélecteur d'apps façon Cmd+Tab, 10 affichages du volume et de la luminosité, 11 coins actifs.
 
@@ -192,6 +192,25 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   3. « 12*(3+4) » puis Entrée, puis `Ctrl+V` dans un éditeur : `84` ;
   4. le nom d'un de tes documents : il apparaît sous *Documents* ; `Ctrl+Entrée` le montre dans l'Explorateur ;
   5. la loupe de la barre de menus ouvre et referme Spotlight.
+- **Relecture finale** : 0 critique, 1 important, plus 2 mineurs que j'ai jugés importants. Tous sont corrigés avec un test :
+  - un clic sur le Dock ferme Spotlight (le Dock n'active jamais de fenêtre, le clic ne comptait donc pas comme « ailleurs ») ; plus aucun menu ni aucune pile ne s'ouvre à l'intérieur d'une autre fenêtre modale ;
+  - les documents restent affichés pendant que tu tapes, jusqu'aux nouveaux résultats : le panneau ne saute plus à chaque frappe ;
+  - le résultat d'un calcul est copié sans espace entre les milliers (`1234,5`), donc lisible par un tableur.
+
+## Décisions prises sans toi (plan 14)
+- La recherche de documents passe par l'index de Windows (OLE DB, lecture seule) : le dossier `search-ms:` prévu ne s'énumère pas hors de l'Explorateur.
+- Syntaxe de recherche de l'Explorateur acceptée (`kind:`, `-mot`…), comme dans sa barre de recherche.
+- `Alt+Espace` est pris pour tout le système (le menu système d'une fenêtre au clavier n'est plus accessible) ; `ctrl+space` ou `off` dans les réglages.
+- `50+10%` vaut 50,1 (« % » divise par 100).
+- Un clic dans les 14 pt d'ombre autour du panneau le ferme sans atteindre la fenêtre dessous.
+
+## Mineurs reportés — plan 14
+- Une recherche lente d'une ouverture précédente peut encore tourner (son résultat est jeté) ; une fuite rare d'un résultat à la fermeture.
+- Si Windows refuse de donner le clavier au panneau, rien ne le signale.
+- Un raccourci déjà pris n'est pas réessayé sans relancer le Dock.
+- La spec décrit encore l'ancienne recherche ; `searchMsUrl` ne sert plus.
+- Le test de recherche réelle peut échouer si l'index garde un fichier tout juste supprimé ; `FileSearcher` n'a pas de test.
+- `-2^2` donne 4 ; un émoji est coupé par Retour arrière ; `Ctrl+V` garde les tabulations.
 
 ## Décisions prises sans toi (plan 13)
 - Pas de réorganisation à la main ni de dossiers : l'ordre est alphabétique, comme la vue Apps sans dossiers.
