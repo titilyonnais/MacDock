@@ -893,8 +893,8 @@ void MenuBarApp::stepHud() {
         hideHud();
         return;
     }
+    SetTimer(ctl_, kHudTimer, 16, nullptr);   // fondu (ou fin du maintien à quelques ms près) : toutes les 16 ms
     if (o >= 1) return;
-    SetTimer(ctl_, kHudTimer, 16, nullptr);   // fondu : une image toutes les 16 ms
     hud_.setOpacity(o);
 }
 

@@ -22,12 +22,12 @@ std::optional<Corner> cornerAt(POINT pt, const std::vector<RECT>& monitors) {
         if (!(left || right) || !(top || bottom)) return std::nullopt;
         const LONG cx = left ? r.left : r.right - 1, cy = top ? r.top : r.bottom - 1;   // pixel du coin
         const LONG dx = left ? -1 : 1, dy = top ? -1 : 1;
-        // Aucun autre écran ne prolonge le coin, ni depuis son pixel, ni depuis le point lui-même (écrans décalés de
-        // moins que la zone) : le pointeur y bute.
-        for (const POINT& p : {POINT{cx, cy}, pt})
-            if (onOtherScreen(p.x + dx, p.y, monitors, r) || onOtherScreen(p.x, p.y + dy, monitors, r) ||
-                onOtherScreen(p.x + dx, p.y + dy, monitors, r))
-                return std::nullopt;
+        // Aucun autre écran ne prolonge le coin : ni depuis son pixel, ni en sortant par les bords à hauteur (ou à
+        // l'aplomb) du point (écrans décalés de moins que la zone). Le pointeur y bute.
+        if (onOtherScreen(cx + dx, cy, monitors, r) || onOtherScreen(cx, cy + dy, monitors, r) ||
+            onOtherScreen(cx + dx, cy + dy, monitors, r) || onOtherScreen(cx + dx, pt.y, monitors, r) ||
+            onOtherScreen(pt.x, cy + dy, monitors, r))
+            return std::nullopt;
         return top ? (left ? Corner::TopLeft : Corner::TopRight) : (left ? Corner::BottomLeft : Corner::BottomRight);
     }
     return std::nullopt;

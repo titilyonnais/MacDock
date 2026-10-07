@@ -195,3 +195,19 @@ TEST_CASE(spot_paste_line) {
     const std::wstring longText = std::wstring(127, L'x') + L"\U0001F600";
     CHECK(md::spotPasteLine(longText).size() == 127);   // la paire ne tient pas : écartée entière
 }
+
+TEST_CASE(spot_clip_and_accept_keep_surrogates) {
+    std::wstring q = std::wstring(127, L'x');
+    q += L"😀";   // 129 unités
+    md::spotClip(q, 128);
+    CHECK(q.size() == 127);   // la moitié haute seule ne reste pas
+    std::wstring full(127, L'x');
+    CHECK(!md::spotAcceptChar(full, wchar_t(0xD83D)));   // moitié haute sans place pour la basse
+    CHECK(md::spotAcceptChar(std::wstring(10, L'x'), wchar_t(0xD83D)));
+    CHECK(!md::spotAcceptChar(L"ab", wchar_t(0xDE00)));   // moitié basse orpheline
+    std::wstring hi = L"a";
+    hi.push_back(wchar_t(0xD83D));
+    CHECK(md::spotAcceptChar(hi, wchar_t(0xDE00)));
+    CHECK(!md::spotAcceptChar(std::wstring(128, L'x'), L'y'));
+    CHECK(!md::spotAcceptChar(L"", wchar_t(9)));   // caractère de contrôle
+}

@@ -74,5 +74,9 @@ std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text);
 void spotEraseLast(std::wstring& query);
 // Collage : première ligne, tabulations en espaces, 128 unités au plus sans couper une paire de substitution.
 std::wstring spotPasteLine(const std::wstring& clip);
+// Coupe text à max unités sans laisser de moitié haute de paire seule à la fin.
+void spotClip(std::wstring& text, std::size_t max);
+// Frappe : c peut-il s'ajouter à query (128 unités au plus, pas de caractère de contrôle, paires entières) ?
+bool spotAcceptChar(const std::wstring& query, wchar_t c);
 
 } // namespace md

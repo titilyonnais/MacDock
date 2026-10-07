@@ -78,3 +78,11 @@ TEST_CASE(hot_corners_rearm_along_edge) {
     CHECK(!t.update(std::nullopt, {30, 1079}, false));   // glissé le long du bord : réarmé
     CHECK(t.update(Corner::BottomLeft, {0, 1079}, false) == Corner::BottomLeft);
 }
+
+TEST_CASE(hot_corners_offset_one_column_in) {
+    const std::vector<RECT> side{{0, 0, 1920, 1080}, {1920, 1, 3840, 1081}};
+    CHECK(!md::cornerAt({1918, 1}, side));   // vers la droite, le pointeur passe sur l'autre écran
+    const std::vector<RECT> stacked{{0, 0, 1920, 1080}, {1, 1080, 1921, 2160}};
+    CHECK(!md::cornerAt({1, 1078}, stacked));   // vers le bas, il passe sur l'écran du dessous
+    CHECK(md::cornerAt({0, 1079}, stacked) == Corner::BottomLeft);   // en x = 0, rien dessous : il bute
+}
