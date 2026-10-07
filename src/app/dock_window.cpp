@@ -132,7 +132,7 @@ void DockApp::loadConfig(bool initial) {
     if (m.fromFile && !m.wasInvalid && jsonVersion(m.value) < kMetricsVersion) {
         m.value = migrateMetricsJson(m.value);
         saveJsonFileAtomic(dataDir_ + L"\\dock-metrics.json", m.value);
-        log::info(L"dock-metrics.json migré de la v1 à la v%d", kMetricsVersion);
+        log::info(L"dock-metrics.json migré vers la v%d", kMetricsVersion);
     }
     if (initial || !(m.wasInvalid || m.unreadable)) metrics_ = metricsFromJson(m.value);
     // Fichier absent ou incomplet (mesures ajoutées par une version plus récente) : on l'écrit complet.

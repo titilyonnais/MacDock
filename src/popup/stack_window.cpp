@@ -28,8 +28,8 @@ template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 constexpr wchar_t kClass[] = L"MacDockStack";
 constexpr UINT WM_STACK_BACKDROP = WM_APP + 7;
 constexpr UINT WM_STACK_ICON = WM_APP + 8;   // wParam : index ; lParam : IconProvider::ImagePtr* à reprendre
-constexpr double kFanOpenSeconds = 0.24;   // les icônes jaillissent de la pile le long de l'arc
-constexpr double kGridFadeSeconds = 0.14;
+constexpr double kFanOpenSeconds = 0.21;   // les icônes jaillissent de la pile le long de l'arc
+constexpr double kGridFadeSeconds = 0.12;
 constexpr float kLabelFont = 13, kNameFont = 11, kTitleFont = 13;
 constexpr float kLabelMaxWidth = 280;      // nom d'un élément de l'éventail (points)
 constexpr float kLabelPadX = 8, kLabelHeight = 22, kLabelGap = 8;
