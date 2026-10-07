@@ -631,6 +631,7 @@ void DockApp::openStack(std::size_t index) {
 
 // Écran Apps sur l'écran du Dock ; menu Démarrer si la vue ne peut pas s'ouvrir ou si le catalogue est vide.
 void DockApp::openApps() {
+    if (menuOpen_) return;   // second clic d'un double-clic, ou une autre fenêtre modale déjà ouverte
     std::vector<AppEntry> list = apps_.get(1500);
     if (list.empty()) {
         log::warn(L"Apps : catalogue vide, ouverture du menu Démarrer");
@@ -648,6 +649,11 @@ void DockApp::openApps() {
     r.icons.jailInset = metrics_.iconJailInset;
     r.icons.shadowOpacity = metrics_.iconShadowOpacity;
     r.icons.customDir = dataDir_ + L"\\icons";
+    const AppsIconStyle& st = r.icons;
+    appsIcons_->setStyle(std::to_wstring(st.strict) + L"|" + std::to_wstring(st.dark) + L"|" + std::to_wstring(st.shapeRatio) +
+                         L"|" + std::to_wstring(st.cornerRatio) + L"|" + std::to_wstring(st.jailInset) + L"|" +
+                         std::to_wstring(st.shadowOpacity) + L"|" + st.customDir);
+    r.cache = appsIcons_;
     MenuWindow::Env env = popupEnv();
     controller_.setCursor(std::nullopt);
     requestFrame();

@@ -253,6 +253,7 @@ struct Session {
     std::vector<IconProvider::ImagePtr> images;   // par indice d'app
     std::vector<Com<ID2D1Bitmap1>> bitmaps;
     double shownAt = 0, lastWheel = 0;
+    PressGate press;   // un clic commencé hors de la vue (double-clic sur le bouton Apps) ne compte pas
     bool done = false;
     std::wstring result;
 
@@ -324,10 +325,17 @@ void Session::wantVisibleIcons() {
 void Session::startLoading() {
     loader = std::make_shared<Loader>();
     loader->hwnd = hwnd;
-    wantVisibleIcons();
     std::vector<std::pair<std::wstring, std::wstring>> keys;   // (clé, nom Shell)
     for (const AppEntry& e : req->apps) keys.emplace_back(L"apps:" + e.parsingName, launchTarget(e));
-    std::thread([l = loader, keys = std::move(keys), px = iconPx, style = req->icons] {
+    std::vector<char> have(keys.size(), 0);
+    if (req->cache)   // icônes d'une ouverture précédente : là tout de suite
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            images[i] = req->cache->find(keys[i].first, iconPx);
+            have[i] = images[i] ? 1 : 0;
+        }
+    wantVisibleIcons();
+    std::thread([l = loader, keys = std::move(keys), px = iconPx, style = req->icons, cache = req->cache,
+                 have = std::move(have)] {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         {
             IconProvider icons;   // propre à ce fil : le cache du Dock n'est pas partagé
@@ -335,7 +343,7 @@ void Session::startLoading() {
             icons.setDark(style.dark);
             icons.setGrid(style.shapeRatio, style.cornerRatio, style.jailInset, style.shadowOpacity);
             if (!style.customDir.empty()) icons.setCustomDir(style.customDir);
-            std::vector<char> done(keys.size(), 0);
+            std::vector<char> done = have;   // déjà dans le cache
             std::size_t next = 0;
             for (;;) {
                 std::size_t i = keys.size();
@@ -354,7 +362,9 @@ void Session::startLoading() {
                 }
                 if (i == keys.size()) break;
                 done[i] = 1;
-                auto* box = new IconProvider::ImagePtr(icons.get(keys[i].first, keys[i].second, px));
+                IconProvider::ImagePtr image = icons.get(keys[i].first, keys[i].second, px);
+                if (cache) cache->put(keys[i].first, px, image);
+                auto* box = new IconProvider::ImagePtr(std::move(image));
                 bool posted = false;
                 {
                     std::lock_guard lock(l->mutex);
@@ -489,10 +499,12 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEWHEEL: {
             const double t = now();
             if (t - lastWheel < kWheelPause) return 0;
-            const int page = std::clamp(view.page + (GET_WHEEL_DELTA_WPARAM(wp) < 0 ? 1 : -1), 0, view.g.pages - 1);
-            if (page != view.page) {
+            const AppsCursor c = appsGoToPage(view.g, {view.page, view.selected},
+                                              view.page + (GET_WHEEL_DELTA_WPARAM(wp) < 0 ? 1 : -1), view.shown.size());
+            if (c.page != view.page) {
                 lastWheel = t;
-                view.page = page;
+                view.page = c.page;
+                view.selected = c.selected;   // la sélection suit la page (flèches et Entrée)
                 view.hover = -1;
                 changed();
             }
@@ -507,13 +519,17 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case WM_LBUTTONDOWN: press.press(); return 0;
         case WM_LBUTTONUP: {
+            if (!press.release()) return 0;
             const auto [x, y] = toPt(lp);
             const int h = appsHit(view.g, view.page, x, y, view.shown.size());
             if (h >= 0) {
                 choose(h);
             } else if (const int p = dotHit(view.g, view.W, x, y); p >= 0) {
-                view.page = p;
+                const AppsCursor cur = appsGoToPage(view.g, {view.page, view.selected}, p, view.shown.size());
+                view.page = cur.page;
+                view.selected = cur.selected;
                 changed();
             } else {
                 const double cx = view.W / 2;   // le champ de recherche ne ferme pas la vue

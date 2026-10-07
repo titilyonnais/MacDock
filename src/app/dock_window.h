@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "../apps/apps_folder.h"
+#include "../apps/apps_icon_cache.h"
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
@@ -164,7 +165,8 @@ private:
     Thumbnails thumbnails_;
     GenieWindow genie_;
     MinAnimateGuard minAnimate_{realMinAnimateApi()};
-    AppCatalog apps_;     // apps de l'écran Apps, relues après chaque ouverture
+    AppCatalog apps_;
+    std::shared_ptr<AppsIconCache> appsIcons_ = std::make_shared<AppsIconCache>();     // apps de l'écran Apps, relues après chaque ouverture
     ThemeJob themeJob_;   // thème macOS appliqué ou rétabli hors du fil de l'interface
     std::map<std::uint64_t, RECT> shownTiles_;   // cases des miniatures de la dernière image (pixels de la fenêtre)
     std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan

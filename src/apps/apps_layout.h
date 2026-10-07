@@ -24,6 +24,21 @@ struct AppsCursor {
     int page = 0;
     int selected = -1;   // -1 : aucune
 };
+// Aller à une page (molette, points) : une sélection passe à la première app de cette page.
+AppsCursor appsGoToPage(const AppsGeometry& g, AppsCursor c, int page, std::size_t count);
+
+// Un clic n'agit que s'il a commencé dans la vue : le relâchement d'un clic commencé ailleurs (second clic d'un
+// double-clic sur le bouton Apps) est ignoré.
+struct PressGate {
+    bool down = false;
+    void press() { down = true; }
+    bool release() {
+        const bool was = down;
+        down = false;
+        return was;
+    }
+};
+
 // Flèches, Page précédente / suivante, Début, Fin ; la page suit la sélection.
 AppsCursor appsKey(const AppsGeometry& g, AppsCursor c, UINT vk, std::size_t count);
 

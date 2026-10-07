@@ -2,12 +2,14 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "minitest.h"
 #include "../src/apps/app_catalog.h"
 #include "../src/apps/apps_folder.h"
+#include "../src/apps/apps_icon_cache.h"
 #include "../src/apps/apps_window.h"
 #include "../src/apps/apps_layout.h"
 
@@ -137,4 +139,41 @@ TEST_CASE(apps_snapshot_draws_offscreen) {   // Direct2D sur une bitmap : aucune
     CHECK(q.px != im.px);
     CHECK(q.px[3] == 255);   // opaque : fond d'écran flouté sous la vue
     CoUninitialize();
+}
+
+TEST_CASE(apps_go_to_page_moves_selection) {   // relecture finale, important 2 : molette et points de page
+    auto g = md::appsLayout(1920, 1080, 37);
+    auto c = md::appsGoToPage(g, {0, 0}, 1, 37);
+    CHECK(c.page == 1 && c.selected == 35);          // la sélection suit la page
+    c = md::appsGoToPage(g, {0, -1}, 1, 37);
+    CHECK(c.page == 1 && c.selected == -1);          // sans sélection : aucune
+    c = md::appsGoToPage(g, {1, 36}, 0, 37);
+    CHECK(c.page == 0 && c.selected == 0);
+    c = md::appsGoToPage(g, {0, 3}, 9, 37);
+    CHECK(c.page == 1 && c.selected == 35);          // page bornée
+    c = md::appsKey(g, md::appsGoToPage(g, {0, 0}, 1, 37), VK_RIGHT, 37);
+    CHECK(c.page == 1 && c.selected == 36);          // la flèche part de la page affichée
+}
+
+TEST_CASE(apps_press_gate_needs_press_in_view) {   // relecture finale, important 1 : double-clic sur le bouton Apps
+    md::PressGate gate;
+    CHECK(!gate.release());                           // relâchement d'un clic commencé ailleurs (le Dock) : ignoré
+    gate.press();
+    CHECK(gate.release());
+    CHECK(!gate.release());
+}
+
+TEST_CASE(apps_icon_cache_keeps_icons_between_openings) {   // relecture finale : icônes déjà là à la réouverture
+    md::AppsIconCache cache;
+    cache.setStyle(L"clair");
+    auto img = std::make_shared<md::IconProvider::Image>();
+    img->size = 4;
+    CHECK(cache.find(L"a", 96) == nullptr);
+    cache.put(L"a", 96, img);
+    CHECK(cache.find(L"a", 96) == img);
+    CHECK(cache.find(L"a", 64) == nullptr);          // autre taille : autre image
+    cache.setStyle(L"clair");
+    CHECK(cache.find(L"a", 96) == img);              // même style : gardée
+    cache.setStyle(L"sombre");
+    CHECK(cache.find(L"a", 96) == nullptr);          // style changé : vidé
 }

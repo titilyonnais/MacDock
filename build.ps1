@@ -24,11 +24,11 @@ function Get-Sources([string[]]$Patterns) {
     $files | Where-Object { $_ } | ForEach-Object { $_.FullName } | Sort-Object -Unique
 }
 
-# Modules logiques (sans dépendance graphique) partagés par les tests.
+# Modules partagés par les tests (surtout logiques ; quelques rendus hors écran, sans fenêtre).
 $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp',
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp', 'src\launcher\supervisor.cpp',
                   'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
-                  'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp', 'src\app\min_animate.cpp',
+                  'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp', 'src\app\min_animate.cpp', 'src\app\cli_args.cpp',
                   'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\stack\*.cpp',
                   'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
                   'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',

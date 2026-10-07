@@ -19,6 +19,7 @@
 #include <shellapi.h>
 
 #include <string>
+#include <vector>
 
 #include "../anim/genie_preview.h"
 #include "../apps/apps_folder.h"
@@ -26,6 +27,7 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "cli_args.h"
 #include "../theme/theme_system.h"
 #include "capture_test.h"
 #include "menu_test.h"
@@ -49,6 +51,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         return 0;
     }
 
+    {   // une option de diagnostic sans valeur ne doit jamais démarrer un vrai Dock
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        std::vector<std::wstring> list(argv, argv + (argv ? argc : 0));
+        if (argv) LocalFree(argv);
+        if (const std::wstring bad = md::diagnosticMissingValue(list); !bad.empty()) {
+            md::log::init(md::appDataDir() + L"\\logs");
+            md::log::error(L"Option sans valeur ou mal écrite : %s ; le Dock ne démarre pas", bad.c_str());
+            return 2;
+        }
+    }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     SetUnhandledExceptionFilter(crashFilter);
 

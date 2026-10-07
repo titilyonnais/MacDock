@@ -123,7 +123,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
 - `MacDock.exe --genie-snapshot planche.png [--effect genie|scale] [--edge bottom|left|right]` : six étapes de l'effet de réduction sur une fenêtre factice, sans rien afficher.
-- `MacDock.exe --apps-snapshot apps.png [--query texte] [--page n] [--theme light|dark]` : l'écran Apps avec tes apps dans une image, sans l'afficher ni rien lancer.
+- `MacDock.exe --apps-snapshot apps.png [--query texte] [--page n] [--theme light|dark]` : l'écran Apps avec tes apps dans une image (`--page` compte à partir de 0), sans l'afficher ni rien lancer.
 - `MacDock.exe --theme-snapshot dossier` : planche des curseurs du thème (32 et 64 px, fonds clair et sombre) et les deux fonds d'écran, sans rien appliquer.
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.

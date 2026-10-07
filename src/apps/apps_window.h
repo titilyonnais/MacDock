@@ -3,6 +3,7 @@
 #pragma once
 #include <windows.h>
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,6 +11,7 @@
 #include "../core/bgra_image.h"
 #include "../popup/menu_window.h"
 #include "app_catalog.h"
+#include "apps_icon_cache.h"
 
 namespace md {
 
@@ -25,6 +27,7 @@ public:
         std::vector<AppEntry> apps;   // catalogue (catalogFrom)
         HMONITOR monitor = nullptr;   // écran du Dock
         AppsIconStyle icons;
+        std::shared_ptr<AppsIconCache> cache;   // facultatif : icônes gardées pour la prochaine ouverture
     };
     // Nom d'analyse de l'app choisie ; chaîne vide : fermée sans choix ; nullopt : la vue n'a pas pu s'ouvrir.
     static std::optional<std::wstring> track(const MenuWindow::Env& env, const Request& request);

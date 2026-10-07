@@ -168,13 +168,28 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   1. clic sur le bouton Apps : l'écran s'ouvre en fondu sur l'écran du Dock, les icônes arrivent ;
   2. tape « calc », Entrée : la Calculatrice se lance et l'écran se ferme ;
   3. molette et flèches : pages suivantes ; Échap, clic dans le vide : fermeture ;
-  4. clic droit sur le bouton Apps → *Ouvrir le menu Démarrer*.
+  4. clic droit sur le bouton Apps → *Ouvrir le menu Démarrer* ;
+  5. double-clic sur le bouton Apps : l'écran reste ouvert (une seule fois).
+- **Relecture finale** : 0 critique, 3 importants, plus 1 mineur que j'ai jugé important. Tous sont corrigés avec un test :
+  - un double-clic sur le bouton Apps ne referme plus l'écran aussitôt et n'en ouvre plus un deuxième ;
+  - après la molette ou un clic sur un point de page, la sélection suit la page (les flèches et Entrée partent de la page affichée) ;
+  - `--apps-snapshot` (comme `--snapshot`, `--genie-snapshot`, `--theme-snapshot`, `--capture-test`, `--theme`) sans valeur ne démarre plus un vrai Dock : erreur dans le journal ;
+  - les icônes sont gardées d'une ouverture à l'autre : elles sont là tout de suite à la deuxième ouverture.
 
 ## Décisions prises sans toi (plan 13)
 - Pas de réorganisation à la main ni de dossiers : l'ordre est alphabétique, comme la vue Apps sans dossiers.
 - Les liens web du dossier Apps sont écartés ; les liens `steam://` et autres jeux restent.
 - Le texte de l'écran Apps est toujours blanc sur un verre sombre, en mode clair comme en mode sombre (comme Launchpad).
 - Pas de glisser horizontal à la souris pour changer de page : molette, flèches et points.
+
+## Mineurs reportés — plan 13
+- Une icône personnalisée (`icons\<id>.png`) n'apparaît pas dans l'écran Apps (autre clé que celle du Dock).
+- Alt+F4 ferme l'écran Apps par le chemin du système (quelques icônes en route perdues).
+- Un changement d'écran ou d'échelle pendant que l'écran Apps est ouvert n'est pas suivi.
+- Le verre de tout l'écran est recalculé à chaque clignotement du curseur et à chaque survol.
+- Toute la case compte pour le clic (sur un grand écran, cliquer entre deux icônes lance une app).
+- Pavé tactile : défilement page par page toutes les 0,25 s, glissement horizontal ignoré.
+- Recherche : « oe » ne trouve pas « Œ », l'apostrophe droite ne trouve pas l'apostrophe typographique ; un emoji effacé laisse une demi-paire.
 
 ## Décisions prises sans toi (plan 12)
 - Le thème couvre les curseurs et le fond d'écran seulement : polices, coins et ombres des fenêtres ne se règlent pas proprement sans crochet.

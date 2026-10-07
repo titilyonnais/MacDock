@@ -44,6 +44,12 @@ int appsHit(const AppsGeometry& g, int page, double x, double y, std::size_t cou
     return i >= 0 && i < (long long)count ? int(i) : -1;
 }
 
+AppsCursor appsGoToPage(const AppsGeometry& g, AppsCursor c, int page, std::size_t count) {
+    if (count == 0) return {0, -1};
+    page = std::clamp(page, 0, g.pages - 1);
+    return {page, c.selected < 0 ? -1 : std::min(page * g.perPage, int(count) - 1)};
+}
+
 AppsCursor appsKey(const AppsGeometry& g, AppsCursor c, UINT vk, std::size_t count) {
     if (count == 0) return {0, -1};
     const int n = int(count), last = n - 1;
@@ -62,10 +68,7 @@ AppsCursor appsKey(const AppsGeometry& g, AppsCursor c, UINT vk, std::size_t cou
             if (s - g.columns >= 0 && pageOf(g, s - g.columns) == pageOf(g, s)) s -= g.columns;
             break;
         case VK_NEXT:
-        case VK_PRIOR: {
-            const int page = std::clamp(c.page + (vk == VK_NEXT ? 1 : -1), 0, g.pages - 1);
-            return {page, s < 0 ? -1 : firstOf(page)};
-        }
+        case VK_PRIOR: return appsGoToPage(g, {c.page, s}, c.page + (vk == VK_NEXT ? 1 : -1), count);
         case VK_HOME: s = 0; break;
         case VK_END: s = last; break;
         default: return c;
