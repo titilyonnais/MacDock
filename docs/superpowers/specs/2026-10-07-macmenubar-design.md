@@ -187,15 +187,18 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
 - **Lecture d'un menu.** À l'ouverture d'un titre, la barre déplie le menu de l'app, en lit les entrées (nom, état, raccourci), le replie, puis montre son propre menu de verre. Le menu de l'app peut apparaître un instant.
 - **Exécution.** Un choix déplie de nouveau le menu de l'app et invoque l'entrée.
 - **Sous-menus imbriqués.** Une entrée qui ouvre un sous-menu le déplie dans l'app.
-- **Apps exclues.** Les fenêtres Chromium et Electron (`Chrome_WidgetWin_*`) et Firefox (`MozillaWindowClass`) ne sont jamais interrogées. Une requête UI Automation y active tout l'arbre d'accessibilité, ce qui ralentit l'app ; elles gardent les menus génériques.
+- **Apps exclues.** Ne sont jamais interrogées les fenêtres Chromium et Electron (`Chrome_WidgetWin_*`), Firefox (`MozillaWindowClass`), et celles qui hébergent un navigateur intégré (WebView2, CEF : fenêtre enfant `Chrome_*`).
+- **Recherche bornée.** La barre de menus n'est cherchée qu'à 4 niveaux sous la fenêtre au plus. Une fenêtre sans barre n'est pas réinterrogée pendant 5 minutes. Une requête UI Automation y active tout l'arbre d'accessibilité, ce qui ralentit l'app ; elles gardent les menus génériques.
 - **Délais.** Les requêtes ont des délais courts (connexion 1 s, transaction 1,5 s) : une app figée ne bloque pas la barre plus longtemps.
 
-**Menu Fenêtre.** Si l'app n'a pas de menu « Fenêtre » (ou « Window »), celui de la barre est ajouté après ses menus, avec la liste de ses fenêtres.
+**Menu Fenêtre.** Si l'app n'a pas de menu « Fenêtre » (ou « Window »), celui de la barre est ajouté avec la liste de ses fenêtres : avant son menu d'aide, comme sur macOS, sinon en dernier.
+
+**Barre qui change.** Une app peut changer sa barre sans changer de fenêtre (document ouvert, fenêtre MDI). La barre relit donc les titres Win32 à chaque ouverture d'un menu.
 
 **Éléments récents** (menu du système) :
-- **Applications** : les dernières apps passées au premier plan, 10 au plus, gardées dans `menubar.json` (`recentApps`).
-- **Documents** : les derniers éléments du dossier Récents de Windows, 10 au plus, avec leur icône.
-- **Effacer le menu** : oublie les applications et masque les documents ouverts avant ce moment (date gardée dans `menubar.json`, `recentClearedAt`) ; le dossier Récents de Windows n'est pas touché.
+- **Applications** : les dernières apps passées au premier plan, 10 au plus, gardées dans `menubar-recent.json` (fichier à part : la barre ne réécrit jamais `menubar.json`).
+- **Documents** : les derniers documents du dossier Récents de Windows (raccourcis dont le nom porte une extension), 10 au plus, avec l'icône de leur type.
+- **Effacer le menu** : oublie les applications et masque les documents ouverts avant ce moment (date gardée dans `menubar-recent.json`) ; le dossier Récents de Windows n'est pas touché.
 
 ## 5. Robustesse
 - **Mutex** `Local\MacMenuBar` : une seule barre à la fois.
