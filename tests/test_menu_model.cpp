@@ -65,3 +65,27 @@ TEST_CASE(menu_layout_reserves_icon_space) {
     CHECK(b.iconSpace >= md::kMenuIconSize);
     CHECK_NEAR(b.width, a.width + b.iconSpace, 1e-9);
 }
+
+TEST_CASE(menu_layout_reserves_shortcut_width) {
+    md::MenuModel m;
+    m.items.push_back({1, L"Enregistrer"});
+    CHECK_NEAR(md::layoutMenu(m, 150).width, 208, 1e-9);            // 2×5 + 20 + 150 + 28
+    CHECK_NEAR(md::layoutMenu(m, 150, 40).width, 272, 1e-9);        // + 24 d'écart + 40 de raccourci
+    CHECK_NEAR(md::layoutMenu(m, 100, 0).width, md::kMenuMinWidth, 1e-9);
+}
+
+TEST_CASE(menu_switch_result_roundtrip) {
+    for (int k : {0, 1, 7}) CHECK(md::menuSwitchTarget(md::menuSwitchResult(k)) == std::optional<int>(k));
+    CHECK(!md::menuSwitchTarget(0).has_value());     // rien choisi
+    CHECK(!md::menuSwitchTarget(42).has_value());    // une entrée
+    CHECK(!md::menuSwitchTarget(-1).has_value());
+}
+
+TEST_CASE(bar_title_at_skips_current) {
+    std::vector<RECT> titles{{0, 0, 30, 24}, {30, 0, 100, 24}, {100, 0, 160, 24}};
+    CHECK_EQ(md::barTitleAt(titles, POINT{50, 10}, 0), 1);
+    CHECK_EQ(md::barTitleAt(titles, POINT{50, 10}, 1), -1);   // titre déjà ouvert
+    CHECK_EQ(md::barTitleAt(titles, POINT{120, 23}, 1), 2);
+    CHECK_EQ(md::barTitleAt(titles, POINT{120, 24}, 1), -1);  // sous la barre
+    CHECK_EQ(md::barTitleAt(titles, POINT{200, 10}, 1), -1);
+}

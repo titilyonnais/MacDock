@@ -1,6 +1,6 @@
 // MacDock.exe : Dock façon macOS pour Windows.
 //   MacDock.exe                  lance le Dock
-//   MacDock.exe --quit           ferme le Dock en cours d'exécution
+//   MacDock.exe --quit           ferme le Dock (et la barre de menus) en cours d'exécution
 //   MacDock.exe --trace-windows  journalise le suivi des fenêtres (diagnostic)
 //   MacDock.exe --snapshot f.png [--hover x]  rendu hors écran du Dock (x : curseur en points depuis le centre)
 //               [--theme light|dark] [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
@@ -33,6 +33,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
     if (args.find(L"--quit") != std::wstring::npos) {
         if (HWND dock = FindWindowW(L"MacDockWindow", nullptr)) PostMessageW(dock, WM_CLOSE, 0, 0);
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) PostMessageW(bar, WM_CLOSE, 0, 0);   // la barre aussi
         return 0;
     }
 

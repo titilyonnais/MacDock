@@ -1,0 +1,79 @@
+#include "menubar_settings.h"
+
+#include <algorithm>
+#include <cmath>
+
+#include "../core/strings.h"
+
+namespace md {
+namespace {
+
+bool readBool(const json::Value& v, const char* key, bool def) {
+    auto* f = v.find(key);
+    return f ? f->asBool(def) : def;
+}
+
+double readBounded(const json::Value& v, const char* key, double def, double lo, double hi) {
+    auto* f = v.find(key);
+    double d = f ? f->asNumber(def) : def;
+    if (!std::isfinite(d)) d = def;
+    return std::clamp(d, lo, hi);
+}
+
+} // namespace
+
+MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
+    MenuBarSettings s;
+    if (!v.isObject()) return s;
+    s.autohide = readBool(v, "autohide", s.autohide);
+    s.showSound = readBool(v, "showSound", s.showSound);
+    if (auto* f = v.find("font")) s.font = fromUtf8(f->asString(""));
+    if (auto* c = v.find("clock"); c && c->isObject()) {
+        s.clock.weekday = readBool(*c, "weekday", s.clock.weekday);
+        s.clock.date = readBool(*c, "date", s.clock.date);
+        s.clock.seconds = readBool(*c, "seconds", s.clock.seconds);
+        s.clock.hour24 = readBool(*c, "hour24", s.clock.hour24);
+    }
+    if (auto* m = v.find("metrics"); m && m->isObject()) {
+        MenuBarMetrics& t = s.metrics;
+        t.height = readBounded(*m, "height", t.height, 16, 48);
+        t.fontSize = readBounded(*m, "fontSize", t.fontSize, 9, 24);
+        t.leftMargin = readBounded(*m, "leftMargin", t.leftMargin, 0, 60);
+        t.titlePadding = readBounded(*m, "titlePadding", t.titlePadding, 0, 60);
+        t.logoSize = readBounded(*m, "logoSize", t.logoSize, 6, 40);
+        t.highlightHeight = readBounded(*m, "highlightHeight", t.highlightHeight, 0, 48);
+        t.highlightRadius = readBounded(*m, "highlightRadius", t.highlightRadius, 0, 24);
+        t.statusWidth = readBounded(*m, "statusWidth", t.statusWidth, 10, 60);
+        t.rightMargin = readBounded(*m, "rightMargin", t.rightMargin, 0, 60);
+    }
+    return s;
+}
+
+json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
+    json::Value v;
+    v.set("version", kMenuBarSettingsVersion);
+    v.set("autohide", s.autohide);
+    v.set("font", toUtf8(s.font));
+    json::Value c;
+    c.set("weekday", s.clock.weekday);
+    c.set("date", s.clock.date);
+    c.set("seconds", s.clock.seconds);
+    c.set("hour24", s.clock.hour24);
+    v.set("clock", c);
+    v.set("showSound", s.showSound);
+    const MenuBarMetrics& t = s.metrics;
+    json::Value m;
+    m.set("height", t.height);
+    m.set("fontSize", t.fontSize);
+    m.set("leftMargin", t.leftMargin);
+    m.set("titlePadding", t.titlePadding);
+    m.set("logoSize", t.logoSize);
+    m.set("highlightHeight", t.highlightHeight);
+    m.set("highlightRadius", t.highlightRadius);
+    m.set("statusWidth", t.statusWidth);
+    m.set("rightMargin", t.rightMargin);
+    v.set("metrics", m);
+    return v;
+}
+
+} // namespace md

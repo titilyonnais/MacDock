@@ -5,7 +5,7 @@
 
 namespace md {
 
-MenuLayout layoutMenu(const MenuModel& m, double textWidthMax) {
+MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax) {
     MenuLayout l;
     double y = kMenuPadding;
     for (auto& it : m.items) {
@@ -16,7 +16,9 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax) {
     double text = std::isfinite(textWidthMax) ? std::max(0.0, textWidthMax) : 0.0;
     if (std::any_of(m.items.begin(), m.items.end(), [](const MenuItem& it) { return it.icon != nullptr; }))
         l.iconSpace = kMenuIconSize + kMenuIconGap;
-    l.width = std::max(kMenuMinWidth, std::ceil(2 * kMenuPadding + kMenuTextLeft + l.iconSpace + text + kMenuTextRight));
+    double shortcut = std::isfinite(shortcutWidthMax) && shortcutWidthMax > 0 ? kMenuShortcutGap + shortcutWidthMax : 0.0;
+    l.width = std::max(kMenuMinWidth,
+                       std::ceil(2 * kMenuPadding + kMenuTextLeft + l.iconSpace + text + shortcut + kMenuTextRight));
     return l;
 }
 
@@ -39,6 +41,17 @@ int hitTestMenu(const MenuLayout& l, const MenuModel& m, double y) {
         double h = it.separator() ? kMenuSeparatorHeight : kMenuItemHeight;
         if (y >= l.top[i] && y < l.top[i] + h) return it.selectable() ? int(i) : -1;
     }
+    return -1;
+}
+
+std::optional<int> menuSwitchTarget(int result) {
+    if (result > kMenuSwitchBase) return std::nullopt;
+    return kMenuSwitchBase - result;
+}
+
+int barTitleAt(const std::vector<RECT>& titles, POINT pt, int current) {
+    for (std::size_t i = 0; i < titles.size(); ++i)
+        if (int(i) != current && PtInRect(&titles[i], pt)) return int(i);
     return -1;
 }
 
