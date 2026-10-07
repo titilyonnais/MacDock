@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 
 namespace md {
@@ -33,7 +34,7 @@ bool SpriteWindow::create(HINSTANCE instance) {
         return false;
     }
     // Le sprite passe au-dessus du Dock : sans exclusion, le verre se redessinerait à chaque mouvement.
-    SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
+    if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
     dc_ = CreateCompatibleDC(nullptr);
     return dc_ != nullptr;
 }

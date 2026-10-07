@@ -81,7 +81,7 @@ void GenieGpu::dropSource() {
 }
 
 bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT w, UINT h) {
-    dropSource();
+    // Image refusée : la précédente reste (une capture d'avance en a peut-être déjà livré une bonne).
     if (!dev_ || !ctx || !frame || !w || !h) return false;
     D3D11_TEXTURE2D_DESC fd{};
     frame->GetDesc(&fd);
@@ -95,9 +95,15 @@ bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT 
     d.SampleDesc.Count = 1;
     d.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
     d.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
-    if (FAILED(dev_->CreateTexture2D(&d, nullptr, &src_)) || FAILED(dev_->CreateShaderResourceView(src_.Get(), nullptr, &srv_))) {
-        dropSource();
-        return false;
+    D3D11_TEXTURE2D_DESC have{};
+    if (src_) src_->GetDesc(&have);
+    if (!src_ || have.Width != w || have.Height != h || have.Format != fd.Format) {   // sinon : la même, réécrite
+        Com<ID3D11Texture2D> src;
+        Com<ID3D11ShaderResourceView> srv;
+        if (FAILED(dev_->CreateTexture2D(&d, nullptr, &src)) || FAILED(dev_->CreateShaderResourceView(src.Get(), nullptr, &srv)))
+            return false;
+        src_ = std::move(src);
+        srv_ = std::move(srv);
     }
     const D3D11_BOX box{0, 0, 0, w, h, 1};
     ctx->CopySubresourceRegion(src_.Get(), 0, 0, 0, 0, frame, 0, &box);

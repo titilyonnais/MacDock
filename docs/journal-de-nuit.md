@@ -309,6 +309,21 @@ Tu voyais des décalages à la réduction et, à l'ouverture, la fenêtre « se 
 - **Plantages** : journal avec module et décalage, vidage mémoire dans `%APPDATA%\MacDock\crash\`, puis fin immédiate (plus d'attente d'une trentaine de secondes du rapport d'erreurs de Windows). Le rapport ne peut plus bloquer le processus : écriture sur un fil à part, 5 s au plus.
 - **Relecture finale (Opus)** : 0 critique, 2 importants corrigés (rapport de plantage qui pouvait bloquer ; curseur périmé après déplacement du Dock), plus le double lancement (mineur, corrigé car visible).
 
+### Plan 24 — Flashs du génie mesurés image par image à 165 Hz, Dock qui glisse
+
+Mesuré sur ton écran avec un enregistreur maison (Desktop Duplication en scRGB, 165 images/s) et une fenêtre-sonde à bandes de couleur ; mode `MACDOCK_DIAG=1` pour que le génie apparaisse dans les captures et que chaque étape soit chronométrée.
+- **Flash à la réduction** : la fenêtre disparaissait 4 images (60 ms) avant que le génie ne la couvre. Désormais, dès l'**appui** sur « réduire », MacDock prépare une couverture invisible, lance la capture et affiche une surface GPU transparente à sa taille finale ; au **relâchement**, le crochet souris montre la couverture avant même que l'app reçoive le clic. Mesuré : **aucune image vide**, GPU au relais 7 à 8 ms après le départ (contre 40 à 60 ms).
+- **Course trouvée en mesurant** : traité par le fil du Dock, le relâchement arrivait parfois après la réduction (la fenêtre sous le pointeur était déjà Brave) ; d'où un trou une fois sur trois. Réglé par le crochet.
+- **Saccades à la fin d'une restauration** : chaque appel DWM pour les miniatures des autres fenêtres réduites attendait une composition (5 à 7 ms chacun, 25 à 47 ms au total, pile quand la fenêtre réapparaît). Miniatures masquées au lieu de retirées, retraits faits au repos, taille lue une fois, Dock retenu pendant les 80 ms de fin : 0,6 ms.
+- **Dock qui glisse en traversant un séparateur** : ce n'était pas macOS. L'agrandissement est maintenant une loupe continue comme sur Mac : les bords du Dock ne bougent plus tant que la loupe est à l'intérieur (test).
+- **Relecture finale (Opus)** : 0 critique, 2 importants corrigés (surface GPU qui pouvait rester affichée si la capture est refusée ; crochet souris qui pouvait attendre un appel DWM lent), 6 mineurs corrigés.
+- **Barre noire en bas** : c'est la bande réservée au Dock, où l'on voit le bureau ; ton bureau n'a pas de fond d'écran (noir uni). Le menu du séparateur du Dock → **Thème macOS** pose un fond d'écran ; je ne l'ai pas appliqué à ta place.
+
+## Mineurs reportés — plan 24
+- Sous forte charge DWM (menu en verre ouvert), chaque placement de miniature coûte 4 à 9 ms : avec 9 fenêtres réduites, une image du Dock de 55 ms. À passer sur un fil à part.
+- `WM_NCHITTEST` (40 ms au plus) interrogé sur le fil du Dock à l'appui dans le coin des boutons d'une app qui les dessine elle-même.
+- Fin de restauration : l'ombre de la fenêtre apparaît d'un coup et la barre de titre passe d'inactive à active ~80 ms après.
+
 ## Mineurs reportés — plan 23
 - Un lancement très lent en cours au moment où l'on quitte peut journaliser après la destruction du journal.
 - Les vidages de plantage ne sont jamais supprimés (à borner aux N plus récents).

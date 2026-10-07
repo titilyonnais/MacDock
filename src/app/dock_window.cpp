@@ -6,6 +6,7 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shldisp.h>
+#include <windowsx.h>
 
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,7 @@
 #include "../calib/image_diff.h"
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
@@ -53,6 +55,9 @@ constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob
 constexpr double kGenieSettleSeconds = 0.08;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre
 constexpr UINT WM_APP_SWITCHKEY = WM_APP + 13;   // wParam : kHotSwitch… (frappe prise par le crochet clavier)
 constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
+constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
+constexpr UINT_PTR kArmTimer = 0x414D;       // "AM" : réduction annoncée qui ne vient pas
+constexpr UINT_PTR kWarmTimer = 0x574D;      // "WM" : case survolée assez longtemps : capture préparée
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
@@ -468,6 +473,7 @@ void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     controller_.setCursor(client);   // ne marque le Dock à redessiner que si son état change
     const bool inside = controller_.pointerInside();
+    warmHovered(client);
     const LONG edgePx = LONG(metrics_.autohideEdgePx);
     bool atEdge = false;
     switch (settings_.position) {
@@ -1076,6 +1082,80 @@ bool visibleBounds(HWND h, RECT& r) {
 }
 } // namespace
 
+void DockApp::onButton(bool down, POINT pt) {
+    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows) return;
+    HWND w = GetAncestor(WindowFromPoint(pt), GA_ROOT);
+    DWORD pid = 0;
+    if (w) GetWindowThreadProcessId(w, &pid);
+    if (pid == GetCurrentProcessId()) w = nullptr;   // le Dock et ses fenêtres
+    if (down) {
+        if (trace_) log::info(L"[trace] appui en %ld,%ld sur %p", pt.x, pt.y, static_cast<void*>(w));
+        if (!w || IsIconic(w) || genie_.active()) return;
+        RECT visible{}, dock{};
+        if (!visibleBounds(w, visible) || !GetWindowRect(hwnd_, &dock)) return;
+        // Seulement dans le coin des boutons de titre (haut à droite) : aucun aller-retour vers l'app pour les autres
+        // clics.
+        UINT dpiX = 96, dpiY = 96;
+        GetDpiForMonitor(MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST), MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+        const double s = dpiX / 96.0;
+        if (pt.y - visible.top > LONG(64 * s) || visible.right - pt.x > LONG(240 * s) || pt.x < visible.left) return;
+        // Boutons dessinés par DWM : leur vraie place (WM_NCHITTEST garde l'ancienne géométrie sous Windows 11).
+        RECT window{}, buttons{};
+        GetWindowRect(w, &window);
+        DwmGetWindowAttribute(w, DWMWA_CAPTION_BUTTON_BOUNDS, &buttons, sizeof buttons);
+        const bool minBox = (GetWindowLongPtrW(w, GWL_STYLE) & WS_MINIMIZEBOX) != 0;
+        bool onMin = genieOnMinimizeButton(pt, window, buttons, minBox);
+        DWORD_PTR hit = HTNOWHERE;
+        if (!onMin && buttons.right <= buttons.left) {   // boutons dessinés par l'app (Chrome, Electron…) : on lui demande
+            POINT logical = pt;   // dans son propre repère (DPI)
+            PhysicalToLogicalPointForPerMonitorDPI(w, &logical);
+            onMin = SendMessageTimeoutW(w, WM_NCHITTEST, 0, MAKELPARAM(logical.x, logical.y), SMTO_ABORTIFHUNG, 40, &hit) &&
+                    hit == HTMINBUTTON;
+        }
+        if (trace_)
+            log::info(L"[trace] appui sur les boutons de %p en %ld,%ld : réduire %s (zone DWM %ld..%ld, test %d)",
+                      static_cast<void*>(w), pt.x, pt.y, onMin ? L"oui" : L"non", buttons.left, buttons.right, int(hit));
+        if (!onMin) return;
+        // Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente.
+        KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
+        genie_.arm(instance_, w, visible, dock, pt);
+        if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+        return;
+    }
+    if (trace_) {
+        LARGE_INTEGER q, f;
+        QueryPerformanceCounter(&q);
+        QueryPerformanceFrequency(&f);
+        log::info(L"[trace] relâché en %ld,%ld sur %p (annoncée %p, qpc %.1f ms)", pt.x, pt.y, static_cast<void*>(w),
+                  static_cast<void*>(genie_.armed()), double(q.QuadPart) * 1000.0 / double(f.QuadPart));
+    }
+    if (!genie_.armed()) return;
+    if (genie_.revealArmed(pt)) {   // en général déjà fait par le crochet, avant que l'app ne reçoive le relâchement
+        SetTimer(hwnd_, kArmTimer, 300, nullptr);
+    } else {
+        genie_.disarm();
+    }
+}
+
+void DockApp::warmHovered(POINT client) {
+    HWND want = nullptr;
+    if (auto hit = controller_.hitTest(client)) {
+        if (const DockItem* it = controller_.itemAt(*hit)) {
+            if (it->kind == ItemKind::MinimizedWindow) {
+                want = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(it->window));
+            } else if (it->kind == ItemKind::App) {
+                const AppClick c = model_.clickActionFor(it->appId);
+                if (c.kind == AppClick::Kind::Restore) want = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(c.windows.front()));
+            }
+        }
+    }
+    if (want == hoverWarm_) return;
+    hoverWarm_ = want;
+    KillTimer(hwnd_, kWarmTimer);
+    if (want) SetTimer(hwnd_, kWarmTimer, 120, nullptr);   // un passage rapide sur le Dock ne lance rien
+    else genie_.cool();
+}
+
 void DockApp::noteForeground() {
     HWND fg = GetForegroundWindow();
     RECT r{};
@@ -1502,11 +1582,15 @@ void DockApp::requestFrame() {
 }
 
 void DockApp::renderNow() {
+    const bool timing = diagnosticCapture();
+    const double t0 = timing ? nowSeconds() : 0;
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    const double t1 = timing ? nowSeconds() : 0;
     if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
         loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
         logItemPositions(frame);
     }
+    const double t2 = timing ? nowSeconds() : 0;
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
@@ -1522,8 +1606,12 @@ void DockApp::renderNow() {
         if (icon.window == animated) icon.opacity = 0;   // l'image animée y entre ou en sort
     }
     if (!snapshot_) thumbnails_.sync(hwnd_, frame, !visibility_.hidden());
+    const double t3 = timing ? nowSeconds() : 0;
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
+        if (timing && nowSeconds() - t0 > 0.004)
+            log::info(L"[diag] image du Dock : modèle %.1f ms, positions %.1f, miniatures %.1f, rendu %.1f", (t1 - t0) * 1000,
+                      (t2 - t1) * 1000, (t3 - t2) * 1000, (nowSeconds() - t3) * 1000);
         return;
     }
     log::warn(L"Rendu impossible : recréation du périphérique graphique");
@@ -1546,6 +1634,13 @@ void DockApp::renderNow() {
 }
 
 LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && (wp == WM_LBUTTONDOWN || wp == WM_LBUTTONUP) && self_) {
+        const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
+        // Couverture d'une réduction annoncée montrée ici même : le relâchement n'est pas encore livré à l'app, la
+        // fenêtre ne peut pas avoir disparu (traité par le fil du Dock, il arrivait après la réduction).
+        if (wp == WM_LBUTTONUP) self_->genie_.revealArmed(info->pt);
+        PostMessageW(self_->hwnd_, WM_APP_BUTTON, wp == WM_LBUTTONDOWN, MAKELPARAM(info->pt.x, info->pt.y));
+    }
     if (code == HC_ACTION && wp == WM_MOUSEMOVE && self_) {
         auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
         self_->mouseX_ = info->pt.x;
@@ -1654,9 +1749,16 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             mousePending_ = false;
             onMouse(POINT{mouseX_.load(), mouseY_.load()});
             return 0;
+        case WM_APP_BUTTON:
+            onButton(wp != 0, POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
+            return 0;
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
+            if (hoverWarm_) {   // clic avant la fin du survol : la capture part tout de suite
+                KillTimer(hwnd_, kWarmTimer);
+                if (IsIconic(hoverWarm_)) genie_.warm(instance_, hoverWarm_);
+            }
             if (dockClickGate(SpotlightWindow::isOpen(), menuOpen_) == DockClick::CloseSpotlight) {
                 SpotlightWindow::closeOpen();   // le Dock n'active pas : ce clic est le « clic ailleurs »
                 swallowClick_ = true;
@@ -1784,6 +1886,16 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kFullscreenTimer) {
                 checkFullscreen();
                 noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
+                return 0;
+            }
+            if (wp == kArmTimer) {   // annoncée, mais pas réduite (app qui refuse, ou cache dans la zone de notification)
+                KillTimer(hwnd_, kArmTimer);
+                genie_.disarm();
+                return 0;
+            }
+            if (wp == kWarmTimer) {
+                KillTimer(hwnd_, kWarmTimer);
+                if (hoverWarm_ && IsWindow(hoverWarm_) && IsIconic(hoverWarm_)) genie_.warm(instance_, hoverWarm_);
                 return 0;
             }
             if (wp == kTrashTimer) {
@@ -1999,13 +2111,20 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     ev.minimized = [this](HWND h, bool m) {
-        if (trace_) log::info(L"[trace] %s %p", m ? L"réduite" : L"restaurée", h);
+        if (trace_) {
+            LARGE_INTEGER q, f;
+            QueryPerformanceCounter(&q);
+            QueryPerformanceFrequency(&f);
+            log::info(L"[trace] %s %p (qpc %.1f ms)", m ? L"réduite" : L"restaurée", h, double(q.QuadPart) * 1000.0 / double(f.QuadPart));
+        }
         model_.windowMinimized(toId(h), m);
         if (genieOnMinimize(genieRun(), toId(h), m, false) == GenieReact::Cancel) genie_.cancel();   // restaurée ailleurs
         requestFrame();
     };
     ev.minimizeStarted = [this](HWND h) {   // réduction vue à l'instant : vers sa case du Dock
         if (genieOnMinimize(genieRun(), toId(h), true, true) == GenieReact::Start) startGenie(h, false);
+        if (genie_.armed()) genie_.disarm();   // annoncée mais pas animée (pas de case) : la couverture s'en va
+        KillTimer(hwnd_, kArmTimer);
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.moved = [this](HWND h) {   // place exacte au moment d'une réduction (déplacée, ancrée, agrandie…)
@@ -2086,10 +2205,15 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
                 since = nowSeconds();
             }
         }
+        const bool timing = diagnosticCapture() && genie_.running() && !genie_.onGpu();
+        const double loopStart = timing ? nowSeconds() : 0;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { running_ = false; break; }
+            const double m0 = timing ? nowSeconds() : 0;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            if (timing && nowSeconds() - m0 > 0.003)
+                log::info(L"[diag] boucle : message 0x%04X traité en %.1f ms", msg.message, (nowSeconds() - m0) * 1000);
         }
         if (!running_) break;
 
@@ -2102,9 +2226,22 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         // à chaque image ; leur début et leur fin demandent eux-mêmes une image (requestFrame).
         bool overlays = stepPoof(now);
         if (stepGenie(now)) overlays = true;
+        if (genie_.armed()) {   // réduction annoncée : la capture arrive et le rendu GPU chauffe pendant l'appui
+            genie_.pumpArmed();
+            overlays = true;
+        }
         syncPointer();
         bool dirty = controller_.consumeDirty();
-        if (animating || dirty || wakeAnimation_) {
+        // Départ du génie (au plus 150 ms) : la passation au GPU d'abord, l'image du Dock (nouvelle case…) au tour
+        // d'après ; elle prendrait le tour où la deuxième image GPU doit partir. Fin d'une restauration (80 ms) : DWM
+        // compose la fenêtre rendue, chaque appel de miniature y attend une composition (~6 ms mesurées).
+        const bool holdDock = genie_.waiting() || genieSettleUntil_ >= 0;
+        if ((animating || dirty) && holdDock) {
+            wakeAnimation_ = true;
+            animating = dirty = false;
+            overlays = true;
+        }
+        if (animating || dirty || wakeAnimation_ && !holdDock) {
             if (trace_) {
                 static int frames = 0, byAnim = 0, byDirty = 0, byWake = 0;
                 static double since = now;
@@ -2122,11 +2259,18 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
                 }
             }
             wakeAnimation_ = false;
+            const double r0 = timing ? nowSeconds() : 0;
             renderNow();
+            if (timing && nowSeconds() - r0 > 0.003)
+                log::info(L"[diag] boucle : image du Dock en %.1f ms (animation %d, modèle %d)", (nowSeconds() - r0) * 1000,
+                          int(animating), int(dirty));
         }
+        if (timing && nowSeconds() - loopStart > 0.008)
+            log::info(L"[diag] boucle : tour en %.1f ms", (nowSeconds() - loopStart) * 1000);
         if (animating || overlays) {
             DCompositionWaitForCompositorClock(0, nullptr, 50);
         } else {
+            if (thumbnails_.pending()) thumbnails_.flush();   // au repos : les retraits lents de miniatures DWM
             WaitMessage();
             last = nowSeconds() - 1.0 / 120;   // reprise sans saut d'animation
         }

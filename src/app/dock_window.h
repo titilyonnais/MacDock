@@ -67,6 +67,8 @@ private:
     void removeAppBar();
     void onMouse(POINT screen);
     void syncPointer();
+    void onButton(bool down, POINT screen);   // bouton gauche n'importe où (crochet) : réduction annoncée
+    void warmHovered(POINT client);           // case d'une fenêtre réduite survolée : capture préparée
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
@@ -215,6 +217,7 @@ private:
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
     std::atomic<DWORD> mousePostedAt_{0};
+    HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::thread configThread_;

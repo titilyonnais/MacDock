@@ -161,3 +161,23 @@ TEST_CASE(layout_hovered_item_stays_under_cursor_long_dock) {
         CHECK_NEAR(r.items[k].center, rest.items[k].center, 1e-6);
     }
 }
+
+TEST_CASE(layout_edges_stay_still_while_cursor_crosses_separator) {
+    // Retour : traverser un séparateur faisait glisser tout le Dock de côté. Comme sous macOS, l'agrandissement est
+    // une loupe continue : tant qu'elle reste à l'intérieur du Dock, ses bords ne bougent pas, séparateur ou non.
+    md::LayoutInput in;
+    in.items.resize(21);
+    in.items[13].separator = in.items[16].separator = true;
+    in.gap = 4;
+    in.largeSize = 80;
+    in.amount = 1;
+    const auto rest = md::computeLayout(in);
+    in.cursor = rest.items[7].center;
+    const auto first = md::computeLayout(in);
+    for (double c = rest.items[7].center; c <= rest.items[15].center; c += 0.5) {
+        in.cursor = c;
+        const auto r = md::computeLayout(in);
+        CHECK_NEAR(r.bgStart, first.bgStart, 1e-6);
+        CHECK_NEAR(r.bgEnd, first.bgEnd, 1e-6);
+    }
+}

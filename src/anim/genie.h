@@ -39,9 +39,9 @@ double minimizeDuration(MinimizeEffect e, bool slow);
 // rendu par le GPU, sans raccord visible ; au-delà de 150 ms, l'animation part sur les bandes.
 enum class GenieWait { Hold, Go, GoStrips };
 GenieWait genieWaitStep(bool gpuReady, double waited);
-// Bandes à tenir pour une fenêtre qui en vaut full : 48 au plus tant que le rendu GPU est attendu (il couvre
-// l'animation vers 70 ms), toutes s'il est absent ou encore là au bout de 150 ms (capture ratée).
-int genieStripTarget(int full, bool gpuPending, double elapsed);
+// Bandes à tenir (have déjà posées, full au plein) : une seule au départ et tant que la fenêtre attend le GPU,
+// immobile (pas encore déformée : affichée sans délai) ; toutes si elle bouge sans le GPU.
+int genieStripTarget(int full, bool waiting, int have);
 // Bandes du repli par miniatures DWM (un appel à DWM par bande et par image) : une toutes les 4 px, 16 à 128.
 int genieSliceCount(long extent);
 
@@ -54,6 +54,17 @@ RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monit
 // comprises : ~11 px à gauche, à droite et en bas, 0 en haut) et la taille de sa miniature DWM (partie visible
 // seule) : centrée en largeur, calée en haut. Rectangle inchangé s'il a déjà cette taille ou en diffère trop.
 RECT genieVisibleRect(const RECT& window, SIZE thumb);
+// Réduction annoncée par l'appui sur « réduire » : confirmée si le bouton est relâché sur place (4 px au plus). Pas de
+// test de la fenêtre sous le pointeur : l'app peut l'avoir déjà retirée.
+bool genieMinimizeConfirmed(POINT down, POINT up);
+// Bouton « réduire » sous le point (écran) d'après la zone des boutons de titre de DWM (DWMWA_CAPTION_BUTTON_BOUNDS,
+// repère de la fenêtre) : le premier tiers (réduire, agrandir, fermer). Zone vide : boutons dessinés par l'app.
+bool genieOnMinimizeButton(POINT pt, const RECT& window, const RECT& buttonBounds, bool hasMinimizeBox);
+// Cadre de la fenêtre des bandes : l'écran de la fenêtre et celui du Dock (union des deux rectangles d'écran).
+RECT genieHostBox(const RECT& windowMonitor, const RECT& dockMonitor);
+// Surface GPU d'une animation de from vers to (pixels écran, 2 px de marge pour l'anticrénelage) ; armed : surface posée
+// d'avance (réduction annoncée), reprise telle quelle si elle contient l'animation.
+RECT genieGpuBox(const RECT& from, const RECT& to, const RECT* armed);
 
 // Départ d'une réduction : le dernier rectangle vu à l'écran (fenêtre ancrée, agrandie…) s'il est connu, sinon
 // restoredRect.

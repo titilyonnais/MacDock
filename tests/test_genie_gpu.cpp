@@ -200,3 +200,25 @@ TEST_CASE(genie_gpu_scrgb_to_sdr_target_uses_white) {
     CHECK(b <= 2);
     CHECK(a == 255);
 }
+
+TEST_CASE(genie_gpu_keeps_source_when_next_frame_is_rejected) {
+    // Capture d'avance : une bonne image prise pendant l'appui ; une suivante refusée (taille incohérente, fenêtre
+    // retirée) ne doit pas la jeter, sinon le génie attend une image qui ne viendra plus.
+    Microsoft::WRL::ComPtr<ID3D11Device> dev;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &dev, nullptr, &ctx)));
+    D3D11_TEXTURE2D_DESC d{};
+    d.Width = 16;
+    d.Height = 8;
+    d.MipLevels = d.ArraySize = 1;
+    d.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    d.SampleDesc.Count = 1;
+    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> frame;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, nullptr, &frame)));
+    md::GenieGpu gpu;
+    REQUIRE(gpu.init(dev.Get()));
+    REQUIRE(gpu.setSource(ctx.Get(), frame.Get(), 16, 8));
+    CHECK(!gpu.setSource(ctx.Get(), frame.Get(), 32, 8));   // plus large que la texture : refusée
+    CHECK(gpu.hasSource());
+}
