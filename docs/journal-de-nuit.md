@@ -242,6 +242,24 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   2. sourdine : haut-parleur barré, jauge vide ; volume + rend le son ;
   3. sur un portable : les touches de luminosité montrent la pastille de luminosité ;
   4. le curseur du volume dans le menu Son ne fait pas apparaître la pastille.
+- **Relecture finale** : 1 critique, 3 importants, tous corrigés :
+  - avec deux écrans, la capture du fond passait d'un écran à l'autre sans changer de device graphique (risque de plantage de la barre) : elle est refaite (test) ;
+  - barre masquée (plein écran, masquage automatique) : la pastille se plaçait une barre trop bas (test) ;
+  - la fenêtre de la pastille avalait les clics sur la droite de la barre (icône Son, horloge) : ils passent maintenant ;
+  - la pastille de luminosité pouvait surgir seule (sortie de veille, passage secteur/batterie, écran rallumé) : seulement si le niveau change, et pas dans les 2 s qui suivent ces événements (test).
+
+## Décisions prises sans toi (plan 17)
+- La barre de menus reprend les touches de volume (le panneau de Windows ne s'affiche plus pour elles) ; `"hud": false` les rend à Windows.
+- Les touches de luminosité d'un portable restent à Windows (traitées par l'ordinateur) : son panneau et la pastille s'affichent tous les deux.
+- Un clic sur la pastille va à la barre dessous ; ailleurs, il est perdu pendant l'affichage (1,75 s).
+
+## Mineurs reportés — plan 17
+- Juste après un réglage de luminosité très lent (WMI), la pastille peut apparaître à la fermeture du Centre de contrôle.
+- Sortie audio débranchée pendant l'affichage : nom et niveau périmés jusqu'au fondu.
+- `hud` passé à `false` alors que les touches n'avaient pas pu être prises : la pastille n'est pas cachée tout de suite.
+- Un relevé du fond interrompu par la pastille n'est pas relancé : la couleur du texte de la barre peut rester celle du thème jusqu'à une minute.
+- Maj, Ctrl ou Win avec une touche de volume : panneau de Windows, pas de pastille.
+- La minuterie du fondu tourne aussi pendant les 1,5 s de maintien.
 
 ## Décisions prises sans toi (plan 16)
 - `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
