@@ -2,8 +2,10 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <atomic>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "minitest.h"
@@ -11,6 +13,7 @@
 #include "../src/theme/cursor_art.h"
 #include "../src/theme/cursor_file.h"
 #include "../src/theme/theme_apply.h"
+#include "../src/theme/theme_system.h"
 #include "../src/theme/vector_art.h"
 #include "../src/theme/wallpaper_art.h"
 
@@ -177,6 +180,8 @@ struct FakeTheme {
     std::map<std::wstring, std::size_t> files;
     int reloads = 0;
     bool failWrite = false;
+    bool failSetWallpaper = false;
+    std::set<std::wstring> missing;   // fichiers supprimés depuis
     md::ThemeApi api() {
         md::ThemeApi a;
         a.readCursor = [this](const std::wstring& n) -> std::optional<std::wstring> {
@@ -187,7 +192,12 @@ struct FakeTheme {
         a.reloadCursors = [this] { ++reloads; return true; };
         a.monitors = [this] { std::vector<std::wstring> m; for (auto& [k, v] : walls) m.push_back(k); return m; };
         a.getWallpaper = [this](const std::wstring& id) { return walls[id]; };
-        a.setWallpaper = [this](const std::wstring& id, const std::wstring& p) { walls[id] = p; return true; };
+        a.setWallpaper = [this](const std::wstring& id, const std::wstring& p) {
+            if (failSetWallpaper) return false;
+            walls[id] = p;
+            return true;
+        };
+        a.fileExists = [this](const std::wstring& p) { return !missing.count(p); };
         a.writeFile = [this](const std::wstring& p, const std::vector<std::uint8_t>& b) { files[p] = b.size(); return !b.empty(); };
         a.darkMode = [] { return false; };
         a.monitorSize = [](const std::wstring&) { return SIZE{64, 36}; };
@@ -211,7 +221,7 @@ TEST_CASE(theme_apply_twice_then_restore) {
     REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);   // la sauvegarde d'origine reste
     CHECK(backup->cursors[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
     CHECK(backup->wallpapers[L"mon2"] == L"C:\\Pictures\\b.jpg");
-    REQUIRE(md::restoreTheme(api, *backup).ok);
+    REQUIRE(md::restoreTheme(api, *backup, L"D:\\theme").ok);
     CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
     CHECK(t.reg[L"Wait"].empty());                             // absente à l'origine : curseur de Windows
     CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\a.jpg");
@@ -224,7 +234,7 @@ TEST_CASE(theme_restore_skips_missing_monitor) {
     std::optional<md::ThemeBackup> backup;
     REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
     t.walls.erase(L"mon2");                                     // écran débranché
-    auto r = md::restoreTheme(api, *backup);
+    auto r = md::restoreTheme(api, *backup, L"D:\\theme");
     CHECK(r.ok);
     CHECK(t.walls.size() == 1);
 }
@@ -240,7 +250,7 @@ TEST_CASE(theme_apply_failure_reported) {
     CHECK(!r.message.empty());
     REQUIRE(backup.has_value());                                 // sauvegarde déjà faite : on peut rétablir
     t.failWrite = false;
-    CHECK(md::restoreTheme(api, *backup).ok);
+    CHECK(md::restoreTheme(api, *backup, L"D:\\theme").ok);
     CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
 }
 
@@ -273,4 +283,125 @@ TEST_CASE(theme_apply_stops_when_backup_not_saved) {   // la sauvegarde est écr
     REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
     REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
     CHECK(saved == 2);                                       // une seule fois, à la première application
+}
+
+TEST_CASE(theme_reapply_refreshes_backup_with_user_changes) {   // relecture finale, important 1
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    int saves = 0;
+    api.saveBackup = [&](const md::ThemeBackup&) { ++saves; return true; };
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.reg[L"Arrow"] = L"C:\\Mine\\arrow.cur";          // l'utilisateur change lui-même ses réglages
+    t.walls[L"mon1"] = L"C:\\Pictures\\new.jpg";
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    CHECK(saves == 2);
+    CHECK(backup->cursors[L"Arrow"] == L"C:\\Mine\\arrow.cur");
+    CHECK(backup->wallpapers[L"mon1"] == L"C:\\Pictures\\new.jpg");
+    CHECK(backup->wallpapers[L"mon2"] == L"C:\\Pictures\\b.jpg");   // c'était encore notre fond : inchangé
+    CHECK(backup->cursors[L"Wait"].empty());
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    CHECK(saves == 2);                                   // rien de nouveau : pas de réécriture
+}
+
+TEST_CASE(theme_restore_keeps_user_changes) {   // relecture finale, important 1
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.reg[L"Arrow"] = L"C:\\Mine\\arrow.cur";
+    t.walls[L"mon1"] = L"C:\\Pictures\\new.jpg";
+    auto r = md::restoreTheme(api, *backup, L"D:\\theme");
+    CHECK(r.ok);
+    CHECK(t.reg[L"Arrow"] == L"C:\\Mine\\arrow.cur");     // choix récent gardé
+    CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\new.jpg");
+    CHECK(t.reg[L"Wait"].empty());                         // le reste est rendu
+    CHECK(t.walls[L"mon2"] == L"C:\\Pictures\\b.jpg");
+}
+
+TEST_CASE(theme_never_backs_up_own_files) {   // relecture finale, important 3 : sauvegarde perdue ou concurrente
+    ComScope com;
+    FakeTheme t;
+    t.reg[L"Arrow"] = L"D:\\Theme\\arrow.cur";             // déjà le nôtre (casse différente)
+    t.walls[L"mon1"] = L"D:\\theme\\wallpaper-1-light.png";
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    CHECK(backup->cursors[L"Arrow"].empty());
+    CHECK(backup->wallpapers[L"mon1"].empty());
+    CHECK(backup->wallpapers[L"mon2"] == L"C:\\Pictures\\b.jpg");
+}
+
+TEST_CASE(theme_restore_missing_original_wallpaper) {   // relecture finale, important 2
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.missing.insert(L"C:\\Pictures\\a.jpg");              // fichier d'origine supprimé depuis
+    auto r = md::restoreTheme(api, *backup, L"D:\\theme");
+    CHECK(r.ok);
+    CHECK(r.message.find(L"mon1") != std::wstring::npos);
+    CHECK(t.walls[L"mon1"].starts_with(L"D:\\theme\\"));   // notre fond reste sur cet écran
+    CHECK(t.walls[L"mon2"] == L"C:\\Pictures\\b.jpg");
+    CHECK(!r.remaining.has_value());                       // rien à réessayer : la sauvegarde peut partir
+}
+
+TEST_CASE(theme_restore_wallpaper_refused_is_kept_for_retry) {   // relecture finale, important 2
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.failSetWallpaper = true;                             // fichier présent mais refusé : vrai échec
+    auto r = md::restoreTheme(api, *backup, L"D:\\theme");
+    CHECK(!r.ok);
+    REQUIRE(r.remaining.has_value());
+    CHECK(r.remaining->wallpapers.size() == 2);
+    CHECK(r.remaining->cursors.empty());                   // les curseurs, eux, sont rendus
+}
+
+TEST_CASE(theme_restore_unplugged_monitor_kept_for_later) {   // relecture finale, important 4
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.walls.erase(L"mon2");                                // écran débranché
+    auto r = md::restoreTheme(api, *backup, L"D:\\theme");
+    CHECK(r.ok);
+    CHECK(r.message.find(L"mon2") != std::wstring::npos);
+    REQUIRE(r.remaining.has_value());
+    CHECK(r.remaining->wallpapers.size() == 1 && r.remaining->wallpapers.count(L"mon2") == 1);
+    CHECK(r.remaining->cursors.empty());
+}
+
+TEST_CASE(theme_job_runs_off_thread_and_posts_result) {   // relecture finale : le Dock ne se fige plus
+    HWND w = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr);
+    REQUIRE(w != nullptr);
+    constexpr UINT kDone = WM_APP + 42;
+    const DWORD ui = GetCurrentThreadId();
+    std::atomic<DWORD> worker{0};
+    md::ThemeJob job;
+    REQUIRE(job.start([&] {
+        worker = GetCurrentThreadId();
+        Sleep(50);
+        return md::ThemeResult{true, L"fait"};
+    }, w, kDone));
+    CHECK(job.busy());
+    CHECK(!job.start([] { return md::ThemeResult{}; }, w, kDone));   // une seule à la fois
+    MSG msg{};
+    bool got = false;
+    for (const ULONGLONG until = GetTickCount64() + 5000; !got && GetTickCount64() < until;) {
+        if (PeekMessageW(&msg, w, kDone, kDone, PM_REMOVE)) got = true;
+        else Sleep(5);
+    }
+    REQUIRE(got);
+    const md::ThemeResult r = md::ThemeJob::take(msg.lParam);
+    CHECK(r.ok && r.message == L"fait");
+    CHECK(worker != 0 && worker != ui);
+    CHECK(!job.busy());
+    DestroyWindow(w);
 }

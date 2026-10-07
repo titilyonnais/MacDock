@@ -37,6 +37,14 @@ std::wstring joinPath(const std::wstring& dir, const std::wstring& name) {
     return dir + name;
 }
 
+// Fichier de notre dossier de thème (casse ignorée, comme Windows).
+bool insideDir(const std::wstring& path, const std::wstring& dir) {
+    if (dir.empty() || path.empty()) return false;
+    std::wstring base = toLower(dir);
+    while (!base.empty() && (base.back() == L'\\' || base.back() == L'/')) base.pop_back();
+    return toLower(path).starts_with(base + L"\\");
+}
+
 void note(ThemeResult& r, const std::wstring& line) {
     if (!r.message.empty()) r.message += L"\n";
     r.message += line;
@@ -99,11 +107,25 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
         }
         wallPaths[screens[i]] = path;
     }
-    // 2. La sauvegarde, une seule fois : une deuxième application garde l'état d'origine.
-    if (!backup) {
-        ThemeBackup b;
-        for (CursorKind k : kThemeCursors) b.cursors[cursorRegistryName(k)] = api.readCursor(cursorRegistryName(k)).value_or(L"");
-        for (const std::wstring& id : screens) b.wallpapers[id] = api.getWallpaper(id);
+    // 2. La sauvegarde, avant tout changement. Une valeur qui est encore la nôtre garde son origine (deuxième
+    //    application) ; une valeur changée depuis par l'utilisateur devient la nouvelle origine. Nos propres
+    //    fichiers ne sont jamais pris pour une origine (sauvegarde perdue, deux applications en même temps).
+    ThemeBackup b = backup.value_or(ThemeBackup{});
+    bool changed = !backup;
+    const auto remember = [&](std::map<std::wstring, std::wstring>& m, const std::wstring& key, const std::wstring& now) {
+        const bool ours = insideDir(now, dir);
+        auto it = m.find(key);
+        if (it == m.end()) {
+            m[key] = ours ? L"" : now;
+            changed = true;
+        } else if (!ours && it->second != now) {
+            it->second = now;
+            changed = true;
+        }
+    };
+    for (CursorKind k : kThemeCursors) remember(b.cursors, cursorRegistryName(k), api.readCursor(cursorRegistryName(k)).value_or(L""));
+    for (const std::wstring& id : screens) remember(b.wallpapers, id, api.getWallpaper(id));
+    if (changed) {
         if (api.saveBackup && !api.saveBackup(b)) {
             r.message = L"Impossible d'enregistrer la sauvegarde du thème Windows : rien n'a été changé";
             return r;
@@ -129,30 +151,46 @@ ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<The
     return r;
 }
 
-ThemeResult restoreTheme(ThemeApi& api, const ThemeBackup& backup) {
+ThemeResult restoreTheme(ThemeApi& api, const ThemeBackup& backup, const std::wstring& dir) {
     ThemeResult r;
     r.ok = true;
-    for (const auto& [name, value] : backup.cursors)
+    ThemeBackup left;   // à rendre plus tard
+    // Seules les valeurs qui sont encore les nôtres sont rendues : un choix fait depuis par l'utilisateur reste.
+    for (const auto& [name, value] : backup.cursors) {
+        if (!insideDir(api.readCursor(name).value_or(L""), dir)) continue;
         if (!api.writeCursor(name, value)) {
             r.ok = false;
+            left.cursors[name] = value;
             note(r, L"Curseur non rétabli : " + name);
         }
+    }
     if (!api.reloadCursors()) {
         r.ok = false;
         note(r, L"Windows n'a pas rechargé les curseurs");
     }
     const std::vector<std::wstring> screens = api.monitors();
     for (const auto& [id, path] : backup.wallpapers) {
-        if (std::find(screens.begin(), screens.end(), id) == screens.end()) continue;   // écran débranché
+        if (std::find(screens.begin(), screens.end(), id) == screens.end()) {   // écran débranché : plus tard
+            left.wallpapers[id] = path;
+            note(r, L"Écran absent, son fond d'écran sera rendu au prochain rétablissement : " + id);
+            continue;
+        }
+        if (!insideDir(api.getWallpaper(id), dir)) continue;
         if (path.empty()) {   // diaporama, couleur unie… : pas de fichier à rendre
             note(r, L"Aucun fond d'écran d'origine connu pour " + id + L" : le fond actuel est gardé");
             continue;
         }
+        if (api.fileExists && !api.fileExists(path)) {
+            note(r, L"Le fond d'écran d'origine n'existe plus (" + path + L") : le fond actuel est gardé sur " + id);
+            continue;
+        }
         if (!api.setWallpaper(id, path)) {
             r.ok = false;
+            left.wallpapers[id] = path;
             note(r, L"Fond d'écran non rétabli : " + id);
         }
     }
+    if (!left.cursors.empty() || !left.wallpapers.empty()) r.remaining = std::move(left);
     return r;
 }
 

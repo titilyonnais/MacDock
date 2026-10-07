@@ -44,6 +44,7 @@ constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT WM_APP_STACKS = WM_APP + 10;
+constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob_
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
@@ -886,11 +887,10 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             applySettings();
             break;
         case kCmdThemeApply:
-        case kCmdThemeRestore: {   // à la demande seulement ; le résultat est aussi dans le journal
-            HCURSOR old = SetCursor(LoadCursorW(nullptr, IDC_WAIT));
-            const ThemeResult r = cmd == kCmdThemeApply ? applyMacTheme() : restoreWindowsTheme();
-            SetCursor(old);
-            if (!r.ok) MessageBoxW(hwnd_, r.message.c_str(), L"Thème macOS", MB_OK | MB_ICONWARNING);
+        case kCmdThemeRestore: {   // à la demande seulement ; plusieurs secondes en Debug : hors du fil de l'interface
+            const bool apply = cmd == kCmdThemeApply;
+            if (!themeJob_.start([apply] { return apply ? applyMacTheme() : restoreWindowsTheme(); }, hwnd_, WM_APP_THEME))
+                log::info(L"Thème : une application ou un rétablissement est déjà en cours");
             break;
         }
         case kCmdCloseWindow:
@@ -1221,6 +1221,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 SHChangeNotification_Unlock(lock);
             if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", static_cast<unsigned long>(event));
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
+            return 0;
+        }
+        case WM_APP_THEME: {   // le résultat est aussi dans le journal
+            const ThemeResult r = ThemeJob::take(lp);
+            if (!r.ok) MessageBoxW(hwnd_, r.message.c_str(), L"Thème macOS", MB_OK | MB_ICONWARNING);
             return 0;
         }
         case WM_APP_STACKS: {

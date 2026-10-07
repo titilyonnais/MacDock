@@ -3,6 +3,8 @@
 #include <shobjidl.h>
 #include <wrl/client.h>
 
+#include <memory>
+
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
@@ -57,6 +59,22 @@ std::optional<ThemeBackup> loadBackup(bool& unreadable) {
     unreadable = !b;
     return b;
 }
+
+// Verrou propre au thème (distinct du verrou d'instance du Dock), tenu pendant une application ou un rétablissement.
+struct ThemeLock {
+    HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\MacDockTheme");
+    bool held = false;
+    ThemeLock() {
+        const DWORD w = mutex ? WaitForSingleObject(mutex, 60000) : WAIT_FAILED;
+        held = w == WAIT_OBJECT_0 || w == WAIT_ABANDONED;
+    }
+    ~ThemeLock() {
+        if (held) ReleaseMutex(mutex);
+        if (mutex) CloseHandle(mutex);
+    }
+    ThemeLock(const ThemeLock&) = delete;
+    ThemeLock& operator=(const ThemeLock&) = delete;
+};
 
 void logResult(const wchar_t* what, const ThemeResult& r) {
     if (r.ok) log::info(L"%s : fait%s%s", what, r.message.empty() ? L"" : L" — ", r.message.c_str());
@@ -134,6 +152,7 @@ ThemeApi realThemeApi() {
         return w && SUCCEEDED(w->SetWallpaper(id.c_str(), path.c_str()));
     };
     a.writeFile = writeFileAtomic;
+    a.fileExists = fileExists;
     a.darkMode = [] {
         DWORD value = 1, size = sizeof(value);
         RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
@@ -151,38 +170,74 @@ ThemeApi realThemeApi() {
 
 std::wstring themeBackupPath() { return appDataDir() + L"\\theme-backup.json"; }
 
+std::wstring themeDir() { return appDataDir() + L"\\theme"; }
+
 bool themeBackupExists() { return fileExists(themeBackupPath()); }
 
 ThemeResult applyMacTheme() {
+    ThemeLock lock;   // le Dock et --theme, ou deux --theme : l'un après l'autre
     bool unreadable = false;
     std::optional<ThemeBackup> backup = loadBackup(unreadable);
     ThemeResult r;
-    if (unreadable) {
+    if (!lock.held) {
+        r.message = L"Une autre application ou un autre rétablissement du thème est en cours";
+    } else if (unreadable) {
         r.message = L"La sauvegarde du thème Windows est illisible (" + themeBackupPath() + L") : rien n'a été changé";
     } else {
-        const std::wstring dir = appDataDir() + L"\\theme";
-        CreateDirectoryW(dir.c_str(), nullptr);
+        CreateDirectoryW(themeDir().c_str(), nullptr);
         ThemeApi api = realThemeApi();
-        r = applyTheme(api, dir, backup);
+        r = applyTheme(api, themeDir(), backup);
     }
     logResult(L"Thème macOS appliqué", r);
     return r;
 }
 
 ThemeResult restoreWindowsTheme() {
+    ThemeLock lock;
     bool unreadable = false;
     std::optional<ThemeBackup> backup = loadBackup(unreadable);
     ThemeResult r;
-    if (!backup) {
+    if (!lock.held) {
+        r.message = L"Une autre application ou un autre rétablissement du thème est en cours";
+    } else if (!backup) {
         r.message = unreadable ? L"La sauvegarde du thème Windows est illisible (" + themeBackupPath() + L")"
                                : std::wstring(L"Aucune sauvegarde du thème Windows : rien à rétablir");
     } else {
         ThemeApi api = realThemeApi();
-        r = restoreTheme(api, *backup);
-        if (r.ok) DeleteFileW(themeBackupPath().c_str());   // en cas d'échec partiel, on garde de quoi réessayer
+        r = restoreTheme(api, *backup, themeDir());
+        // Ce qui n'a pas pu être rendu (écran débranché, refus de Windows) reste sauvegardé pour la prochaine fois.
+        if (r.remaining) {
+            if (!saveJsonFileAtomic(themeBackupPath(), themeBackupToJson(*r.remaining)))
+                log::warn(L"Thème : sauvegarde réduite impossible à écrire, l'ancienne est gardée");
+        } else if (r.ok) {
+            DeleteFileW(themeBackupPath().c_str());
+        }
     }
     logResult(L"Thème Windows rétabli", r);
     return r;
+}
+
+ThemeJob::~ThemeJob() {
+    if (thread_.joinable()) thread_.join();
+}
+
+bool ThemeJob::start(std::function<ThemeResult()> work, HWND notify, UINT msg) {
+    if (busy_) return false;
+    if (thread_.joinable()) thread_.join();   // la précédente a fini (busy_ faux)
+    busy_ = true;
+    thread_ = std::thread([this, work = std::move(work), notify, msg] {
+        const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        auto* result = new ThemeResult(work());
+        if (SUCCEEDED(com)) CoUninitialize();
+        busy_ = false;   // avant l'envoi : à la réception, une nouvelle tâche peut partir
+        if (!PostMessageW(notify, msg, 0, reinterpret_cast<LPARAM>(result))) delete result;
+    });
+    return true;
+}
+
+ThemeResult ThemeJob::take(LPARAM lp) {
+    std::unique_ptr<ThemeResult> r(reinterpret_cast<ThemeResult*>(lp));
+    return r ? std::move(*r) : ThemeResult{};
 }
 
 bool writeThemeSnapshot(const std::wstring& dir) {
