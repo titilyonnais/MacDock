@@ -80,6 +80,8 @@ private:
     void endSwitch(bool activate);                             // fin de session ; active l'app choisie
     void checkHotCorner(POINT screen);                         // coins actifs : pointeur poussé dans un coin
     void runHotCorner(HotCornerAction action);
+    bool fullscreenAt(POINT screen) const;   // plein écran sur l'écran du point (jeu, vidéo, présentation)
+    bool fullscreenOn(HWND fg, HMONITOR mon, const RECT& monitorRc) const;
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
     void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
     std::size_t listCapacity(const StackWindow::Request& r) const;
@@ -154,6 +156,7 @@ private:
     SwitcherWindow switcher_;
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     HotCornerTracker corners_;
+    HotCornerAction pendingCorner_ = HotCornerAction::Off;   // action différée (veille de l'écran, économiseur)
     std::vector<RECT> cornerScreens_;    // écrans (relus à chaque changement d'affichage)
     bool running_ = true;
     bool wakeAnimation_ = true;

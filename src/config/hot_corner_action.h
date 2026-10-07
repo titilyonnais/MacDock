@@ -11,5 +11,7 @@ enum class HotCornerAction { Off, MissionControl, Desktop, Apps, NotificationCen
 // « missionControl », « desktop »… (casse ignorée) ; nullopt pour une valeur inconnue.
 std::optional<HotCornerAction> parseHotCornerAction(const std::wstring& text);
 std::wstring hotCornerName(HotCornerAction action);
+// Délai avant l'action : la veille de l'écran et l'économiseur attendent que la main se soit arrêtée.
+unsigned hotCornerDelayMs(HotCornerAction action);
 
 } // namespace md

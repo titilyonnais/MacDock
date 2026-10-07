@@ -34,4 +34,8 @@ std::wstring hotCornerName(HotCornerAction action) {
     return L"off";
 }
 
+unsigned hotCornerDelayMs(HotCornerAction action) {
+    return action == HotCornerAction::DisplaySleep || action == HotCornerAction::ScreenSaver ? 1000 : 0;
+}
+
 } // namespace md

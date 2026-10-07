@@ -56,3 +56,11 @@ TEST_CASE(hot_corners_parse) {
     for (auto a : {md::HotCornerAction::Off, md::HotCornerAction::Apps, md::HotCornerAction::ScreenSaver})
         CHECK(md::parseHotCornerAction(md::hotCornerName(a)) == a);
 }
+
+TEST_CASE(hot_corners_delay) {
+    // Veille de l'écran et économiseur : la main bouge encore en arrivant dans le coin, elle les réveillerait.
+    CHECK(md::hotCornerDelayMs(md::HotCornerAction::DisplaySleep) >= 500);
+    CHECK(md::hotCornerDelayMs(md::HotCornerAction::ScreenSaver) >= 500);
+    CHECK(md::hotCornerDelayMs(md::HotCornerAction::MissionControl) == 0);
+    CHECK(md::hotCornerDelayMs(md::HotCornerAction::Desktop) == 0);
+}
