@@ -142,7 +142,7 @@ std::vector<SpotItem> searchFiles(const std::wstring& query, const std::wstring&
             const std::size_t slash = path.find_last_of(L'\\');
             const std::wstring name = row->nameStatus == DBSTATUS_S_OK ? std::wstring(row->name) : path.substr(slash + 1);
             const std::wstring parent = row->folderStatus == DBSTATUS_S_OK ? std::wstring(row->folder) : path.substr(0, slash);
-            out.push_back({SpotKind::File, name, parent, path});
+            out.push_back({SpotKind::File, name, shortFolder(parent), path});
         }
         rows->ReleaseRows(got, batch, nullptr, nullptr, nullptr);
     }

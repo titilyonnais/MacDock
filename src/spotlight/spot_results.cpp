@@ -74,6 +74,35 @@ const SpotItem* spotAt(const std::vector<SpotSection>& sections, std::size_t ind
     return nullptr;
 }
 
+std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t maxRows) {
+    std::vector<SpotSection> out;
+    for (auto& s : sections) {
+        if (!maxRows) break;
+        if (s.items.size() > maxRows) s.items.resize(maxRows);
+        maxRows -= s.items.size();
+        if (!s.items.empty()) out.push_back(std::move(s));
+    }
+    return out;
+}
+
+bool wantsFileSearch(const std::wstring& query) {
+    const std::wstring q = trimmed(query);
+    return !q.empty() && !evaluateExpression(q);
+}
+
+std::wstring shortFolder(const std::wstring& folder) {
+    std::vector<std::wstring> parts;
+    std::size_t start = 0;
+    while (start <= folder.size()) {
+        const std::size_t end = std::min(folder.find(L'\\', start), folder.size());
+        if (end > start) parts.push_back(folder.substr(start, end - start));
+        start = end + 1;
+    }
+    if (parts.empty()) return {};
+    if (parts.size() == 1) return parts[0];
+    return parts[parts.size() - 2] + L" › " + parts.back();
+}
+
 std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder) {
     return L"search-ms:query=" + percentEncode(query) + L"&crumb=location:" + percentEncode(folder);
 }

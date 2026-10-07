@@ -30,6 +30,13 @@ std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::
                                           const std::vector<SpotItem>& files);
 std::size_t spotCount(const std::vector<SpotSection>& sections);
 const SpotItem* spotAt(const std::vector<SpotSection>& sections, std::size_t index);   // nullptr hors limites
+// Au plus maxRows lignes, dans l'ordre ; les sections vidées disparaissent (panneau sur un petit écran).
+std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t maxRows);
+
+// Recherche de documents utile : requête non vide qui n'est pas un calcul.
+bool wantsFileSearch(const std::wstring& query);
+// Emplacement court d'un document : les deux derniers dossiers, « Documents › Factures ».
+std::wstring shortFolder(const std::wstring& folder);
 
 // Dossier de recherche du Shell (index de Windows) sur folder : search-ms:query=…&crumb=location:…
 std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder);

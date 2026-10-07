@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/spotlight/spotlight_window.h"
 #include "../src/spotlight/file_search.h"
 #include "../src/spotlight/spot_results.h"
 #include "../src/spotlight/spot_calc.h"
@@ -101,4 +102,42 @@ TEST_CASE(spot_file_search_real_readonly) {   // index de Windows, lecture seule
     CHECK(md::searchFiles(L"", profile, 5).empty());
     CHECK(GetTickCount64() - t0 < 20000);
     CoUninitialize();
+}
+
+TEST_CASE(spot_snapshot_draws_offscreen) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::vector<md::AppEntry> apps{{L"Calculatrice", L"calc"}, {L"Calendrier", L"cal"}};
+    auto empty = md::spotlightSnapshot(L"", apps, {}, false, 1280, 800);
+    REQUIRE(empty.w == 1280 && empty.h == 800);
+    auto withResults = md::spotlightSnapshot(L"cal", apps, {}, false, 1280, 800);
+    CHECK(withResults.px != empty.px);
+    const std::size_t below = (std::size_t(800 * 0.22 + 52 + 60) * 1280 + 640) * 4;   // sous le champ : liste
+    CHECK(withResults.px[below] != empty.px[below]);
+    CoUninitialize();
+}
+
+TEST_CASE(spot_trim_keeps_order_and_limit) {   // petit écran : le panneau ne déborde pas
+    std::vector<md::SpotSection> s{{L"A", {{}, {}}}, {L"B", {{}, {}, {}}}, {L"C", {{}, {}}}};
+    auto t = md::spotTrim(s, 4);
+    REQUIRE(t.size() == 2);
+    CHECK(t[0].title == L"A" && t[0].items.size() == 2);
+    CHECK(t[1].title == L"B" && t[1].items.size() == 2);
+    CHECK(md::spotCount(md::spotTrim(s, 99)) == 7);
+    CHECK(md::spotTrim(s, 0).empty());
+}
+
+TEST_CASE(spot_wants_file_search) {   // un calcul ne lance pas l'index (il trouverait « 12 », « 3 »… dans les contenus)
+    CHECK(md::wantsFileSearch(L"rapport"));
+    CHECK(md::wantsFileSearch(L" 2024 "));
+    CHECK(!md::wantsFileSearch(L"12*(3+4)"));
+    CHECK(!md::wantsFileSearch(L"   "));
+    CHECK(!md::wantsFileSearch(L""));
+}
+
+TEST_CASE(spot_short_folder) {   // emplacement court sous le titre d'un document
+    CHECK(md::shortFolder(L"C:\\Utilisateurs\\alice\\Documents\\Factures") == L"Documents \u203A Factures");
+    CHECK(md::shortFolder(L"C:\\Utilisateurs\\alice\\Documents\\Factures\\") == L"Documents \u203A Factures");
+    CHECK(md::shortFolder(L"C:\\") == L"C:");
+    CHECK(md::shortFolder(L"Bureau") == L"Bureau");
+    CHECK(md::shortFolder(L"").empty());
 }
