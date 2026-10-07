@@ -2039,8 +2039,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         last = now;
         bool animating = controller_.tick(dt);
         if (stepVisibility(now)) animating = true;
-        if (stepPoof(now)) animating = true;
-        if (stepGenie(now)) animating = true;
+        // Fumée et génie ont leurs propres fenêtres : ils cadencent la boucle sans redessiner le Dock (verre compris)
+        // à chaque image ; leur début et leur fin demandent eux-mêmes une image (requestFrame).
+        bool overlays = stepPoof(now);
+        if (stepGenie(now)) overlays = true;
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {
@@ -2062,7 +2064,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
             wakeAnimation_ = false;
             renderNow();
         }
-        if (animating) {
+        if (animating || overlays) {
             DCompositionWaitForCompositorClock(0, nullptr, 50);
         } else {
             WaitMessage();
