@@ -17,6 +17,7 @@
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "thumbnails.h"
 #include "visibility.h"
 #include "sprite_window.h"
 
@@ -131,6 +132,7 @@ private:
     };
     std::optional<PendingDrop> pendingDrop_;   // exécuté après le retour de Drop (WM_APP_DROP)
     Visibility visibility_;
+    Thumbnails thumbnails_;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
 

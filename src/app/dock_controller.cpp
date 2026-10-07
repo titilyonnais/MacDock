@@ -561,6 +561,7 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
         icon.image = imageFor(item, icons, imgPx);
         icon.indicator = item.kind == ItemKind::App && item.running;
+        if (item.kind == ItemKind::MinimizedWindow) icon.window = item.window;
         if ((dropItem_ && *dropItem_ == i) || (pressIndex_ && *pressIndex_ == i && !drag_)) icon.dim = 0.3f;
         if (!collapsingKey_.empty() && item.key == collapsingKey_) {
             // Élément tiré : sa case se vide (il suit le curseur) puis réapparaît s'il revient à sa place.

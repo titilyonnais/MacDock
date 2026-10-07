@@ -30,6 +30,8 @@ struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
     float sepLength = 0;
     float opacity = 1;
     float dim = 0;             // assombrissement (icône pressée, cible d'un dépôt) : part de noir
+    std::uint64_t window = 0;  // fenêtre réduite : source de la miniature DWM
+    bool thumbnail = false;    // la miniature DWM couvre la case : seule la petite icône d'app est dessinée
 };
 
 struct RenderTooltip {

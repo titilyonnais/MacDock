@@ -20,6 +20,7 @@
 #include "../tracker/app_identity.h"
 #include "dock_menus.h"
 #include "drop_target.h"
+#include "thumbnails.h"
 #include "visibility.h"
 
 namespace md {
@@ -706,6 +707,7 @@ void DockApp::renderNow() {
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
     // Pendant un menu, la capture du Dock est suspendue : il garde sa dernière image d'arrière-plan.
     frame.glass = glassLive_ && (capture_.status() == BackdropCapture::Status::Running || capturePaused_);
+    if (!snapshot_) thumbnails_.sync(hwnd_, frame, !visibility_.hidden());
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -1084,6 +1086,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     tracker_.setTrace(trace_);
+    thumbnails_.setTrace(trace_);
     tracker_.start(hwnd_, ev);
 
     if (snapshot_) {
@@ -1176,6 +1179,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacDock s'arrête");
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
+    thumbnails_.clear();
     if (dropTarget_) {
         RevokeDragDrop(hwnd_);
         dropTarget_->Release();
