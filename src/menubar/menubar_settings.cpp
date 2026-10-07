@@ -32,6 +32,11 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
     s.showSearch = readBool(v, "showSearch", s.showSearch);
     s.showAppIcons = readBool(v, "showAppIcons", s.showAppIcons);
     if (auto* f = v.find("font")) s.font = fromUtf8(f->asString(""));
+    if (auto* t = v.find("trafficLights")) {
+        const std::string mode = t->asString("");
+        if (mode == "all") s.trafficLights = LightsMode::All;
+        else if (mode == "off") s.trafficLights = LightsMode::Off;
+    }
     if (auto* c = v.find("clock"); c && c->isObject()) {
         s.clock.weekday = readBool(*c, "weekday", s.clock.weekday);
         s.clock.date = readBool(*c, "date", s.clock.date);
@@ -70,6 +75,7 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     v.set("showBattery", s.showBattery);
     v.set("showSearch", s.showSearch);
     v.set("showAppIcons", s.showAppIcons);
+    v.set("trafficLights", s.trafficLights == LightsMode::All ? "all" : s.trafficLights == LightsMode::Off ? "off" : "standard");
     const MenuBarMetrics& t = s.metrics;
     json::Value m;
     m.set("height", t.height);
