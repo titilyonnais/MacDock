@@ -53,6 +53,10 @@ public:
     void setViewport(UINT width, UINT height, float scale);
 
     void setCursor(std::optional<POINT> clientPx);   // nullopt = souris hors du Dock
+    bool pointerInside() const { return cursorInside_; }
+    // Réévalue le dernier curseur connu après un changement de forme du Dock (révélation, icône ajoutée, fin
+    // d'agrandissement) ; nullopt si aucun curseur n'est connu (menu ouvert, rien reçu encore).
+    std::optional<bool> recheckPointer();
     bool tick(double dt);                            // true tant qu'une animation est en cours
     RenderFrame buildFrame(bool dark, IconProvider& icons);
     bool consumeDirty();                             // un nouveau rendu est nécessaire
@@ -151,6 +155,7 @@ private:
     float scale_ = 1;
     Spring amount_;
     std::optional<double> cursor_;      // points sur l'axe principal
+    std::optional<POINT> pointer_;      // dernier curseur reçu, coordonnées de la fenêtre
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     double tooltipOpacity_ = 0;

@@ -202,6 +202,7 @@ std::optional<std::size_t> DockController::hoveredIndex() const {
 
 void DockController::setCursor(std::optional<POINT> window) {
     refreshItems();
+    pointer_ = window;
     std::optional<POINT> clientPx;
     if (window) clientPx = edge_.toLocal(*window);
     bool inside = clientPx && insideLocal(*clientPx);
@@ -216,6 +217,12 @@ void DockController::setCursor(std::optional<POINT> window) {
         cursorInside_ = false;   // cursor_ est conservé pendant que la magnification retombe
         amount_.setTarget(0.0);
     }
+}
+
+std::optional<bool> DockController::recheckPointer() {
+    if (!pointer_) return std::nullopt;
+    setCursor(*pointer_);
+    return cursorInside_;
 }
 
 void DockController::startLaunchBounce(const std::wstring& appId) {

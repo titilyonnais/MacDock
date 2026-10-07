@@ -458,6 +458,7 @@ void DockApp::onBackdrop() {
 void DockApp::setTransparent(bool transparent) {
     if (transparent == transparent_) return;
     transparent_ = transparent;
+    if (trace_) log::info(L"[trace] Dock %s", transparent ? L"traversé par les clics" : L"cliquable");
     LONG_PTR ex = GetWindowLongPtrW(hwnd_, GWL_EXSTYLE);
     ex = transparent ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
     SetWindowLongPtrW(hwnd_, GWL_EXSTYLE, ex);
@@ -465,7 +466,8 @@ void DockApp::setTransparent(bool transparent) {
 
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
-    bool inside = controller_.isInsideInteractiveZone(client);
+    controller_.setCursor(client);   // ne marque le Dock à redessiner que si son état change
+    const bool inside = controller_.pointerInside();
     const LONG edgePx = LONG(metrics_.autohideEdgePx);
     bool atEdge = false;
     switch (settings_.position) {
@@ -485,9 +487,19 @@ void DockApp::onMouse(POINT screen) {
         cursorInDock_ = inside;
         if (settings_.autohide) requestFrame();   // réveille la boucle : le masquage réévalue ses entrées
     }
-    // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
-    controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
+}
+
+// Le Dock change de forme sous un curseur immobile (révélation, icône ajoutée ou retirée, fin d'agrandissement) :
+// sans cette réévaluation, il resterait traversé par les clics jusqu'au prochain mouvement de souris.
+void DockApp::syncPointer() {
+    const std::optional<bool> inside = controller_.recheckPointer();
+    if (!inside) return;
+    if (*inside != cursorInDock_) {
+        cursorInDock_ = *inside;
+        if (settings_.autohide) requestFrame();
+    }
+    setTransparent(!*inside);
 }
 
 void DockApp::checkHotCorner(POINT screen) {
@@ -1537,9 +1549,15 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
         auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
         self_->mouseX_ = info->pt.x;
         self_->mouseY_ = info->pt.y;
-        // Un seul message en attente à la fois : les mouvements sont fusionnés.
-        if (!self_->mousePending_.exchange(true) && !PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
-            self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
+        // Un seul message en attente à la fois : les mouvements sont fusionnés. Message perdu (boucle modale qui vide
+        // la file sans distribuer) : au-delà de 250 ms on en renvoie un plutôt que de laisser le Dock sourd.
+        const DWORD now = GetTickCount();
+        if (self_->mousePending_ && now - self_->mousePostedAt_ > 250) self_->mousePending_ = false;
+        if (!self_->mousePending_.exchange(true)) {
+            self_->mousePostedAt_ = now;
+            if (!PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
+                self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
+        }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -2083,6 +2101,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         // à chaque image ; leur début et leur fin demandent eux-mêmes une image (requestFrame).
         bool overlays = stepPoof(now);
         if (stepGenie(now)) overlays = true;
+        syncPointer();
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {
