@@ -15,6 +15,7 @@
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
 #include "../icons/icon_provider.h"
+#include "../interact/hot_corners.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
@@ -77,6 +78,8 @@ private:
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
     void endSwitch(bool activate);                             // fin de session ; active l'app choisie
+    void checkHotCorner(POINT screen);                         // coins actifs : pointeur poussé dans un coin
+    void runHotCorner(HotCornerAction action);
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
     void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
     std::size_t listCapacity(const StackWindow::Request& r) const;
@@ -150,6 +153,8 @@ private:
     std::vector<std::wstring> switchApps_;   // rangée de la session (appId)
     SwitcherWindow switcher_;
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
+    HotCornerTracker corners_;
+    std::vector<RECT> cornerScreens_;    // écrans (relus à chaque changement d'affichage)
     bool running_ = true;
     bool wakeAnimation_ = true;
     std::atomic<bool> wakePosted_{false};

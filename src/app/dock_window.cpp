@@ -5,6 +5,7 @@
 #include <shellscalingapi.h>
 #include <shobjidl.h>
 #include <shlobj.h>
+#include <shldisp.h>
 
 #include <algorithm>
 #include <cmath>
@@ -49,6 +50,7 @@ constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT WM_APP_STACKS = WM_APP + 10;
 constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob_
+constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
@@ -270,6 +272,7 @@ void DockApp::checkScreenPush(POINT screen) {
 }
 
 void DockApp::onDisplayChanged() {
+    cornerScreens_.clear();   // relus au prochain mouvement
     icons_.clear();
     renderer_.releaseImages();
     reposition();
@@ -459,6 +462,7 @@ void DockApp::onMouse(POINT screen) {
             atEdge = screen.y >= monitor_.bottom - 1 - edgePx && screen.x >= monitor_.left && screen.x < monitor_.right;
     }
     checkScreenPush(screen);
+    checkHotCorner(screen);
     if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
         cursorAtEdge_ = atEdge;
         cursorInDock_ = inside;
@@ -467,6 +471,40 @@ void DockApp::onMouse(POINT screen) {
     // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
     controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
+}
+
+void DockApp::checkHotCorner(POINT screen) {
+    if (cornerScreens_.empty())
+        for (const MonitorInfo& m : enumMonitors()) cornerScreens_.push_back(m.rect);
+    const std::optional<Corner> at = cornerAt(screen, cornerScreens_);
+    const HotCornerAction action = at ? settings_.hotCorners[std::size_t(*at)] : HotCornerAction::Off;
+    // Glisser (bouton enfoncé), plein écran, Alt+Tab ou vue modale : rien. Mission Control ouvert : son coin le referme.
+    const bool button = ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
+    const bool modal = menuOpen_ && !(action == HotCornerAction::MissionControl && MissionView::isOpen());
+    const bool blocked = button || fullscreen_ || switch_.active() || modal;
+    if (corners_.update(at, screen, blocked) && action != HotCornerAction::Off)
+        PostMessageW(hwnd_, WM_APP_CORNER, WPARAM(action), 0);
+}
+
+void DockApp::runHotCorner(HotCornerAction action) {
+    log::info(L"Coin actif : %s", hotCornerName(action).c_str());
+    switch (action) {
+        case HotCornerAction::MissionControl: openMissionControl(); break;
+        case HotCornerAction::Apps: openApps(); break;
+        case HotCornerAction::Desktop: {   // comme Win+D : tout réduit, ou tout rétabli
+            Microsoft::WRL::ComPtr<IShellDispatch4> shell;
+            if (SUCCEEDED(CoCreateInstance(CLSID_Shell, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shell))))
+                shell->ToggleDesktop();
+            break;
+        }
+        case HotCornerAction::NotificationCenter:
+            ShellExecuteW(nullptr, L"open", L"ms-actioncenter:", nullptr, nullptr, SW_SHOWNORMAL);
+            break;
+        case HotCornerAction::LockScreen: LockWorkStation(); break;
+        case HotCornerAction::DisplaySleep: PostMessageW(hwnd_, WM_SYSCOMMAND, SC_MONITORPOWER, 2); break;
+        case HotCornerAction::ScreenSaver: PostMessageW(hwnd_, WM_SYSCOMMAND, SC_SCREENSAVE, 0); break;
+        case HotCornerAction::Off: break;
+    }
 }
 
 void DockApp::logItemPositions(const RenderFrame& frame) {
@@ -1578,6 +1616,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
             return 0;
         }
+        case WM_APP_CORNER:
+            runHotCorner(HotCornerAction(wp));
+            return 0;
         case WM_APP_THEME: {   // le résultat est aussi dans le journal
             const ThemeResult r = ThemeJob::take(lp);
             if (!r.ok) MessageBoxW(hwnd_, r.message.c_str(), L"Thème macOS", MB_OK | MB_ICONWARNING);
