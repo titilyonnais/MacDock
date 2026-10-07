@@ -178,3 +178,13 @@ TEST_CASE(settings_spotlight_hotkey_off_and_case) {
     CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"off\"}")).spotlightHotkey == L"off");
     CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"Ctrl+Space\"}")).spotlightHotkey == L"ctrl+space");
 }
+
+TEST_CASE(settings_mission_hotkey) {
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).missionControlHotkey == L"ctrl+alt+up");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"F3\"}")).missionControlHotkey == L"f3");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"off\"}")).missionControlHotkey == L"off");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"bizarre\"}")).missionControlHotkey == L"ctrl+alt+up");
+    md::Settings s;
+    s.missionControlHotkey = L"ctrl+up";
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).missionControlHotkey == L"ctrl+up");
+}

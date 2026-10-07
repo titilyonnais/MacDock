@@ -69,6 +69,8 @@ private:
     void openApps();                                           // écran Apps (repli : menu Démarrer)
     void openSpotlight();                                      // Spotlight ; ferme celui qui est ouvert
     void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
+    void openMissionControl();                                 // Mission Control ; ferme celui qui est ouvert
+    void registerMissionHotkey();                              // raccourci du réglage missionControlHotkey
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
     void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
     std::size_t listCapacity(const StackWindow::Request& r) const;
@@ -133,6 +135,8 @@ private:
     std::optional<std::size_t> pressed_;
     UINT taskbarCreated_ = 0;
     UINT spotlightMsg_ = 0;              // « MacDockSpotlight » : loupe de la barre de menus
+    UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
+    std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
     std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
     bool running_ = true;
     bool wakeAnimation_ = true;
