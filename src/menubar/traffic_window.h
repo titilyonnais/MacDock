@@ -39,6 +39,10 @@ private:
     double scale_ = 1;
     bool shown_ = false, tracking_ = false, painted_ = false;
     int pressed_ = -1;
+    bool dragging_ = false;          // déplacement de la cible depuis le fond (notre propre boucle)
+    POINT dragStart_{};
+    RECT dragFrom_{};
+    HWINEVENTHOOK moveHook_ = nullptr;
     SIZE paintedSize_{};
     static TrafficWindow* self_;
 };

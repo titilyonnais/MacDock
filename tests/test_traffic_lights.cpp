@@ -135,3 +135,32 @@ TEST_CASE(lights_hover_draws_symbols) {
     auto sheet = md::lightsSheet(w, h);
     CHECK(w > 0 && h > 0 && sheet.size() == std::size_t(w) * h * 4);
 }
+
+TEST_CASE(lights_menu_bar_not_covered) {   // relecture C1 : barre de menus classique sous la barre de titre
+    auto w = classic();
+    w.client.top = 151;                    // 31 px de titre + 20 px de menus
+    w.captionBottom = 131;
+    auto l = md::lightsLayoutFor(w, 96);
+    CHECK_EQ(l.window.bottom, 131L);
+    CHECK_EQ((l.circles[0].top + l.circles[0].bottom) / 2, 115L);
+    w.captionBottom = 0;                   // inconnu : la zone client
+    CHECK_EQ(md::lightsLayoutFor(w, 96).window.bottom, 151L);
+}
+
+TEST_CASE(lights_refuse_elevated) {        // relecture C2 : messages refusés par UIPI
+    auto w = classic();
+    w.elevated = true;
+    CHECK(!md::wantsLights(w, md::LightsMode::All, 96));
+}
+
+TEST_CASE(lights_mouse_actions) {          // relecture I2 et double-clic sur une pastille
+    const bool all[3] = {true, true, true}, noZoom[3] = {true, true, false};
+    CHECK(md::lightsMouse(false, 0, all) == md::LightsMouse::Press);
+    CHECK(md::lightsMouse(true, 0, all) == md::LightsMouse::None);    // pas de second SC_CLOSE
+    CHECK(md::lightsMouse(false, 2, noZoom) == md::LightsMouse::None);
+    CHECK(md::lightsMouse(false, -1, all) == md::LightsMouse::Drag);
+    CHECK(md::lightsMouse(true, -1, all) == md::LightsMouse::Zoom);
+    CHECK(md::captionDoubleClick(true, false) == SC_MAXIMIZE);
+    CHECK(md::captionDoubleClick(true, true) == SC_RESTORE);
+    CHECK(md::captionDoubleClick(false, false) == 0u);
+}

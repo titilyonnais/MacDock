@@ -9,7 +9,7 @@
 
 Afficher, en haut à gauche de la fenêtre active, trois pastilles rouge, jaune et verte qui ferment, réduisent et agrandissent la fenêtre, comme sur macOS. Au survol du groupe, les trois montrent leur symbole (×, −, +).
 
-**Critère de réussite :** sur une fenêtre Win32 classique (Bloc-notes historique, Paint, regedit, Explorateur en mode classique, la plupart des outils), les pastilles apparaissent dans la barre de titre, suivent la fenêtre quand elle bouge, et agissent ; elles ne recouvrent jamais le contenu d'une app qui dessine sa propre barre de titre (onglets de Chrome, d'Edge, de l'Explorateur).
+**Critère de réussite :** sur une fenêtre Win32 classique (Table des caractères, `msinfo32`, `dxdiag`, la plupart des outils), les pastilles apparaissent dans la barre de titre, suivent la fenêtre quand elle bouge, et agissent ; elles ne recouvrent jamais le contenu d'une app qui dessine sa propre barre de titre (onglets de Chrome, d'Edge, de l'Explorateur).
 
 ### 1.1 Décisions (prises en autonomie)
 

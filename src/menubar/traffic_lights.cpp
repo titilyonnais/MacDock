@@ -12,7 +12,7 @@ constexpr double kDiameter = 12, kSpacing = 20, kFirst = 20, kTail = 8, kMinTitl
 }
 
 bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT dpi) {
-    if (mode == LightsMode::Off || w.iconic || w.ownProcess) return false;
+    if (mode == LightsMode::Off || w.iconic || w.ownProcess || w.elevated) return false;
     if ((w.style & WS_CAPTION) != WS_CAPTION || !(w.style & WS_SYSMENU) || (w.style & WS_CHILD)) return false;
     if (w.exStyle & WS_EX_TOOLWINDOW) return false;
     for (const wchar_t* c : kShellClasses)
@@ -39,6 +39,22 @@ LightsLayout lightsLayout(const RECT& frame, const RECT& client, UINT dpi) {
     l.window.bottom = std::min(l.window.bottom, frame.bottom);
     l.patch = l.window;
     return l;
+}
+
+LightsLayout lightsLayoutFor(const LightsWindowInfo& w, UINT dpi) {
+    RECT title = w.client;
+    if (w.captionBottom > w.frame.top && w.captionBottom < w.client.top) title.top = w.captionBottom;
+    return lightsLayout(w.frame, title, dpi);
+}
+
+LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]) {
+    if (hit < 0) return doubleClick ? LightsMouse::Zoom : LightsMouse::Drag;
+    return !doubleClick && enabled[hit] ? LightsMouse::Press : LightsMouse::None;
+}
+
+UINT captionDoubleClick(bool maximizable, bool zoomed) {
+    if (!maximizable) return 0;
+    return zoomed ? SC_RESTORE : SC_MAXIMIZE;
 }
 
 int hitLight(const LightsLayout& l, POINT p) {

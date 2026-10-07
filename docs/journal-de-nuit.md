@@ -130,16 +130,20 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 - **Quelles fenêtres** : par défaut, celles dont Windows dessine la barre de titre. Chez Chrome, Edge, l'Explorateur à onglets ou les apps récentes, la barre de titre est à eux : des pastilles cacheraient des onglets. `trafficLights` dans `menubar.json` : `standard`, `all`, `off`.
 - **Vérifié hors écran** : planche `--lights-snapshot`, tests de l'éligibilité, de la géométrie (100 % et 200 %), des clics et du rendu. Aucun calque n'a été affiché devant toi.
 - **À vérifier toi-même** (après avoir relancé la barre) :
-  1. ouvre `regedit` ou Paint : les pastilles sont dans la barre de titre et suivent la fenêtre ;
-  2. survol, puis clic sur chacune ; tirer la fenêtre depuis le fond à côté des pastilles ;
-  3. Chrome ou Edge : pas de pastilles ;
-  4. une fenêtre agrandie, et ton deuxième écran.
+  1. ouvre la Table des caractères (`charmap`) ou `msinfo32` : les pastilles sont dans la barre de titre et suivent la fenêtre ;
+  2. survol, puis clic sur chacune ; tirer la fenêtre depuis le fond à côté des pastilles, double-cliquer ce fond ;
+  3. une app à barre de menus (Fichier, Édition…) : les menus restent visibles et cliquables ;
+  4. Chrome, Edge, Paint ou une fenêtre lancée en administrateur : pas de pastilles ;
+  5. une fenêtre agrandie, et ton deuxième écran.
 
 ## Décisions prises sans toi (plan 11)
 - Pastilles seulement sur la fenêtre active (macOS les montre grises sur les autres) : un calque par fenêtre visible demanderait de suivre l'ordre de toutes les fenêtres.
 - Les boutons de Windows restent à droite.
 - La couleur du fond est mesurée juste à droite des pastilles, à 4 pt du haut du cadre.
 - Aucun test automatique du calque lui-même : il faudrait l'afficher devant toi.
+- Les fenêtres lancées en administrateur n'ont pas de pastilles : Windows refuserait leurs commandes.
+- Déplacer la fenêtre depuis le fond des pastilles passe par notre propre déplacement (sans l'ancrage Snap de Windows) ; une fenêtre agrandie ne se déplace pas depuis là.
+- **Relecture finale** : 2 critiques et 3 importants, plus 1 mineur jugé important, tous corrigés : les barres de menus classiques ne sont plus recouvertes, les fenêtres en administrateur sont exclues, l'échelle suit le DPI réel de l'écran, la couleur du fond est remesurée après l'apparition de la fenêtre, le déplacement depuis le fond ne dépend plus d'un message relayé, et un double-clic sur une pastille n'envoie plus deux commandes.
 
 ## Décisions prises sans toi (plan 10)
 - L'agrandissement n'est plus animé tant que l'effet Génie ou Échelle est actif : Windows règle les deux par le même interrupteur.

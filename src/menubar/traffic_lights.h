@@ -17,6 +17,8 @@ struct LightsWindowInfo {
     RECT frame{};    // cadre visible (DWMWA_EXTENDED_FRAME_BOUNDS), pixels écran
     RECT client{};   // zone client, pixels écran
     bool zoomed = false, iconic = false, ownProcess = false;
+    LONG captionBottom = 0;   // bas de la barre de titre (GetTitleBarInfo) ; 0 = inconnu (on prend client.top)
+    bool elevated = false;    // processus d'intégrité plus élevée : nos messages seraient refusés (UIPI)
 };
 
 // Standard : seulement si Windows dessine la barre de titre (la zone client commence au moins 20 pt plus bas).
@@ -29,6 +31,15 @@ struct LightsLayout {
     RECT patch{};        // fond de la couleur de la barre de titre
 };
 LightsLayout lightsLayout(const RECT& frame, const RECT& client, UINT dpi);
+// Même chose, la barre de titre s'arrêtant à captionBottom quand il est connu (une barre de menus classique
+// sous le titre n'est pas couverte).
+LightsLayout lightsLayoutFor(const LightsWindowInfo& w, UINT dpi);
+
+// Souris sur le calque : appui sur une pastille disponible, déplacement de la fenêtre depuis le fond, zoom par
+// double-clic sur le fond ; un double-clic sur une pastille ne fait rien (pas de seconde commande).
+enum class LightsMouse { None, Press, Drag, Zoom };
+LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]);
+UINT captionDoubleClick(bool maximizable, bool zoomed);   // 0 : rien
 
 int hitLight(const LightsLayout& l, POINT screen);   // 0 fermer, 1 réduire, 2 zoom, -1 ailleurs
 UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, SC_MAXIMIZE ou SC_RESTORE

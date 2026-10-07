@@ -1,10 +1,12 @@
 #include "traffic_window.h"
 
 #include <dwmapi.h>
+#include <shellscalingapi.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 #include "../core/log.h"
 
@@ -15,6 +17,37 @@ TrafficWindow* TrafficWindow::self_ = nullptr;
 namespace {
 constexpr wchar_t kLightsClass[] = L"MacMenuBarLights";
 constexpr UINT_PTR kSampleTimer = 1;   // couleur remesurée 200 ms après le dernier déplacement
+
+// DPI réel de l'écran de la fenêtre (une app non consciente du DPI répond 96 à GetDpiForWindow).
+UINT effectiveDpi(HWND h) {
+    UINT x = 96, y = 96;
+    if (FAILED(GetDpiForMonitor(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), MDT_EFFECTIVE_DPI, &x, &y))) return 96;
+    return x;
+}
+
+// Processus d'intégrité plus élevée que la nôtre (ou illisible) : UIPI refuserait nos messages.
+bool higherIntegrity(DWORD pid) {
+    auto level = [](HANDLE process) -> std::optional<DWORD> {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(process, TOKEN_QUERY, &token)) return std::nullopt;
+        std::uint8_t buf[64] = {};
+        DWORD size = 0;
+        std::optional<DWORD> out;
+        if (GetTokenInformation(token, TokenIntegrityLevel, buf, sizeof buf, &size)) {
+            auto* tml = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(buf);
+            out = *GetSidSubAuthority(tml->Label.Sid, *GetSidSubAuthorityCount(tml->Label.Sid) - 1);
+        }
+        CloseHandle(token);
+        return out;
+    };
+    const auto mine = level(GetCurrentProcess());
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return true;
+    const auto theirs = level(p);
+    CloseHandle(p);
+    if (!theirs) return true;   // jeton illisible : un processus élevé
+    return mine && *theirs > *mine;
+}
 
 LightsWindowInfo readInfo(HWND h) {
     LightsWindowInfo w;
@@ -35,6 +68,9 @@ LightsWindowInfo readInfo(HWND h) {
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
     w.ownProcess = pid == GetCurrentProcessId();
+    w.elevated = !w.ownProcess && higherIntegrity(pid);
+    TITLEBARINFO tb{sizeof tb};
+    if (GetTitleBarInfo(h, &tb) && tb.rcTitleBar.bottom > tb.rcTitleBar.top) w.captionBottom = tb.rcTitleBar.bottom;
     return w;
 }
 } // namespace
@@ -68,13 +104,15 @@ void TrafficWindow::destroy() {
 
 void TrafficWindow::unhook() {
     if (hook_) UnhookWinEvent(hook_);
-    hook_ = nullptr;
+    if (moveHook_) UnhookWinEvent(moveHook_);
+    hook_ = moveHook_ = nullptr;
 }
 
 void TrafficWindow::detach() {
     unhook();
     target_ = nullptr;
     pressed_ = -1;
+    dragging_ = false;
     state_.hover = false;
     hide();
 }
@@ -88,18 +126,25 @@ void TrafficWindow::hide() {
 void TrafficWindow::attach(HWND target, LightsMode mode) {
     if (!hwnd_) return;
     mode_ = mode;
-    if (target != target_) {
+    if (target != target_ || !hook_) {   // nouvelle cible, ou cible sans pastilles réévaluée (réglage changé)
         detach();
         if (!target || !IsWindow(target)) return;
         target_ = target;
+        painted_ = false;
+        const LightsWindowInfo info = readInfo(target);
+        if (mode == LightsMode::Off || !wantsLights(info, mode, effectiveDpi(target))) {
+            hide();   // pas de crochet pour une fenêtre sans pastilles (bureau, Chrome…)
+            return;
+        }
         DWORD pid = 0;
         GetWindowThreadProcessId(target, &pid);
-        // Cible détruite, masquée, montrée, déplacée ou réordonnée : seulement les événements de son processus.
-        hook_ = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE, nullptr, onEvent, pid, 0,
-                                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-        painted_ = false;
+        // Cible détruite, montrée, masquée ou réordonnée, puis déplacée : seulement les événements de son processus.
+        const DWORD flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
+        hook_ = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_REORDER, nullptr, onEvent, pid, 0, flags);
+        moveHook_ = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr, onEvent, pid, 0, flags);
     }
     place(true);
+    if (shown_) SetTimer(hwnd_, kSampleTimer, 300, nullptr);   // remesure une fois l'apparition de la fenêtre finie
 }
 
 void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD) {
@@ -151,12 +196,12 @@ void TrafficWindow::place(bool resample) {
         return;
     }
     const LightsWindowInfo info = readInfo(target_);
-    const UINT dpi = GetDpiForWindow(target_);
+    const UINT dpi = effectiveDpi(target_);
     if (!IsWindowVisible(target_) || !wantsLights(info, mode_, dpi)) {
         hide();
         return;
     }
-    const LightsLayout l = lightsLayout(info.frame, info.client, dpi);
+    const LightsLayout l = lightsLayoutFor(info, dpi);
     const bool resized = l.window.right - l.window.left != layout_.window.right - layout_.window.left ||
                          l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top;
     layout_ = l;
@@ -232,6 +277,12 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // la fenêtre de l'app reste active
         case WM_MOUSEMOVE: {
+            if (dragging_ && target_) {
+                const POINT p = screenPoint();
+                SetWindowPos(target_, nullptr, dragFrom_.left + p.x - dragStart_.x, dragFrom_.top + p.y - dragStart_.y, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                return 0;
+            }
             if (!tracking_) {
                 TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, hwnd_, 0};
                 tracking_ = TrackMouseEvent(&t) != FALSE;
@@ -254,21 +305,39 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_LBUTTONDBLCLK: {
             const POINT p = screenPoint();
             const int hit = hitLight(layout_, p);
-            if (hit >= 0) {
-                if (state_.enabled[hit]) {
+            pressed_ = -1;
+            switch (lightsMouse(msg == WM_LBUTTONDBLCLK, hit, state_.enabled)) {
+                case LightsMouse::Press:
                     pressed_ = hit;
                     SetCapture(hwnd_);
-                }
-                return 0;
+                    break;
+                case LightsMouse::Drag:   // le fond appartient à la barre de titre : on déplace la fenêtre nous-mêmes
+                    if (target_ && !IsZoomed(target_) && GetWindowRect(target_, &dragFrom_)) {
+                        dragging_ = true;
+                        dragStart_ = p;
+                        SetCapture(hwnd_);
+                    }
+                    break;
+                case LightsMouse::Zoom:
+                    if (target_)
+                        if (UINT cmd = captionDoubleClick((GetWindowLongPtrW(target_, GWL_STYLE) & WS_MAXIMIZEBOX) != 0,
+                                                          IsZoomed(target_) != FALSE))
+                            PostMessageW(target_, WM_SYSCOMMAND, cmd, 0);
+                    break;
+                case LightsMouse::None: break;
             }
-            // Le fond appartient à la barre de titre : déplacer la fenêtre, double-clic = zoom (comportement de Windows).
-            ReleaseCapture();
-            if (target_)
-                PostMessageW(target_, msg == WM_LBUTTONDBLCLK ? WM_NCLBUTTONDBLCLK : WM_NCLBUTTONDOWN, HTCAPTION,
-                             MAKELPARAM(p.x, p.y));
             return 0;
         }
+        case WM_CAPTURECHANGED:
+            pressed_ = -1;
+            dragging_ = false;
+            return 0;
         case WM_LBUTTONUP: {
+            if (dragging_) {
+                dragging_ = false;
+                ReleaseCapture();
+                return 0;
+            }
             if (pressed_ < 0) return 0;
             const int pressed = pressed_;
             pressed_ = -1;
