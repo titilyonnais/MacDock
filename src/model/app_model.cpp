@@ -167,12 +167,12 @@ bool AppModel::setStackDisplay(const std::wstring& key, StackDisplay display) {
     return true;
 }
 
-bool AppModel::setStackPreview(const std::wstring& key, std::vector<std::wstring> paths) {
+bool AppModel::setStackPreview(const std::wstring& key, std::vector<FileRef> files) {
     auto i = pinnedIndexOf(key);
     if (!i || pinned_[*i].kind != PinKind::Stack) return false;
     auto& current = stackPreviews_[key];
-    if (current == paths) return false;
-    current = std::move(paths);
+    if (current == files) return false;   // chemins et dates : un contenu nouveau sous le même nom compte
+    current = std::move(files);
     touch();
     return true;
 }

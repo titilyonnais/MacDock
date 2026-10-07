@@ -377,9 +377,9 @@ IconProvider::ImagePtr IconProvider::trash(bool full, int px) {
                 : get(L"trash", L"stock:" + std::to_wstring(int(SIID_RECYCLER)), px);
 }
 
-IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px) {
+IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px, std::uint64_t modified) {
     px = std::clamp(px, 16, 512);
-    std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px);
+    std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px) + L"|" + std::to_wstring(modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
     if (cache_.size() > 1500) clear();   // les piles changent sans cesse : pas de croissance sans fin
     int srcSize = 0;
@@ -442,22 +442,23 @@ IconProvider::ImagePtr IconProvider::fileIcon(const std::wstring& path, int px) 
     return img;
 }
 
-IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const std::vector<std::wstring>& paths,
+IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const std::vector<FileRef>& files,
                                                   int px) {
     px = std::clamp(px, 16, 512);
-    if (paths.empty()) return nullptr;
+    if (files.empty()) return nullptr;
     std::wstring cacheKey = L"#stack|" + key + L"|" + std::to_wstring(px);
-    for (auto& p : paths) cacheKey += L"|" + p;
+    for (auto& f : files) cacheKey += L"|" + f.path + L"@" + std::to_wstring(f.modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
     const int s = iconShapePx(px, shapeRatio_);   // même forme que les icônes d'apps, même ombre
     Pixels shaped(size_t(s) * s * 4, 0);
-    const auto layers = stackIconLayers(paths.size());
+    const auto layers = stackIconLayers(files.size());
     bool any = false;
-    // Couches du dessous vers le dessus : paths[0] (le premier selon le tri) est au-dessus.
+    // Couches du dessous vers le dessus : files[0] (le premier selon le tri) est au-dessus.
     for (std::size_t i = 0; i < layers.size(); ++i) {
         const StackLayer& l = layers[i];
         const int side = std::max(8, int(std::lround(s * l.scale)));
-        ImagePtr img = file(paths[layers.size() - 1 - i], side);
+        const FileRef& f = files[layers.size() - 1 - i];
+        ImagePtr img = file(f.path, side, f.modified);
         if (!img) continue;
         drawLayer(shaped, s, img->bgra, img->size, s / 2.0 + l.dx * s, s / 2.0 + l.dy * s, side, l.angle);
         any = true;

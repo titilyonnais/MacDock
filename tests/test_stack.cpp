@@ -126,8 +126,9 @@ TEST_CASE(stack_preview_takes_first_three) {
     std::vector<md::StackItem> sorted{item(L"a", 1, 1), item(L"b", 1, 1), item(L"c", 1, 1), item(L"d", 1, 1)};
     auto p = md::stackPreview(sorted);
     REQUIRE(p.size() == 3);
-    CHECK(p[0] == L"C:\\D\\a");   // le premier selon le tri : au-dessus de la pile
-    CHECK(p[2] == L"C:\\D\\c");
+    CHECK(p[0].path == L"C:\\D\\a");   // le premier selon le tri : au-dessus de la pile
+    CHECK(p[2].path == L"C:\\D\\c");
+    CHECK_EQ(p[0].modified, std::uint64_t(1));   // la date suit : un contenu nouveau change l'aperçu
     CHECK(md::stackPreview({}).empty());
 }
 
@@ -153,7 +154,10 @@ TEST_CASE(stack_list_menu_caps_and_nests_one_level) {
     REQUIRE(m.items.size() >= 3);
     const md::MenuItem& projets = m.items[0];
     CHECK(projets.text == L"Projets");
-    CHECK_EQ(projets.submenu.size(), md::kGridMaxItems);   // plafonné
+    CHECK_EQ(projets.submenu.size(), md::kGridMaxItems + 2);   // plafonné, puis séparateur et lien
+    CHECK(projets.submenu[projets.submenu.size() - 2].separator());
+    CHECK(projets.submenu.back().text == L"Ouvrir dans l'Explorateur");   // le sous-dossier reste ouvrable
+    CHECK(paths[std::size_t(projets.submenu.back().id - md::kStackListBase)] == L"C:\\D\\Projets");
     CHECK(projets.submenu[0].text == L"Profond");
     CHECK(projets.submenu[0].submenu.empty());              // un seul niveau d'imbrication
     REQUIRE(projets.submenu[0].id >= md::kStackListBase);
@@ -187,6 +191,26 @@ TEST_CASE(stack_list_menu_respects_max_items) {
     std::vector<std::wstring> paths;
     auto m = md::stackListMenu(L"C:\\D", items, many, paths, 10);
     REQUIRE(m.items.size() == 12);   // 10 éléments, séparateur, « Ouvrir dans l'Explorateur »
-    CHECK_EQ(m.items[0].submenu.size(), std::size_t(10));
+    CHECK_EQ(m.items[0].submenu.size(), std::size_t(12));
     CHECK(m.items.back().text == L"Ouvrir dans l'Explorateur");
+}
+
+TEST_CASE(stack_list_icons_visible_level_first) {
+    // Budget d'icônes : la liste visible d'abord, les sous-menus ensuite avec ce qui reste.
+    std::vector<md::StackItem> items{item(L"A", 1, 1, true), item(L"B", 1, 1, true), item(L"C", 1, 1, true)};
+    auto five = [&](const std::wstring&) { return std::vector<md::StackItem>(5, item(L"f", 1, 1)); };
+    std::vector<std::wstring> paths;
+    auto m = md::stackListMenu(L"X", items, five, paths);
+    int loads = 0;
+    auto load = [&](const std::wstring&) {
+        ++loads;
+        auto img = std::make_shared<md::IconProvider::Image>();
+        img->size = 1;
+        return md::IconProvider::ImagePtr(img);
+    };
+    md::assignListIcons(m, paths, 4, load);
+    CHECK_EQ(loads, 4);
+    CHECK(m.items[0].icon && m.items[1].icon && m.items[2].icon);   // les trois dossiers visibles
+    CHECK(m.items.back().icon != nullptr);                           // « Ouvrir dans l'Explorateur » aussi
+    CHECK(m.items[0].submenu[0].icon == nullptr);                    // budget épuisé avant les sous-menus
 }

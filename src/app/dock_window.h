@@ -141,6 +141,7 @@ private:
     ULONG trashNotify_ = 0;        // SHChangeNotifyRegister sur la Corbeille
     std::vector<ULONG> stackNotify_;            // un par dossier de pile
     std::vector<std::wstring> watchedStacks_;   // dossiers surveillés
+    double stacksFirstEvent_ = -1;              // premier avis d'une rafale en cours (-1 : aucune)
     class DropTarget* dropTarget_ = nullptr;
     struct PendingDrop {
         DropHover hover;

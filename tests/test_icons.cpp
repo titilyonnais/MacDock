@@ -102,3 +102,16 @@ TEST_CASE(icons_compose_stack_stays_in_cell) {
     CHECK(p.composeStack(L"stack:test", {w + L"\\notepad.exe", w + L"\\win.ini", w}, 96) == img);   // cache
     CHECK(p.composeStack(L"stack:vide", {}, 96) == nullptr);
 }
+
+TEST_CASE(icons_compose_stack_follows_modification) {
+    ComScope com;
+    md::IconProvider p;
+    wchar_t win[MAX_PATH];
+    GetWindowsDirectoryW(win, MAX_PATH);
+    const std::wstring np = std::wstring(win) + L"\\notepad.exe";
+    auto a = p.composeStack(L"stack:t", {md::FileRef{np, 1}}, 64);
+    auto b = p.composeStack(L"stack:t", {md::FileRef{np, 2}}, 64);
+    REQUIRE(a != nullptr);
+    CHECK(b != a);   // pas de réponse du cache pour un fichier modifié
+    CHECK(p.file(np, 64, 1) != p.file(np, 64, 2));
+}

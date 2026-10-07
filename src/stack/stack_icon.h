@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "../icons/icon_provider.h"
 #include "stack_model.h"
 
 namespace md {
@@ -16,7 +17,7 @@ struct StackLayer {
 
 // Couches du dessous vers le dessus (3 au plus) ; la dernière est l'élément le plus en vue, droit.
 std::vector<StackLayer> stackIconLayers(std::size_t count);
-// Chemins des 3 premiers éléments selon le tri (le premier est au-dessus de la pile).
-std::vector<std::wstring> stackPreview(const std::vector<StackItem>& sorted);
+// 3 premiers éléments selon le tri (le premier est au-dessus de la pile), avec leur date de modification.
+std::vector<FileRef> stackPreview(const std::vector<StackItem>& sorted);
 
 } // namespace md

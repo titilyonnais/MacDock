@@ -605,15 +605,8 @@ void DockApp::openStack(std::size_t index) {
                                        [&](const std::wstring& p) { return sortStack(listFolder(p), sort); }, paths,
                                        listCapacity(r));
         const int px = int(std::lround(kMenuIconSize * scale_));
-        int budget = 400;   // borne le travail pour un dossier rempli de sous-dossiers pleins
-        std::function<void(std::vector<MenuItem>&)> addIcons = [&](std::vector<MenuItem>& entries) {
-            for (auto& e : entries) {
-                if (e.id >= kStackListBase && std::size_t(e.id - kStackListBase) < paths.size() && budget-- > 0)
-                    e.icon = icons_.fileIcon(paths[std::size_t(e.id - kStackListBase)], px);
-                addIcons(e.submenu);
-            }
-        };
-        addIcons(menu.items);
+        // 400 icônes au plus : borne le travail pour un dossier rempli de sous-dossiers pleins.
+        assignListIcons(menu, paths, 400, [&](const std::wstring& path) { return icons_.fileIcon(path, px); });
         const LONG gap = LONG(std::lround(6 * scale_));
         POINT anchor = r.side == MenuWindow::Side::Right  ? POINT{r.dockEdge + gap, r.iconCenter.y}
                        : r.side == MenuWindow::Side::Left ? POINT{r.dockEdge - gap, r.iconCenter.y}
@@ -854,7 +847,9 @@ void DockApp::watchStacks() {
     if (folders != watchedStacks_) {
         for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
         stackNotify_.clear();
-        watchedStacks_ = folders;
+        // Seuls les dossiers réellement surveillés sont retenus : un dossier absent (lecteur pas encore monté)
+        // est réessayé au prochain appel.
+        watchedStacks_.clear();
         for (const auto& folder : folders) {
             PIDLIST_ABSOLUTE pidl = nullptr;
             if (FAILED(SHParseDisplayName(folder.c_str(), nullptr, &pidl, 0, nullptr))) {
@@ -863,8 +858,10 @@ void DockApp::watchStacks() {
             }
             SHChangeNotifyEntry entry{pidl, FALSE};
             if (ULONG id = SHChangeNotifyRegister(hwnd_, SHCNRF_ShellLevel | SHCNRF_InterruptLevel | SHCNRF_NewDelivery,
-                                                  SHCNE_ALLEVENTS, WM_APP_STACKS, 1, &entry))
+                                                  SHCNE_ALLEVENTS, WM_APP_STACKS, 1, &entry)) {
                 stackNotify_.push_back(id);
+                watchedStacks_.push_back(folder);
+            }
             CoTaskMemFree(pidl);
         }
     }
@@ -877,7 +874,7 @@ void DockApp::refreshStacks() {
         if (e.kind != PinKind::Stack) continue;
         auto preview = stackPreview(sortStack(listFolder(e.launch), e.stackSort));
         if (trace_) log::info(L"[trace] pile %s : aperçu de %zu élément(s)%s%s", e.launch.c_str(), preview.size(),
-                              preview.empty() ? L"" : L", dessus : ", preview.empty() ? L"" : preview[0].c_str());
+                              preview.empty() ? L"" : L", dessus : ", preview.empty() ? L"" : preview[0].path.c_str());
         changed |= model_.setStackPreview(L"stack:" + e.launch, std::move(preview));
     }
     if (changed) requestFrame();
@@ -1144,12 +1141,22 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             PIDLIST_ABSOLUTE* pidls = nullptr;
             if (HANDLE lock = SHChangeNotification_Lock(HANDLE(wp), DWORD(lp), &pidls, &event))
                 SHChangeNotification_Unlock(lock);
-            SetTimer(hwnd_, kStacksTimer, 400, nullptr);   // un téléchargement envoie une rafale d'avis
+            // Un téléchargement envoie une rafale d'avis : regroupés 400 ms, mais l'icône suit au moins toutes les 2 s.
+            const double now = nowSeconds();
+            if (stacksFirstEvent_ < 0) stacksFirstEvent_ = now;
+            if (now - stacksFirstEvent_ >= 2.0) {
+                KillTimer(hwnd_, kStacksTimer);
+                stacksFirstEvent_ = -1;
+                refreshStacks();
+            } else {
+                SetTimer(hwnd_, kStacksTimer, 400, nullptr);
+            }
             return 0;
         }
         case WM_TIMER:
             if (wp == kStacksTimer) {
                 KillTimer(hwnd_, kStacksTimer);
+                stacksFirstEvent_ = -1;
                 refreshStacks();
                 return 0;
             }

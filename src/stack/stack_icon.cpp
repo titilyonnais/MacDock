@@ -15,9 +15,9 @@ std::vector<StackLayer> stackIconLayers(std::size_t count) {
     }
 }
 
-std::vector<std::wstring> stackPreview(const std::vector<StackItem>& sorted) {
-    std::vector<std::wstring> out;
-    for (std::size_t i = 0; i < sorted.size() && i < 3; ++i) out.push_back(sorted[i].path);
+std::vector<FileRef> stackPreview(const std::vector<StackItem>& sorted) {
+    std::vector<FileRef> out;
+    for (std::size_t i = 0; i < sorted.size() && i < 3; ++i) out.push_back({sorted[i].path, sorted[i].modified});
     return out;
 }
 

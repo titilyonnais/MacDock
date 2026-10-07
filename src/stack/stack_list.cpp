@@ -27,12 +27,28 @@ MenuModel stackListMenu(const std::wstring& folder, const std::vector<StackItem>
             auto sub = listSub(it.path);
             for (std::size_t k = 0; k < sub.size() && k < cap; ++k)
                 e.submenu.push_back({addPath(paths, sub[k].path), sub[k].name});
+            // Une entrée à sous-menu ne s'active pas : le sous-dossier lui-même reste ouvrable par ce lien.
+            if (!e.submenu.empty()) {
+                e.submenu.push_back({});
+                e.submenu.push_back({addPath(paths, it.path), L"Ouvrir dans l'Explorateur"});
+            }
         }
         m.items.push_back(std::move(e));
     }
     if (!m.items.empty()) m.items.push_back({});
     m.items.push_back({addPath(paths, folder), L"Ouvrir dans l'Explorateur"});
     return m;
+}
+
+void assignListIcons(MenuModel& menu, const std::vector<std::wstring>& paths, int budget,
+                     const std::function<IconProvider::ImagePtr(const std::wstring&)>& load) {
+    auto level = [&](std::vector<MenuItem>& entries) {
+        for (auto& e : entries)
+            if (e.id >= kStackListBase && std::size_t(e.id - kStackListBase) < paths.size() && budget-- > 0)
+                e.icon = load(paths[std::size_t(e.id - kStackListBase)]);
+    };
+    level(menu.items);
+    for (auto& e : menu.items) level(e.submenu);
 }
 
 } // namespace md

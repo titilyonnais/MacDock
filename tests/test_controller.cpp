@@ -341,7 +341,7 @@ TEST_CASE(controller_dock_shrinks_to_fit_axis) {
 }
 
 TEST_CASE(controller_stack_icon_uses_preview) {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // icônes Shell réelles
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // icônes Shell réelles
     md::AppModel model;
     md::DockController c;
     md::Settings s;
@@ -366,5 +366,5 @@ TEST_CASE(controller_stack_icon_uses_preview) {
     CHECK(stackIcon != folderIcon);   // « Pile » : les derniers éléments, pas l'icône du dossier
     model.setStackDisplay(L"stack:" + w, md::StackDisplay::Folder);
     CHECK(c.buildFrame(false, icons).icons[k].image == folderIcon);
-    CoUninitialize();
+    if (SUCCEEDED(com)) CoUninitialize();
 }

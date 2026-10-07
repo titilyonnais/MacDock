@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../config/settings.h"
+#include "../icons/icon_provider.h"
 
 namespace md {
 
@@ -32,7 +33,7 @@ struct DockItem {
     std::vector<WindowId> windows;   // App : fenêtres ouvertes
     WindowId window = 0;             // MinimizedWindow
     StackDisplay stackDisplay = StackDisplay::Stack;   // Stack
-    std::vector<std::wstring> stackPreview;            // Stack : derniers éléments (le premier au-dessus)
+    std::vector<FileRef> stackPreview;                 // Stack : derniers éléments (le premier au-dessus)
 };
 
 // AUMID prioritaire ; sinon chemin de l'exécutable en minuscules.
@@ -61,7 +62,7 @@ public:
     bool setStackOptions(const std::wstring& key, StackView view, StackSort sort);
     bool setStackDisplay(const std::wstring& key, StackDisplay display);
     // Aperçu d'une pile épinglée ; false (sans redessin) s'il est inchangé ou si la pile n'est pas épinglée.
-    bool setStackPreview(const std::wstring& key, std::vector<std::wstring> paths);
+    bool setStackPreview(const std::wstring& key, std::vector<FileRef> files);
     // Index dans pinnedEntries() de l'élément de clé key ("app:…", "apps", "stack:…") ; nullopt s'il n'est pas épinglé.
     std::optional<std::size_t> pinnedIndexOf(const std::wstring& key) const;
 
@@ -96,7 +97,7 @@ private:
     std::deque<AppIdentity> recents_;     // plus récent en tête
     bool showRecents_ = true;
     bool trashFull_ = false;
-    std::map<std::wstring, std::vector<std::wstring>> stackPreviews_;   // clé "stack:…" → aperçu
+    std::map<std::wstring, std::vector<FileRef>> stackPreviews_;   // clé "stack:…" → aperçu
     std::uint64_t seq_ = 0;
     std::uint64_t revision_ = 1;
 };
