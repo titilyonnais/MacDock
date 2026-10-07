@@ -8,6 +8,7 @@
 #include <cstring>
 #include <optional>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 
 namespace md {
@@ -17,6 +18,9 @@ TrafficWindow* TrafficWindow::self_ = nullptr;
 namespace {
 constexpr wchar_t kLightsClass[] = L"MacMenuBarLights";
 constexpr UINT_PTR kSampleTimer = 1;   // couleur remesurée 200 ms après le dernier déplacement
+constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois le redimensionnement calmé
+constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
+constexpr double kBounceMs = 240;
 
 // DPI réel de l'écran de la fenêtre (une app non consciente du DPI répond 96 à GetDpiForWindow).
 UINT effectiveDpi(HWND h) {
@@ -91,14 +95,21 @@ bool TrafficWindow::create(HINSTANCE instance) {
         log::warn(L"Feux tricolores : fenêtre impossible (%lu)", GetLastError());
         return false;
     }
-    SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);   // la mesure de la couleur ne le voit pas
+    // La mesure de la couleur ne voit pas les calques (sauf en diagnostic : visibles aux enregistreurs d'écran ; la
+    // mesure se fait à côté d'eux de toute façon).
+    const DWORD affinity = diagnosticCapture() ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE;
+    SetWindowDisplayAffinity(hwnd_, affinity);
+    cover_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kLightsClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr,
+                             nullptr, instance, nullptr);
+    if (cover_) SetWindowDisplayAffinity(cover_, affinity);
     return true;
 }
 
 void TrafficWindow::destroy() {
     detach();
+    if (cover_) DestroyWindow(cover_);
     if (hwnd_) DestroyWindow(hwnd_);
-    hwnd_ = nullptr;
+    hwnd_ = cover_ = nullptr;
     if (self_ == this) self_ = nullptr;
 }
 
@@ -114,13 +125,20 @@ void TrafficWindow::detach() {
     pressed_ = -1;
     dragging_ = false;
     state_.hover = false;
+    state_.pressed = state_.bouncing = -1;
+    placement_ = {};
+    probeRetries_ = 0;
     hide();
 }
 
 void TrafficWindow::hide() {
     if (hwnd_ && shown_) ShowWindow(hwnd_, SW_HIDE);
+    if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
     shown_ = false;
-    if (hwnd_) KillTimer(hwnd_, kSampleTimer);
+    if (hwnd_) {
+        KillTimer(hwnd_, kSampleTimer);
+        KillTimer(hwnd_, kProbeTimer);
+    }
 }
 
 void TrafficWindow::attach(HWND target, LightsMode mode) {
@@ -133,7 +151,10 @@ void TrafficWindow::attach(HWND target, LightsMode mode) {
         painted_ = false;
         const LightsWindowInfo info = readInfo(target);
         if (mode == LightsMode::Off || !wantsLights(info, mode, effectiveDpi(target))) {
-            hide();   // pas de crochet pour une fenêtre sans pastilles (bureau, Chrome…)
+            if (diagnosticCapture())
+                log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
+                          info.style, int(info.elevated));
+            hide();   // pas de crochet pour une fenêtre sans pastilles (bureau, fenêtres outils…)
             return;
         }
         DWORD pid = 0;
@@ -168,13 +189,16 @@ void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
 }
 
 void TrafficWindow::sample(const RECT& frame, UINT dpi) {
-    // Ligne à 4 pt sous le haut du cadre (au-dessus du texte du titre), à droite du calque.
+    // Ligne à 4 pt sous le haut du cadre (au-dessus du texte du titre et des onglets), à côté du calque : à droite
+    // des pastilles posées à gauche, à gauche de celles posées sur les boutons de Windows.
     const LONG y = frame.top + std::lround(4.0 * dpi / 96);
+    const bool leftward = spot_ == Spot::Over;
     std::vector<std::uint32_t> samples;
     if (HDC dc = GetDC(nullptr)) {
         for (int i = 0; i < 9; ++i) {
-            const LONG x = layout_.window.right + 4 + i * std::lround(10.0 * dpi / 96);
-            if (x >= frame.right - 8) break;
+            const LONG step = 4 + i * std::lround(10.0 * dpi / 96);
+            const LONG x = leftward ? layout_.window.left - step : layout_.window.right + step;
+            if (leftward ? x <= frame.left + 8 : x >= frame.right - 8) break;
             const COLORREF c = GetPixel(dc, x, y);
             if (c != CLR_INVALID) samples.push_back((GetRValue(c) << 16) | (GetGValue(c) << 8) | GetBValue(c));
         }
@@ -186,10 +210,54 @@ void TrafficWindow::sample(const RECT& frame, UINT dpi) {
     state_.patchColor = color;
     const double lum = 0.299 * ((color >> 16) & 0xFF) + 0.587 * ((color >> 8) & 0xFF) + 0.114 * (color & 0xFF);
     state_.dark = lum < 128;
-    painted_ = false;
+    painted_ = coverPainted_ = false;
 }
 
-void TrafficWindow::place(bool resample) {
+TrafficWindow::Placement TrafficWindow::measure(const LightsWindowInfo& info, UINT dpi, bool& complete) const {
+    Placement p;
+    p.target = target_;
+    p.size = SIZE{info.frame.right - info.frame.left, info.frame.bottom - info.frame.top};
+    p.zoomed = info.zoomed;
+    p.valid = true;
+    const HWND target = target_;
+    // Sonde en lecture seule : WM_NCHITTEST ne fait que répondre une zone. 20 ms par appel au plus et 60 ms en
+    // tout : une app occupée n'arrête pas la barre de menus (la mesure est alors reprise plus tard).
+    const ULONGLONG deadline = GetTickCount64() + 60;
+    bool late = false;
+    const HitProbe hit = [&](POINT pt) -> LRESULT {
+        if (late || GetTickCount64() > deadline) {
+            late = true;
+            return HTNOWHERE;
+        }
+        POINT q = pt;
+        PhysicalToLogicalPointForPerMonitorDPI(target, &q);   // une app non consciente du DPI répond en points logiques
+        DWORD_PTR r = HTNOWHERE;
+        if (!SendMessageTimeoutW(target, WM_NCHITTEST, 0, MAKELPARAM(WORD(SHORT(q.x)), WORD(SHORT(q.y))),
+                                 SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT, 20, &r)) {
+            late = true;
+            return HTNOWHERE;
+        }
+        return LRESULT(r);
+    };
+    RECT window{}, bounds{};
+    GetWindowRect(target, &window);
+    if (FAILED(DwmGetWindowAttribute(target, DWMWA_CAPTION_BUTTON_BOUNDS, &bounds, sizeof bounds))) bounds = {};
+    const RECT b = captionButtons(window, info.frame, bounds, dpi, hit);
+    const bool found = b.right > b.left && b.bottom > b.top;
+    LONG titleBottom = info.frame.top + std::lround(28.0 * dpi / 96);
+    if (info.client.top - info.frame.top >= std::lround(20.0 * dpi / 96))   // barre de titre de Windows
+        titleBottom = info.captionBottom > info.frame.top && info.captionBottom < info.client.top ? info.captionBottom : info.client.top;
+    else if (found)   // barre dessinée par l'app : à la hauteur de ses boutons
+        titleBottom = b.bottom;
+    const bool left = leftCaptionFree(info.frame, titleBottom, dpi, hit);
+    complete = !late;
+    p.spot = left ? Spot::Left : found ? Spot::Over : Spot::None;
+    if (found) p.buttons = RECT{b.left - info.frame.right, b.top - info.frame.top, b.right - info.frame.right, b.bottom - info.frame.top};
+    p.titleBottom = titleBottom - info.frame.top;
+    return p;
+}
+
+void TrafficWindow::place(bool resample, bool probe) {
     if (!hwnd_ || !target_) return;
     if (!IsWindow(target_)) {
         detach();
@@ -198,13 +266,56 @@ void TrafficWindow::place(bool resample) {
     const LightsWindowInfo info = readInfo(target_);
     const UINT dpi = effectiveDpi(target_);
     if (!IsWindowVisible(target_) || !wantsLights(info, mode_, dpi)) {
+        if (diagnosticCapture()) log::info(L"[diag] pastilles %p : refusée (style %08lx)", target_, info.style);
         hide();
         return;
     }
-    const LightsLayout l = lightsLayoutFor(info, dpi);
+    const RECT& f = info.frame;
+    const SIZE size{f.right - f.left, f.bottom - f.top};
+    if (probe || !placement_.valid || placement_.target != target_ || placement_.zoomed != info.zoomed) {
+        bool complete = true;
+        const ULONGLONG t0 = GetTickCount64();
+        placement_ = measure(info, dpi, complete);
+        if (diagnosticCapture())
+            log::info(L"[diag] pastilles %p : place %d, boutons %ld,%ld,%ld,%ld, titre %ld, complet %d, %llu ms", target_,
+                      int(placement_.spot), placement_.buttons.left, placement_.buttons.top, placement_.buttons.right,
+                      placement_.buttons.bottom, placement_.titleBottom, int(complete), GetTickCount64() - t0);
+        if (complete) probeRetries_ = 0;
+        else if (probeRetries_++ < 3) SetTimer(hwnd_, kProbeTimer, 500, nullptr);
+    } else if (size.cx != placement_.size.cx || size.cy != placement_.size.cy) {
+        // Redimensionnement : les boutons restent ancrés à droite ; nouvelle sonde une fois le geste calmé.
+        SetTimer(hwnd_, kProbeTimer, 150, nullptr);
+    }
+    spot_ = placement_.spot;
+    const RECT& pb = placement_.buttons;
+    const bool hasButtons = pb.right > pb.left;
+    const RECT buttons{f.right + pb.left, f.top + pb.top, f.right + pb.right, f.top + pb.bottom};
+    LightsLayout l{};
+    if (spot_ == Spot::Left) {
+        RECT title = info.client;
+        title.top = f.top + placement_.titleBottom;
+        l = lightsLayout(f, title, dpi);
+    } else if (spot_ == Spot::Over && hasButtons) {
+        l = lightsOverButtons(buttons, dpi);
+    } else {
+        hide();
+        return;
+    }
     const bool resized = l.window.right - l.window.left != layout_.window.right - layout_.window.left ||
-                         l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top;
+                         l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top ||
+                         l.topGap != layout_.topGap || l.fade != layout_.fade;
     layout_ = l;
+    const bool wantCover = cover_ && spot_ == Spot::Left && hasButtons;
+    if (wantCover) {
+        const LightsLayout c = buttonsCover(buttons, dpi);
+        if (c.window.right - c.window.left != coverSize_.cx || c.window.bottom - c.window.top != coverSize_.cy ||
+            c.topGap != coverLayout_.topGap)
+            coverPainted_ = false;
+        coverLayout_ = c;
+    } else {
+        coverLayout_ = {};
+        if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
+    }
     scale_ = dpi / 96.0;
     const bool enabled[3] = {!(info.classStyle & CS_NOCLOSE), (info.style & WS_MINIMIZEBOX) != 0, (info.style & WS_MAXIMIZEBOX) != 0};
     for (int i = 0; i < 3; ++i)
@@ -219,13 +330,31 @@ void TrafficWindow::place(bool resample) {
         POINT pos{layout_.window.left, layout_.window.top};
         UpdateLayeredWindow(hwnd_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);   // même image, déplacée
     }
+    if (wantCover) {
+        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_);
+        else {
+            POINT pos{coverLayout_.window.left, coverLayout_.window.top};
+            UpdateLayeredWindow(cover_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);
+        }
+        coverPainted_ = true;
+    }
     raise();
 }
 
 void TrafficWindow::paint() {
-    const int w = int(layout_.window.right - layout_.window.left), h = int(layout_.window.bottom - layout_.window.top);
-    if (w <= 0 || h <= 0) return;
-    const auto px = renderLights(layout_, state_, scale_);
+    paintedSize_ = {};
+    paintLayer(hwnd_, layout_, paintedSize_);
+    painted_ = paintedSize_.cx > 0;
+    if (cover_ && coverLayout_.window.right > coverLayout_.window.left && !coverPainted_) {
+        paintLayer(cover_, coverLayout_, coverSize_);
+        coverPainted_ = true;
+    }
+}
+
+void TrafficWindow::paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted) {
+    const int w = int(layout.window.right - layout.window.left), h = int(layout.window.bottom - layout.window.top);
+    if (!layer || w <= 0 || h <= 0) return;
+    const auto px = renderLights(layout, state_, scale_);
     BITMAPINFO bi{};
     bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB};
     void* bits = nullptr;
@@ -235,13 +364,12 @@ void TrafficWindow::paint() {
     if (bmp && bits) {
         std::memcpy(bits, px.data(), px.size());
         HGDIOBJ old = SelectObject(mem, bmp);
-        POINT pos{layout_.window.left, layout_.window.top}, zero{0, 0};
+        POINT pos{layout.window.left, layout.window.top}, zero{0, 0};
         SIZE size{w, h};
         BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-        UpdateLayeredWindow(hwnd_, screen, &pos, &size, mem, &zero, 0, &blend, ULW_ALPHA);
+        UpdateLayeredWindow(layer, screen, &pos, &size, mem, &zero, 0, &blend, ULW_ALPHA);
         SelectObject(mem, old);
-        painted_ = true;
-        paintedSize_ = size;
+        painted = size;
     }
     if (bmp) DeleteObject(bmp);
     DeleteDC(mem);
@@ -250,24 +378,34 @@ void TrafficWindow::paint() {
 
 void TrafficWindow::raise() {
     if (!hwnd_ || !target_) return;
+    // Ordre voulu : pastilles, puis cache, puis la cible.
+    const bool withCover = cover_ && coverLayout_.window.right > coverLayout_.window.left;
     const HWND above = GetWindow(target_, GW_HWNDPREV);
+    const bool inOrder = withCover ? above == cover_ && GetWindow(cover_, GW_HWNDPREV) == hwnd_ : above == hwnd_;
     UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
     HWND after = HWND_TOP;   // la cible est au premier plan : le haut des fenêtres ordinaires
-    if (above == hwnd_) flags |= SWP_NOZORDER;   // déjà juste au-dessus
-    else if (above && !(GetWindowLongPtrW(above, GWL_EXSTYLE) & WS_EX_TOPMOST)) after = above;
+    if (inOrder) {
+        flags |= SWP_NOZORDER;   // déjà juste au-dessus
+    } else {
+        HWND a = above;
+        while (a && (a == hwnd_ || a == cover_)) a = GetWindow(a, GW_HWNDPREV);
+        if (a && !(GetWindowLongPtrW(a, GWL_EXSTYLE) & WS_EX_TOPMOST)) after = a;
+    }
     SetWindowPos(hwnd_, after, 0, 0, 0, 0, flags);
+    if (withCover) SetWindowPos(cover_, hwnd_, 0, 0, 0, 0, flags);   // juste sous les pastilles
     shown_ = true;
 }
 
 LRESULT CALLBACK TrafficWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    if (self_ && self_->hwnd_ == hwnd) return self_->handle(msg, wp, lp);
+    if (self_ && hwnd && (self_->hwnd_ == hwnd || self_->cover_ == hwnd)) return self_->handle(hwnd, msg, wp, lp);
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
+LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
+    const bool cover = from == cover_;   // le cache se comporte comme le fond de la barre de titre
     const auto screenPoint = [&] {
         POINT p{short(LOWORD(lp)), short(HIWORD(lp))};
-        ClientToScreen(hwnd_, &p);
+        ClientToScreen(from, &p);
         return p;
     };
     const auto overGroup = [&](POINT p) {
@@ -283,18 +421,24 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                              SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 return 0;
             }
+            if (cover) return 0;
             if (!tracking_) {
                 TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, hwnd_, 0};
                 tracking_ = TrackMouseEvent(&t) != FALSE;
             }
-            const bool hover = overGroup(screenPoint());
-            if (hover != state_.hover) {
+            const POINT p = screenPoint();
+            const bool hover = overGroup(p);
+            // Pastille appuyée : enfoncée seulement tant que le doigt reste dessus, comme sur macOS.
+            const int pressed = pressed_ >= 0 && hitLight(layout_, p) == pressed_ ? pressed_ : -1;
+            if (hover != state_.hover || pressed != state_.pressed) {
                 state_.hover = hover;   // symboles ×, −, + sur les trois, comme sur macOS
+                state_.pressed = pressed;
                 paint();
             }
             return 0;
         }
         case WM_MOUSELEAVE:
+            if (cover) return 0;
             tracking_ = false;
             if (state_.hover) {
                 state_.hover = false;
@@ -304,18 +448,21 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK: {
             const POINT p = screenPoint();
-            const int hit = hitLight(layout_, p);
+            const int hit = cover ? -1 : hitLight(layout_, p);
             pressed_ = -1;
             switch (lightsMouse(msg == WM_LBUTTONDBLCLK, hit, state_.enabled)) {
                 case LightsMouse::Press:
                     pressed_ = hit;
+                    state_.pressed = hit;
+                    state_.bouncing = -1;
                     SetCapture(hwnd_);
+                    paint();
                     break;
                 case LightsMouse::Drag:   // le fond appartient à la barre de titre : on déplace la fenêtre nous-mêmes
                     if (target_ && !IsZoomed(target_) && GetWindowRect(target_, &dragFrom_)) {
                         dragging_ = true;
                         dragStart_ = p;
-                        SetCapture(hwnd_);
+                        SetCapture(from);
                     }
                     break;
                 case LightsMouse::Zoom:
@@ -331,6 +478,10 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_CAPTURECHANGED:
             pressed_ = -1;
             dragging_ = false;
+            if (state_.pressed >= 0) {
+                state_.pressed = -1;
+                paint();
+            }
             return 0;
         case WM_LBUTTONUP: {
             if (dragging_) {
@@ -342,6 +493,13 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             const int pressed = pressed_;
             pressed_ = -1;
             ReleaseCapture();
+            // Petit rebond élastique de la pastille relâchée (Golden Gate), puis la commande.
+            state_.pressed = -1;
+            state_.bouncing = pressed;
+            state_.bounce = 1 - 0.06;
+            bounceStart_ = GetTickCount64();
+            SetTimer(hwnd_, kBounceTimer, 15, nullptr);
+            paint();
             if (hitLight(layout_, screenPoint()) == pressed && target_ && IsWindow(target_))
                 PostMessageW(target_, WM_SYSCOMMAND, lightCommand(pressed, IsZoomed(target_) != FALSE), 0);
             return 0;
@@ -350,6 +508,19 @@ LRESULT TrafficWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kSampleTimer) {
                 KillTimer(hwnd_, kSampleTimer);
                 place(true);
+            } else if (wp == kProbeTimer) {
+                KillTimer(hwnd_, kProbeTimer);
+                place(true, true);
+            } else if (wp == kBounceTimer) {
+                const double t = double(GetTickCount64() - bounceStart_) / kBounceMs;
+                if (t >= 1 || state_.bouncing < 0) {
+                    KillTimer(hwnd_, kBounceTimer);
+                    state_.bouncing = -1;
+                    state_.bounce = 1;
+                } else {   // ressort amorti : 0,94 → léger dépassement → 1
+                    state_.bounce = 1 - 0.06 * std::cos(2.4 * 3.14159265358979 * t) * std::exp(-3.5 * t);
+                }
+                if (shown_) paint();
             }
             return 0;
         default: break;

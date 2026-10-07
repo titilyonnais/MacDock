@@ -8,17 +8,99 @@ namespace md {
 
 namespace {
 constexpr const wchar_t* kShellClasses[] = {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd", L"Progman", L"WorkerW"};
-constexpr double kDiameter = 12, kSpacing = 20, kFirst = 20, kTail = 8, kMinTitle = 20, kDefaultTitle = 28;   // points
+// Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre (mesuré par des développeurs).
+constexpr double kDiameter = 14, kSpacing = 23, kFirst = 20, kTail = 8, kMinTitle = 20, kDefaultTitle = 28;   // points
+constexpr double kTopGap = 3;   // points laissés au bord du haut (redimensionnement)
+
+bool isButtonHit(LRESULT h) { return h == HTMINBUTTON || h == HTMAXBUTTON || h == HTCLOSE; }
 }
 
-bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT dpi) {
+bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT) {
     if (mode == LightsMode::Off || w.iconic || w.ownProcess || w.elevated) return false;
     if ((w.style & WS_CAPTION) != WS_CAPTION || !(w.style & WS_SYSMENU) || (w.style & WS_CHILD)) return false;
     if (w.exStyle & WS_EX_TOOLWINDOW) return false;
     for (const wchar_t* c : kShellClasses)
         if (w.className == c) return false;
-    if (mode == LightsMode::Standard && w.client.top - w.frame.top < std::lround(kMinTitle * dpi / 96.0)) return false;
     return true;
+}
+
+RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwm, UINT dpi, const HitProbe& hit) {
+    if (dwm.right > dwm.left && dwm.bottom > dwm.top) {   // rognées au cadre visible (bordures invisibles exclues)
+        const RECT r{std::max(frame.left, window.left + dwm.left), std::max(frame.top, window.top + dwm.top),
+                     std::min(frame.right, window.left + dwm.right), std::min(frame.bottom, window.top + dwm.bottom)};
+        return r.right > r.left && r.bottom > r.top ? r : RECT{};
+    }
+    if (!hit) return {};
+    const double k = (dpi ? dpi : 96) / 96.0;
+    const LONG step = std::max(1L, LONG(std::lround(2 * k)));
+    const LONG y = frame.top + std::lround(12 * k);   // à mi-hauteur des boutons dessinés par l'app (~30 pt)
+    LONG left = -1, right = -1;
+    int misses = 0;
+    for (LONG x = frame.right - 1; x > frame.left && x > frame.right - std::lround(260 * k); x -= step) {
+        if (isButtonHit(hit(POINT{x, y}))) {
+            if (right < 0) right = x + 1;
+            left = x;
+            misses = 0;
+        } else if (right >= 0 && ++misses >= 3) {
+            break;
+        }
+    }
+    if (right < 0) return {};
+    while (left - 1 > frame.left && left - 1 > left - step && isButtonHit(hit(POINT{left - 1, y}))) --left;
+    if (right >= frame.right - step) right = frame.right;   // le dernier bouton touche le bord
+    const LONG x = (left + right) / 2;
+    LONG bottom = y + 1;
+    for (LONG yy = y; yy < frame.top + std::lround(80 * k) && isButtonHit(hit(POINT{x, yy})); yy += step) bottom = yy + 1;
+    while (bottom < frame.bottom && isButtonHit(hit(POINT{x, bottom}))) {
+        ++bottom;
+        if (bottom > frame.top + std::lround(80 * k)) break;
+    }
+    return RECT{left, frame.top, right, bottom};
+}
+
+bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitProbe& hit) {
+    if (!hit) return false;
+    const double k = (dpi ? dpi : 96) / 96.0;
+    LONG titleH = titleBottom - frame.top;
+    if (titleH < std::lround(kMinTitle * k)) titleH = std::lround(kDefaultTitle * k);
+    const LONG cy = frame.top + titleH / 2, r = std::lround(kDiameter / 2 * k);
+    const LONG step = std::max(2L, LONG(std::lround(4 * k)));
+    const LONG end = frame.left + std::lround((kFirst + 2 * kSpacing + kDiameter / 2 + kTail) * k);
+    for (LONG y : {cy - r, cy, cy + r})
+        for (LONG x = frame.left + std::lround(4 * k); x < end; x += step) {
+            const LRESULT h = hit(POINT{x, y});
+            if (h != HTCAPTION && h != HTSYSMENU) return false;
+        }
+    return true;
+}
+
+LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi) {
+    const double k = (dpi ? dpi : 96) / 96.0;
+    LightsLayout l;
+    l.window = buttons;
+    const LONG need = std::lround((2 * kSpacing + kDiameter + 2 * kTail) * k);
+    if (l.window.right - l.window.left < need) l.window.left = l.window.right - need;   // un seul bouton (dialogue)
+    const LONG r = std::lround(kDiameter / 2 * k);
+    l.radius = double(r);
+    const LONG cy = (buttons.top + buttons.bottom) / 2, mid = (l.window.left + l.window.right) / 2;
+    for (int i = 0; i < 3; ++i) {
+        const LONG cx = mid + std::lround((i - 1) * kSpacing * k);
+        l.circles[i] = RECT{cx - r, cy - r, cx + r, cy + r};
+    }
+    l.fade = false;
+    l.topGap = std::min(LONG(std::lround(kTopGap * k)), (buttons.bottom - buttons.top) / 4);
+    l.patch = l.window;
+    l.patch.top += l.topGap;
+    return l;
+}
+
+LightsLayout buttonsCover(const RECT& buttons, UINT dpi) {
+    LightsLayout l = lightsOverButtons(buttons, dpi);
+    l.window = buttons;
+    l.patch = buttons;
+    l.patch.top += l.topGap;
+    l.lights = false;
+    return l;
 }
 
 LightsLayout lightsLayout(const RECT& frame, const RECT& client, UINT dpi) {
@@ -113,28 +195,50 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
     const int w = int(l.window.right - l.window.left), h = int(l.window.bottom - l.window.top);
     std::vector<std::uint8_t> out(std::size_t(std::max(w, 0)) * std::max(h, 0) * 4, 0);
     if (w <= 0 || h <= 0) return out;
-    static constexpr std::uint32_t kFill[3] = {0xFF5F57, 0xFEBC2E, 0x28C840}, kEdge[3] = {0xE0443E, 0xDEA123, 0x1AAB29};
-    const std::uint32_t grayFill = s.dark ? 0x5A5A5A : 0xD0D0D0, grayEdge = s.dark ? 0x4A4A4A : 0xB8B8B8;
-    const double border = std::max(0.5 * scale, 0.75), stroke = 1.1 * scale / 2, arm = 2.6 * scale;
+    // Golden Gate : verre façon Aqua, teintes d'avant 27 désaturées de ~12 %, liseré plus sombre, reflet elliptique
+    // en haut et lueur plus faible en bas (pas de valeurs publiées par Apple : estimations du rapport de recherche).
+    static constexpr std::uint32_t kFill[3] = {0xE26E65, 0xF0BE5E, 0x68C05D}, kEdge[3] = {0xC4483F, 0xD29C38, 0x3E9C3A};
+    const std::uint32_t grayFill = s.dark ? 0x4E4F52 : 0xDDDDDD, grayEdge = s.dark ? 0x3E3F42 : 0xC4C3C6;
+    const double border = std::max(0.5 * scale, 0.75), stroke = 1.1 * scale / 2, arm = 2.9 * scale;
     const double fade = kTail * scale;
     const Rgb patch = rgb(s.patchColor);
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
-            // Fond : couleur de la barre de titre, fondu sur la fin à droite.
-            const double pa = std::clamp((w - (x + 0.5)) / fade, 0.0, 1.0);
+            // Fond : couleur de la barre de titre (fondu sur la fin à droite pour des pastilles posées à gauche) ; le
+            // bord du haut reste transparent quand il faut pouvoir y redimensionner la fenêtre.
+            double pa = l.fade ? std::clamp((w - (x + 0.5)) / fade, 0.0, 1.0) : 1.0;
+            if (y < l.topGap) pa = 0;
             double a = pa, r = patch.r * pa, g = patch.g * pa, b = patch.b * pa;   // prémultiplié
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < 3 && l.lights; ++i) {
                 const double cx = (l.circles[i].left + l.circles[i].right) / 2.0 - l.window.left;
                 const double cy = (l.circles[i].top + l.circles[i].bottom) / 2.0 - l.window.top;
                 if (std::abs(x + 0.5 - cx) > l.radius + 1 || std::abs(y + 0.5 - cy) > l.radius + 1) continue;
-                int outer = 0, inner = 0, glyph = 0;
+                const bool down = s.pressed == i && s.enabled[i];
+                const double radius = l.radius * (down ? 0.94 : i == s.bouncing ? s.bounce : 1.0);   // enfoncée sous le doigt
+                const Rgb fill = rgb(s.enabled[i] ? kFill[i] : grayFill), edge = rgb(s.enabled[i] ? kEdge[i] : grayEdge);
+                int outer = 0, glyph = 0;
+                double sr = 0, sg = 0, sb = 0;
                 for (int sy = 0; sy < 4; ++sy)
                     for (int sx = 0; sx < 4; ++sx) {
                         const double px = x + (sx + 0.5) / 4, py = y + (sy + 0.5) / 4;
                         const double d = std::hypot(px - cx, py - cy);
-                        if (d > l.radius) continue;
+                        if (d > radius) continue;
                         ++outer;
-                        if (d <= l.radius - border) ++inner;
+                        // Verre : liseré plus sombre, teinte un peu plus claire en haut, reflet en haut, lueur en bas.
+                        const double u = (px - cx) / radius, v = (py - cy) / radius;
+                        Rgb c = d > radius - border ? edge : fill;
+                        const double shade = (1.0 - 0.07 * v) * (down ? 0.78 : 1.0);
+                        c = {c.r * shade, c.g * shade, c.b * shade};
+                        if (s.enabled[i]) {
+                            const double hx = u / 0.62, hy = (v + 0.52) / 0.34, gx = u / 0.55, gy = (v - 0.64) / 0.22;
+                            double white = 0;
+                            if (hx * hx + hy * hy < 1) white += (down ? 0.25 : 0.5) * (1 - (hx * hx + hy * hy));
+                            if (gx * gx + gy * gy < 1) white += (down ? 0.08 : 0.2) * (1 - (gx * gx + gy * gy));
+                            c = {c.r + (255 - c.r) * white, c.g + (255 - c.g) * white, c.b + (255 - c.b) * white};
+                        }
+                        sr += c.r;
+                        sg += c.g;
+                        sb += c.b;
                         if (!s.hover || !s.enabled[i]) continue;
                         double dist = 1e9;
                         if (i == 0) {   // ×
@@ -147,10 +251,9 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
                         if (dist <= stroke) ++glyph;
                     }
                 if (!outer) continue;
-                const Rgb fill = rgb(s.enabled[i] ? kFill[i] : grayFill), edge = rgb(s.enabled[i] ? kEdge[i] : grayEdge);
-                const double cov = outer / 16.0, fin = inner / double(outer);
-                Rgb c{edge.r + (fill.r - edge.r) * fin, edge.g + (fill.g - edge.g) * fin, edge.b + (fill.b - edge.b) * fin};
-                const double ga = glyph / 16.0 * 0.55;   // symbole sombre à 55 %
+                const double cov = outer / 16.0;
+                Rgb c{sr / outer, sg / outer, sb / outer};
+                const double ga = glyph / 16.0 * (down ? 0.7 : 0.55);   // symbole sombre
                 c = {c.r * (1 - ga), c.g * (1 - ga), c.b * (1 - ga)};
                 r = c.r * cov + r * (1 - cov);
                 g = c.g * cov + g * (1 - cov);
