@@ -99,25 +99,21 @@ std::wstring wallpaperPath(const RECT& monitor) {
     return {};
 }
 
-struct Wallpaper {
-    std::vector<std::uint8_t> px;
-    UINT w = 0, h = 0;
-};
-
-// Fonds décodés gardés d'une ouverture à l'autre (un JPEG 4K se décode en dizaines de millisecondes).
-std::shared_ptr<const Wallpaper> loadWallpaper(const std::wstring& path) {
-    static std::map<std::wstring, std::shared_ptr<const Wallpaper>> cache;
+// Fonds mis à la taille de l'écran, gardés d'une ouverture à l'autre (un JPEG 4K se décode en dizaines de
+// millisecondes) ; jamais en pleine résolution.
+std::shared_ptr<const BgraImage> cachedWallpaper(const std::wstring& path, int w, int h) {
+    static std::map<std::wstring, std::shared_ptr<const BgraImage>> cache;
     WIN32_FILE_ATTRIBUTE_DATA fa{};
     if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fa)) return nullptr;
     const std::wstring key = path + L"|" + std::to_wstring(fa.ftLastWriteTime.dwLowDateTime) + L"|" +
-                             std::to_wstring(fa.ftLastWriteTime.dwHighDateTime);
+                             std::to_wstring(fa.ftLastWriteTime.dwHighDateTime) + L"|" + std::to_wstring(w) + L"x" +
+                             std::to_wstring(h);
     if (auto it = cache.find(key); it != cache.end()) return it->second;
-    auto w = std::make_shared<Wallpaper>();
-    w->px = readPng(path, w->w, w->h);
-    if (w->px.empty()) return nullptr;
+    auto im = std::make_shared<BgraImage>(wallpaperCover(path, w, h));
+    if (im->px.empty()) return nullptr;
     if (cache.size() >= 4) cache.clear();
-    cache[key] = w;
-    return w;
+    cache[key] = im;
+    return im;
 }
 
 struct Thumb {
@@ -226,18 +222,14 @@ bool Session::addScreen(HMONITOR mon) {
     const auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,
                                                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
     const std::wstring path = wallpaperPath(s.rc);
-    if (auto wp = loadWallpaper(path); wp && wp->w <= dc->GetMaximumBitmapSize() && wp->h <= dc->GetMaximumBitmapSize()) {
-        dc->CreateBitmap(D2D1::SizeU(wp->w, wp->h), wp->px.data(), wp->w * 4, &props, &s.wall);
-        const double k = std::max(double(s.w()) / wp->w, double(s.h()) / wp->h);
-        const float sw = float(s.w() / k), sh = float(s.h() / k);
-        s.wallSrc = {(float(wp->w) - sw) / 2, (float(wp->h) - sh) / 2, (float(wp->w) + sw) / 2, (float(wp->h) + sh) / 2};
-    }
+    if (auto wp = cachedWallpaper(path, int(s.w()), int(s.h())))
+        dc->CreateBitmap(D2D1::SizeU(s.w(), s.h()), wp->px.data(), s.w() * 4, &props, &s.wall);
     if (!s.wall) {
         if (env.trace) log::info(L"[trace] mission : fond de repli (%s)", path.empty() ? L"pas de fichier" : path.c_str());
         const BgraImage t = tahoeWallpaper(int(s.w()), int(s.h()), env.dark);
         dc->CreateBitmap(D2D1::SizeU(s.w(), s.h()), t.px.data(), s.w() * 4, &props, &s.wall);
-        s.wallSrc = {0, 0, float(s.w()), float(s.h())};
     }
+    s.wallSrc = {0, 0, float(s.w()), float(s.h())};
     screens.push_back(std::move(s));
     return true;
 }
@@ -391,6 +383,22 @@ std::uint32_t placeholderColor(std::size_t i) {   // rectangles du rendu hors é
 }
 
 } // namespace
+
+BgraImage wallpaperCover(const std::wstring& path, int width, int height) {
+    BgraImage out{width, height, {}};
+    UINT sw = 0, sh = 0;
+    if (width <= 0 || height <= 0) return out;
+    const std::vector<std::uint8_t> src = readPng(path, sw, sh);
+    if (src.empty()) return out;
+    const double k = std::max(double(width) / sw, double(height) / sh);   // « remplir » : recadré au centre
+    const UINT cw = std::clamp(UINT(std::lround(width / k)), 1u, sw), ch = std::clamp(UINT(std::lround(height / k)), 1u, sh);
+    const UINT cx = (sw - cw) / 2, cy = (sh - ch) / 2;
+    std::vector<std::uint8_t> crop(std::size_t(cw) * ch * 4);
+    for (UINT y = 0; y < ch; ++y)
+        std::copy_n(&src[(std::size_t(cy + y) * sw + cx) * 4], std::size_t(cw) * 4, &crop[std::size_t(y) * cw * 4]);
+    out.px = resizeBgra(crop, cw, ch, UINT(width), UINT(height));
+    return out;
+}
 
 bool MissionView::isOpen() { return g_open != nullptr; }
 

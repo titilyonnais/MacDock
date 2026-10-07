@@ -29,6 +29,9 @@ public:
     static void closeOpen();   // second appui : animation de retour puis fermeture
 };
 
+// Fond d'écran recadré au centre et mis à width × height (« remplir ») ; pixels vides si le fichier est illisible.
+BgraImage wallpaperCover(const std::wstring& path, int width, int height);
+
 // Même dessin hors écran (aucune fenêtre) : fond Tahoe, rectangles colorés à la place des miniatures ; hover : indice
 // de la fenêtre survolée (-1 : aucune).
 BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, int width, int height, int hover);

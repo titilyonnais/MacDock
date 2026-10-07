@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/calib/png_io.h"
 #include "../src/mission/mission_view.h"
 #include "../src/mission/mission_layout.h"
 
@@ -124,4 +125,19 @@ TEST_CASE(mission_layout_row_gap_leaves_room_for_title) {   // la pastille du ti
     for (std::size_t i = 0; i < r.size(); ++i)
         for (std::size_t j = 0; j < r.size(); ++j)
             if (r[j].y > r[i].y + r[i].h - 1e-6) CHECK(r[j].y - (r[i].y + r[i].h) >= 24 + md::kMissionLabelRoom - 1e-6);
+}
+
+TEST_CASE(mission_wallpaper_kept_at_screen_size) {   // un fond 8K n'est pas gardé en pleine résolution
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    wchar_t dir[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, dir);
+    const std::wstring path = std::wstring(dir) + L"macdock-test-wall.png";
+    std::vector<std::uint8_t> px(400 * 100 * 4, 255);
+    for (int x = 0; x < 400; ++x) px[(50 * 400 + x) * 4] = std::uint8_t(x < 200 ? 0 : 255);   // moitié gauche sans bleu
+    REQUIRE(md::writePng(path, px.data(), 400, 100));
+    const md::BgraImage im = md::wallpaperCover(path, 50, 50);
+    CHECK(im.w == 50 && im.h == 50 && im.px.size() == 50u * 50 * 4);
+    CHECK(md::wallpaperCover(L"C:\\nexiste\\pas.png", 50, 50).px.empty());
+    DeleteFileW(path.c_str());
+    CoUninitialize();
 }

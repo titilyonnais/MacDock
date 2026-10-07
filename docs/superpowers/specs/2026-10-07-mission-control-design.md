@@ -7,7 +7,7 @@
 
 Sur macOS, Mission Control (Ctrl+↑, F3, geste à trois doigts) écarte toutes les fenêtres ouvertes du bureau courant : elles se rangent sans se chevaucher sur un fond assombri, en miniatures vivantes. Survoler une fenêtre l'entoure de bleu et affiche son titre ; un clic la ramène au premier plan et referme la vue ; Échap ou un clic dans le vide referme sans rien changer.
 
-**Critère de réussite :** le raccourci (réglable) ou l'élément du Dock ouvre la vue sur chaque écran ; les fenêtres visibles du bureau virtuel courant y sont rangées sans chevauchement, à leur image réelle (miniatures DWM vivantes), avec une animation depuis leur place réelle ; survol = contour bleu et titre ; clic = la fenêtre passe devant et la vue se referme en ramenant les autres à leur place ; Échap, un second appui ou un clic dans le vide ferment.
+**Critère de réussite :** le raccourci (réglable) ou le message `MacDockMissionControl` (coins actifs) ouvre la vue sur chaque écran — pas d'élément dans le Dock, comme sur macOS par défaut ; les fenêtres visibles du bureau virtuel courant y sont rangées sans chevauchement, à leur image réelle (miniatures DWM vivantes), avec une animation depuis leur place réelle ; survol = contour bleu et titre ; clic = la fenêtre passe devant et la vue se referme en ramenant les autres à leur place ; Échap, un second appui ou un clic dans le vide ferment.
 
 ## 2. Décisions
 
