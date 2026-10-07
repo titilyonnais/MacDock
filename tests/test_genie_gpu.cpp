@@ -11,6 +11,10 @@
 #include "../src/app/genie_gpu.h"
 #include "../src/calib/png_io.h"
 
+#include <DirectXPackedVector.h>
+#include <d3d11.h>
+#include <wrl/client.h>
+
 #include <string>
 
 namespace {
@@ -92,4 +96,54 @@ TEST_CASE(genie_gpu_sheet) {   // MACDOCK_DUMP=dossier : images du génie GPU po
                          out.data(), 640, 640));
     }
     if (write) CoUninitialize();
+}
+
+TEST_CASE(genie_gpu_scrgb_passes_hdr_values) {
+    // Écran HDR : capture scRGB (RGBA16F) ; un blanc SDR à 3,2 doit ressortir à 3,2, sans écrêtage à 1.
+    using namespace DirectX::PackedVector;
+    Microsoft::WRL::ComPtr<ID3D11Device> dev;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &dev, nullptr, &ctx)));
+    const int sw = 32, sh = 24;
+    std::vector<HALF> px(std::size_t(sw) * sh * 4);
+    for (std::size_t i = 0; i < px.size(); i += 4) {
+        px[i] = XMConvertFloatToHalf(3.2f);
+        px[i + 1] = XMConvertFloatToHalf(1.0f);
+        px[i + 2] = XMConvertFloatToHalf(0.25f);
+        px[i + 3] = XMConvertFloatToHalf(1.0f);
+    }
+    D3D11_TEXTURE2D_DESC d{};
+    d.Width = sw;
+    d.Height = sh;
+    d.MipLevels = d.ArraySize = 1;
+    d.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    d.SampleDesc.Count = 1;
+    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    const D3D11_SUBRESOURCE_DATA init{px.data(), UINT(sw * 8), 0};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> frame, dst, stage;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, &init, &frame)));
+    d.Width = d.Height = 64;
+    d.BindFlags = D3D11_BIND_RENDER_TARGET;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, nullptr, &dst)));
+    d.BindFlags = 0;
+    d.Usage = D3D11_USAGE_STAGING;
+    d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    REQUIRE(SUCCEEDED(dev->CreateTexture2D(&d, nullptr, &stage)));
+    md::GenieGpu gpu;
+    REQUIRE(gpu.init(dev.Get()));
+    REQUIRE(gpu.setSource(ctx.Get(), frame.Get(), sw, sh));
+    const auto mesh = md::genieMesh(md::MinimizeEffect::Scale, SIZE{sw, sh}, RECT{4, 4, 36, 28}, RECT{4, 40, 12, 46},
+                                    md::DockPosition::Bottom, 0.0, 1);
+    REQUIRE(gpu.draw(ctx.Get(), dst.Get(), 64, 64, POINT{0, 0}, mesh));
+    ctx->CopyResource(stage.Get(), dst.Get());
+    D3D11_MAPPED_SUBRESOURCE m{};
+    REQUIRE(SUCCEEDED(ctx->Map(stage.Get(), 0, D3D11_MAP_READ, 0, &m)));
+    const auto* row = reinterpret_cast<const HALF*>(static_cast<const std::uint8_t*>(m.pData) + m.RowPitch * 16);
+    const float r = XMConvertHalfToFloat(row[20 * 4]), g = XMConvertHalfToFloat(row[20 * 4 + 1]), a = XMConvertHalfToFloat(row[20 * 4 + 3]);
+    const float outside = XMConvertHalfToFloat(reinterpret_cast<const HALF*>(m.pData)[3]);
+    ctx->Unmap(stage.Get(), 0);
+    CHECK(r > 3.1f && r < 3.3f);
+    CHECK(g > 0.95f && g < 1.05f);
+    CHECK(a > 0.99f);
+    CHECK(outside == 0.0f);
 }

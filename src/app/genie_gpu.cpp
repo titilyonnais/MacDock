@@ -62,11 +62,7 @@ bool GenieGpu::init(ID3D11Device* dev) {
     r.CullMode = D3D11_CULL_NONE;
     r.DepthClipEnable = TRUE;
     r.MultisampleEnable = TRUE;
-    if (FAILED(dev_->CreateRasterizerState(&r, &raster_))) return false;
-
-    UINT quality = 0;
-    samples_ = SUCCEEDED(dev_->CheckMultisampleQualityLevels(DXGI_FORMAT_B8G8R8A8_UNORM, 4, &quality)) && quality ? 4 : 1;
-    return true;
+    return SUCCEEDED(dev_->CreateRasterizerState(&r, &raster_));
 }
 
 void GenieGpu::dropSource() {
@@ -85,7 +81,7 @@ bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT 
     d.Height = h;
     d.MipLevels = 0;   // chaîne complète : nette jusque dans la case du Dock
     d.ArraySize = 1;
-    d.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    d.Format = fd.Format;   // BGRA8 (SDR) ou RGBA16F (scRGB)
     d.SampleDesc.Count = 1;
     d.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
     d.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
@@ -99,15 +95,17 @@ bool GenieGpu::setSource(ID3D11DeviceContext* ctx, ID3D11Texture2D* frame, UINT 
     return true;
 }
 
-bool GenieGpu::ensureTarget(UINT w, UINT h) {
-    if (msaa_ && tw_ == w && th_ == h) return true;
+bool GenieGpu::ensureTarget(UINT w, UINT h, DXGI_FORMAT format) {
+    if (msaa_ && tw_ == w && th_ == h && tf_ == format) return true;
     msaa_.Reset();
     msaaRtv_.Reset();
+    UINT quality = 0;
+    samples_ = SUCCEEDED(dev_->CheckMultisampleQualityLevels(format, 4, &quality)) && quality ? 4 : 1;
     D3D11_TEXTURE2D_DESC d{};
     d.Width = w;
     d.Height = h;
     d.MipLevels = d.ArraySize = 1;
-    d.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    d.Format = format;
     d.SampleDesc.Count = samples_;
     d.BindFlags = D3D11_BIND_RENDER_TARGET;
     if (FAILED(dev_->CreateTexture2D(&d, nullptr, &msaa_)) || FAILED(dev_->CreateRenderTargetView(msaa_.Get(), nullptr, &msaaRtv_))) {
@@ -116,12 +114,17 @@ bool GenieGpu::ensureTarget(UINT w, UINT h) {
     }
     tw_ = w;
     th_ = h;
+    tf_ = format;
     return true;
 }
 
 bool GenieGpu::draw(ID3D11DeviceContext* ctx, ID3D11Texture2D* dst, UINT w, UINT h, POINT origin,
                     const std::vector<GenieVertex>& mesh) {
-    if (!dev_ || !ctx || !dst || !w || !h || !ensureTarget(w, h)) return false;
+    if (!dev_ || !ctx || !dst) return false;
+    D3D11_TEXTURE2D_DESC dd{};
+    dst->GetDesc(&dd);
+    // Cible MSAA de la taille de dst (la résolution l'exige) ; le dessin occupe son coin w x h.
+    if (!w || !h || dd.Width < w || dd.Height < h || !ensureTarget(dd.Width, dd.Height, dd.Format)) return false;
     const float clear[4] = {0, 0, 0, 0};
     ctx->ClearRenderTargetView(msaaRtv_.Get(), clear);
     const std::size_t rows = mesh.size() >= 4 ? mesh.size() / 2 - 1 : 0;
@@ -183,10 +186,11 @@ bool GenieGpu::draw(ID3D11DeviceContext* ctx, ID3D11Texture2D* dst, UINT w, UINT
         ctx->PSSetShaderResources(0, 1, &none);
         ctx->OMSetRenderTargets(0, nullptr, nullptr);
     }
-    if (samples_ > 1)
-        ctx->ResolveSubresource(dst, 0, msaa_.Get(), 0, DXGI_FORMAT_B8G8R8A8_UNORM);
-    else
+    if (samples_ > 1) {
+        ctx->ResolveSubresource(dst, 0, msaa_.Get(), 0, dd.Format);
+    } else {
         ctx->CopyResource(dst, msaa_.Get());
+    }
     return true;
 }
 

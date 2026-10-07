@@ -44,7 +44,7 @@ $Targets = @{
                       'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\popup\*.cpp', 'src\interact\*.cpp', 'src\stack\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp', 'src\spotlight\*.cpp', 'src\mission\*.cpp', 'src\switcher\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
-                      'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
+                      'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib', 'windowsapp.lib') }
     menubar  = @{ Exe = 'MacMenuBar.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
                       'src\icons\*.cpp', 'src\tracker\*.cpp', 'src\shell\*.cpp', 'src\glass\*.cpp', 'src\calib\*.cpp',
                       'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\popup\popup_glass.cpp', 'src\theme\wallpaper_art.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp', 'src\hud\*.cpp', 'src\ipc\*.cpp'); Subsystem = 'WINDOWS';
