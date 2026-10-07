@@ -87,6 +87,52 @@ std::pair<std::wstring, std::wstring> nameOf(IUIAutomationElement* e) {
     return {name, shortcut};
 }
 
+constexpr int kMenuBarDepth = 4;   // la barre de menus est près de la racine (Win32 : 1, WinUI : 2 à 4)
+constexpr int kPopupDepth = 5;
+constexpr int kMaxVisited = 400;
+
+// Premier élément qui satisfait cond, à au plus depth niveaux sous scope, en largeur : jamais tout l'arbre (un
+// WebView2 ou un document Office immense y seraient parcourus).
+Com<IUIAutomationElement> findNear(IUIAutomation* u, IUIAutomationElement* scope, IUIAutomationCondition* cond, int depth) {
+    if (!scope || !cond) return nullptr;
+    Com<IUIAutomationTreeWalker> walker;
+    if (FAILED(u->get_ControlViewWalker(&walker))) return nullptr;
+    std::vector<Com<IUIAutomationElement>> level{scope};
+    int visited = 0;
+    for (int d = 0; d < depth && !level.empty(); ++d) {
+        std::vector<Com<IUIAutomationElement>> next;
+        for (const auto& parent : level) {
+            Com<IUIAutomationElement> child;
+            walker->GetFirstChildElement(parent.Get(), &child);
+            while (child && visited++ < kMaxVisited) {
+                Com<IUIAutomationElement> cached;
+                // FindFirst(TreeScope_Element) : la condition sur cet élément seul.
+                if (SUCCEEDED(child->FindFirst(TreeScope_Element, cond, &cached)) && cached) return cached;
+                next.push_back(child);
+                Com<IUIAutomationElement> sibling;
+                walker->GetNextSiblingElement(child.Get(), &sibling);
+                child = sibling;
+            }
+        }
+        level = std::move(next);
+    }
+    return nullptr;
+}
+
+struct PidWindows {
+    DWORD pid;
+    HWND except;
+    std::vector<HWND> out;
+};
+
+BOOL CALLBACK collectPidWindows(HWND h, LPARAM lp) {
+    auto* c = reinterpret_cast<PidWindows*>(lp);
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    if (pid == c->pid && h != c->except && IsWindowVisible(h)) c->out.push_back(h);
+    return TRUE;
+}
+
 } // namespace
 
 bool shouldProbeUia(std::wstring_view cls) {
@@ -95,6 +141,18 @@ bool shouldProbeUia(std::wstring_view cls) {
     for (const wchar_t* shell : {L"Progman", L"WorkerW", L"CabinetWClass", L"ExploreWClass", L"Shell_TrayWnd"})
         if (cls == shell) return false;
     return true;
+}
+
+bool shouldProbeUia(std::wstring_view cls, const std::vector<std::wstring>& childClasses) {
+    if (!shouldProbeUia(cls)) return false;
+    for (const auto& c : childClasses)
+        if (startsWith(c, L"Chrome_") || startsWith(c, L"Mozilla") || startsWith(c, L"Cef")) return false;
+    return true;
+}
+
+bool UiaWorker::busy() const {
+    std::lock_guard lock(mutex_);
+    return running_ || !jobs_.empty();
 }
 
 UiaMenus::~UiaMenus() {
@@ -127,9 +185,8 @@ IUIAutomationElement* UiaMenus::menuBar(HWND window) {
     if (!isSystem || FAILED(uia_->CreateNotCondition(isSystem.Get(), &notSystem)) ||
         FAILED(uia_->CreateAndCondition(typeIs(uia_, UIA_MenuBarControlTypeId).Get(), notSystem.Get(), &cond)))
         return nullptr;
-    IUIAutomationElement* bar = nullptr;
-    if (FAILED(root->FindFirst(TreeScope_Descendants, cond.Get(), &bar))) return nullptr;
-    return bar;
+    auto found = findNear(uia_, root.Get(), cond.Get(), kMenuBarDepth);
+    return found.Detach();
 }
 
 namespace {
@@ -143,20 +200,12 @@ Com<IUIAutomationElement> openedMenu(IUIAutomation* u, IUIAutomationElement* ite
     auto menuCond = typeIs(u, UIA_MenuControlTypeId);
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
-    Com<IUIAutomationElement> desktop, root;
-    u->GetRootElement(&desktop);
+    Com<IUIAutomationElement> root;
     u->ElementFromHandle(window, &root);
-    VARIANT v{};
-    v.vt = VT_I4;
-    v.lVal = LONG(pid);
-    Com<IUIAutomationCondition> samePid, menuOfApp;
-    u->CreatePropertyCondition(UIA_ProcessIdPropertyId, v, &samePid);
-    u->CreateAndCondition(menuCond.Get(), samePid.Get(), &menuOfApp);
     auto other = [&](IUIAutomationElement* e) {
         BOOL same = FALSE;
         return !parent || FAILED(u->CompareElements(e, parent, &same)) || !same;
     };
-    // Le plus récent d'abord : un sous-menu s'ouvre au-dessus du menu qui le contient.
     auto pick = [&](IUIAutomationElement* scope, TreeScope where, IUIAutomationCondition* c) -> Com<IUIAutomationElement> {
         if (!scope || !c) return nullptr;
         Com<IUIAutomationElementArray> arr;
@@ -165,12 +214,25 @@ Com<IUIAutomationElement> openedMenu(IUIAutomation* u, IUIAutomationElement* ite
             if (other(e.Get())) return e;
         return nullptr;
     };
+    // Fenêtres surgissantes de l'app (menus Win32 #32768, Qt, WinUI fenêtrées), la plus haute d'abord : un sous-menu
+    // s'ouvre au-dessus du menu qui le contient.
+    auto popup = [&]() -> Com<IUIAutomationElement> {
+        PidWindows w{pid, window, {}};
+        EnumWindows(collectPidWindows, reinterpret_cast<LPARAM>(&w));
+        for (HWND h : w.out) {
+            Com<IUIAutomationElement> e;
+            if (FAILED(u->ElementFromHandle(h, &e)) || !e) continue;
+            if (typeOf(e.Get()) == UIA_MenuControlTypeId && other(e.Get())) return e;
+            if (auto m = pick(e.Get(), TreeScope_Children, menuCond.Get())) return m;
+        }
+        return nullptr;
+    };
     const ULONGLONG start = GetTickCount64();
     for (;;) {
         if (!children(u, item, entryCond.Get()).empty()) return item;
         if (auto m = pick(item, TreeScope_Children, menuCond.Get())) return m;
-        if (auto m = pick(desktop.Get(), TreeScope_Children, menuOfApp.Get())) return m;
-        if (auto m = pick(root.Get(), TreeScope_Descendants, menuCond.Get())) return m;
+        if (auto m = popup()) return m;
+        if (auto m = findNear(u, root.Get(), menuCond.Get(), kPopupDepth); m && other(m.Get())) return m;
         if (GetTickCount64() - start > kPopupWaitMs) return nullptr;
         Sleep(40);
     }
@@ -325,8 +387,10 @@ bool UiaWorker::start() {
                         if (stopping_) break;
                         job = std::move(jobs_.front());
                         jobs_.pop_front();
+                        running_ = true;
                     }
                     job(uia);
+                    running_ = false;
                 }
             }
         }
@@ -361,6 +425,7 @@ void UiaWorker::post(Job job) {
 bool UiaWorker::call(Job job, DWORD timeoutMs) {
     struct Signal {
         HANDLE event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        std::atomic<bool> abandoned{false};
         ~Signal() { CloseHandle(event); }
     };
     auto done = std::make_shared<Signal>();
@@ -368,12 +433,23 @@ bool UiaWorker::call(Job job, DWORD timeoutMs) {
         std::lock_guard lock(mutex_);
         if (!ok_ || stopping_) return false;
         jobs_.push_back([job = std::move(job), done](UiaMenus& uia) {
-            job(uia);
+            if (!done->abandoned) job(uia);
             SetEvent(done->event);
         });
     }
     wake_.notify_one();
-    return WaitForSingleObject(done->event, timeoutMs) == WAIT_OBJECT_0;
+    const ULONGLONG start = GetTickCount64();
+    for (;;) {
+        const ULONGLONG elapsed = GetTickCount64() - start;
+        if (elapsed >= timeoutMs) break;
+        const DWORD r = MsgWaitForMultipleObjects(1, &done->event, FALSE, DWORD(timeoutMs - elapsed), QS_SENDMESSAGE);
+        if (r == WAIT_OBJECT_0) return true;
+        if (r != WAIT_OBJECT_0 + 1) break;
+        MSG m;
+        PeekMessageW(&m, nullptr, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);   // traite les messages envoyés
+    }
+    done->abandoned = true;
+    return WaitForSingleObject(done->event, 0) == WAIT_OBJECT_0;
 }
 
 } // namespace md

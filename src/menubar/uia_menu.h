@@ -4,6 +4,7 @@
 #pragma once
 #include <windows.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -24,6 +25,9 @@ namespace md {
 // false pour les fenêtres jamais interrogées : Chromium, Electron et Firefox (une requête y active tout l'arbre
 // d'accessibilité et ralentit l'app), Explorateur et bureau (menus propres), classe inconnue.
 bool shouldProbeUia(std::wstring_view className);
+// Idem, et false si une fenêtre enfant héberge un navigateur intégré (WebView2, CEF : Chrome_*) ; childClasses :
+// classes des fenêtres enfants (EnumChildWindows).
+bool shouldProbeUia(std::wstring_view className, const std::vector<std::wstring>& childClasses);
 
 // Lecteur UI Automation ; un seul fil : celui qui l'a initialisé (COM MTA).
 class UiaMenus {
@@ -58,17 +62,21 @@ public:
     bool start();
     void stop();   // attend la fin du travail en cours (au plus les délais d'UI Automation)
     void post(Job job);
-    // Attend la fin du travail au plus timeoutMs ; false si dépassé (il s'exécute quand même : ce qu'il capture
-    // doit lui survivre).
+    // Attend la fin du travail au plus timeoutMs, en traitant les messages envoyés à ce fil (UI Automation interroge
+    // les fenêtres de premier niveau, celles de la barre comprises) ; false si dépassé : le travail est alors
+    // abandonné s'il n'a pas commencé (jamais exécuté en retard), sinon il se termine (ce qu'il capture doit lui
+    // survivre).
     bool call(Job job, DWORD timeoutMs);
+    bool busy() const;   // un travail tourne ou attend
 
 private:
     void loop();
     std::thread thread_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable wake_;
     std::deque<Job> jobs_;
     bool stopping_ = false, ok_ = false;
+    std::atomic<bool> running_{false};
 };
 
 } // namespace md

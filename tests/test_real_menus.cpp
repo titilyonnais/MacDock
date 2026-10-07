@@ -218,3 +218,43 @@ TEST_CASE(win32_refresh_bounded_for_busy_app) {
     CHECK(!md::refreshWin32Popup(app.hwnd, app.bar, 0));
     CHECK(GetTickCount64() - start < 700);
 }
+
+TEST_CASE(win32_menu_reads_owner_draw_with_text) {
+    TestMenu t;
+    MENUITEMINFOW info{sizeof(info)};
+    info.fMask = MIIM_FTYPE | MIIM_ID | MIIM_STRING;
+    info.fType = MFT_OWNERDRAW;   // dessinée par l'app (icône), mais avec son texte
+    info.wID = 204;
+    wchar_t text[] = L"&Zoom\tCtrl+Plus";
+    info.dwTypeData = text;
+    InsertMenuItemW(t.view, 99, TRUE, &info);
+    auto view = md::readWin32Menu(t.view);
+    REQUIRE(view.size() == 3);   // l'owner-draw sans texte reste omise
+    CHECK(view[2].text == L"Zoom");
+    CHECK(view[2].shortcut == L"Ctrl+Plus");
+}
+
+TEST_CASE(win32_menu_readable_entries) {
+    md::RawMenuItem empty{L"Fichier"};
+    empty.popup = true;
+    CHECK(!md::hasReadableEntries({empty, empty}));   // rien de lisible : menus génériques
+    auto full = empty;
+    full.children = {md::RawMenuItem{L"Nouveau", L"", 101}};
+    CHECK(md::hasReadableEntries({empty, full}));
+}
+
+TEST_CASE(win32_titles_sync_detects_new_bar) {
+    TestMenu t;
+    auto real = md::readWin32Menu(t.bar);
+    CHECK(!md::syncWin32Titles(t.bar, real));   // inchangée
+    HMENU edit = CreatePopupMenu();
+    AppendMenuW(edit, MF_STRING, 301, L"&Copier");
+    InsertMenuW(t.bar, 0, MF_BYPOSITION | MF_POPUP, reinterpret_cast<UINT_PTR>(edit), L"&Édition");   // comme un MDI
+    REQUIRE(md::syncWin32Titles(t.bar, real));
+    REQUIRE(real.size() == 3);
+    CHECK(real[0].text == L"Édition");
+    CHECK(real[1].text == L"Fichier");
+    CHECK_EQ(real[1].position, 1);
+    CHECK_EQ(real[1].children.size(), std::size_t(5));   // entrées déjà lues gardées
+    CHECK(!md::syncWin32Titles(t.bar, real));
+}

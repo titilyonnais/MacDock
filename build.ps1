@@ -36,7 +36,7 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';
-                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib', 'oleaut32.lib',
+                  Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib', 'oleaut32.lib', 'uiautomationcore.lib',
                       'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',

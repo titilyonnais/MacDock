@@ -33,5 +33,10 @@ std::vector<RawMenuItem> win32MenuTitles(HMENU bar);
 // récents) : WM_INITMENU, puis WM_INITMENUPOPUP pour le menu et ses sous-menus. 200 ms au plus par message et
 // 500 ms en tout ; une app qui ne répond pas est abandonnée. false si l'app n'a pas répondu.
 bool refreshWin32Popup(HWND owner, HMENU bar, int position);
+// Au moins une entrée lisible sous l'un des titres (sinon : menus génériques plutôt que des menus vides).
+bool hasReadableEntries(const std::vector<RawMenuItem>& titles);
+// Relit les titres de la barre (l'app a pu la changer : MDI, document ouvert) ; real reçoit les nouveaux titres,
+// avec les entrées déjà lues des titres inchangés. true si la barre a changé.
+bool syncWin32Titles(HMENU bar, std::vector<RawMenuItem>& real);
 
 } // namespace md

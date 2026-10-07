@@ -1,5 +1,7 @@
 #include "win32_menu.h"
 
+#include <algorithm>
+
 namespace md {
 namespace {
 
@@ -28,7 +30,6 @@ std::vector<RawMenuItem> read(HMENU menu, int depth, bool withChildren) {
             }
             continue;
         }
-        if (head.fType & (MFT_OWNERDRAW | MFT_BITMAP)) continue;   // pas de texte lisible
         std::wstring raw(info.cch, L'\0');
         if (info.cch > 0) {
             info.fMask = MIIM_STRING;
@@ -38,7 +39,7 @@ std::vector<RawMenuItem> read(HMENU menu, int depth, bool withChildren) {
             raw.resize(info.cch);
         }
         MenuLabel label = parseMenuLabel(raw);
-        if (label.text.empty()) continue;
+        if (label.text.empty()) continue;   // owner-draw ou image sans texte : rien de lisible
         it.text = std::move(label.text);
         it.shortcut = std::move(label.shortcut);
         it.id = head.wID;
@@ -99,6 +100,30 @@ bool refreshWin32Popup(HWND owner, HMENU bar, int position) {
     bool ok = true;
     initPopups(owner, GetSubMenu(bar, position), position, 3, start, ok);
     return ok;
+}
+
+bool hasReadableEntries(const std::vector<RawMenuItem>& titles) {
+    for (const auto& t : titles)
+        for (const auto& e : t.children)
+            if (!e.separator) return true;
+    return false;
+}
+
+bool syncWin32Titles(HMENU bar, std::vector<RawMenuItem>& real) {
+    auto titles = win32MenuTitles(bar);
+    const bool same = titles.size() == real.size() &&
+                      std::equal(titles.begin(), titles.end(), real.begin(), [](const RawMenuItem& a, const RawMenuItem& b) {
+                          return a.text == b.text && a.position == b.position;
+                      });
+    if (same) return false;
+    for (auto& t : titles)
+        for (auto& old : real)
+            if (old.text == t.text) {
+                t.children = std::move(old.children);
+                break;
+            }
+    real = std::move(titles);
+    return true;
 }
 
 } // namespace md

@@ -42,6 +42,8 @@ public:
     ImagePtr file(const std::wstring& path, int px, std::uint64_t modified = 0);
     // Icône du fichier telle que l'Explorateur la montre (liste système, rapide : jamais de vignette), px x px.
     ImagePtr fileIcon(const std::wstring& path, int px);
+    // Icône du type d'après le seul nom (« rapport.docx ») : jamais d'accès au fichier, au disque ni au réseau.
+    ImagePtr extensionIcon(const std::wstring& name, int px);
     // Pile « comme Pile » : images des éléments (le premier au-dessus) empilées dans la forme d'icône, avec
     // l'ombre des icônes du Dock ; nullptr si aucune image.
     ImagePtr composeStack(const std::wstring& key, const std::vector<FileRef>& files, int px);

@@ -3,8 +3,10 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 #include "minitest.h"
+#include "fake_uia.h"
 #include "menu_app.h"
 #include "../src/menubar/app_menus.h"
 #include "../src/menubar/uia_menu.h"
@@ -78,4 +80,78 @@ TEST_CASE(uia_menus_titles_from_win32_window) {
     CHECK(titles[1].text == L"Édition");
     CHECK_EQ(titles[1].position, 1);
     CHECK(titles[1].popup);
+}
+
+TEST_CASE(uia_worker_abandoned_job_skipped) {
+    md::UiaWorker worker;
+    REQUIRE(worker.start());
+    auto done = std::make_shared<std::atomic<int>>(0);
+    worker.post([](md::UiaMenus&) { Sleep(300); });   // fil occupé
+    CHECK(!worker.call([done](md::UiaMenus&) { ++*done; }, 50));   // abandonné avant d'avoir commencé
+    CHECK(worker.busy());
+    Sleep(600);
+    CHECK_EQ(done->load(), 0);   // jamais exécuté en retard
+    CHECK(!worker.busy());
+    worker.stop();
+}
+
+TEST_CASE(uia_probe_skips_embedded_browsers) {
+    CHECK(md::shouldProbeUia(L"Notepad", {L"NotepadTextBox", L"Microsoft.UI.Content.DesktopChildSiteBridge"}));
+    CHECK(!md::shouldProbeUia(L"Olk Host", {L"Chrome_WidgetWin_0", L"Chrome_RenderWidgetHostHWND"}));   // WebView2
+    CHECK(!md::shouldProbeUia(L"TeamsWebView", {L"Intermediate D3D Window", L"Chrome_RenderWidgetHostHWND"}));
+    CHECK(!md::shouldProbeUia(L"Chrome_WidgetWin_1", {}));
+}
+
+namespace {
+struct FakeMenus {
+    test::UiaNode *root, *bar, *file, *exporter, *png, *quit;
+    FakeMenus() {
+        root = test::uiaNode(L"App UIA", UIA_WindowControlTypeId);
+        bar = root->add(test::uiaNode(L"Barre", UIA_MenuBarControlTypeId));
+        bar->automationId = L"MenuBar";
+        file = bar->add(test::uiaNode(L"Fichier"));
+        file->add(test::uiaNode(L"Nouveau", UIA_MenuItemControlTypeId, L"Ctrl+N"));
+        file->add(test::uiaNode(L"", UIA_SeparatorControlTypeId));
+        exporter = file->add(test::uiaNode(L"Exporter"));
+        exporter->add(test::uiaNode(L"PDF"));
+        png = exporter->add(test::uiaNode(L"PNG"));
+        quit = file->add(test::uiaNode(L"Quitter"));
+        test::UiaNode* help = bar->add(test::uiaNode(L"Aide"));
+        help->add(test::uiaNode(L"À propos"));
+    }
+};
+} // namespace
+
+TEST_CASE(uia_menus_read_and_invoke_fake_app) {
+    FakeMenus f;
+    test::UiaApp app(f.root);
+    REQUIRE(app.hwnd != nullptr);
+    md::UiaWorker worker;
+    REQUIRE(worker.start());
+    std::vector<md::RawMenuItem> titles;
+    std::optional<std::vector<md::RawMenuItem>> items;
+    bool png = false, quit = false;
+    CHECK(worker.call([&](md::UiaMenus& uia) {
+        titles = uia.titles(app.hwnd);
+        items = uia.items(app.hwnd, 0);
+        png = uia.invoke(app.hwnd, {0, 2, 1}, L"PNG");
+        quit = uia.invoke(app.hwnd, {0, 1}, L"Quitter");   // position périmée : retrouvée par son nom
+    }, 15000));
+    worker.stop();
+    REQUIRE(titles.size() == 2);
+    CHECK(titles[1].text == L"Aide");
+    REQUIRE(items.has_value());
+    REQUIRE(items->size() == 4);
+    CHECK((*items)[0].text == L"Nouveau");
+    CHECK((*items)[0].shortcut == L"Ctrl+N");
+    CHECK((*items)[1].separator);
+    CHECK((*items)[2].popup);
+    REQUIRE((*items)[2].children.size() == 2);   // sous-menu lu en le dépliant
+    CHECK((*items)[2].children[1].text == L"PNG");
+    CHECK_EQ((*items)[2].children[1].position, 1);
+    CHECK(!f.file->expanded);   // replié après la lecture
+    CHECK(png);
+    CHECK_EQ(f.png->invoked.load(), 1);
+    CHECK(quit);
+    CHECK_EQ(f.quit->invoked.load(), 1);
 }

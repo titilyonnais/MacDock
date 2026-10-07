@@ -115,3 +115,14 @@ TEST_CASE(icons_compose_stack_follows_modification) {
     CHECK(b != a);   // pas de réponse du cache pour un fichier modifié
     CHECK(p.file(np, 64, 1) != p.file(np, 64, 2));
 }
+
+TEST_CASE(icons_extension_icon_needs_no_file) {
+    ComScope com;
+    md::IconProvider p;
+    // Nom seul (document récent sur un partage hors ligne) : icône du type, sans accès au disque ni au réseau.
+    auto img = p.extensionIcon(L"rapport.docx", 16);
+    REQUIRE(img != nullptr);
+    CHECK_EQ(img->size, 16);
+    CHECK(opaquePixels(*img) > 0);
+    CHECK(p.extensionIcon(L"rapport.docx", 16) == img);   // en cache
+}
