@@ -19,6 +19,7 @@ enum MenuCmd : int {
     kCmdViewAuto, kCmdViewFan, kCmdViewGrid,                           // pile : Présenter le contenu comme
     kCmdDisplayStack, kCmdDisplayFolder,                               // pile : Afficher comme
     kCmdViewList,                                                      // pile : … en liste
+    kCmdEffectGenie, kCmdEffectScale, kCmdEffectWindows,               // séparateur : Effet de réduction
     kCmdWindowBase = 1000   // + index dans MenuContext::windows
 };
 

@@ -155,3 +155,12 @@ TEST_CASE(settings_stack_display_roundtrip) {
     CHECK(back.pinned[0].stackDisplay == md::StackDisplay::Folder);
     CHECK(back.pinned[1].stackDisplay == md::StackDisplay::Stack);   // par défaut, comme sur macOS
 }
+
+TEST_CASE(settings_minimize_effect) {
+    auto s = md::settingsFromJson(*md::json::parse(R"({"minimizeEffect":"scale"})"));
+    CHECK(s.minimizeEffect == md::MinimizeEffect::Scale);
+    CHECK(md::settingsFromJson(*md::json::parse(R"({"minimizeEffect":"zoom"})")).minimizeEffect == md::MinimizeEffect::Genie);
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).minimizeEffect == md::MinimizeEffect::Genie);
+    s.minimizeEffect = md::MinimizeEffect::Windows;
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).minimizeEffect == md::MinimizeEffect::Windows);
+}

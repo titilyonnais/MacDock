@@ -57,6 +57,11 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
                    entry(kCmdPosBottom, L"En bas", true, s.position == DockPosition::Bottom),
                    entry(kCmdPosRight, L"Droite", true, s.position == DockPosition::Right)};
     out.push_back(pos);
+    MenuItem effect{-1, L"Effet de réduction"};   // comme « Réduire les fenêtres avec » de macOS
+    effect.submenu = {entry(kCmdEffectGenie, L"Génie", true, s.minimizeEffect == MinimizeEffect::Genie),
+                      entry(kCmdEffectScale, L"Échelle", true, s.minimizeEffect == MinimizeEffect::Scale),
+                      entry(kCmdEffectWindows, L"Windows", true, s.minimizeEffect == MinimizeEffect::Windows)};
+    out.push_back(effect);
     out.push_back({});
     out.push_back(entry(kCmdSettings, L"Réglages du Dock…"));
 }

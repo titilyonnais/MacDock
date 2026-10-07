@@ -6,6 +6,8 @@
 //               [--theme light|dark] [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
 //   MacDock.exe --capture-test f.png   capture réelle du bas de l'écran (diagnostic du verre)
 //   MacDock.exe --menu-test            menu en verre de démonstration (diagnostic)
+//   MacDock.exe --genie-snapshot f.png [--effect genie|scale] [--edge bottom|left|right]
+//               planche hors écran de l'effet de réduction (aucune fenêtre, aucun réglage lu ni écrit)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
@@ -13,6 +15,8 @@
 
 #include <string>
 
+#include "../anim/genie_preview.h"
+#include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "capture_test.h"
@@ -41,7 +45,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     SetUnhandledExceptionFilter(crashFilter);
 
     bool snapshot = args.find(L"--snapshot") != std::wstring::npos || args.find(L"--capture-test") != std::wstring::npos ||
-                    args.find(L"--menu-test") != std::wstring::npos;
+                    args.find(L"--menu-test") != std::wstring::npos || args.find(L"--genie-snapshot") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -60,11 +64,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
-        std::wstring captureTest;
-        for (int i = 1; i + 1 < argc; ++i)
+        std::wstring captureTest, genieSnapshot;
+        md::MinimizeEffect effect = md::MinimizeEffect::Genie;
+        md::DockPosition edge = md::DockPosition::Bottom;
+        for (int i = 1; i + 1 < argc; ++i) {
             if (wcscmp(argv[i], L"--capture-test") == 0) captureTest = argv[i + 1];
+            if (wcscmp(argv[i], L"--genie-snapshot") == 0) genieSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--effect") == 0 && wcscmp(argv[i + 1], L"scale") == 0) effect = md::MinimizeEffect::Scale;
+            if (wcscmp(argv[i], L"--edge") == 0)
+                edge = wcscmp(argv[i + 1], L"left") == 0    ? md::DockPosition::Left
+                       : wcscmp(argv[i + 1], L"right") == 0 ? md::DockPosition::Right
+                                                            : md::DockPosition::Bottom;
+        }
         LocalFree(argv);
-        if (args.find(L"--menu-test") != std::wstring::npos) {
+        if (!genieSnapshot.empty()) {
+            const md::BgraImage sheet = md::genieSheet(effect, edge);
+            code = md::writePng(genieSnapshot, sheet.px.data(), UINT(sheet.w), UINT(sheet.h)) ? 0 : 1;
+        } else if (args.find(L"--menu-test") != std::wstring::npos) {
             md::log::init(md::appDataDir() + L"\\logs");
             code = md::runMenuTest(instance);
         } else if (!captureTest.empty()) {

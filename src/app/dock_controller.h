@@ -77,6 +77,9 @@ public:
     // Masquage automatique : 1 = visible, 0 = entièrement sous le bord de l'écran.
     void setShown(double shown);
     double shown() const { return shown_; }
+    // Case (pixels de la fenêtre du Dock) de la miniature de cette fenêtre réduite, Dock au repos : sans
+    // agrandissement ni masquage ni rebond. nullopt si elle n'est pas dans le Dock.
+    std::optional<RECT> restingTile(std::uint64_t window);
 
     void startLaunchBounce(const std::wstring& appId);
     void stopLaunchBounce(const std::wstring& appId);
@@ -113,6 +116,7 @@ private:
 
     void refreshItems();
     Laid layout() const;
+    void sizeInput(LayoutInput& in) const;   // tailles des réglages, rétrécies si le Dock ne tient pas
     IconProvider::ImagePtr imageFor(const DockItem& item, IconProvider& icons, int px) const;
     std::vector<std::size_t> candidates(Section section, const std::wstring& exclude) const;
     std::wstring gapKey(Section section, std::size_t slot) const;   // clé de l'élément devant lequel s'ouvre la place

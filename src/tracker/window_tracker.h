@@ -19,6 +19,7 @@ public:
         std::function<void(HWND)> foreground;   // tout changement de premier plan, fenêtre éligible ou non (bureau, dialogue)
         std::function<void(HWND)> flashed;
         std::function<void(HWND, bool)> minimized;
+        std::function<void(HWND)> minimizeStarted;   // EVENT_SYSTEM_MINIMIZESTART seulement (pas une fenêtre découverte réduite)
         std::function<void(HWND, const std::wstring&)> titleChanged;
     };
 
