@@ -1,5 +1,7 @@
 #include "app_menus.h"
 
+#include <cwctype>
+
 namespace md {
 namespace {
 
@@ -12,14 +14,19 @@ public:
         return out_.menus.back();
     }
 
-    MenuItem& add(BarMenu& m, std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
+    // Entrée avec son action, pas encore placée dans un menu.
+    MenuItem item(std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
         MenuItem it;
         it.id = next_++;
         it.text = std::move(text);
         it.shortcut = std::move(shortcut);
         it.enabled = enabled;
-        out_.actions[it.id] = std::move(action);
-        m.model.items.push_back(std::move(it));
+        if (action.kind != ActionKind::None) out_.actions[it.id] = std::move(action);
+        return it;
+    }
+
+    MenuItem& add(BarMenu& m, std::wstring text, MenuAction action, std::wstring shortcut = {}, bool enabled = true) {
+        m.model.items.push_back(item(std::move(text), std::move(action), std::move(shortcut), enabled));
         return m.model.items.back();
     }
 
@@ -35,12 +42,33 @@ private:
     int next_ = 100;
 };
 
+// Comme sur macOS : Applications, puis Documents, chaque section sous un intitulé grisé, puis Effacer le menu.
+MenuItem recentMenu(Builder& b, const BarContext& c) {
+    MenuItem r;
+    r.text = L"Éléments récents";
+    auto section = [&](const wchar_t* title, const std::vector<RecentEntry>& list, ActionKind kind) {
+        r.submenu.push_back(b.item(title, {}, {}, false));
+        for (const auto& e : list) {
+            MenuItem it = b.item(e.name, {kind, e.target});
+            it.icon = e.icon;
+            r.submenu.push_back(std::move(it));
+        }
+        r.submenu.push_back({});
+    };
+    section(L"Applications", c.recentApps, ActionKind::LaunchApp);
+    section(L"Documents", c.recentDocs, ActionKind::OpenUri);
+    r.submenu.push_back(b.item(L"Effacer le menu", {ActionKind::ClearRecent}, {}, !c.recentApps.empty() || !c.recentDocs.empty()));
+    return r;
+}
+
 void logoMenu(Builder& b, const BarContext& c) {
     BarMenu& m = b.menu(L"", false, true);
     b.add(m, L"À propos de ce PC", {ActionKind::OpenUri, L"ms-settings:about"});
     Builder::separator(m);
     b.add(m, L"Réglages système…", {ActionKind::OpenUri, L"ms-settings:"});
     b.add(m, L"Microsoft Store…", {ActionKind::OpenUri, L"ms-windows-store:"});
+    Builder::separator(m);
+    m.model.items.push_back(recentMenu(b, c));
     Builder::separator(m);
     b.key(m, L"Forcer à quitter…", L"Ctrl+Maj+Échap");
     Builder::separator(m);
@@ -169,6 +197,66 @@ void explorerMenus(Builder& b, const BarContext& c) {
     helpMenu(b, c);
 }
 
+std::wstring lower(std::wstring s) {
+    for (auto& ch : s) ch = wchar_t(std::towlower(ch));
+    return s;
+}
+
+bool isWindowTitle(const std::wstring& t) {
+    const std::wstring l = lower(t);
+    return l == L"fenêtre" || l == L"fenetre" || l == L"window" || l == L"fenêtres" || l == L"windows";
+}
+
+bool isHelpTitle(const std::wstring& t) {
+    const std::wstring l = lower(t);
+    return l == L"aide" || l == L"help" || l == L"?";
+}
+
+MenuAction uiaAction(const RawMenuItem& r, const BarContext& c, std::vector<int> path) {
+    MenuAction a{ActionKind::UiaInvoke, r.text, c.menuOwner};
+    a.path = std::move(path);
+    return a;
+}
+
+// path : positions depuis le titre (UI Automation retrouve l'entrée par ce chemin).
+MenuItem realItem(Builder& b, const RawMenuItem& r, const BarContext& c, std::vector<int> path) {
+    if (r.separator) return {};
+    path.push_back(r.position);
+    const bool uia = c.source == MenuSource::Uia;
+    if (r.popup) {
+        MenuItem it;
+        if (!r.children.empty()) {
+            it.text = r.text;
+            it.enabled = r.enabled;
+            for (const auto& child : r.children) it.submenu.push_back(realItem(b, child, c, path));
+        } else if (uia) {
+            it = b.item(r.text, uiaAction(r, c, path), {}, r.enabled);   // sous-menu non lu : déplié dans l'app
+        } else {
+            it = b.item(r.text, {}, {}, false);   // sous-menu vide : rien à montrer
+        }
+        return it;
+    }
+    MenuAction a = uia ? uiaAction(r, c, path) : MenuAction{ActionKind::MenuCommand, {}, c.menuOwner, int(r.id)};
+    MenuItem it = b.item(r.text, std::move(a), r.shortcut, r.enabled);
+    it.checked = r.checked;
+    return it;
+}
+
+void realMenus(Builder& b, const BarContext& c) {
+    bool hasWindow = false;
+    for (const auto& title : c.real) hasWindow = hasWindow || isWindowTitle(title.text);
+    // Comme sur macOS, Fenêtre se place juste avant l'Aide.
+    const std::size_t helpAt = !c.real.empty() && isHelpTitle(c.real.back().text) ? c.real.size() - 1 : c.real.size();
+    for (std::size_t i = 0; i < c.real.size(); ++i) {
+        if (i == helpAt && !hasWindow) windowMenu(b, c);
+        BarMenu& m = b.menu(c.real[i].text);
+        m.real = int(i);
+        for (const auto& child : c.real[i].children) m.model.items.push_back(realItem(b, child, c, {c.real[i].position}));
+        if (m.model.items.empty()) b.add(m, L"Aucun élément", {}, {}, false);   // pas encore lu, ou illisible
+    }
+    if (helpAt == c.real.size() && !hasWindow) windowMenu(b, c);
+}
+
 } // namespace
 
 BarMenus buildBarMenus(const BarContext& c) {
@@ -176,7 +264,8 @@ BarMenus buildBarMenus(const BarContext& c) {
     Builder b(out);
     logoMenu(b, c);
     appMenu(b, c);
-    if (c.explorer) explorerMenus(b, c);
+    if (c.source != MenuSource::Generic && !c.real.empty()) realMenus(b, c);
+    else if (c.explorer) explorerMenus(b, c);
     else genericMenus(b, c);
     return out;
 }

@@ -5,7 +5,7 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de l'écran, avec le menu du système, le nom de l'app active, ses menus, et la date et l'heure.
 
-> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6) ; viennent ensuite les vrais menus des apps (plan 7), les icônes d'état et le Centre de contrôle (plan 8), les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
+> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7) ; viennent ensuite les icônes d'état et le Centre de contrôle (plan 8), les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -55,9 +55,10 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 
 - **Transparente**, comme sur Tahoe : le texte est clair ou foncé selon ton fond d'écran (mesuré sous la barre, puis toutes les minutes et à chaque changement de fond).
 - **À gauche** :
-  - le menu du système (logo) : À propos de ce PC, Réglages système, Microsoft Store, Forcer à quitter, Suspendre, Redémarrer, Éteindre, Verrouiller l'écran, Fermer la session. Redémarrer, Éteindre et Fermer la session demandent confirmation ;
+  - le menu du système (logo) : À propos de ce PC, Réglages système, Microsoft Store, Éléments récents (dernières apps et derniers documents, « Effacer le menu »), Forcer à quitter, Suspendre, Redémarrer, Éteindre, Verrouiller l'écran, Fermer la session. Redémarrer, Éteindre et Fermer la session demandent confirmation ;
   - le nom de l'app active en gras, avec son menu : À propos, Réglages, Masquer, Masquer les autres, Tout afficher, Quitter ;
-  - ses menus Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Le menu Fenêtre liste les fenêtres de l'app ;
+  - **ses vrais menus** quand elle en a : barre de menus classique (Bloc-notes historique, Notepad++, 7-Zip, regedit…) ou barre de menus accessible (Bloc-notes de Windows 11, apps Qt…). Les entrées, coches, entrées grisées et sous-menus sont ceux de l'app, relus à chaque ouverture ; la commande choisie est exécutée par l'app. Un menu Fenêtre est ajouté s'il manque ;
+  - sinon, des menus génériques Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Les apps Chromium, Electron et Firefox gardent toujours ces menus génériques. Le menu Fenêtre liste les fenêtres de l'app ;
   - sur le bureau ou dans l'Explorateur, les menus de l'Explorateur, avec **Aller** (Téléchargements, Documents, Applications, Corbeille…), comme le Finder.
 - **Ouvrir un menu** : un clic sur un titre ; tant qu'un menu est ouvert, survoler un autre titre l'ouvre aussi, et les flèches ← → passent au voisin. Le clavier reste à ton app : la commande choisie lui est envoyée.
 - **À droite** : la date et l'heure (`mer. 7 oct. 14:32`) ; un clic ouvre le centre de notifications.
@@ -76,6 +77,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), mesures (`metrics` : hauteur, taille du texte, marges…). |
 | `menubar-logo.png` | Logo personnalisé du menu du système (facultatif). |
+| `menubar-recent.json` | Apps récentes du menu du système, écrit par la barre (les documents viennent du dossier Récents de Windows, jamais modifié). |
 | `logs\` | Journaux (`logs\menubar\` pour la barre de menus). |
 
 Un fichier invalide n'efface rien : une copie `.bak` est faite et les réglages actuels sont conservés.

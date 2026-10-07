@@ -2,11 +2,13 @@
 
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shlobj.h>
 #define SECURITY_WIN32
 #include <security.h>
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
@@ -27,12 +29,21 @@ namespace {
 constexpr wchar_t kClassName[] = L"MacMenuBarWindow";
 constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
+constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
+constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
+
+struct UiaTitles {
+    unsigned generation = 0;
+    HWND window = nullptr;
+    std::vector<RawMenuItem> titles;
+};
 constexpr UINT_PTR kClockTimer = 0x434C;        // "CL"
 constexpr UINT_PTR kSampleTimeout = 0x5354;     // "ST" : pas d'image utilisable de la capture
 constexpr UINT_PTR kResampleTimer = 0x5253;     // "RS" : diaporama de fonds d'écran
 constexpr UINT_PTR kResampleSoon = 0x5253 + 1;  // après un changement de fond (transition de Windows)
 constexpr UINT_PTR kConfigTimer = 0x4346;       // "CF"
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS"
+constexpr UINT_PTR kRecentTimer = 0x5243;       // "RC" : écriture différée des apps récentes
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
 constexpr int kCmdBarSettings = 1, kCmdBarAutohide = 2, kCmdBarQuit = 3;
 
@@ -197,6 +208,24 @@ void MenuBarApp::reposition() {
 
 // ---- App active ----
 
+namespace {
+constexpr ULONGLONG kNoMenuBarMemoryMs = 5 * 60 * 1000;
+
+BOOL CALLBACK collectChildClass(HWND h, LPARAM lp) {
+    auto* out = reinterpret_cast<std::vector<std::wstring>*>(lp);
+    wchar_t cls[128] = {};
+    GetClassNameW(h, cls, 128);
+    out->push_back(cls);
+    return out->size() < 500;
+}
+
+std::vector<std::wstring> childClasses(HWND top) {
+    std::vector<std::wstring> out;
+    EnumChildWindows(top, collectChildClass, reinterpret_cast<LPARAM>(&out));
+    return out;
+}
+} // namespace
+
 void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
     // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
@@ -229,15 +258,174 @@ void MenuBarApp::onForeground(HWND h) {
         a.name = id->displayName.empty() ? fileName(id->exePath) : id->displayName;
         a.appId = id->appId;
         a.exePath = id->exePath;
+        a.launch = id->launch.empty() ? id->exePath : id->launch;
+    }
+    if (!a.explorer) readRealMenus(top, root, a);
+    if (!a.explorer && a.source == MenuSource::Generic) {
+        if (active_.source == MenuSource::Uia && active_.menuOwner == top) {   // même fenêtre : titres déjà lus
+            a.source = active_.source;
+            a.real = active_.real;
+            a.menuOwner = top;
+        } else {
+            wchar_t topCls[256] = {};
+            GetClassNameW(top, topCls, 256);
+            if (shouldProbeUia(topCls, childClasses(top)) && !knownWithoutMenuBar(top)) requestUiaTitles(top);
+            else uiaWindow_ = nullptr;
+        }
+    } else {
+        uiaWindow_ = nullptr;
+        ++uiaLatest_;   // une demande en cours ne s'appliquera plus
     }
     target_ = keepTarget(target_, top, kind, a.appId);
-    const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop;
+    const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop ||
+                         a.menuOwner != active_.menuOwner || a.real.size() != active_.real.size() ||
+                         !std::equal(a.real.begin(), a.real.end(), active_.real.begin(),
+                                     [](const RawMenuItem& x, const RawMenuItem& y) { return x.text == y.text; });
+    if (changed && !a.explorer && !a.launch.empty() && a.name != active_.name) {
+        pushRecent(recent_.apps, {a.name, a.launch});
+        recentDirty_ = true;
+        if (hwnd_) SetTimer(hwnd_, kRecentTimer, 5000, nullptr);
+    }
     active_ = a;
     checkFullscreen();
     if (!changed) return;
-    if (trace_) log::info(L"[trace] barre : app active « %s » (%s)", a.name.c_str(), a.appId.c_str());
+    if (trace_) log::info(L"[trace] barre : app active « %s » (%s), %zu vrais menus", a.name.c_str(), a.appId.c_str(), a.real.size());
     relayout();
     render();
+}
+
+namespace {
+void disableAll(std::vector<RawMenuItem>& items) {
+    for (auto& it : items) {
+        it.enabled = false;
+        disableAll(it.children);
+    }
+}
+} // namespace
+
+// Barre de menus Win32 de la fenêtre au premier plan, ou de sa fenêtre principale quand un dialogue est devant
+// (menus alors grisés, comme une app macOS pendant une feuille modale).
+void MenuBarApp::readRealMenus(HWND top, HWND root, Active& a) {
+    HWND owner = top;
+    HMENU bar = GetMenu(top);
+    if (!bar || !IsMenu(bar)) {
+        owner = root;
+        bar = root != top ? GetMenu(root) : nullptr;
+    }
+    if (!bar || !IsMenu(bar)) return;
+    auto real = readWin32Menu(bar);
+    if (!hasReadableEntries(real)) return;   // menus vides (owner-draw sans texte) : génériques
+    if (!IsWindowEnabled(owner))
+        for (auto& title : real) disableAll(title.children);
+    a.menuOwner = owner;
+    a.source = MenuSource::Win32;
+    a.real = std::move(real);
+}
+
+bool MenuBarApp::syncRealTitles() {
+    if (active_.source != MenuSource::Win32) return false;
+    HWND owner = active_.menuOwner;
+    HMENU bar = IsWindow(owner) ? GetMenu(owner) : nullptr;
+    if (!bar || !IsMenu(bar)) return false;
+    if (!syncWin32Titles(bar, active_.real)) return false;
+    if (trace_) log::info(L"[trace] barre : l'app a changé sa barre de menus (%zu titres)", active_.real.size());
+    return true;
+}
+
+void MenuBarApp::refreshRealMenu(int real) {
+    if (active_.source == MenuSource::Generic || real < 0 || std::size_t(real) >= active_.real.size()) return;
+    HWND owner = active_.menuOwner;
+    if (active_.source == MenuSource::Uia) {
+        RawMenuItem& title = active_.real[std::size_t(real)];
+        // Attente bornée sans traiter les messages : rien ne change sous le menu qui va s'ouvrir.
+        if (uia_.busy()) {   // une lecture précédente n'a pas fini : ne pas figer la barre une fois de plus
+            log::warn(L"Barre : UI Automation occupé, menu « %s » non relu", title.text.c_str());
+            return;
+        }
+        auto out = std::make_shared<std::optional<std::vector<RawMenuItem>>>();
+        const int position = title.position;
+        menuOpen_ = true;   // pendant l'attente, un message envoyé ne doit pas changer menus_
+        const bool read = uia_.call([out, owner, position](UiaMenus& uia) { *out = uia.items(owner, position); }, kUiaItemsWaitMs);
+        menuOpen_ = false;
+        if (read && *out)
+            title.children = std::move(**out);
+        else
+            log::warn(L"Barre : menu « %s » de l'app illisible par UI Automation", title.text.c_str());
+        return;
+    }
+    HMENU bar = IsWindow(owner) ? GetMenu(owner) : nullptr;
+    if (!bar || !IsMenu(bar)) return;
+    RawMenuItem& title = active_.real[std::size_t(real)];
+    if (!refreshWin32Popup(owner, bar, title.position))
+        log::warn(L"Barre : l'app ne prépare pas son menu « %s » à temps", title.text.c_str());
+    HMENU sub = GetSubMenu(bar, title.position);
+    if (!sub) return;
+    title.children = readWin32Menu(sub);
+    if (!IsWindowEnabled(owner)) disableAll(title.children);
+}
+
+bool MenuBarApp::knownWithoutMenuBar(HWND window) {
+    const ULONGLONG now = GetTickCount64();
+    std::erase_if(noMenuBar_, [&](const auto& e) { return now - e.second > kNoMenuBarMemoryMs || !IsWindow(e.first); });
+    return noMenuBar_.contains(window);
+}
+
+void MenuBarApp::requestUiaTitles(HWND window) {
+    if (window == uiaWindow_) return;   // demande déjà en cours pour cette fenêtre
+    uiaWindow_ = window;
+    const unsigned generation = ++uiaLatest_;
+    HWND bar = hwnd_;
+    uia_.post([this, window, generation, bar](UiaMenus& uia) {
+        if (generation != uiaLatest_.load()) return;   // l'utilisateur est déjà passé à autre chose
+        auto* r = new UiaTitles{generation, window, uia.titles(window)};
+        if (!PostMessageW(bar, WM_APP_UIA_TITLES, 0, reinterpret_cast<LPARAM>(r))) delete r;
+    });
+}
+
+void MenuBarApp::onUiaTitles(LPARAM lp) {
+    std::unique_ptr<UiaTitles> r(reinterpret_cast<UiaTitles*>(lp));
+    if (r->generation != uiaLatest_.load() || r->window != uiaWindow_ || active_.source != MenuSource::Generic ||
+        active_.explorer)
+        return;
+    if (trace_) log::info(L"[trace] barre : %zu menus lus par UI Automation", r->titles.size());
+    if (r->titles.empty()) {
+        noMenuBar_[r->window] = GetTickCount64();
+        return;
+    }
+    active_.source = MenuSource::Uia;
+    active_.real = std::move(r->titles);
+    active_.menuOwner = r->window;
+    relayout();
+    render();
+}
+
+// ---- Éléments récents ----
+
+void MenuBarApp::loadRecent() {
+    auto f = loadJsonFile(dataDir_ + L"\\menubar-recent.json");
+    if (f.fromFile && !f.wasInvalid) recent_ = recentFromJson(f.value);
+}
+
+void MenuBarApp::saveRecent() {
+    if (hwnd_) KillTimer(hwnd_, kRecentTimer);
+    if (!recentDirty_ || !hwnd_) return;
+    recentDirty_ = false;
+    if (!saveJsonFileAtomic(dataDir_ + L"\\menubar-recent.json", recentToJson(recent_)))
+        log::warn(L"Barre : apps récentes non enregistrées");
+}
+
+std::vector<RecentEntry> MenuBarApp::withIcons(std::vector<RecentEntry> list, bool documents) const {
+    const int px = int(std::lround(kMenuIconSize * scale_));
+    for (auto& e : list) {
+        // Document : par son extension seulement (un raccourci vers un partage hors ligne bloquerait la barre).
+        if (documents) {
+            e.icon = icons_.extensionIcon(e.name, px);
+            continue;
+        }
+        e.icon = icons_.fileIcon(e.target, px);
+        if (!e.icon) e.icon = icons_.get(e.target, e.target, px);   // app empaquetée : shell:AppsFolder\AUMID
+    }
+    return list;
 }
 
 std::vector<HWND> MenuBarApp::appWindows() const {
@@ -247,7 +435,7 @@ std::vector<HWND> MenuBarApp::appWindows() const {
     return out;
 }
 
-BarContext MenuBarApp::context() const {
+BarContext MenuBarApp::context(bool recentDocs) const {
     BarContext c;
     c.appName = active_.name.empty() ? L"Explorateur" : active_.name;
     c.userName = userDisplayName();
@@ -256,6 +444,14 @@ BarContext MenuBarApp::context() const {
     if (!c.desktop)
         for (WindowId id : model_.windowsOf(active_.appId)) c.windows.push_back({id, model_.titleOf(id)});
     c.activeWindow = toId(target_.window);
+    c.source = active_.source;
+    c.real = active_.real;
+    c.menuOwner = toId(active_.menuOwner);
+    c.recentApps = withIcons(recent_.apps, false);
+    PWSTR folder = nullptr;
+    if (recentDocs && SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
+        c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt), true);
+    CoTaskMemFree(folder);
     return c;
 }
 
@@ -515,7 +711,18 @@ void MenuBarApp::openMenu(std::size_t index) {
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     for (;;) {
         menuOpen_ = false;
-        menus_ = buildBarMenus(context());   // liste des fenêtres à jour
+        if (current >= 0 && std::size_t(current) < menus_.menus.size() && syncRealTitles()) {
+            // L'app a changé sa barre (document ouvert, MDI) : le titre cliqué est retrouvé par son texte.
+            const std::wstring title = menus_.menus[std::size_t(current)].title;
+            relayout();
+            render();
+            current = -1;
+            for (std::size_t i = 0; i < menus_.menus.size(); ++i)
+                if (menus_.menus[i].title == title) current = int(i);
+            if (current < 0) break;
+        }
+        if (current >= 0 && std::size_t(current) < menus_.menus.size()) refreshRealMenu(menus_.menus[std::size_t(current)].real);
+        menus_ = buildBarMenus(context(true));   // liste des fenêtres, vrais menus et documents récents à jour
         menuOpen_ = true;
         if (current < 0 || std::size_t(current) >= layout_.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
         // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.
@@ -559,6 +766,24 @@ void MenuBarApp::openMenu(std::size_t index) {
 }
 
 void MenuBarApp::execute(const MenuAction& a) {
+    if (a.kind == ActionKind::UiaInvoke) {
+        restoreTargetFocus();   // le menu de l'app se déplie dans une app au premier plan
+        HWND w = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(a.window));
+        uia_.post([w, path = a.path, name = a.arg, trace = trace_](UiaMenus& uia) {
+            const bool done = uia.invoke(w, path, name);
+            if (trace) log::info(L"[trace] barre : entrée « %s » %s", name.c_str(), done ? L"invoquée" : L"introuvable");
+        });
+        return;
+    }
+    if (a.kind == ActionKind::ClearRecent) {   // le dossier Récents de Windows n'est pas touché
+        recent_.apps.clear();
+        FILETIME now{};
+        GetSystemTimeAsFileTime(&now);
+        recent_.clearedAt = (std::uint64_t(now.dwHighDateTime) << 32) | now.dwLowDateTime;
+        recentDirty_ = true;
+        saveRecent();
+        return;
+    }
     ActionContext ctx;
     ctx.target = target_;
     ctx.appWindows = appWindows();
@@ -586,6 +811,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             else if (wp == ABN_FULLSCREENAPP) checkFullscreen();
             return 0;
         case WM_APP_SAMPLE: onSample(); return 0;
+        case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_TIMER:
             switch (wp) {
                 case kClockTimer: {
@@ -600,6 +826,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case kResampleTimer: startSample(); break;
                 case kResampleSoon: KillTimer(hwnd_, kResampleSoon); startSample(); break;
                 case kConfigTimer: checkSettingsFile(); break;
+                case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer: checkFullscreen(); break;
                 case kVisibilityTimer: stepVisibility(); break;
                 default: break;
@@ -723,6 +950,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.foreground = [this](HWND h) { onForeground(h); };   // bureau et dialogues compris
     ev.flashed = [](HWND) {};
     tracker_.start(hwnd_, ev);
+    uia_.start();   // sinon : menus Win32 et génériques seulement
+    loadRecent();
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
         active_.name = L"Explorateur";
@@ -747,8 +976,12 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     log::info(L"MacMenuBar s'arrête");
     sampler_.stop();
     tracker_.stop();
+    uia_.stop();
+    saveRecent();
     removeAppBar();
     DestroyWindow(hwnd_);
+    for (MSG m; PeekMessageW(&m, nullptr, WM_APP_UIA_TITLES, WM_APP_UIA_TITLES, PM_REMOVE);)   // résultats en attente
+        delete reinterpret_cast<UiaTitles*>(m.lParam);
     return exitCode_;
 }
 

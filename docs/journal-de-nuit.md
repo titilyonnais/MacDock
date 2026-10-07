@@ -37,6 +37,45 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - « Suspendre » obtient le privilège nécessaire.
 - **Essai réel sans souris ni clavier** : `tests\real\menubar_unlisted_foreground.ps1` prouve que la barre suit une fenêtre non éligible au Dock.
 
+### Plan 7 — Vrais menus et Éléments récents (fusionné dans `main`)
+
+- **Vrais menus des apps Win32** (barre de menus classique : Bloc-notes historique, Notepad++, 7-Zip, regedit…) :
+  - leurs titres et leurs entrées remplacent les menus génériques ;
+  - à chaque ouverture, l'app prépare son menu (coches, entrées grisées, fichiers récents) et la barre le relit ;
+  - la commande choisie est envoyée à l'app (`WM_COMMAND`) ;
+  - pendant un dialogue, les menus restent affichés mais grisés.
+- **Vrais menus par UI Automation**, pour les apps sans barre classique mais avec une barre accessible (Bloc-notes de Windows 11, apps Qt) :
+  - lus sur un fil à part : une app lente ne fige pas la barre plus de 2,5 s ;
+  - les apps Chromium, Electron, Firefox et celles à navigateur intégré (WebView2) ne sont jamais interrogées.
+- **Menu Fenêtre** ajouté avant l'Aide quand l'app n'en a pas.
+- **Éléments récents** dans le menu du système : les 10 dernières apps et les 10 derniers documents, avec leurs icônes, et « Effacer le menu ». Le dossier Récents de Windows n'est jamais modifié.
+- **Relecture finale** : 6 problèmes importants, tous corrigés avec un test :
+  - la barre suit une app qui change ses menus (document ouvert) ;
+  - une lecture UIA abandonnée n'agit plus en retard dans l'app ;
+  - les apps WebView2 (nouvel Outlook, Teams) ne sont plus parcourues ;
+  - l'attente ne bloque plus UI Automation ;
+  - les entrées dessinées par l'app gardent leur texte ;
+  - les icônes des documents ne lisent plus le disque à chaque mise en page.
+- **À vérifier toi-même** : le chemin UIA (déplier le menu de l'app, lire, replier, invoquer) est testé sur une app factice, pas sur une vraie. Aucune app concernée n'était ouverte, et l'essai réel aurait affiché des menus pendant que tu travaillais. Ouvre le Bloc-notes de Windows 11 : la barre doit montrer Fichier, Modifier, Affichage, et leurs entrées.
+
+## Décisions prises sans toi (plan 7)
+- Les apps récentes sont dans `menubar-recent.json` et non dans `menubar.json` : la barre réécrirait sinon ton fichier de réglages à chaque changement d'app.
+- Documents récents : seuls les raccourcis dont le nom porte une extension (« rapport.docx ») ; les dossiers récents sont écartés.
+- Pendant la lecture d'un menu UIA, la barre attend sans traiter les autres événements, 2,5 s au plus : pas de changement d'état sous le menu qui s'ouvre.
+- Un sous-menu UIA trop long à lire reste dans la liste ; le choisir le déplie dans l'app.
+
+## Mineurs reportés — plan 7
+- Pas de retour visuel pendant la lecture d'un menu UIA lent (jusqu'à 2,5 s).
+- Une app UIA encore en chargement peut garder les menus génériques jusqu'au prochain changement d'app.
+- Des titres UIA arrivés pendant qu'un menu est ouvert peuvent décaler ce menu par rapport au titre surligné, un instant.
+- Après la préparation d'un menu Win32, `WM_UNINITMENUPOPUP` n'est pas envoyé.
+- Les menus Win32 « par position » (`WM_MENUCOMMAND`) ne réagissent pas.
+- Un sous-menu UIA en cours de fermeture pourrait être pris pour le suivant (non vérifié).
+- Des résultats UIA en attente ne sont pas libérés à l'arrêt.
+- Les entrées radio WinUI n'affichent pas leur coche.
+- Pendant un dialogue d'une app UIA, la barre revient aux menus génériques.
+- Un avertissement de compilation (paramètre inutilisé).
+
 ## Décisions prises sans toi (plan 6)
 - Processus séparé (`MacMenuBar.exe`), surveillé par le même lanceur : un plantage de l'un n'emporte pas l'autre, et chacun a sa propre capture d'écran pour le verre.
 - Logo par défaut : celui de Windows (quatre carrés), car pas de pomme. Remplaçable par `menubar-logo.png`.

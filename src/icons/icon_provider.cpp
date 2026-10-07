@@ -427,6 +427,22 @@ void drawLayer(Pixels& dst, int ds, const Pixels& src, int ss, double cx, double
 
 } // namespace
 
+IconProvider::ImagePtr IconProvider::extensionIcon(const std::wstring& name, int px) {
+    px = std::clamp(px, 16, 512);
+    const std::size_t dot = name.rfind(L'.');
+    const std::wstring ext = dot == std::wstring::npos ? L"" : name.substr(dot);
+    std::wstring cacheKey = L"#ext|" + ext + L"|" + std::to_wstring(px);
+    if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    int srcSize = 0;
+    Pixels src = typeIcon(L"x" + ext, srcSize, true, px <= 48 ? SHIL_EXTRALARGE : SHIL_JUMBO);   // par type seulement
+    if (src.empty() || srcSize <= 0) return nullptr;
+    auto img = std::make_shared<Image>();
+    img->size = px;
+    img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
+    cache_[cacheKey] = img;
+    return img;
+}
+
 IconProvider::ImagePtr IconProvider::fileIcon(const std::wstring& path, int px) {
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = L"#ficon|" + path + L"|" + std::to_wstring(px);
