@@ -52,3 +52,34 @@ TEST_CASE(packaged_login_shortcut_roundtrip) {
     RemoveDirectoryW(dir.c_str());
     CoUninitialize();
 }
+
+namespace {
+HANDLE g_release = nullptr, g_ran = nullptr;
+std::wstring g_launched;
+bool g_comReady = false;
+bool slowLauncher(const std::wstring& target) {
+    WaitForSingleObject(g_release, 5000);   // un ShellExecuteEx lent (app froide, disque en veille)
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    g_comReady = hr == S_FALSE;              // déjà initialisé en STA par launchAsync
+    if (SUCCEEDED(hr)) CoUninitialize();
+    g_launched = target;
+    SetEvent(g_ran);
+    return true;
+}
+} // namespace
+
+TEST_CASE(launch_async_never_blocks_the_caller) {
+    // Le Dock lance les apps depuis son fil d'interface : un lancement lent ne doit jamais le figer.
+    g_release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    g_ran = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    const ULONGLONG t0 = GetTickCount64();
+    md::launchAsync(L"shell:AppsFolder\\Test", slowLauncher);
+    CHECK(GetTickCount64() - t0 < 1000);
+    CHECK(WaitForSingleObject(g_ran, 0) == WAIT_TIMEOUT);   // le lanceur attend encore
+    SetEvent(g_release);
+    REQUIRE(WaitForSingleObject(g_ran, 5000) == WAIT_OBJECT_0);
+    CHECK(g_launched == L"shell:AppsFolder\\Test");
+    CHECK(g_comReady);
+    CloseHandle(g_release);
+    CloseHandle(g_ran);
+}

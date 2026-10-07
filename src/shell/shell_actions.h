@@ -8,6 +8,9 @@
 namespace md {
 
 bool launch(const std::wstring& target);            // exe, .lnk, dossier, shell:AppsFolder\AUMID
+// Même lancement sur un fil à part (COM STA) : ShellExecuteEx peut bloquer plusieurs secondes (app froide, disque
+// en veille, invite de sécurité) et ne doit jamais figer le Dock. Les échecs sont journalisés par launcher.
+void launchAsync(std::wstring target, bool (*launcher)(const std::wstring&) = launch);
 void activateApp(const std::vector<HWND>& windows); // restaure les réduites, met tout au premier plan
 void restoreWindow(HWND hwnd);
 void minimizeAll(const std::vector<HWND>& windows);

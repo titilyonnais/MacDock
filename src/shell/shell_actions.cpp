@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <thread>
 
 #include "../core/log.h"
 
@@ -22,6 +23,14 @@ bool launch(const std::wstring& target) {
     if (ShellExecuteExW(&sei)) return true;
     log::warn(L"Lancement impossible de %s (%lu)", target.c_str(), GetLastError());
     return false;
+}
+
+void launchAsync(std::wstring target, bool (*launcher)(const std::wstring&)) {
+    std::thread([target = std::move(target), launcher] {
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        launcher(target);
+        if (SUCCEEDED(hr)) CoUninitialize();
+    }).detach();
 }
 
 std::vector<INPUT> foregroundUnlockKeys() {
@@ -70,9 +79,9 @@ void minimizeAll(const std::vector<HWND>& windows) {
     for (HWND h : windows) ShowWindowAsync(h, SW_MINIMIZE);
 }
 
-void openRecycleBin() { launch(L"shell:RecycleBinFolder"); }
+void openRecycleBin() { launchAsync(L"shell:RecycleBinFolder"); }
 
-void openFolder(const std::wstring& path) { launch(path); }
+void openFolder(const std::wstring& path) { launchAsync(path); }
 
 void openStartMenu() {
     INPUT in[2] = {};

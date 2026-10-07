@@ -701,7 +701,7 @@ void DockApp::openStack(std::size_t index) {
     menuOpen_ = false;
     resumeCapture();
     if (chosen == r.folder) openFolder(chosen);
-    else if (!chosen.empty()) launch(chosen);
+    else if (!chosen.empty()) launchAsync(chosen);
     requestFrame();
 }
 
@@ -739,7 +739,7 @@ void DockApp::openApps() {
         const AppEntry* e = nullptr;
         for (const AppEntry& a : r.apps)
             if (a.parsingName == *chosen) e = &a;
-        if (e && !launch(launchTarget(*e))) log::warn(L"Apps : lancement impossible de %s", e->name.c_str());
+        if (e) launchAsync(launchTarget(*e));
     }
     apps_.refreshAsync();   // une app installée entre-temps sera là la prochaine fois
     requestFrame();
@@ -809,11 +809,11 @@ void DockApp::openSpotlight() {
                 if (!copyText(hwnd_, it.target)) log::warn(L"Spotlight : presse-papiers indisponible");
                 break;
             case SpotKind::App:
-                if (!launch(it.target)) log::warn(L"Spotlight : lancement impossible de %s", it.title.c_str());
+                launchAsync(it.target);
                 break;
             case SpotKind::File:
                 if (choice->reveal) revealInExplorer(it.target);
-                else launch(it.target);
+                else launchAsync(it.target);
                 break;
         }
     }
@@ -1027,7 +1027,10 @@ void DockApp::activateItem(const DockItem& item) {
                 std::wstring target = item.launch;
                 if (target.empty())
                     if (auto id = model_.identityOf(item.appId)) target = id->launch.empty() ? id->exePath : id->launch;
-                if (launch(target)) controller_.startLaunchBounce(item.appId);
+                if (!target.empty()) {
+                    launchAsync(target);   // jamais sur le fil de l'interface : le Dock reste vivant
+                    controller_.startLaunchBounce(item.appId);
+                }
             }
             break;
         case ItemKind::AppsButton: openApps(); break;
