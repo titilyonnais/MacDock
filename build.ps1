@@ -29,7 +29,9 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp',
                   'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
                   'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp',
-                  'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\stack\*.cpp')
+                  'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\stack\*.cpp',
+                  'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
+                  'src\menubar\shortcut.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';

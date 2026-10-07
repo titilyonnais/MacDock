@@ -107,8 +107,8 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
 ### 3.2 Transparence et couleur du texte
 - La barre n'a aucun fond : seuls les textes et les icônes sont opaques. Une fenêtre DirectComposition à alpha prémultiplié laisse voir le fond d'écran.
 - **Couleur.** La luminance moyenne de la bande sous la barre décide :
-  - au-dessus de 0,62, le texte devient foncé ;
-  - sous 0,52, il redevient clair (hystérésis entre les deux) ;
+  - au-dessus de 0,45 (luminance relative linéaire, environ L* 73), le texte devient foncé ;
+  - sous 0,35 (environ L* 66), il redevient clair (hystérésis entre les deux) ;
   - le texte clair est blanc, avec une ombre noire à 25 % décalée de 1 px ;
   - le texte foncé est noir à 85 %.
 - **Quand la bande est échantillonnée :**

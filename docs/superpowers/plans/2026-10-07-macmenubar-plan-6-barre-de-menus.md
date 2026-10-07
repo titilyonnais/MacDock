@@ -74,7 +74,7 @@ double srgbToLinear(double c);                                                  
 double stripLuminance(const std::uint8_t* bgra, int w, int h, int strideBytes);  // luminance relative moyenne
 float halfToFloat(std::uint16_t h);
 double stripLuminanceHalf(const std::uint16_t* rgba, int w, int h, int strideElems, double sdrWhite);   // scRGB
-bool chooseDarkText(double luminance, bool currentlyDark);   // foncé au-dessus de 0,62, clair sous 0,52
+bool chooseDarkText(double luminance, bool currentlyDark);   // foncé au-dessus de 0,45, clair sous 0,35 (luminance linéaire)
 
 // clock_format.h
 struct ClockOptions { bool weekday = true, date = true, seconds = false, hour24 = true; };
