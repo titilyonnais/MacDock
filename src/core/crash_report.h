@@ -10,5 +10,7 @@ namespace md {
 void installCrashReport(const std::wstring& dumpDir, const std::wstring& who);
 // « MacDock.exe+0x1a2b3 » ; « ? » si l'adresse n'appartient à aucun module.
 std::wstring crashLocation(const void* address);
+// MiniDumpWriteDump résolu à l'installation (jamais de chargement de DLL pendant un plantage).
+bool crashDumpReady();
 
 } // namespace md

@@ -493,7 +493,8 @@ void DockApp::onMouse(POINT screen) {
 // Le Dock change de forme sous un curseur immobile (révélation, icône ajoutée ou retirée, fin d'agrandissement) :
 // sans cette réévaluation, il resterait traversé par les clics jusqu'au prochain mouvement de souris.
 void DockApp::syncPointer() {
-    const std::optional<bool> inside = controller_.recheckPointer();
+    const std::optional<bool> inside =
+        controller_.recheckPointer(POINT{mouseX_.load() - origin_.x, mouseY_.load() - origin_.y});
     if (!inside) return;
     if (*inside != cursorInDock_) {
         cursorInDock_ = *inside;
@@ -1039,7 +1040,7 @@ void DockApp::activateItem(const DockItem& item) {
                 std::wstring target = item.launch;
                 if (target.empty())
                     if (auto id = model_.identityOf(item.appId)) target = id->launch.empty() ? id->exePath : id->launch;
-                if (!target.empty()) {
+                if (!target.empty() && !controller_.isBouncing(item.appId)) {   // double clic : un seul lancement
                     launchAsync(target);   // jamais sur le fil de l'interface : le Dock reste vivant
                     controller_.startLaunchBounce(item.appId);
                 }

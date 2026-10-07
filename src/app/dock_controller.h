@@ -54,9 +54,10 @@ public:
 
     void setCursor(std::optional<POINT> clientPx);   // nullopt = souris hors du Dock
     bool pointerInside() const { return cursorInside_; }
-    // Réévalue le dernier curseur connu après un changement de forme du Dock (révélation, icône ajoutée, fin
-    // d'agrandissement) ; nullopt si aucun curseur n'est connu (menu ouvert, rien reçu encore).
-    std::optional<bool> recheckPointer();
+    // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
+    // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
+    // n'est pas suivi (menu ouvert, rien reçu encore).
+    std::optional<bool> recheckPointer(POINT window);
     bool tick(double dt);                            // true tant qu'une animation est en cours
     RenderFrame buildFrame(bool dark, IconProvider& icons);
     bool consumeDirty();                             // un nouveau rendu est nécessaire
@@ -155,7 +156,7 @@ private:
     float scale_ = 1;
     Spring amount_;
     std::optional<double> cursor_;      // points sur l'axe principal
-    std::optional<POINT> pointer_;      // dernier curseur reçu, coordonnées de la fenêtre
+    bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     double tooltipOpacity_ = 0;

@@ -16,3 +16,12 @@ TEST_CASE(crash_location_names_module_and_offset) {
     CHECK(md::crashLocation(nullptr) == L"?");
     CHECK(probeFunction(1) == 4);
 }
+
+TEST_CASE(crash_report_resolves_dump_writer_up_front) {
+    // Charger dbghelp pendant le plantage peut bloquer pour toujours (verrou du chargeur tenu par un autre fil) : le
+    // processus ne se terminerait jamais et le lanceur ne relancerait rien. Tout est résolu à l'installation.
+    LPTOP_LEVEL_EXCEPTION_FILTER previous = SetUnhandledExceptionFilter(nullptr);
+    md::installCrashReport(L"", L"test");
+    CHECK(md::crashDumpReady());
+    SetUnhandledExceptionFilter(previous);
+}

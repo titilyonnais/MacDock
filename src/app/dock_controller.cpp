@@ -202,7 +202,7 @@ std::optional<std::size_t> DockController::hoveredIndex() const {
 
 void DockController::setCursor(std::optional<POINT> window) {
     refreshItems();
-    pointer_ = window;
+    pointerKnown_ = window.has_value();
     std::optional<POINT> clientPx;
     if (window) clientPx = edge_.toLocal(*window);
     bool inside = clientPx && insideLocal(*clientPx);
@@ -219,9 +219,9 @@ void DockController::setCursor(std::optional<POINT> window) {
     }
 }
 
-std::optional<bool> DockController::recheckPointer() {
-    if (!pointer_) return std::nullopt;
-    setCursor(*pointer_);
+std::optional<bool> DockController::recheckPointer(POINT window) {
+    if (!pointerKnown_) return std::nullopt;
+    setCursor(window);
     return cursorInside_;
 }
 
