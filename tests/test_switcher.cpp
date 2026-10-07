@@ -136,3 +136,27 @@ TEST_CASE(switcher_activation_choice) {
     CHECK(!a.restoreFirst);
     CHECK(md::switcherActivation(false, {}).windows.empty());
 }
+
+TEST_CASE(switcher_session_hidden_app_not_activated) {
+    md::SwitchSession s;
+    REQUIRE(s.begin(3, false, 0.0));
+    CHECK(s.activates());
+    s.hideSelected();   // H : l'app choisie est masquée
+    CHECK(!s.activates());   // relâcher Alt ne la ramène pas
+    s.step(1);
+    CHECK(s.activates());   // une autre app choisie ensuite : activée
+    s.step(-1);
+    CHECK(!s.activates());
+    s.select(0);
+    CHECK(s.removeSelected());   // Q sur une autre : la marque suit son app
+    CHECK(s.selected() == 0);
+    CHECK(!s.activates());
+}
+
+TEST_CASE(switcher_session_front_not_first) {
+    md::SwitchSession s;
+    REQUIRE(s.begin(3, false, 0.0, false));
+    CHECK(s.selected() == 0);   // bureau au premier plan : l'app la plus récente, pas la suivante
+    REQUIRE(s.begin(3, true, 0.0, false));
+    CHECK(s.selected() == 2);
+}

@@ -574,6 +574,7 @@ std::size_t DockApp::listCapacity(const StackWindow::Request& r) const {
 
 void DockApp::openStack(std::size_t index) {
     if (menuOpen_) return;   // pas de fenêtre modale dans une autre
+    endSwitch(false);   // une session Alt+Tab en cours se termine sans activer
     const DockItem* p = controller_.itemAt(index);
     if (!p) return;
     const DockItem item = *p;
@@ -645,6 +646,7 @@ void DockApp::openStack(std::size_t index) {
 // Écran Apps sur l'écran du Dock ; menu Démarrer si la vue ne peut pas s'ouvrir ou si le catalogue est vide.
 void DockApp::openApps() {
     if (menuOpen_) return;   // second clic d'un double-clic, ou une autre fenêtre modale déjà ouverte
+    endSwitch(false);   // une session Alt+Tab en cours se termine sans activer
     std::vector<AppEntry> list = apps_.get(1500);
     if (list.empty()) {
         log::warn(L"Apps : catalogue vide, ouverture du menu Démarrer");
@@ -713,6 +715,7 @@ bool copyText(HWND owner, const std::wstring& text) {   // résultat d'un calcul
 
 // Spotlight sur l'écran du curseur ; un second appui (raccourci ou loupe) le ferme.
 void DockApp::openSpotlight() {
+    endSwitch(false);   // une session Alt+Tab en cours se termine sans activer
     if (SpotlightWindow::isOpen()) {
         SpotlightWindow::closeOpen();
         return;
@@ -758,6 +761,7 @@ void DockApp::openSpotlight() {
 
 // Mission Control sur tous les écrans ; un second appui le ferme.
 void DockApp::openMissionControl() {
+    endSwitch(false);   // une session Alt+Tab en cours se termine sans activer
     if (MissionView::isOpen()) {
         MissionView::closeOpen();
         return;
@@ -853,9 +857,13 @@ void DockApp::switcherKey(int id) {
         std::vector<std::wstring> running;
         for (const DockItem& it : model_.items())
             if (it.kind == ItemKind::App && !model_.windowsOf(it.appId).empty()) running.push_back(it.appId);
-        mru_.touch(model_.appOfWindow(toId(GetForegroundWindow())));   // l'app au premier plan en tête
+        // L'app au premier plan en tête ; bureau ou fenêtre non suivie au premier plan : l'app la plus récente est
+        // alors la « précédente », la sélection part d'elle.
+        const std::wstring front = model_.appOfWindow(toId(GetAncestor(GetForegroundWindow(), GA_ROOTOWNER)));
+        mru_.touch(front);
         switchApps_ = mru_.order(running);
-        if (!switch_.begin(switchApps_.size(), back, nowSeconds())) return;
+        const bool frontFirst = !front.empty() && !switchApps_.empty() && switchApps_.front() == front;
+        if (!switch_.begin(switchApps_.size(), back, nowSeconds(), frontFirst)) return;
         // Touche neutre : Alt relâché sans autre frappe ouvrirait le menu de l'app au premier plan.
         INPUT in[2] = {};
         in[0].type = in[1].type = INPUT_KEYBOARD;
@@ -889,6 +897,7 @@ void DockApp::switcherKey(int id) {
         case kHotSwitchHide:   // comme « Masquer » du menu du Dock
             model_.setHidden(switchApps_[sel], true);
             minimizeAll(toHwnds(model_.windowsOf(switchApps_[sel])));
+            switch_.hideSelected();
             requestFrame();
             break;
         default: break;
@@ -919,7 +928,7 @@ void DockApp::switcherTick() {
 void DockApp::endSwitch(bool activate) {
     KillTimer(hwnd_, kSwitchTimer);
     for (int id : {kHotSwitchEsc, kHotSwitchLeft, kHotSwitchRight, kHotSwitchQuit, kHotSwitchHide}) UnregisterHotKey(hwnd_, id);
-    const bool was = switch_.active();
+    const bool was = switch_.activates();   // une app masquée par H pendant la session reste masquée
     const std::size_t sel = switch_.selected();
     switch_.end();
     if (switchPanel_) {
@@ -1035,6 +1044,7 @@ void DockApp::saveSettings() {
 
 void DockApp::showContextMenu(std::optional<std::size_t> index) {
     if (menuOpen_) return;   // pas de fenêtre modale dans une autre
+    endSwitch(false);   // une session Alt+Tab en cours se termine sans activer
     const DockItem* p = index ? controller_.itemAt(*index) : nullptr;
     MenuContext ctx;
     ctx.item = p ? *p : DockItem{ItemKind::Separator};
