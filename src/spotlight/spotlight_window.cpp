@@ -486,15 +486,14 @@ std::wstring clipboardLine(HWND owner) {   // lecture seule
             GlobalUnlock(h);
         }
     CloseClipboard();
-    out = out.substr(0, out.find_first_of(L"\r\n"));
-    return out.substr(0, 128);
+    return spotPasteLine(out);
 }
 
 LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
     const bool ctrl = GetKeyState(VK_CONTROL) < 0;
     switch (msg) {
         case WM_CHAR:
-            if (wp >= 32 && wp != 127 && view.query.size() < 128) {
+            if (spotAcceptChar(view.query, wchar_t(wp))) {
                 view.query.push_back(wchar_t(wp));
                 queryChanged();
             }
@@ -513,7 +512,7 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case VK_BACK:
                     if (!view.query.empty()) {
                         if (ctrl) view.query.clear();
-                        else view.query.pop_back();
+                        else spotEraseLast(view.query);
                         queryChanged();
                     }
                     return 0;
@@ -532,7 +531,8 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     if (ctrl) {
                         const std::wstring add = clipboardLine(hwnd);
                         if (!add.empty()) {
-                            view.query = (view.query + add).substr(0, 128);
+                            view.query += add;
+                            spotClip(view.query, 128);
                             queryChanged();
                         }
                     }

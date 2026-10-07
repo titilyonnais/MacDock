@@ -264,6 +264,20 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - j'avais mis le bureau en bas à droite par défaut : trop facile à déclencher en visant l'horloge, aucun coin n'est actif par défaut (test) ;
   - la veille de l'écran partait pendant que la main bougeait encore (l'écran se rallumait aussitôt) : elle attend une seconde, l'économiseur aussi (test).
 
+### Plan 19 — Mineurs reportés
+
+J'ai repris les mineurs reportés qui se voient à l'usage (ils sont retirés des listes plus bas) :
+- **Spotlight** : `-2^2` vaut -4 comme sur une calculatrice ; Retour arrière efface un émoji entier ; un collage remplace les tabulations par des espaces et ne coupe pas un émoji (tests).
+- **Coins actifs** : un coin contre un écran décalé d'un pixel ne compte plus (test) ; l'économiseur sans économiseur réglé le dit dans le journal.
+- **Alt+Tab** : sans aucune app ouverte, relâcher Alt n'ouvre plus le menu de l'app au premier plan ; une app fermée juste avant l'affichage ne laisse plus de case vide ; les raccourcis de la sélection déjà pris sont journalisés.
+- **Pastille du volume** : la couleur du texte de la barre est relevée de nouveau si la pastille a interrompu un relevé ; `"hud": false` cache toujours la pastille ; une sortie audio débranchée la cache ; plus de minuterie inutile pendant le maintien.
+- **Relecture finale** : 0 critique, 3 importants, corrigés : un émoji pouvait encore être coupé à la limite de 128 caractères (collage, frappe) ; un faux coin restait une colonne plus loin avec des écrans décalés ; le fondu de la pastille pouvait être sauté (tests pour les deux premiers).
+
+## Mineurs reportés — plan 19
+- Le relevé de la couleur du texte relancé après la pastille peut se perdre si une touche de volume ou un menu arrive dans les 0,8 s.
+- Casque débranché, haut-parleurs qui prennent le relais : la pastille garde le nom du casque jusqu'au fondu.
+- L'économiseur « (Aucun) » n'est peut-être pas détecté (Windows garde l'économiseur « actif »).
+
 ## Décisions prises sans toi (plan 18)
 - Aucun coin actif par défaut ; à régler dans `settings.json`.
 - Un coin collé à un autre écran ne compte pas (le pointeur y passe à l'écran voisin).
@@ -271,9 +285,7 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
 
 ## Mineurs reportés — plan 18
 - L'état des boutons est lu au traitement du mouvement : une fenêtre lâchée dans le coin pendant un rendu peut déclencher l'action.
-- Deux écrans décalés d'exactement 1 pixel peuvent donner un faux coin.
 - Liste des écrans gardée jusqu'au prochain changement d'affichage signalé.
-- L'économiseur sans économiseur réglé ne fait rien, sans le dire dans le journal.
 - Apps lancé depuis le coin d'un autre écran s'ouvre sur l'écran du Dock.
 - Un menu ouvert dans la barre de menus ne bloque pas les coins.
 - Pousser le Dock vers un autre écran près d'un coin peut aussi lancer l'action.
@@ -285,11 +297,7 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
 
 ## Mineurs reportés — plan 17
 - Juste après un réglage de luminosité très lent (WMI), la pastille peut apparaître à la fermeture du Centre de contrôle.
-- Sortie audio débranchée pendant l'affichage : nom et niveau périmés jusqu'au fondu.
-- `hud` passé à `false` alors que les touches n'avaient pas pu être prises : la pastille n'est pas cachée tout de suite.
-- Un relevé du fond interrompu par la pastille n'est pas relancé : la couleur du texte de la barre peut rester celle du thème jusqu'à une minute.
 - Maj, Ctrl ou Win avec une touche de volume : panneau de Windows, pas de pastille.
-- La minuterie du fondu tourne aussi pendant les 1,5 s de maintien.
 
 ## Décisions prises sans toi (plan 16)
 - `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
@@ -298,9 +306,6 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
 - Les apps dont les fenêtres sont sur un autre bureau virtuel restent dans la rangée (les choisir change de bureau, comme les Spaces de macOS).
 
 ## Mineurs reportés — plan 16
-- Sans aucune app ouverte, Alt+Tab puis relâcher Alt ouvre le menu de l'app au premier plan.
-- Une app fermée dans les 0,15 s avant l'affichage laisse une case vide.
-- Alt+Q ou Alt+H pris par un autre outil : rien n'est journalisé.
 - La spec du sélecteur décrit encore un découpage de fichiers et des mesures que le plan a remplacés.
 
 
@@ -330,7 +335,6 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
 - Un raccourci déjà pris n'est pas réessayé sans relancer le Dock.
 - La spec décrit encore l'ancienne recherche ; `searchMsUrl` ne sert plus.
 - Le test de recherche réelle peut échouer si l'index garde un fichier tout juste supprimé ; `FileSearcher` n'a pas de test.
-- `-2^2` donne 4 ; un émoji est coupé par Retour arrière ; `Ctrl+V` garde les tabulations.
 
 ## Décisions prises sans toi (plan 13)
 - Pas de réorganisation à la main ni de dossiers : l'ordre est alphabétique, comme la vue Apps sans dossiers.

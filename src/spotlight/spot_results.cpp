@@ -124,4 +124,31 @@ std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text) {
     return std::nullopt;
 }
 
+void spotEraseLast(std::wstring& query) {
+    if (query.empty()) return;
+    query.pop_back();
+    if (!query.empty() && IS_HIGH_SURROGATE(query.back())) query.pop_back();
+}
+
+std::wstring spotPasteLine(const std::wstring& clip) {
+    std::wstring out = clip.substr(0, clip.find_first_of(L"\r\n"));
+    for (wchar_t& c : out)
+        if (c == L'\t') c = L' ';
+    spotClip(out, 128);
+    return out;
+}
+
+void spotClip(std::wstring& text, std::size_t max) {
+    if (text.size() <= max) return;
+    text.resize(max);
+    if (!text.empty() && IS_HIGH_SURROGATE(text.back())) text.pop_back();
+}
+
+bool spotAcceptChar(const std::wstring& query, wchar_t c) {
+    if (c < 32 || c == 127 || query.size() >= 128) return false;
+    if (IS_HIGH_SURROGATE(c)) return query.size() < 127;   // place pour la moitié basse
+    if (IS_LOW_SURROGATE(c)) return !query.empty() && IS_HIGH_SURROGATE(query.back());
+    return true;
+}
+
 } // namespace md
