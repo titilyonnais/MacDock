@@ -49,43 +49,36 @@ LayoutResult computeLayout(const LayoutInput& in) {
         x += restSlot[i];
     }
 
-    // Tailles agrandies.
+    // Loupe continue, comme sous macOS : chaque point du Dock au repos est étiré d'un facteur 1 + a·(1 + cos)/2 selon
+    // sa distance au curseur, et sa place est l'intégrale de ce facteur depuis le curseur. Icônes, espaces et
+    // séparateurs sont traversés de la même façon : le point sous le curseur y reste, et tant que la loupe est à
+    // l'intérieur du Dock, ses bords ne bougent pas (l'ancrage case par case faisait glisser tout le Dock à chaque
+    // séparateur). La taille d'une icône est sa largeur étirée : jamais de chevauchement.
     const double amount = std::clamp(std::isfinite(in.amount) ? in.amount : 0.0, 0.0, 1.0);
     const bool hasCursor = in.cursor && std::isfinite(*in.cursor) && amount > 0;
     const double range = in.rangeTiles * in.tileSize;
-    std::vector<double> slot(restSlot);
-    double cursor = 0;
-    // Chaque emplacement possède la moitié des espaces qui l'entourent (aux extrémités : un demi-espace virtuel).
-    auto halfBefore = [&](size_t i) { return in.gap * presence[i] / 2; };
-    auto halfAfter = [&](size_t i) { return (i + 1 < n ? gapBefore[i + 1] : in.gap * presence[i]) / 2; };
+    double cursor = 0, a = 0;
     if (hasCursor) {
         const double lo = restLeft.front() - in.gap / 2;
         const double hi = restLeft.back() + restSlot.back() + in.gap / 2;
         cursor = std::clamp(*in.cursor, lo, hi);
-        for (size_t i = 0; i < n; ++i) {
-            if (in.items[i].separator) continue;
-            double restCenter = restLeft[i] + restSlot[i] / 2;
-            double full = magnifiedSize(cursor - restCenter, in.tileSize, in.largeSize, range);
-            slot[i] = (in.tileSize + (full - in.tileSize) * amount) * presence[i];
+        if (in.tileSize > 0 && range > 0) {
+            // Moyenne du cosinus surélevé sur une case centrée : l'icône sous le curseur atteint largeSize, ni plus
+            // ni moins.
+            const double h = std::min(in.tileSize / 2, range), arc = std::numbers::pi * h / range;
+            const double mean = (1 + std::sin(arc) / arc) / 2;
+            a = (in.largeSize / in.tileSize - 1) * amount / mean;
         }
     }
-
-    // Ancrage : le point sous le curseur reste sous le curseur.
-    std::vector<double> left(n);
-    if (!hasCursor) {
-        left = restLeft;
-    } else {
-        size_t k = n - 1;
-        for (size_t i = 0; i < n; ++i) {
-            if (cursor <= restLeft[i] + restSlot[i] + halfAfter(i)) { k = i; break; }
-        }
-        double restStart = restLeft[k] - halfBefore(k);
-        double restSpan = halfBefore(k) + restSlot[k] + halfAfter(k);
-        double f = restSpan > 0 ? (cursor - restStart) / restSpan : 0.5;
-        double newSpan = halfBefore(k) + slot[k] + halfAfter(k);
-        left[k] = cursor - f * newSpan + halfBefore(k);
-        for (size_t i = k; i-- > 0;) left[i] = left[i + 1] - gapBefore[i + 1] - slot[i];
-        for (size_t i = k + 1; i < n; ++i) left[i] = left[i - 1] + slot[i - 1] + gapBefore[i];
+    auto place = [&](double u) {
+        if (!hasCursor) return u;
+        const double d = u - cursor, e = std::clamp(d, -range, range);
+        return cursor + d + (a != 0 ? a / 2 * (e + range / std::numbers::pi * std::sin(std::numbers::pi * e / range)) : 0);
+    };
+    std::vector<double> left(n), slot(n);
+    for (size_t i = 0; i < n; ++i) {
+        left[i] = place(restLeft[i]);
+        slot[i] = place(restLeft[i] + restSlot[i]) - left[i];
     }
 
     for (size_t i = 0; i < n; ++i) {
