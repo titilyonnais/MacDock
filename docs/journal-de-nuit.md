@@ -229,6 +229,20 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - depuis le bureau, un Alt+Tab rapide sautait l'app la plus récente : il y revient maintenant (test) ;
   - un menu, une pile, Spotlight ou Mission Control ouverts pendant la sélection (clic droit sur le Dock, coin actif) terminent la sélection sans rien activer.
 
+### Plan 17 — HUD du volume et de la luminosité (sous-projet 10)
+
+- **Pastille de Tahoe** : en haut à droite, sous la barre de menus, un petit panneau en verre (« Volume » et le nom de ta sortie audio, ou « Luminosité », pictogramme, jauge). Il s'efface 1,5 s après le dernier changement, en 0,25 s.
+- **Touches de volume** : la barre de menus les reprend (raccourcis globaux ordinaires, pas de crochet) et règle elle-même le volume par seizièmes, comme un Mac ; `Maj+Alt` donne des quarts de seizième. Le panneau de volume de Windows ne s'affiche plus. Si un autre outil tient déjà ces touches, Windows les garde et la pastille suit le volume.
+- **Luminosité** : Windows prévient la barre à chaque changement (touches d'un portable, curseur des réglages rapides) ; la pastille suit. Les touches de luminosité d'un portable sont traitées par l'ordinateur lui-même : le panneau de Windows apparaît aussi, je ne peux pas l'éviter sans crochet. Un écran externe réglé par DDC/CI ne prévient pas : pas de pastille.
+- **Pas de pastille** pendant qu'un menu de la barre est ouvert (son curseur est déjà sous tes yeux), ni juste après un réglage de luminosité fait dans le Centre de contrôle.
+- `"hud": false` dans `menubar.json` rend les touches à Windows.
+- **Vérifié hors écran** : `--hud-snapshot` (volume 50 % en clair, sourdine en sombre, luminosité 80 %) et les tests (pas du volume sur la grille, fondu, place sous la barre à toutes les échelles, avis de luminosité filtrés, réglage). **Je n'ai touché ni au volume ni à la luminosité, ni enregistré les touches pendant les essais.**
+- **À vérifier toi-même** (après avoir relancé la barre de menus) :
+  1. volume + et volume − : la pastille apparaît en haut à droite, la jauge avance par seizièmes, le panneau de Windows n'apparaît plus ;
+  2. sourdine : haut-parleur barré, jauge vide ; volume + rend le son ;
+  3. sur un portable : les touches de luminosité montrent la pastille de luminosité ;
+  4. le curseur du volume dans le menu Son ne fait pas apparaître la pastille.
+
 ## Décisions prises sans toi (plan 16)
 - `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
 - Le panneau s'affiche sur l'écran du curseur.
