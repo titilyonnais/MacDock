@@ -4,6 +4,23 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 
 ## Ce qui est fait
 
+### Plan 4 — Positions, écrans et piles (fusionné dans `main`)
+
+- **Dock à gauche ou à droite** (clic droit sur le séparateur › Position à l'écran), changé à chaud. La zone réservée suit le bord ; les menus, les infobulles et la grille des piles s'ouvrent à côté du Dock.
+- **Trop d'éléments pour l'écran** (Dock vertical sur un portable…) : tout le Dock rétrécit pour tenir, comme sur macOS.
+- **Plusieurs écrans** : pousse le curseur contre le bord du Dock sur un autre écran (≈ 0,35 s de mouvement contre le bord) et le Dock y passe. Il s'en souvient (`"screen"` dans `settings.json`) et retombe sur l'écran principal si celui-ci est débranché.
+- **Piles** : un clic sur Téléchargements ouvre son contenu comme sur macOS.
+  - *Éventail* : icônes en arc au-dessus de la pile, nom à gauche. Il ne dépasse jamais le haut de l'écran ; en haut, « Ouvrir dans l'Explorateur » ou « N de plus dans l'Explorateur ».
+  - *Grille* : panneau Liquid Glass avec le titre, molette pour défiler, « Ouvrir dans l'Explorateur » en bas.
+  - *Automatiquement* : éventail jusqu'à 9 éléments, grille au-delà.
+  - Menu de la pile : Trier par (Nom, Date d'ajout, Date de modification, Type), Présenter le contenu comme.
+  - Les vignettes se chargent en arrière-plan : la souris ne saccade jamais.
+- **Ouvrir à la connexion** marche aussi pour les apps du Store (raccourci `MacDock - <nom>.lnk` dans ton dossier Démarrage).
+
+**Relecture finale** par un agent indépendant : 1 critique (Dock vertical qui débordait de l'écran), 3 importants (changement d'écran déclenché par une simple attente au bord, éventail trop haut, vignettes qui bloquaient la souris), tous corrigés ; 4 mineurs corrigés au passage, 6 notés plus bas.
+
+**Essais réels** : Dock à gauche (fenêtre 0–819 px) et à droite (3021–3840 px), repli d'écran, éventail et grille sur ton dossier Téléchargements (67 éléments), raccourci de la Calculatrice créé puis supprimé. Tes réglages ont été restaurés après chaque essai ; la Calculatrice et la fenêtre de l'Explorateur ouvertes par les essais ont été refermées.
+
 ### Plan 3 — Interactions (fusionné dans `main`)
 
 - **Glisser-déposer interne** : réorganiser les épingles, tirer une icône vers le haut (« Supprimer ») puis la lâcher dans un nuage « poof ». Une app ouverte n'est que désépinglée.
@@ -49,6 +66,12 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 ### ⚠ Le mod Windhawk n'est pas installé
 `macdock-hide-taskbar` n'apparaît pas dans Windhawk : la barre des tâches Windows reste visible et le Dock se pose juste au-dessus d'elle. Pour le rendu final, installe le mod depuis `windhawk\macdock-hide-taskbar.wh.cpp` (Windhawk → Créer un mod → coller → Compiler).
 
+## Vérifications à faire toi-même — plan 4
+1. L'aspect de l'éventail (arc, noms) et de la grille en verre : je ne vois pas l'écran.
+2. Un second écran : pousse le curseur contre le bas de l'autre écran.
+3. Dock à gauche puis à droite : rien ne doit rester réservé sur l'ancien bord.
+4. Calculatrice (ou une autre app du Store) cochée « Ouvrir à la connexion », puis une reconnexion.
+
 ## Vérifications à faire toi-même — plan 3
 1. Miniatures des fenêtres réduites : je n'ai pas pu les voir (sur ton écran HDR, les captures d'écran sortent noires).
 2. Icône de la Corbeille vide : ta Corbeille étant pleine, seule l'icône pleine a été vue.
@@ -65,6 +88,21 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 6. Mode clair et mode sombre.
 7. `"glass": false` dans `settings.json`.
 8. Ctrl+Alt+Maj+O avec une capture de Tahoe dans `%APPDATA%\MacDock\reference\overlay.png`.
+
+## Décisions prises sans toi (plan 4)
+- Dock à gauche ou à droite : les piles s'ouvrent toujours en grille, à côté (macOS ne fait l'éventail qu'avec un Dock en bas).
+- « Ouvrir dans l'Explorateur » en haut de l'éventail (comme le Finder) et en bas de la grille.
+- « Afficher comme (Pile, Dossier) » et la présentation « Liste » sont reportées au plan 5 : pas d'entrée de menu sans effet.
+- Infobulle d'un Dock vertical posée à côté de l'icône (la fenêtre est plus large de 240 pt pour elle).
+- Le test de « Ouvrir à la connexion » écrit dans un dossier temporaire, jamais dans ton dossier Démarrage.
+
+## Mineurs reportés — plan 4
+- Raccourci de démarrage nommé d'après le nom affiché (deux apps homonymes, ou un renommage, se gênent).
+- Énumération du dossier d'une pile synchrone (un partage réseau hors ligne figerait le Dock).
+- Dock vertical : « Éventail » peut apparaître coché alors que la grille s'ouvre.
+- Tri « Type » par extension, pas par description du type.
+- Dock rétréci : la zone réservée garde l'épaisseur normale.
+- Code du verre encore dupliqué entre les menus et les piles.
 
 ## Décisions prises sans toi (plan 2)
 Chaque décision est notée avec son coût si elle est fausse. La liste complète figure dans le message de fin de plan.
@@ -104,4 +142,4 @@ Chaque décision est notée avec son coût si elle est fausse. La liste complèt
 - `--snapshot` réécrit tes fichiers de réglages.
 
 ## Suite de la nuit
-Plan 4 — `docs/superpowers/plans/2026-10-07-macdock-plan-4-ecrans-piles.md` : Dock à gauche et à droite, Dock qui suit l'écran où tu pousses le curseur, piles en éventail et en grille, ouverture à la connexion des apps du Store.
+Plan 5 — `docs/superpowers/plans/2026-10-07-macdock-plan-5-piles-completes.md` : icône de pile qui montre les derniers fichiers empilés (« Afficher comme : Pile / Dossier ») et présentation en liste.
