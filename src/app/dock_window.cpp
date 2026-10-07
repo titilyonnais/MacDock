@@ -50,6 +50,7 @@ constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT WM_APP_STACKS = WM_APP + 10;
 constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob_
+constexpr UINT WM_APP_SWITCHKEY = WM_APP + 13;   // wParam : kHotSwitch… (frappe prise par le crochet clavier)
 constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
@@ -884,24 +885,10 @@ void DockApp::registerSpotlightHotkey() {
 void DockApp::registerSwitcherHotkey() {
     if (settings_.appSwitcherHotkey == switcherHotkeyOn_) return;
     endSwitch(false);
-    UnregisterHotKey(hwnd_, kHotSwitch);
-    UnregisterHotKey(hwnd_, kHotSwitchBack);
     switcherHotkeyOn_ = settings_.appSwitcherHotkey;
-    const auto spec = parseSwitcherHotkey(switcherHotkeyOn_);
-    if (!spec) {
-        log::info(L"Sélecteur d'apps : raccourci désactivé");
-        return;
-    }
-    // Sans MOD_NOREPEAT : Tab maintenu fait défiler la rangée, comme sur macOS.
-    if (!RegisterHotKey(hwnd_, kHotSwitch, spec->mods, spec->vk) ||
-        !RegisterHotKey(hwnd_, kHotSwitchBack, spec->mods | MOD_SHIFT, spec->vk)) {
-        log::warn(L"Sélecteur d'apps : raccourci %s déjà pris par une autre app (%lu) ; celui de Windows reste en place",
-                  switcherHotkeyOn_.c_str(), GetLastError());
-        UnregisterHotKey(hwnd_, kHotSwitch);
-        UnregisterHotKey(hwnd_, kHotSwitchBack);
-    } else {
-        log::info(L"Sélecteur d'apps : raccourci %s", switcherHotkeyOn_.c_str());
-    }
+    // Windows garde Alt+Tab pour lui (RegisterHotKey : erreur 1409) : le crochet clavier du fil de la souris le prend.
+    switchKeysOn_ = parseSwitcherHotkey(switcherHotkeyOn_).has_value();
+    log::info(switchKeysOn_ ? L"Sélecteur d'apps : Alt+Tab repris" : L"Sélecteur d'apps : raccourci désactivé");
 }
 
 void DockApp::switcherKey(int id) {
@@ -930,16 +917,7 @@ void DockApp::switcherKey(int id) {
         in[1].ki.dwFlags = KEYEVENTF_KEYUP;
         SendInput(2, in, sizeof(INPUT));
         if (!switch_.begin(switchApps_.size(), back, nowSeconds(), frontFirst)) return;
-        const bool keys = RegisterHotKey(hwnd_, kHotSwitchEsc, MOD_ALT, VK_ESCAPE) &
-                          RegisterHotKey(hwnd_, kHotSwitchLeft, MOD_ALT, VK_LEFT) &
-                          RegisterHotKey(hwnd_, kHotSwitchRight, MOD_ALT, VK_RIGHT) &
-                          RegisterHotKey(hwnd_, kHotSwitchQuit, MOD_ALT | MOD_NOREPEAT, 'Q') &
-                          RegisterHotKey(hwnd_, kHotSwitchHide, MOD_ALT | MOD_NOREPEAT, 'H');
-        static bool warned = false;
-        if (!keys && !warned) {
-            warned = true;
-            log::warn(L"Sélecteur d'apps : Alt+Échap, Alt+flèches, Alt+Q ou Alt+H déjà pris par une autre app");
-        }
+        switchSession_ = true;   // le crochet prend aussi Échap, les flèches, Q et H
         SetTimer(hwnd_, kSwitchTimer, 15, nullptr);
         return;
     }
@@ -1005,7 +983,7 @@ void DockApp::switcherTick() {
 
 void DockApp::endSwitch(bool activate) {
     KillTimer(hwnd_, kSwitchTimer);
-    for (int id : {kHotSwitchEsc, kHotSwitchLeft, kHotSwitchRight, kHotSwitchQuit, kHotSwitchHide}) UnregisterHotKey(hwnd_, id);
+    switchSession_ = false;
     const bool was = switch_.activates();   // une app masquée par H pendant la session reste masquée
     const std::size_t sel = switch_.selected();
     switch_.end();
@@ -1529,14 +1507,51 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
+// Ne lit que Tab (avec Alt) et, pendant une session, Échap, flèches, Q, H ; tout le reste passe sans délai.
+LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && self_) {
+        const auto* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp);
+        const bool down = wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN;
+        static bool held[256] = {};   // fil du crochet seulement : distingue la répétition d'un nouvel appui
+        const unsigned vk = k->vkCode & 0xFF;
+        const bool repeat = down && held[vk];
+        held[vk] = down;
+        if (self_->switchKeysOn_) {
+            const bool alt = (k->flags & LLKHF_ALTDOWN) != 0;
+            const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            const SwitchKey a = switcherKeyAction(vk, down, alt, shift, self_->switchSession_, repeat,
+                                                  (k->flags & LLKHF_INJECTED) != 0);
+            if (a != SwitchKey::Pass) {
+                int id = 0;
+                switch (a) {
+                    case SwitchKey::Next: id = kHotSwitch; break;
+                    case SwitchKey::Prev: id = kHotSwitchBack; break;
+                    case SwitchKey::Cancel: id = kHotSwitchEsc; break;
+                    case SwitchKey::Left: id = kHotSwitchLeft; break;
+                    case SwitchKey::Right: id = kHotSwitchRight; break;
+                    case SwitchKey::Quit: id = kHotSwitchQuit; break;
+                    case SwitchKey::Hide: id = kHotSwitchHide; break;
+                    default: break;
+                }
+                if (id) PostMessageW(self_->hwnd_, WM_APP_SWITCHKEY, WPARAM(id), 0);
+                return 1;   // avalée : ni le sélecteur de Windows, ni l'app au premier plan
+            }
+        }
+    }
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
 void DockApp::startMouseThread() {
     // Le hook souris bas niveau vit sur son propre thread : la boucle d'animation ne ralentit jamais la souris.
     mouseThread_ = std::thread([this] {
         mouseThreadId_ = GetCurrentThreadId();
         HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, instance_, 0);
         if (!hook) log::error(L"SetWindowsHookEx(WH_MOUSE_LL) a échoué (%lu)", GetLastError());
+        HHOOK keys = SetWindowsHookExW(WH_KEYBOARD_LL, keyboardHookProc, instance_, 0);   // Alt+Tab seulement
+        if (!keys) log::error(L"SetWindowsHookEx(WH_KEYBOARD_LL) a échoué (%lu) : Alt+Tab reste à Windows", GetLastError());
         MSG msg;
         while (GetMessageW(&msg, nullptr, 0, 0) > 0) {}
+        if (keys) UnhookWindowsHookEx(keys);
         if (hook) UnhookWindowsHookEx(hook);
     });
 }
@@ -1656,6 +1671,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
             return 0;
         }
+        case WM_APP_SWITCHKEY:
+            if (switch_.active() || int(wp) == kHotSwitch || int(wp) == kHotSwitchBack) switcherKey(int(wp));
+            return 0;
         case WM_APP_CORNER:
             if (const unsigned delay = hotCornerDelayMs(HotCornerAction(wp))) {
                 pendingCorner_ = HotCornerAction(wp);

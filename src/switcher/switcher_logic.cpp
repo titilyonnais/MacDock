@@ -106,6 +106,22 @@ SwitchActivation switcherActivation(bool hidden, const std::vector<bool>& iconic
     return a;
 }
 
+SwitchKey switcherKeyAction(unsigned vk, bool down, bool alt, bool shift, bool session, bool repeat, bool injected) {
+    if (injected || !alt) return SwitchKey::Pass;
+    if (vk == VK_TAB) return !down ? SwitchKey::Swallow : shift ? SwitchKey::Prev : SwitchKey::Next;
+    if (!session) return SwitchKey::Pass;
+    SwitchKey action = SwitchKey::Pass;
+    switch (vk) {
+        case VK_ESCAPE: action = SwitchKey::Cancel; break;
+        case VK_LEFT: action = SwitchKey::Left; break;
+        case VK_RIGHT: action = SwitchKey::Right; break;
+        case 'Q': action = repeat ? SwitchKey::Swallow : SwitchKey::Quit; break;   // une seule app fermée par appui
+        case 'H': action = repeat ? SwitchKey::Swallow : SwitchKey::Hide; break;
+        default: return SwitchKey::Pass;
+    }
+    return down ? action : SwitchKey::Swallow;
+}
+
 std::optional<HotkeySpec> parseSwitcherHotkey(const std::wstring& text) {
     std::wstring t;
     for (wchar_t c : toLower(text))

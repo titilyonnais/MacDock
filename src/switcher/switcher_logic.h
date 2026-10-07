@@ -63,6 +63,11 @@ struct SwitchActivation {
 };
 SwitchActivation switcherActivation(bool hidden, const std::vector<bool>& iconic);
 
+// Crochet clavier du sélecteur (Windows garde Alt+Tab pour lui : RegisterHotKey échoue) : que faire d'une frappe ?
+// Pass : laissée à Windows ; Swallow : avalée sans effet ; les autres : avalée et envoyée à la session.
+enum class SwitchKey { Pass, Swallow, Next, Prev, Cancel, Left, Right, Quit, Hide };
+SwitchKey switcherKeyAction(unsigned vk, bool down, bool alt, bool shift, bool session, bool repeat, bool injected);
+
 // « alt+tab » (casse ignorée) ; nullopt pour « off » ou une valeur inconnue.
 std::optional<HotkeySpec> parseSwitcherHotkey(const std::wstring& text);
 
