@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "../icons/icon_provider.h"
+
 namespace md {
 
 // Mesures des menus de macOS Tahoe (estimées), en points.
@@ -16,12 +18,15 @@ constexpr double kMenuRadius = 12;            // rayon du panneau
 constexpr double kMenuHighlightRadius = 6;    // rayon de la capsule de survol
 constexpr double kMenuFontSize = 13;
 constexpr double kMenuMinWidth = 160;
+constexpr double kMenuIconSize = 16;          // icône d'entrée (liste d'une pile)
+constexpr double kMenuIconGap = 6;
 
 struct MenuItem {
     int id = 0;                    // 0 = séparateur
     std::wstring text;
     bool checked = false, enabled = true;
     std::vector<MenuItem> submenu;
+    IconProvider::ImagePtr icon;   // facultative : affichée devant le texte
     bool separator() const { return id == 0 && submenu.empty(); }
     bool selectable() const { return !separator() && enabled; }
 };
@@ -33,6 +38,7 @@ struct MenuModel {
 struct MenuLayout {
     double width = 0, height = 0;
     std::vector<double> top;       // haut de chaque entrée, depuis le haut du panneau
+    double iconSpace = 0;          // place des icônes devant le texte (0 si aucune entrée n'en a)
 };
 
 // textWidthMax : largeur du texte le plus long (points), mesurée par l'appelant.

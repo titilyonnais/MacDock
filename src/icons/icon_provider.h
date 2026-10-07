@@ -8,6 +8,15 @@
 
 namespace md {
 
+// Fichier et date de modification : un contenu nouveau sous le même chemin donne une autre image.
+struct FileRef {
+    std::wstring path;
+    std::uint64_t modified = 0;   // FILETIME ; 0 = inconnue
+    FileRef() = default;
+    FileRef(std::wstring p, std::uint64_t m = 0) : path(std::move(p)), modified(m) {}
+    bool operator==(const FileRef&) const = default;
+};
+
 class IconProvider {
 public:
     struct Image {
@@ -30,7 +39,12 @@ public:
     ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
     // Élément de pile : vignette Shell (images…) ou icône du fichier, telle quelle (ni plaque ni forme),
     // px x px ; icône générique du type si le fichier n'existe plus.
-    ImagePtr file(const std::wstring& path, int px);
+    ImagePtr file(const std::wstring& path, int px, std::uint64_t modified = 0);
+    // Icône du fichier telle que l'Explorateur la montre (liste système, rapide : jamais de vignette), px x px.
+    ImagePtr fileIcon(const std::wstring& path, int px);
+    // Pile « comme Pile » : images des éléments (le premier au-dessus) empilées dans la forme d'icône, avec
+    // l'ombre des icônes du Dock ; nullptr si aucune image.
+    ImagePtr composeStack(const std::wstring& key, const std::vector<FileRef>& files, int px);
     void clear() { cache_.clear(); }
 
 private:

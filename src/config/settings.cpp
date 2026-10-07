@@ -34,6 +34,7 @@ const char* viewName(StackView v) {
     switch (v) {
         case StackView::Fan: return "fan";
         case StackView::Grid: return "grid";
+        case StackView::List: return "list";
         default: return "auto";
     }
 }
@@ -87,9 +88,11 @@ Settings settingsFromJson(const json::Value& v) {
                 std::wstring view = readString(p, "view"), sort = readString(p, "sort");
                 if (view == L"fan") e.stackView = StackView::Fan;
                 else if (view == L"grid") e.stackView = StackView::Grid;
+                else if (view == L"list") e.stackView = StackView::List;
                 if (sort == L"name") e.stackSort = StackSort::Name;
                 else if (sort == L"modified") e.stackSort = StackSort::Modified;
                 else if (sort == L"kind") e.stackSort = StackSort::Kind;
+                if (readString(p, "display") == L"folder") e.stackDisplay = StackDisplay::Folder;
             }
             if (e.kind == PinKind::App && e.appId.empty()) continue;
             if (e.kind == PinKind::Stack && e.launch.empty()) continue;
@@ -124,6 +127,7 @@ json::Value settingsToJson(const Settings& s) {
         if (p.kind == PinKind::Stack) {
             e.set("view", viewName(p.stackView));
             e.set("sort", sortName(p.stackSort));
+            e.set("display", p.stackDisplay == StackDisplay::Folder ? "folder" : "stack");
         }
         pins.push(std::move(e));
     }

@@ -14,6 +14,7 @@
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
+#include "../popup/stack_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
@@ -58,7 +59,8 @@ private:
     void onClick(std::size_t index);
     void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
-    void openStack(std::size_t index);                        // pile ouverte en éventail ou en grille
+    void openStack(std::size_t index);                        // pile ouverte en éventail, en grille ou en liste
+    std::size_t listCapacity(const StackWindow::Request& r) const;
     MenuWindow::Env popupEnv();                               // environnement des menus et des piles
     void renderNow();
     void requestFrame();
@@ -72,6 +74,8 @@ private:
     void resumeCapture();
     void onBackdrop();
     void watchTrash();
+    void watchStacks();         // surveille les dossiers des piles épinglées (réenregistre si la liste change)
+    void refreshStacks();       // aperçu de chaque pile (icône « Pile ») selon son tri
     void registerDropTarget();
     void performDrop();
     void syncAppBar();                 // zone réservée seulement sans masquage automatique
@@ -135,6 +139,9 @@ private:
     POINT poofCenter_{};
     bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
     ULONG trashNotify_ = 0;        // SHChangeNotifyRegister sur la Corbeille
+    std::vector<ULONG> stackNotify_;            // un par dossier de pile
+    std::vector<std::wstring> watchedStacks_;   // dossiers surveillés
+    double stacksFirstEvent_ = -1;              // premier avis d'une rafale en cours (-1 : aucune)
     class DropTarget* dropTarget_ = nullptr;
     struct PendingDrop {
         DropHover hover;

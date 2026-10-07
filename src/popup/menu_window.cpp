@@ -47,6 +47,7 @@ struct Panel {
     const MenuModel* model = nullptr;
     MenuLayout layout;
     std::vector<Com<IDWriteTextLayout>> texts;
+    std::vector<Com<ID2D1Bitmap1>> icons;   // icônes des entrées, créées au premier rendu
     HWND hwnd = nullptr;
     RECT rc{};                 // fenêtre (écran), marge d'ombre comprise
     float margin = 0;          // px autour du panneau (ombre)
@@ -461,11 +462,25 @@ void Session::render(Panel& p) {
         }
         if (it.checked && symbolFormat)
             d->DrawTextW(L"✓", 1, symbolFormat.Get(), D2D1::RectF(x0 + 5 * sc, top, x0 + 20 * sc, top + rowH), ink);
+        const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+        if (it.icon) {
+            if (p.icons.size() < p.model->items.size()) p.icons.resize(p.model->items.size());
+            if (!p.icons[i]) {
+                auto props = D2D1::BitmapProperties1(
+                    D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+                d->CreateBitmap(D2D1::SizeU(UINT32(it.icon->size), UINT32(it.icon->size)), it.icon->bgra.data(),
+                                UINT32(it.icon->size * 4), &props, &p.icons[i]);
+            }
+            if (p.icons[i]) {
+                const float is = float(kMenuIconSize) * sc, iy = top + (rowH - is) / 2;
+                d->DrawBitmap(p.icons[i].Get(), D2D1::RectF(textX, iy, textX + is, iy + is), opacity,
+                              D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
+            }
+        }
         if (p.texts[i]) {
             DWRITE_TEXT_METRICS tm{};
             p.texts[i]->GetMetrics(&tm);
-            d->DrawTextLayout({x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc, top + (rowH - tm.height) / 2},
-                              p.texts[i].Get(), ink);
+            d->DrawTextLayout({textX + float(p.layout.iconSpace) * sc, top + (rowH - tm.height) / 2}, p.texts[i].Get(), ink);
         }
         if (!it.submenu.empty()) {   // chevron ›
             float cx = x1 - 10 * sc, cy = top + rowH / 2, a = 3.5f * sc;

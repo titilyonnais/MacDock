@@ -287,7 +287,11 @@ IconProvider::ImagePtr DockController::imageFor(const DockItem& item, IconProvid
             return icons.get(item.appId, parsing, px);
         }
         case ItemKind::AppsButton: return icons.appsButton(px);
-        case ItemKind::Stack: return icons.get(L"stack:" + item.launch, item.launch, px);
+        case ItemKind::Stack:
+            // « Afficher comme : Pile » : les derniers éléments empilés ; dossier vide ou illisible → son icône.
+            if (item.stackDisplay == StackDisplay::Stack && !item.stackPreview.empty())
+                if (auto img = icons.composeStack(item.key, item.stackPreview, px)) return img;
+            return icons.get(L"stack:" + item.launch, item.launch, px);
         case ItemKind::Trash: return icons.trash(item.trashFull, px);
         case ItemKind::MinimizedWindow: {
             std::wstring parsing;

@@ -15,6 +15,7 @@
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
 #include "icon_grid.h"
+#include "../stack/stack_icon.h"
 #include "squircle.h"
 
 using Microsoft::WRL::ComPtr;
@@ -140,15 +141,16 @@ Pixels thumbnailImage(const std::wstring& path, int& size) {
     return bitmapPixels(hbmp, size);
 }
 
-// Icône générique du type de fichier (d'après l'extension seule), en 256 px.
-Pixels typeIcon(const std::wstring& path, int& size) {
+// Icône de la liste système : du type d'après l'extension seule (byType), ou du fichier lui-même (exe, .lnk…).
+Pixels typeIcon(const std::wstring& path, int& size, bool byType = true, int list = SHIL_JUMBO) {
     size = 0;
     SHFILEINFOW sfi{};
-    if (!SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi, SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES))
+    if (!SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi,
+                        SHGFI_SYSICONINDEX | (byType ? SHGFI_USEFILEATTRIBUTES : 0)))
         return {};
-    ComPtr<IImageList> list;
+    ComPtr<IImageList> images;
     HICON icon = nullptr;
-    if (FAILED(SHGetImageList(SHIL_JUMBO, IID_PPV_ARGS(&list))) || FAILED(list->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &icon)) ||
+    if (FAILED(SHGetImageList(list, IID_PPV_ARGS(&images))) || FAILED(images->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &icon)) ||
         !icon)
         return {};
     return iconPixels(icon, size);
@@ -375,9 +377,9 @@ IconProvider::ImagePtr IconProvider::trash(bool full, int px) {
                 : get(L"trash", L"stock:" + std::to_wstring(int(SIID_RECYCLER)), px);
 }
 
-IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px) {
+IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px, std::uint64_t modified) {
     px = std::clamp(px, 16, 512);
-    std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px);
+    std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px) + L"|" + std::to_wstring(modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
     if (cache_.size() > 1500) clear();   // les piles changent sans cesse : pas de croissance sans fin
     int srcSize = 0;
@@ -387,6 +389,82 @@ IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px) {
     auto img = std::make_shared<Image>();
     img->size = px;
     img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
+    cache_[cacheKey] = img;
+    return img;
+}
+
+namespace {
+
+// Pose src (carré ss, prémultiplié) dans dst (carré ds), centré en (cx, cy), côté side, incliné de angleDeg
+// (sens horaire), par échantillonnage bilinéaire et composition « par-dessus ».
+void drawLayer(Pixels& dst, int ds, const Pixels& src, int ss, double cx, double cy, double side, double angleDeg) {
+    const double a = angleDeg * 3.14159265358979 / 180, c = std::cos(a), sn = std::sin(a);
+    const double half = side / 2, k = ss / side, reach = half * 1.415;
+    const int x0 = std::max(0, int(std::floor(cx - reach))), x1 = std::min(ds - 1, int(std::ceil(cx + reach)));
+    const int y0 = std::max(0, int(std::floor(cy - reach))), y1 = std::min(ds - 1, int(std::ceil(cy + reach)));
+    auto at = [&](int x, int y, int ch) -> double {
+        x = std::clamp(x, 0, ss - 1);
+        y = std::clamp(y, 0, ss - 1);
+        return src[(size_t(y) * ss + x) * 4 + ch];
+    };
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x) {
+            const double dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+            const double u = dx * c + dy * sn + half, v = -dx * sn + dy * c + half;   // repère de l'image
+            if (u < 0 || v < 0 || u >= side || v >= side) continue;
+            const double fx = u * k - 0.5, fy = v * k - 0.5;
+            const int ix = int(std::floor(fx)), iy = int(std::floor(fy));
+            const double tx = fx - ix, ty = fy - iy;
+            double px[4];
+            for (int ch = 0; ch < 4; ++ch)
+                px[ch] = (at(ix, iy, ch) * (1 - tx) + at(ix + 1, iy, ch) * tx) * (1 - ty) +
+                         (at(ix, iy + 1, ch) * (1 - tx) + at(ix + 1, iy + 1, ch) * tx) * ty;
+            const double inv = 1 - px[3] / 255;
+            std::uint8_t* d = &dst[(size_t(y) * ds + x) * 4];
+            for (int ch = 0; ch < 4; ++ch) d[ch] = std::uint8_t(std::clamp(px[ch] + d[ch] * inv + 0.5, 0.0, 255.0));
+        }
+}
+
+} // namespace
+
+IconProvider::ImagePtr IconProvider::fileIcon(const std::wstring& path, int px) {
+    px = std::clamp(px, 16, 512);
+    std::wstring cacheKey = L"#ficon|" + path + L"|" + std::to_wstring(px);
+    if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    int srcSize = 0;
+    Pixels src = typeIcon(path, srcSize, false, px <= 48 ? SHIL_EXTRALARGE : SHIL_JUMBO);
+    if (src.empty()) src = typeIcon(path, srcSize);
+    if (src.empty() || srcSize <= 0) return nullptr;
+    auto img = std::make_shared<Image>();
+    img->size = px;
+    img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
+    cache_[cacheKey] = img;
+    return img;
+}
+
+IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const std::vector<FileRef>& files,
+                                                  int px) {
+    px = std::clamp(px, 16, 512);
+    if (files.empty()) return nullptr;
+    std::wstring cacheKey = L"#stack|" + key + L"|" + std::to_wstring(px);
+    for (auto& f : files) cacheKey += L"|" + f.path + L"@" + std::to_wstring(f.modified);
+    if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    const int s = iconShapePx(px, shapeRatio_);   // même forme que les icônes d'apps, même ombre
+    Pixels shaped(size_t(s) * s * 4, 0);
+    const auto layers = stackIconLayers(files.size());
+    bool any = false;
+    // Couches du dessous vers le dessus : files[0] (le premier selon le tri) est au-dessus.
+    for (std::size_t i = 0; i < layers.size(); ++i) {
+        const StackLayer& l = layers[i];
+        const int side = std::max(8, int(std::lround(s * l.scale)));
+        const FileRef& f = files[layers.size() - 1 - i];
+        ImagePtr img = file(f.path, side, f.modified);
+        if (!img) continue;
+        drawLayer(shaped, s, img->bgra, img->size, s / 2.0 + l.dx * s, s / 2.0 + l.dy * s, side, l.angle);
+        any = true;
+    }
+    if (!any) return nullptr;
+    auto img = finish(std::move(shaped), s, px);
     cache_[cacheKey] = img;
     return img;
 }

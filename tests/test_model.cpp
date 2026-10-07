@@ -243,3 +243,32 @@ TEST_CASE(model_stack_options_update) {
     CHECK(m.pinnedEntries()[0].stackSort == md::StackSort::Kind);
     CHECK(!m.setStackOptions(L"stack:C:\\X", md::StackView::Fan, md::StackSort::Kind));
 }
+
+TEST_CASE(model_stack_preview_changes_revision) {
+    md::AppModel m;
+    m.loadPinned({{md::PinKind::Stack, L"", L"C:\\D", L"D"}});
+    auto rev = m.revision();
+    CHECK(m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\a", 1}, md::FileRef{L"C:\\D\\b", 1}}));
+    CHECK(m.revision() != rev);
+    rev = m.revision();
+    CHECK(!m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\a", 1}, md::FileRef{L"C:\\D\\b", 1}}));   // inchangé : pas de redessin
+    CHECK(m.revision() == rev);
+    const md::DockItem* stack = nullptr;
+    auto items = m.items();
+    for (auto& it : items)
+        if (it.kind == md::ItemKind::Stack) stack = &it;
+    REQUIRE(stack != nullptr);
+    CHECK(stack->stackPreview.size() == 2);
+    CHECK(stack->stackDisplay == md::StackDisplay::Stack);
+    CHECK(m.setStackDisplay(L"stack:C:\\D", md::StackDisplay::Folder));
+    CHECK(m.pinnedEntries()[0].stackDisplay == md::StackDisplay::Folder);
+    CHECK(!m.setStackPreview(L"stack:C:\\X", {}));
+}
+
+TEST_CASE(model_stack_preview_tracks_modification) {
+    // Même chemin, contenu nouveau (téléchargement terminé, capture réenregistrée) : l'icône doit suivre.
+    md::AppModel m;
+    m.loadPinned({{md::PinKind::Stack, L"", L"C:\\D", L"D"}});
+    CHECK(m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\photo.jpg", 100}}));
+    CHECK(m.setStackPreview(L"stack:C:\\D", {md::FileRef{L"C:\\D\\photo.jpg", 200}}));
+}

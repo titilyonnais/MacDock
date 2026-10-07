@@ -68,9 +68,14 @@ void stackMenu(const MenuContext& c, std::vector<MenuItem>& out) {
                     entry(kCmdSortModified, L"Date de modification", true, c.stackSort == StackSort::Modified),
                     entry(kCmdSortKind, L"Type", true, c.stackSort == StackSort::Kind)};
     out.push_back(sort);
+    MenuItem display{-1, L"Afficher comme"};
+    display.submenu = {entry(kCmdDisplayStack, L"Pile", true, c.stackDisplay == StackDisplay::Stack),
+                       entry(kCmdDisplayFolder, L"Dossier", true, c.stackDisplay == StackDisplay::Folder)};
+    out.push_back(display);
     MenuItem view{-1, L"Présenter le contenu comme"};
     view.submenu = {entry(kCmdViewFan, L"Éventail", true, c.stackView == StackView::Fan),
                     entry(kCmdViewGrid, L"Grille", true, c.stackView == StackView::Grid),
+                    entry(kCmdViewList, L"Liste", true, c.stackView == StackView::List),
                     entry(kCmdViewAuto, L"Automatiquement", true, c.stackView == StackView::Auto)};
     out.push_back(view);
     out.push_back({});

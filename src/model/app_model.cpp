@@ -159,6 +159,24 @@ bool AppModel::setStackOptions(const std::wstring& key, StackView view, StackSor
     return true;
 }
 
+bool AppModel::setStackDisplay(const std::wstring& key, StackDisplay display) {
+    auto i = pinnedIndexOf(key);
+    if (!i || pinned_[*i].kind != PinKind::Stack) return false;
+    pinned_[*i].stackDisplay = display;
+    touch();
+    return true;
+}
+
+bool AppModel::setStackPreview(const std::wstring& key, std::vector<FileRef> files) {
+    auto i = pinnedIndexOf(key);
+    if (!i || pinned_[*i].kind != PinKind::Stack) return false;
+    auto& current = stackPreviews_[key];
+    if (current == files) return false;   // chemins et dates : un contenu nouveau sous le même nom compte
+    current = std::move(files);
+    touch();
+    return true;
+}
+
 std::optional<std::size_t> AppModel::pinnedIndexOf(const std::wstring& key) const {
     for (std::size_t i = 0; i < pinned_.size(); ++i)
         if (pinKey(pinned_[i]) == key) return i;
@@ -265,6 +283,8 @@ std::vector<DockItem> AppModel::items() const {
         d.name = s->name;
         d.launch = s->launch;
         d.pinned = true;
+        d.stackDisplay = s->stackDisplay;
+        if (auto p = stackPreviews_.find(d.key); p != stackPreviews_.end()) d.stackPreview = p->second;
         out.push_back(std::move(d));
     }
 

@@ -4,6 +4,13 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 
 ## Ce qui est fait
 
+### Plan 5 — Piles complètes (fusionné dans `main`)
+
+- **Icône « Pile »** : dans le Dock, la pile Téléchargements montre ses 3 derniers fichiers empilés, ceux du dessous légèrement inclinés, comme sur macOS. Elle se met à jour en direct quand un fichier arrive ou disparaît. Clic droit › *Afficher comme* › *Dossier* pour revenir à l'icône du dossier.
+- **Présentation en liste** : clic droit › *Présenter le contenu comme* › *Liste*. La pile s'ouvre alors en menu de verre avec les icônes des fichiers ; les sous-dossiers s'ouvrent en sous-menus. La liste se limite à ce qui tient à l'écran.
+- Essais réels : rendu de l'icône composée vérifié sur image (`--snapshot`) ; dossier temporaire épinglé : l'aperçu passe de 0 à 1 fichier puis revient à 0 ; liste ouverte avec un sous-menu. Tes réglages ont été restaurés à chaque fois.
+- Relecture finale : 3 problèmes importants, corrigés. Un fichier remplacé sous le même nom (capture réenregistrée) met maintenant l'icône à jour ; chaque sous-dossier de la liste se termine par « Ouvrir dans l'Explorateur » ; les icônes de la liste visible passent avant celles des sous-menus. Une rafale d'avis (téléchargement) met l'icône à jour au moins toutes les 2 s.
+
 ### Plan 4 — Positions, écrans et piles (fusionné dans `main`)
 
 - **Dock à gauche ou à droite** (clic droit sur le séparateur › Position à l'écran), changé à chaud. La zone réservée suit le bord ; les menus, les infobulles et la grille des piles s'ouvrent à côté du Dock.
@@ -96,6 +103,16 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 - Infobulle d'un Dock vertical posée à côté de l'icône (la fenêtre est plus large de 240 pt pour elle).
 - Le test de « Ouvrir à la connexion » écrit dans un dossier temporaire, jamais dans ton dossier Démarrage.
 
+## Décisions prises sans toi (plan 5)
+- Icônes de la liste tirées de la liste d'icônes système (rapide, jamais de vignette), 400 au plus.
+- La liste se limite à ce qui tient à l'écran (le menu ne défile pas) ; le reste s'ouvre par « Ouvrir dans l'Explorateur ».
+- Rafale d'avis d'un dossier regroupée 400 ms, avec au plus 2 s d'attente.
+- Essai réel de la liste après le plafond de hauteur non refait : il pilote la souris et tu étais là.
+
+## Mineurs reportés — plan 5
+- Couches inclinées de l'icône de pile un peu coupées aux coins et sans lissage de bord.
+- Cache des icônes de fichiers jamais purgé (borné par les piles et les dossiers parcourus).
+
 ## Mineurs reportés — plan 4
 - Raccourci de démarrage nommé d'après le nom affiché (deux apps homonymes, ou un renommage, se gênent).
 - Énumération du dossier d'une pile synchrone (un partage réseau hors ligne figerait le Dock).
@@ -141,5 +158,10 @@ Chaque décision est notée avec son coût si elle est fausse. La liste complèt
 - `pending_` bloqué si la file de messages est pleine.
 - `--snapshot` réécrit tes fichiers de réglages.
 
-## Suite de la nuit
-Plan 5 — `docs/superpowers/plans/2026-10-07-macdock-plan-5-piles-completes.md` : icône de pile qui montre les derniers fichiers empilés (« Afficher comme : Pile / Dossier ») et présentation en liste.
+## Vérifications à faire toi-même — plan 5
+1. L'icône de Téléchargements dans le vrai Dock (lance `build\Debug\MacDock.exe` ou ta version installée).
+2. Un téléchargement en cours : l'icône suit sans scintiller.
+3. Pile en liste : survol d'un sous-dossier, clic sur un fichier.
+
+## Suite
+Le sous-projet 1 (le Dock) couvre maintenant toute la spec, sauf les badges et la barre de progression (le mod Windhawk ne les relaie pas, et il n'est pas installé). Le prochain grand morceau serait le sous-projet 2 : la barre de menus.

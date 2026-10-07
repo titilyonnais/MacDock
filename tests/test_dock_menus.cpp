@@ -129,7 +129,7 @@ TEST_CASE(dock_menus_stack_full) {
     c.stackView = md::StackView::Grid;
     auto m = md::buildDockMenu(c);
     for (int id : {md::kCmdSortDateAdded, md::kCmdSortName, md::kCmdSortModified, md::kCmdSortKind, md::kCmdViewAuto,
-                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdReveal, md::kCmdRemove})
+                   md::kCmdViewFan, md::kCmdViewGrid, md::kCmdViewList, md::kCmdReveal, md::kCmdRemove})
         REQUIRE(find(m.items, id) != nullptr);
     CHECK(find(m.items, md::kCmdSortName)->checked);
     CHECK(!find(m.items, md::kCmdSortDateAdded)->checked);
@@ -150,4 +150,18 @@ TEST_CASE(dock_menus_login_enabled_for_aumid) {
     CHECK(!find(m.items, md::kCmdReveal)->enabled);   // l'exe empaqueté ne s'ouvre pas dans l'Explorateur
     c.openAtLogin = true;
     CHECK(find(md::buildDockMenu(c).items, md::kCmdLogin)->checked);
+}
+
+TEST_CASE(dock_menus_stack_display_checked) {
+    md::MenuContext c;
+    c.item.kind = md::ItemKind::Stack;
+    c.item.key = L"stack:C:\\D";
+    c.stackDisplay = md::StackDisplay::Folder;
+    auto m = md::buildDockMenu(c);
+    REQUIRE(find(m.items, md::kCmdDisplayStack) != nullptr);
+    REQUIRE(find(m.items, md::kCmdDisplayFolder) != nullptr);
+    CHECK(find(m.items, md::kCmdDisplayFolder)->checked);
+    CHECK(!find(m.items, md::kCmdDisplayStack)->checked);
+    CHECK(m.items[0].text == L"Trier par");
+    CHECK(m.items[1].text == L"Afficher comme");
 }

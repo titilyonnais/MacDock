@@ -52,3 +52,16 @@ TEST_CASE(menu_hit_test) {
     CHECK_EQ(md::hitTestMenu(l, m, -5), -1);
     CHECK_EQ(md::hitTestMenu(l, m, l.height + 5), -1);
 }
+
+TEST_CASE(menu_layout_reserves_icon_space) {
+    md::MenuModel plain{{{1, L"Un"}, {2, L"Deux"}}};
+    md::MenuModel withIcon = plain;
+    auto img = std::make_shared<md::IconProvider::Image>();
+    img->size = 16;
+    img->bgra.assign(16 * 16 * 4, 255);
+    withIcon.items[1].icon = img;
+    auto a = md::layoutMenu(plain, 200), b = md::layoutMenu(withIcon, 200);
+    CHECK_NEAR(a.iconSpace, 0, 1e-9);
+    CHECK(b.iconSpace >= md::kMenuIconSize);
+    CHECK_NEAR(b.width, a.width + b.iconSpace, 1e-9);
+}
