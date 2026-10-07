@@ -149,7 +149,10 @@ void TrafficWindow::attach(HWND target, LightsMode mode) {
         if (!target || !IsWindow(target)) return;
         target_ = target;
         painted_ = false;
-        const LightsWindowInfo info = readInfo(target);
+        LightsWindowInfo info = readInfo(target);
+        // Encore réduite quand elle devient active (restauration depuis le Dock) : suivie quand même, ses pastilles
+        // arrivent quand elle réapparaît (place() la masque tant qu'elle est réduite).
+        info.iconic = false;
         if (mode == LightsMode::Off || !wantsLights(info, mode, effectiveDpi(target))) {
             if (diagnosticCapture())
                 log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
