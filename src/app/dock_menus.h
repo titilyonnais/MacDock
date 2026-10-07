@@ -28,5 +28,7 @@ struct MenuContext {
 };
 
 MenuModel buildDockMenu(const MenuContext& c);
+// App empaquetée (Store) : lancée par son AUMID, exe sous WindowsApps (ni « Run », ni Explorateur).
+bool isPackagedApp(const std::wstring& exePath, const std::wstring& launch);
 
 } // namespace md

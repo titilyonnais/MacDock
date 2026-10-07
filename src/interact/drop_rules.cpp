@@ -24,4 +24,26 @@ DropAction dropAction(const DropTargetInfo& target, const std::vector<std::wstri
     }
 }
 
+bool dockPerformsMove(DropAction action) {
+    return action == DropAction::Recycle || action == DropAction::MoveInto;
+}
+
+DWORD chooseEffect(DropAction action, DWORD allowed) {
+    switch (action) {
+        case DropAction::Recycle:
+        case DropAction::MoveInto: return (allowed & DROPEFFECT_MOVE) ? DROPEFFECT_MOVE : DROPEFFECT_NONE;
+        case DropAction::Pin:
+            if (allowed & DROPEFFECT_LINK) return DROPEFFECT_LINK;
+            return (allowed & DROPEFFECT_COPY) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        case DropAction::OpenWith:
+            if (allowed & DROPEFFECT_COPY) return DROPEFFECT_COPY;
+            return (allowed & DROPEFFECT_LINK) ? DROPEFFECT_LINK : DROPEFFECT_NONE;
+        default: return DROPEFFECT_NONE;
+    }
+}
+
+DWORD dropReturnEffect(DropAction action, DWORD chosen) {
+    return dockPerformsMove(action) ? DROPEFFECT_NONE : chosen;
+}
+
 } // namespace md

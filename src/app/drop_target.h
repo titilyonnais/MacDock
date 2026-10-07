@@ -10,13 +10,15 @@
 #include <string>
 #include <vector>
 
+#include "../interact/drop_rules.h"
+
 namespace md {
 
 class DropTarget final : public IDropTarget {
 public:
     struct Callbacks {
-        // Survol : effet proposé (DROPEFFECT_NONE si refusé). Point en coordonnées écran.
-        std::function<DWORD(const std::vector<std::wstring>& paths, POINT screen)> over;
+        // Survol : action visée (None si refusé). Point en coordonnées écran.
+        std::function<DropAction(const std::vector<std::wstring>& paths, POINT screen)> over;
         std::function<void()> leave;
         std::function<void(const std::vector<std::wstring>& paths, POINT screen)> drop;
     };
@@ -35,7 +37,8 @@ public:
     static std::vector<std::wstring> pathsOf(IDataObject* data);
 
 private:
-    DWORD decide(POINTL pt, DWORD allowed);
+    DWORD decide(POINTL pt, DWORD allowed, DropAction* action = nullptr);
+    static void setDropEffectFormat(IDataObject* data, const wchar_t* format, DWORD effect);
 
     std::atomic<ULONG> refs_{1};
     HWND hwnd_;

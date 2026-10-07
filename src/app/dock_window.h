@@ -51,6 +51,7 @@ private:
     void onMouse(POINT screen);
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
+    void activateItem(const DockItem& item);
     void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
     void renderNow();
     void requestFrame();

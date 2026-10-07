@@ -320,7 +320,7 @@ std::optional<std::size_t> DockController::insertionIndex(Section section, std::
     return std::size_t(0);
 }
 
-std::size_t DockController::slotAt(Section section, const std::wstring& exclude, double xPx) const {
+LayoutResult DockController::stableLayout() const {
     // Positions sans place ouverte ni repli : cibles stables pendant que les icônes glissent.
     LayoutInput in;
     for (auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
@@ -333,7 +333,19 @@ std::size_t DockController::slotAt(Section section, const std::wstring& exclude,
     in.rangeTiles = metrics_.magnifyRangeTiles;
     in.amount = amount_.value();
     in.cursor = cursor_;
-    LayoutResult r = computeLayout(in);
+    return computeLayout(in);
+}
+
+bool DockController::overPinnedSection(double xPx, const std::wstring& exclude) const {
+    auto c = candidates(Section::Pinned, exclude);
+    if (c.empty()) return true;
+    LayoutResult r = stableLayout();
+    const LayoutItem& last = r.items[c.back()];
+    return toPoints(LONG(std::lround(xPx))) <= last.center + last.size;   // jusqu'à une demi-case après la dernière
+}
+
+std::size_t DockController::slotAt(Section section, const std::wstring& exclude, double xPx) const {
+    LayoutResult r = stableLayout();
     double x = toPoints(LONG(std::lround(xPx)));
     std::size_t slot = 0;
     for (std::size_t i : candidates(section, exclude))
@@ -413,6 +425,8 @@ void DockController::updateDragTarget(POINT p) {
     bool above = bgTop - p.y > metrics_.dragRemoveDistance * scale_;
     d.removing = above && d.pinned;
     d.hasSlot = !above;
+    // Une app ouverte non épinglée ne s'épingle que lâchée sur la section épinglée (sinon : retour à sa place).
+    if (d.hasSlot && d.kind == ItemKind::App && !d.pinned && !overPinnedSection(double(p.x), d.key)) d.hasSlot = false;
     if (d.hasSlot) d.slot = slotAt(d.section, d.key, double(p.x));
     openGap(d.hasSlot ? gapKey(d.section, d.slot) : std::wstring());
 }

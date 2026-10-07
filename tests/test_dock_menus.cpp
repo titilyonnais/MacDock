@@ -98,3 +98,20 @@ TEST_CASE(menu_window_titles_are_truncated) {
     auto m = md::buildDockMenu(c);
     CHECK(find(m.items, md::kCmdWindowBase)->text.size() <= 41u);   // 40 caractères + « … »
 }
+
+TEST_CASE(menu_packaged_app_login_and_reveal_disabled) {
+    // App du Store : son exe (sous WindowsApps) ne se lance pas hors de son paquet et change à chaque mise à jour.
+    auto c = appContext(true, true);
+    c.exePath = L"C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad_11.2508.4.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe";
+    auto m = md::buildDockMenu(c);
+    REQUIRE(find(m.items, md::kCmdLogin) != nullptr);
+    CHECK(!find(m.items, md::kCmdLogin)->enabled);
+    CHECK(!find(m.items, md::kCmdReveal)->enabled);
+
+    auto s = appContext(false, true);
+    s.item.launch = L"shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+    auto ms = md::buildDockMenu(s);
+    CHECK(!find(ms.items, md::kCmdLogin)->enabled);
+    CHECK(md::isPackagedApp(L"", L"shell:AppsFolder\\X!App"));
+    CHECK(!md::isPackagedApp(L"C:\\Tools\\x.exe", L"C:\\Tools\\x.lnk"));
+}

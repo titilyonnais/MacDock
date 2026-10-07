@@ -159,3 +159,23 @@ TEST_CASE(controller_drag_cancel_restores) {
     CHECK(std::abs(after.icons[1].cx - float(rest.x)) < 1);
     CHECK_NEAR(after.icons[0].opacity, 1.0f, 1e-3);
 }
+
+TEST_CASE(controller_drag_unpinned_running_back_in_place_is_none) {
+    // Un clic qui tremble sur une app ouverte non épinglée ne doit pas l'épingler.
+    DragFixture f;
+    f.model.windowOpened(3, idOf(L"C:/x.exe"));   // a, b, c, x, sep:1, corbeille
+    f.c.tick(0);
+    auto o = f.drag(3, f.offset(f.center(3), 12));
+    CHECK(o.kind == Kind::None);
+    CHECK(f.model.pinnedEntries().size() == 3u);
+}
+
+TEST_CASE(controller_drag_unpinned_running_onto_pinned_end_pins) {
+    // Relâchée sur la fin de la section épinglée (juste après c), elle s'épingle en dernière position.
+    DragFixture f;
+    f.model.windowOpened(3, idOf(L"C:/x.exe"));
+    f.c.tick(0);
+    auto o = f.drag(3, f.offset(f.center(2), 14));
+    CHECK(o.kind == Kind::Pin);
+    CHECK_EQ(o.toPinned, std::size_t(3));
+}

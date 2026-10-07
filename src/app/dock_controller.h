@@ -118,6 +118,8 @@ private:
     std::optional<std::size_t> insertionPinnedIndex(Section section, std::size_t slot) const;
     std::optional<std::size_t> insertionIndex(Section section, std::size_t slot, const std::wstring& exclude) const;
     std::size_t slotAt(Section section, const std::wstring& exclude, double xPx) const;   // positions stables
+    LayoutResult stableLayout() const;   // sans place ouverte ni repli
+    bool overPinnedSection(double xPx, const std::wstring& exclude) const;
     void openGap(const std::wstring& key);   // une seule place ouverte (vide : toutes se referment)
     void updateDragTarget(POINT clientPx);
     std::optional<std::size_t> indexOfKey(const std::wstring& key) const;

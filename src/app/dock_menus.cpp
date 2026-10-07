@@ -1,5 +1,7 @@
 #include "dock_menus.h"
 
+#include "../core/strings.h"
+
 namespace md {
 
 namespace {
@@ -28,9 +30,11 @@ void appMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     if (!c.windows.empty()) out.push_back({});
 
     MenuItem options{-1, L"Options"};   // identifiant non nul : entrée à sous-menu
+    // Apps empaquetées : ouverture à la connexion au plan 4 (raccourci vers l'AUMID).
+    const bool exeUsable = !c.exePath.empty() && !isPackagedApp(c.exePath, item.launch);
     options.submenu = {entry(kCmdKeep, L"Garder dans le Dock", true, item.pinned),
-                       entry(kCmdLogin, L"Ouvrir à la connexion", !c.exePath.empty(), c.openAtLogin),
-                       entry(kCmdReveal, L"Afficher dans l'Explorateur", !c.exePath.empty())};
+                       entry(kCmdLogin, L"Ouvrir à la connexion", exeUsable, c.openAtLogin),
+                       entry(kCmdReveal, L"Afficher dans l'Explorateur", exeUsable)};
     out.push_back(options);
     out.push_back({});
     if (item.running) {
@@ -57,6 +61,11 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
 }
 
 } // namespace
+
+bool isPackagedApp(const std::wstring& exePath, const std::wstring& launch) {
+    if (toLower(launch).starts_with(L"shell:appsfolder\\")) return true;
+    return toLower(exePath).find(L"\\windowsapps\\") != std::wstring::npos;
+}
 
 MenuModel buildDockMenu(const MenuContext& c) {
     MenuModel m;

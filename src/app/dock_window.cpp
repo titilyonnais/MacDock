@@ -427,13 +427,16 @@ bool DockApp::stepPoof(double now) {
 }
 
 void DockApp::onClick(std::size_t index) {
-    const DockItem* p = controller_.itemAt(index);
-    if (!p) return;
-    DockItem item = *p;
+    if (const DockItem* p = controller_.itemAt(index)) activateItem(*p);
+}
+
+// Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
+// par index (le Dock a pu changer entre-temps, par exemple pendant un menu).
+void DockApp::activateItem(const DockItem& item) {
     switch (item.kind) {
         case ItemKind::App:
-            if (item.running) {
-                activateApp(toHwnds(item.windows));
+            if (auto windows = model_.windowsOf(item.appId); !windows.empty()) {
+                activateApp(toHwnds(windows));
             } else {
                 std::wstring target = item.launch;
                 if (target.empty())
@@ -510,14 +513,17 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     switch (cmd) {
         case kCmdOpen:
         case kCmdShowAll:
-            if (index) onClick(*index);
+            activateItem(item);
             break;
         case kCmdKeep:
-            if (item.pinned) {
+            if (model_.pinnedIndexOf(item.key)) {
                 if (model_.unpin(item.key)) savePinned();
             } else {
-                std::size_t at = 0;   // après la dernière app épinglée (avant les piles)
-                for (auto& e : model_.pinnedEntries()) at += e.kind != PinKind::Stack;
+                // Après la dernière app épinglée (les piles peuvent être n'importe où dans le fichier).
+                auto entries = model_.pinnedEntries();
+                std::size_t at = 0;
+                for (std::size_t i = 0; i < entries.size(); ++i)
+                    if (entries[i].kind != PinKind::Stack) at = i + 1;
                 if (model_.pin(item.appId, at)) savePinned();
             }
             break;
@@ -530,18 +536,19 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             break;
         case kCmdHide:
             model_.setHidden(item.appId, true);
-            minimizeAll(toHwnds(item.windows));
+            minimizeAll(toHwnds(model_.windowsOf(item.appId)));
             break;
         case kCmdQuit:
-            for (HWND h : toHwnds(item.windows)) PostMessageW(h, WM_CLOSE, 0, 0);
+            for (HWND h : toHwnds(model_.windowsOf(item.appId))) PostMessageW(h, WM_CLOSE, 0, 0);
             break;
         case kCmdAutohide:
-            settings_.autohide = !settings_.autohide;
+            // Bascule de l'état affiché dans le menu (la configuration a pu être rechargée entre-temps).
+            settings_.autohide = !ctx.settings.autohide;
             saveSettings();
             applySettings();
             break;
         case kCmdMagnify:
-            settings_.magnification = !settings_.magnification;
+            settings_.magnification = !ctx.settings.magnification;
             saveSettings();
             applySettings();
             break;
@@ -598,7 +605,7 @@ void DockApp::refreshTrash() {
 void DockApp::registerDropTarget() {
     if (snapshot_) return;
     DropTarget::Callbacks cb;
-    cb.over = [this](const std::vector<std::wstring>& paths, POINT screen) -> DWORD {
+    cb.over = [this](const std::vector<std::wstring>& paths, POINT screen) -> DropAction {
         POINT client{screen.x - origin_.x, screen.y - origin_.y};
         DropHover h = controller_.dropOver(client, paths);
         if (trace_) {
@@ -612,13 +619,7 @@ void DockApp::registerDropTarget() {
             lastItem = item;
         }
         requestFrame();
-        switch (h.action) {
-            case DropAction::Pin: return DROPEFFECT_LINK;
-            case DropAction::OpenWith: return DROPEFFECT_COPY;
-            case DropAction::Recycle:
-            case DropAction::MoveInto: return DROPEFFECT_MOVE;
-            default: return DROPEFFECT_NONE;
-        }
+        return h.action;
     };
     cb.leave = [this] {
         controller_.dropLeave();

@@ -44,14 +44,24 @@ std::vector<std::wstring> DropTarget::pathsOf(IDataObject* data) {
     return out;
 }
 
-DWORD DropTarget::decide(POINTL pt, DWORD allowed) {
-    DWORD want = cb_.over ? cb_.over(paths_, POINT{pt.x, pt.y}) : DROPEFFECT_NONE;
-    if (want == DROPEFFECT_NONE) return DROPEFFECT_NONE;
-    if (allowed & want) return want;
-    // La source n'autorise pas l'effet voulu : on garde l'action, avec un effet qu'elle accepte.
-    for (DWORD e : {DWORD(DROPEFFECT_COPY), DWORD(DROPEFFECT_MOVE), DWORD(DROPEFFECT_LINK)})
-        if (allowed & e) return e;
-    return DROPEFFECT_NONE;
+DWORD DropTarget::decide(POINTL pt, DWORD allowed, DropAction* action) {
+    DropAction a = cb_.over ? cb_.over(paths_, POINT{pt.x, pt.y}) : DropAction::None;
+    DWORD effect = chooseEffect(a, allowed);
+    if (action) *action = effect == DROPEFFECT_NONE ? DropAction::None : a;
+    return effect;
+}
+
+void DropTarget::setDropEffectFormat(IDataObject* data, const wchar_t* format, DWORD effect) {
+    FORMATETC fmt{CLIPFORMAT(RegisterClipboardFormatW(format)), nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM med{};
+    med.tymed = TYMED_HGLOBAL;
+    med.hGlobal = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
+    if (!med.hGlobal) return;
+    if (auto p = static_cast<DWORD*>(GlobalLock(med.hGlobal))) {
+        *p = effect;
+        GlobalUnlock(med.hGlobal);
+    }
+    if (FAILED(data->SetData(&fmt, &med, TRUE))) ReleaseStgMedium(&med);
 }
 
 HRESULT DropTarget::DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) {
@@ -82,12 +92,20 @@ HRESULT DropTarget::DragLeave() {
 
 HRESULT DropTarget::Drop(IDataObject* data, DWORD, POINTL pt, DWORD* effect) {
     if (paths_.empty()) paths_ = pathsOf(data);
-    *effect = decide(pt, *effect);
+    DropAction action = DropAction::None;
+    DWORD chosen = decide(pt, *effect, &action);
     if (helper_) {
         POINT p{pt.x, pt.y};
-        helper_->Drop(data, &p, *effect);
+        helper_->Drop(data, &p, chosen);
     }
-    if (*effect != DROPEFFECT_NONE && cb_.drop) cb_.drop(paths_, POINT{pt.x, pt.y});
+    if (dockPerformsMove(action) && data) {
+        // Déplacement fait par le Dock après le retour de Drop : la source ne doit pas supprimer l'original
+        // (« optimized move » du Shell : effet réalisé NONE, effet logique MOVE).
+        setDropEffectFormat(data, CFSTR_PERFORMEDDROPEFFECT, DROPEFFECT_NONE);
+        setDropEffectFormat(data, CFSTR_LOGICALPERFORMEDDROPEFFECT, DROPEFFECT_MOVE);
+    }
+    *effect = dropReturnEffect(action, chosen);
+    if (action != DropAction::None && cb_.drop) cb_.drop(paths_, POINT{pt.x, pt.y});
     if (cb_.leave) cb_.leave();
     paths_.clear();
     return S_OK;

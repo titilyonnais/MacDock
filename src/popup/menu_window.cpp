@@ -91,6 +91,7 @@ struct Session {
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
+    UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
     double hoverSince = 0;
 
     float s() const { return env.scale; }
@@ -155,6 +156,10 @@ struct Session {
 thread_local Session* g_session = nullptr;
 
 LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && g_session && g_session->swallowUp && wp == g_session->swallowUp) {
+        g_session->swallowUp = 0;
+        return 1;
+    }
     if (code == HC_ACTION && g_session &&
         (wp == WM_LBUTTONDOWN || wp == WM_RBUTTONDOWN || wp == WM_MBUTTONDOWN || wp == WM_XBUTTONDOWN)) {
         POINT pt = reinterpret_cast<MSLLHOOKSTRUCT*>(lp)->pt;
@@ -165,8 +170,12 @@ LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
             if (PtInRect(&r, pt)) inside = true;
         }
         if (!inside && !g_session->done) {
+            // Comme sur macOS, le clic qui ferme le menu n'atteint rien d'autre (ni l'icône du Dock dessous) :
+            // l'appui et son relâchement sont absorbés.
             g_session->done = true;
+            g_session->swallowUp = UINT(wp) + 1;   // WM_xBUTTONDOWN + 1 = WM_xBUTTONUP
             if (!g_session->panels.empty()) PostMessageW(g_session->panels.front()->hwnd, WM_NULL, 0, 0);
+            return 1;
         }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
@@ -627,6 +636,20 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor) {
         }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
+    }
+    // Le hook reste posé jusqu'au relâchement du clic extérieur (au plus 2 s), pour l'absorber aussi.
+    for (const double until = now() + 2; session.swallowUp && now() < until;) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                PostQuitMessage(int(msg.wParam));
+                session.swallowUp = 0;
+                break;
+            }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
     }
     int result = session.result;
     session.capture.stop();
