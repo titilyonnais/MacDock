@@ -164,3 +164,17 @@ TEST_CASE(settings_minimize_effect) {
     s.minimizeEffect = md::MinimizeEffect::Windows;
     CHECK(md::settingsFromJson(md::settingsToJson(s)).minimizeEffect == md::MinimizeEffect::Windows);
 }
+
+TEST_CASE(settings_spotlight_hotkey) {
+    md::Settings s = md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"ctrl+space\"}"));
+    CHECK(s.spotlightHotkey == L"ctrl+space");
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).spotlightHotkey == L"alt+space");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"bizarre\"}")).spotlightHotkey == L"alt+space");
+    auto back = md::settingsFromJson(md::settingsToJson(s));
+    CHECK(back.spotlightHotkey == L"ctrl+space");
+}
+
+TEST_CASE(settings_spotlight_hotkey_off_and_case) {
+    CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"off\"}")).spotlightHotkey == L"off");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"Ctrl+Space\"}")).spotlightHotkey == L"ctrl+space");
+}

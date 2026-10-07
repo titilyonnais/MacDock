@@ -75,6 +75,8 @@ Settings settingsFromJson(const json::Value& v) {
     else if (effect == L"windows") s.minimizeEffect = MinimizeEffect::Windows;
     s.font = readString(v, "font");
     s.screen = readString(v, "screen");
+    const std::wstring hotkey = toLower(readString(v, "spotlightHotkey"));
+    if (hotkey == L"alt+space" || hotkey == L"ctrl+space" || hotkey == L"off") s.spotlightHotkey = hotkey;
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
     if (auto* pins = v.find("pinned")) {
         for (auto& p : pins->asArray()) {
@@ -121,6 +123,7 @@ json::Value settingsToJson(const Settings& s) {
                                                                           : "genie");
     v.set("font", toUtf8(s.font));
     if (!s.screen.empty()) v.set("screen", toUtf8(s.screen));
+    v.set("spotlightHotkey", toUtf8(s.spotlightHotkey));
     v.set("pinnedInitialized", s.pinnedInitialized);
     json::Value pins = json::Array{};
     for (auto& p : s.pinned) {

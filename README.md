@@ -37,6 +37,11 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - Tape pour chercher (majuscules et accents ignorés) ; Entrée lance le premier résultat ; flèches, Page précédente / suivante, Début, Fin et molette pour se déplacer ; Échap efface la recherche, puis ferme.
   - Un clic sur une app la lance ; un clic dans le vide, un clic droit ou Échap ferment sans rien lancer.
   - Clic droit sur le bouton Apps → *Ouvrir le menu Démarrer* pour le menu de Windows (il s'ouvre aussi si l'écran Apps ne peut pas s'afficher).
+- **Spotlight** : `Alt+Espace` (réglable) ou la loupe de la barre de menus ouvre un champ de recherche en verre au tiers haut de l'écran du curseur, comme sur macOS. En tapant, les résultats apparaissent dessous : *Meilleur résultat*, *Applications*, *Documents* (recherche de Windows dans ton profil, sans les fichiers cachés ni système).
+  - Un calcul (`12*(3+4)`, `15%`, `2^10`, virgule ou point) s'affiche en meilleur résultat ; Entrée copie le résultat dans le presse-papiers.
+  - Flèches pour choisir, Entrée pour lancer l'app ou ouvrir le document, `Ctrl+Entrée` pour montrer le document dans l'Explorateur ; `Ctrl+V` colle.
+  - Échap efface, puis ferme ; un clic ailleurs ou un second `Alt+Espace` ferme aussi.
+  - Si un autre programme utilise déjà `Alt+Espace` (PowerToys Run…), c'est écrit dans le journal : choisis `ctrl+space` dans `settings.json`, ou passe par la loupe.
 - **Clic sur une pile** (Téléchargements…) : son contenu s'ouvre comme sur macOS, en **éventail** (icônes en arc au-dessus de la pile, nom à gauche) jusqu'à 9 éléments, en **grille** de verre au-delà (molette pour défiler), ou en **liste** (menu en verre, sous-dossiers en sous-menus) si tu la choisis. Un clic ouvre l'élément ; *Ouvrir dans l'Explorateur* ouvre le dossier ; Échap ou un clic à côté referme. Dans le Dock, l'icône d'une pile montre ses derniers fichiers empilés (ou l'icône du dossier, au choix), et se met à jour en direct.
 - **Clic droit** : menus en verre, comme sur macOS.
   - *App* : ses fenêtres ouvertes, *Options* (Garder dans le Dock, Ouvrir à la connexion — aussi pour les apps du Store, par un raccourci dans le dossier Démarrage —, Afficher dans l'Explorateur), Afficher toutes les fenêtres, Masquer, Quitter.
@@ -72,7 +77,7 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - sinon, des menus génériques Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Les apps Chromium, Electron et Firefox gardent toujours ces menus génériques. Le menu Fenêtre liste les fenêtres de l'app ;
   - sur le bureau ou dans l'Explorateur, les menus de l'Explorateur, avec **Aller** (Téléchargements, Documents, Applications, Corbeille…), comme le Finder.
 - **Ouvrir un menu** : un clic sur un titre ; tant qu'un menu est ouvert, survoler un autre titre l'ouvre aussi, et les flèches ← → passent au voisin. Le clavier reste à ton app : la commande choisie lui est envoyée.
-- **À droite**, comme sur macOS : le son, le Wi-Fi (s'il y a une carte Wi-Fi), la batterie (s'il y en a une), la recherche (`Win+S`), le Centre de contrôle, puis la date et l'heure (`mer. 7 oct. 14:32`, un clic ouvre le centre de notifications). Les icônes sont dessinées dans la couleur du texte et suivent l'état réel (volume, sourdine, signal, charge).
+- **À droite**, comme sur macOS : le son, le Wi-Fi (s'il y a une carte Wi-Fi), la batterie (s'il y en a une), la loupe (Spotlight du Dock ; la recherche de Windows, `Win+S`, si le Dock ne tourne pas), le Centre de contrôle, puis la date et l'heure (`mer. 7 oct. 14:32`, un clic ouvre le centre de notifications). Les icônes sont dessinées dans la couleur du texte et suivent l'état réel (volume, sourdine, signal, charge).
   - **Son** : curseur du volume, choix de la sortie (un clic en fait la sortie par défaut), « Réglages Son… ».
   - **Wi-Fi** : interrupteur, réseaux connus (un clic connecte), autres réseaux (ouvrent les réglages), « Réglages Wi-Fi… ».
   - **Batterie** : charge, source d'alimentation, réglages.
@@ -93,7 +98,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 
 | Fichier | Contenu |
 |---|---|
-| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), effet de réduction (`minimizeEffect` : `genie`, `scale`, `windows`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
+| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), effet de réduction (`minimizeEffect` : `genie`, `scale`, `windows`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), raccourci de Spotlight (`spotlightHotkey` : `alt+space`, `ctrl+space`, `off`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`, `showAppIcons`), feux tricolores (`trafficLights` : `standard`, `all`, `off`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
@@ -124,6 +129,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
 - `MacDock.exe --genie-snapshot planche.png [--effect genie|scale] [--edge bottom|left|right]` : six étapes de l'effet de réduction sur une fenêtre factice, sans rien afficher.
 - `MacDock.exe --apps-snapshot apps.png [--query texte] [--page n] [--theme light|dark]` : l'écran Apps avec tes apps dans une image (`--page` compte à partir de 0), sans l'afficher ni rien lancer.
+- `MacDock.exe --spotlight-snapshot spot.png [--query texte] [--theme light|dark]` : le panneau Spotlight avec tes apps et tes documents dans une image (cases de couleur à la place des icônes), sans l'afficher ni rien lancer.
 - `MacDock.exe --theme-snapshot dossier` : planche des curseurs du thème (32 et 64 px, fonds clair et sombre) et les deux fonds d'écran, sans rien appliquer.
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.

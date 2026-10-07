@@ -13,6 +13,8 @@
 //   MacDock.exe --theme-snapshot dossier   planche des curseurs et fonds d'écran, sans rien appliquer
 //   MacDock.exe --apps-snapshot f.png [--query texte] [--page n] [--theme light|dark]
 //               écran Apps hors écran avec les vraies apps (dossier Apps lu, rien lancé, aucune fenêtre)
+//   MacDock.exe --spotlight-snapshot f.png [--query texte] [--theme light|dark]
+//               panneau Spotlight hors écran (vraies apps, documents de l'index en lecture seule, aucune fenêtre)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
@@ -25,6 +27,8 @@
 #include "../apps/apps_folder.h"
 #include "../apps/apps_window.h"
 #include "../calib/png_io.h"
+#include "../spotlight/file_search.h"
+#include "../spotlight/spotlight_window.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "cli_args.h"
@@ -80,7 +84,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     bool snapshot = args.find(L"--snapshot") != std::wstring::npos || args.find(L"--capture-test") != std::wstring::npos ||
                     args.find(L"--menu-test") != std::wstring::npos || args.find(L"--genie-snapshot") != std::wstring::npos ||
                     !themeAction.empty() || !themeSnapshot.empty() ||
-                    args.find(L"--apps-snapshot") != std::wstring::npos;
+                    args.find(L"--apps-snapshot") != std::wstring::npos ||
+                    args.find(L"--spotlight-snapshot") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -99,7 +104,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
-        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery;
+        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot;
         int appsPage = 0;
         md::MinimizeEffect effect = md::MinimizeEffect::Genie;
         md::DockPosition edge = md::DockPosition::Bottom;
@@ -107,6 +112,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--capture-test") == 0) captureTest = argv[i + 1];
             if (wcscmp(argv[i], L"--genie-snapshot") == 0) genieSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--apps-snapshot") == 0) appsSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--spotlight-snapshot") == 0) spotSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--query") == 0) appsQuery = argv[i + 1];
             if (wcscmp(argv[i], L"--page") == 0) appsPage = _wtoi(argv[i + 1]);
             if (wcscmp(argv[i], L"--effect") == 0 && wcscmp(argv[i + 1], L"scale") == 0) effect = md::MinimizeEffect::Scale;
@@ -116,7 +122,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                                                             : md::DockPosition::Bottom;
         }
         LocalFree(argv);
-        if (!appsSnapshot.empty()) {
+        if (!spotSnapshot.empty()) {
+            wchar_t profile[MAX_PATH] = {};
+            GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+            const md::BgraImage im = md::spotlightSnapshot(appsQuery, md::catalogFrom(md::readAppsFolder()),
+                                                           md::wantsFileSearch(appsQuery) ? md::searchFiles(appsQuery, profile, 8)
+                                                                                         : std::vector<md::SpotItem>{},
+                                                           options.dark.value_or(false), 1920, 1080);
+            code = md::writePng(spotSnapshot, im.px.data(), UINT(im.w), UINT(im.h)) ? 0 : 1;
+        } else if (!appsSnapshot.empty()) {
             md::AppsIconStyle style;
             style.dark = options.dark.value_or(false);
             const md::BgraImage im = md::appsSnapshot(md::catalogFrom(md::readAppsFolder()), appsQuery, appsPage,
