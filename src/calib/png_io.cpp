@@ -32,6 +32,32 @@ bool writePng(const std::wstring& path, const std::uint8_t* bgra, UINT w, UINT h
            SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
 }
 
+std::vector<std::uint8_t> encodePng(const std::uint8_t* bgra, UINT w, UINT h) {
+    if (!bgra || !w || !h) return {};
+    auto wic = factory();
+    ComPtr<IStream> mem;
+    ComPtr<IWICBitmapEncoder> encoder;
+    ComPtr<IWICBitmapFrameEncode> frame;
+    WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppPBGRA;
+    if (!wic || FAILED(CreateStreamOnHGlobal(nullptr, TRUE, &mem)) ||
+        FAILED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder)) ||
+        FAILED(encoder->Initialize(mem.Get(), WICBitmapEncoderNoCache)) ||
+        FAILED(encoder->CreateNewFrame(&frame, nullptr)) || FAILED(frame->Initialize(nullptr)) ||
+        FAILED(frame->SetSize(w, h)) || FAILED(frame->SetPixelFormat(&fmt)) ||
+        FAILED(frame->WritePixels(h, w * 4, w * h * 4, const_cast<BYTE*>(bgra))) || FAILED(frame->Commit()) ||
+        FAILED(encoder->Commit()))
+        return {};
+    HGLOBAL g = nullptr;
+    if (FAILED(GetHGlobalFromStream(mem.Get(), &g))) return {};
+    STATSTG st{};
+    if (FAILED(mem->Stat(&st, STATFLAG_NONAME))) return {};
+    const void* p = GlobalLock(g);
+    if (!p) return {};
+    std::vector<std::uint8_t> out(static_cast<const std::uint8_t*>(p), static_cast<const std::uint8_t*>(p) + st.cbSize.QuadPart);
+    GlobalUnlock(g);
+    return out;
+}
+
 std::vector<std::uint8_t> readPng(const std::wstring& path, UINT& w, UINT& h) {
     w = h = 0;
     auto wic = factory();

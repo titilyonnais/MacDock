@@ -9,6 +9,8 @@
 namespace md {
 
 bool writePng(const std::wstring& path, const std::uint8_t* bgra, UINT w, UINT h);
+// Le même PNG, en mémoire. Vide si échec. Nécessite COM initialisé sur le thread.
+std::vector<std::uint8_t> encodePng(const std::uint8_t* bgra, UINT w, UINT h);
 // Vide si échec. Nécessite COM initialisé sur le thread.
 std::vector<std::uint8_t> readPng(const std::wstring& path, UINT& w, UINT& h);
 // Redimensionnement (cubique de haute qualité) d'une image BGRA prémultipliée.

@@ -2,12 +2,15 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <map>
+#include <optional>
 #include <string>
 
 #include "minitest.h"
 #include "../src/calib/png_io.h"
 #include "../src/theme/cursor_art.h"
 #include "../src/theme/cursor_file.h"
+#include "../src/theme/theme_apply.h"
 #include "../src/theme/vector_art.h"
 #include "../src/theme/wallpaper_art.h"
 
@@ -160,4 +163,94 @@ TEST_CASE(theme_dump_for_eyes) {   // MACDOCK_DUMP=dossier : fonds d'écran et c
     }
     CHECK(md::writePng(std::wstring(dump) + L"\\cursors.png", sheet.px.data(), UINT(sheet.w), UINT(sheet.h)));
     CoUninitialize();
+}
+
+namespace {
+struct ComScope {   // encodePng passe par WIC
+    ComScope() { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); }
+    ~ComScope() { CoUninitialize(); }
+};
+
+struct FakeTheme {
+    std::map<std::wstring, std::wstring> reg{{L"Arrow", L"C:\\Windows\\Cursors\\aero_arrow.cur"}};
+    std::map<std::wstring, std::wstring> walls{{L"mon1", L"C:\\Pictures\\a.jpg"}, {L"mon2", L"C:\\Pictures\\b.jpg"}};
+    std::map<std::wstring, std::size_t> files;
+    int reloads = 0;
+    bool failWrite = false;
+    md::ThemeApi api() {
+        md::ThemeApi a;
+        a.readCursor = [this](const std::wstring& n) -> std::optional<std::wstring> {
+            auto it = reg.find(n);
+            return it == reg.end() ? std::nullopt : std::optional<std::wstring>(it->second);
+        };
+        a.writeCursor = [this](const std::wstring& n, const std::wstring& v) { if (failWrite) return false; reg[n] = v; return true; };
+        a.reloadCursors = [this] { ++reloads; return true; };
+        a.monitors = [this] { std::vector<std::wstring> m; for (auto& [k, v] : walls) m.push_back(k); return m; };
+        a.getWallpaper = [this](const std::wstring& id) { return walls[id]; };
+        a.setWallpaper = [this](const std::wstring& id, const std::wstring& p) { walls[id] = p; return true; };
+        a.writeFile = [this](const std::wstring& p, const std::vector<std::uint8_t>& b) { files[p] = b.size(); return !b.empty(); };
+        a.darkMode = [] { return false; };
+        a.monitorSize = [](const std::wstring&) { return SIZE{64, 36}; };
+        return a;
+    }
+};
+} // namespace
+
+TEST_CASE(theme_apply_twice_then_restore) {
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    REQUIRE(backup.has_value());
+    CHECK(t.reg[L"Arrow"] == L"D:\\theme\\arrow.cur");
+    CHECK(t.reg[L"Wait"] == L"D:\\theme\\wait.ani");
+    CHECK(t.walls[L"mon1"].starts_with(L"D:\\theme\\wallpaper-"));
+    CHECK(t.reloads == 1);
+    CHECK(t.files.size() >= 11);   // 10 curseurs + au moins un fond
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);   // la sauvegarde d'origine reste
+    CHECK(backup->cursors[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
+    CHECK(backup->wallpapers[L"mon2"] == L"C:\\Pictures\\b.jpg");
+    REQUIRE(md::restoreTheme(api, *backup).ok);
+    CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
+    CHECK(t.reg[L"Wait"].empty());                             // absente à l'origine : curseur de Windows
+    CHECK(t.walls[L"mon1"] == L"C:\\Pictures\\a.jpg");
+}
+
+TEST_CASE(theme_restore_skips_missing_monitor) {
+    ComScope com;
+    FakeTheme t;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    REQUIRE(md::applyTheme(api, L"D:\\theme", backup).ok);
+    t.walls.erase(L"mon2");                                     // écran débranché
+    auto r = md::restoreTheme(api, *backup);
+    CHECK(r.ok);
+    CHECK(t.walls.size() == 1);
+}
+
+TEST_CASE(theme_apply_failure_reported) {
+    ComScope com;
+    FakeTheme t;
+    t.failWrite = true;
+    auto api = t.api();
+    std::optional<md::ThemeBackup> backup;
+    auto r = md::applyTheme(api, L"D:\\theme", backup);
+    CHECK(!r.ok);
+    CHECK(!r.message.empty());
+    REQUIRE(backup.has_value());                                 // sauvegarde déjà faite : on peut rétablir
+    t.failWrite = false;
+    CHECK(md::restoreTheme(api, *backup).ok);
+    CHECK(t.reg[L"Arrow"] == L"C:\\Windows\\Cursors\\aero_arrow.cur");
+}
+
+TEST_CASE(theme_backup_json_roundtrip) {
+    md::ThemeBackup b;
+    b.cursors[L"Arrow"] = L"C:\\a.cur";
+    b.cursors[L"Wait"] = L"";
+    b.wallpapers[L"\\\\?\\DISPLAY#1"] = L"C:\\w.jpg";
+    auto back = md::themeBackupFromJson(md::themeBackupToJson(b));
+    REQUIRE(back.has_value());
+    CHECK(back->cursors == b.cursors);
+    CHECK(back->wallpapers == b.wallpapers);
 }
