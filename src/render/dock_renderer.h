@@ -29,6 +29,9 @@ struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
     bool separator = false;
     float sepLength = 0;
     float opacity = 1;
+    float dim = 0;             // assombrissement (icône pressée, cible d'un dépôt) : part de noir
+    std::uint64_t window = 0;  // fenêtre réduite : source de la miniature DWM
+    bool thumbnail = false;    // la miniature DWM couvre la case : seule la petite icône d'app est dessinée
 };
 
 struct RenderTooltip {
@@ -82,6 +85,7 @@ public:
     void setBackdropWhite(float sdrWhiteScale) { sdrWhite_ = sdrWhiteScale > 0 ? sdrWhiteScale : 1; }
     bool glassAvailable() const { return glassReady_; }
     bool isWarp() const { return warp_; }
+    std::wstring fontName(const std::wstring& wanted) { return resolveFont(wanted); }   // police réellement utilisée
     LUID adapterLuid() const;   // carte du device ({0, 0} si inconnue)
     // Temps GPU moyen (ms) de la passe de verre depuis le dernier appel ; -1 si aucune mesure (mode trace).
     double takeGlassGpuMs();

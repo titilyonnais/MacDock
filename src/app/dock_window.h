@@ -14,8 +14,12 @@
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
 #include "../render/dock_renderer.h"
+#include "../render/sprite_renderer.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
+#include "thumbnails.h"
+#include "visibility.h"
+#include "sprite_window.h"
 
 namespace md {
 
@@ -40,13 +44,15 @@ private:
     void loadConfig(bool initial);
     void applySettings();
     void savePinned();
+    void saveSettings();
     void reposition();
     void registerAppBar();
     void removeAppBar();
     void onMouse(POINT screen);
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
-    void showContextMenu(POINT screen, std::optional<std::size_t> index);
+    void activateItem(const DockItem& item);
+    void showContextMenu(std::optional<std::size_t> index);   // nullopt : menu du Dock
     void renderNow();
     void requestFrame();
     void startMouseThread();
@@ -55,8 +61,22 @@ private:
     void onHotKey(int id);
     void updateGlass();       // applique settings_.glass : exclusion de la capture, démarrage ou arrêt
     void restartCapture();
-    void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
+    void pauseCapture();      // le temps d'un menu (une seule duplication de l'écran par processus)
+    void resumeCapture();
+    void onBackdrop();
+    void watchTrash();
+    void registerDropTarget();
+    void performDrop();
+    void syncAppBar();                 // zone réservée seulement sans masquage automatique
+    bool detectFullscreen() const;
+    void checkFullscreen();
+    bool stepVisibility(double now);
+    void refreshTrash();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
+    void onPointerUp(POINT client);
+    void logItemPositions(const RenderFrame& frame);
+    void updateDragSprite();
+    bool stepPoof(double now);   // true tant que le nuage s'anime
     bool rendererOnDockAdapter();   // le device de rendu est-il sur la carte qui pilote l'écran du Dock ?
     static bool systemDarkMode();
 
@@ -93,9 +113,29 @@ private:
 
     BackdropCapture capture_;
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
-    bool glassLive_ = false;   // une image d'arrière-plan a été reçue : verre réel
+    bool glassLive_ = false;
+    bool capturePaused_ = false;   // capture suspendue pendant un menu : la dernière image reste valable   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
-    bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
+
+    SpriteRenderer sprites_;
+    SpriteWindow dragSprite_, poofSprite_;
+    struct { std::wstring key; bool removing = false; UINT px = 0, w = 0, h = 0; bool dark = false; } dragSpriteKey_;
+    double poofStart_ = -1;
+    std::uint64_t loggedRevision_ = 0;   // [trace] dernière révision du modèle dont les positions ont été journalisées
+    POINT poofCenter_{};
+    bool captureFailed_ = false;
+    ULONG trashNotify_ = 0;
+    class DropTarget* dropTarget_ = nullptr;
+    struct PendingDrop {
+        DropHover hover;
+        DockItem item;
+        std::vector<std::wstring> paths;
+    };
+    std::optional<PendingDrop> pendingDrop_;   // exécuté après le retour de Drop (WM_APP_DROP)
+    Visibility visibility_;
+    Thumbnails thumbnails_;
+    bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
+    bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

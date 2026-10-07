@@ -454,7 +454,20 @@ void DockRenderer::drawFrame(ID2D1DeviceContext* dc, const RenderFrame& f, const
         if (ID2D1Bitmap1* bmp = bitmapFor(icon.image)) {
             float h = icon.size / 2;
             D2D1_RECT_F dst = D2D1::RectF(icon.cx - h, icon.cy - h, icon.cx + h, icon.cy + h);
+            if (icon.thumbnail) {
+                // Fenêtre réduite : la miniature DWM couvre le centre ; la petite icône d'app dépasse du coin.
+                const float badge = icon.size * 0.35f;
+                dst = D2D1::RectF(icon.cx + h - badge, icon.cy + h - badge, icon.cx + h, icon.cy + h);
+            }
             dc->DrawBitmap(bmp, dst, icon.opacity, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
+            if (icon.dim > 0) {
+                // Voile noir limité à la forme de l'icône (son alpha sert de masque).
+                Com<ID2D1SolidColorBrush> veil;
+                dc->CreateSolidColorBrush(rgba(0, 0, 0, icon.dim * icon.opacity), &veil);
+                dc->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+                dc->FillOpacityMask(bmp, veil.Get(), dst, nullptr);
+                dc->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            }
         }
         if (icon.indicator) {
             float r = float(m.indicatorDiameter) * f.scale / 2;

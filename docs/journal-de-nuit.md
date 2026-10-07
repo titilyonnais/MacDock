@@ -4,6 +4,23 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 
 ## Ce qui est fait
 
+### Plan 3 — Interactions (fusionné dans `main`)
+
+- **Glisser-déposer interne** : réorganiser les épingles, tirer une icône vers le haut (« Supprimer ») puis la lâcher dans un nuage « poof ». Une app ouverte n'est que désépinglée.
+- **Menus en verre** (clic droit), avec sous-menus, clavier et fermeture au clic extérieur (le clic est absorbé, comme sur macOS) :
+  - *app* : ses fenêtres, Options › (Garder dans le Dock, Ouvrir à la connexion, Afficher dans l'Explorateur), Afficher toutes les fenêtres, Masquer, Quitter ;
+  - *séparateur ou zone vide* : masquage automatique, agrandissement, position (Gauche/Droite arrivent au plan 4), Réglages ;
+  - *Corbeille* : Ouvrir, Vider. *Pile* : Ouvrir, Retirer. *Fenêtre réduite* : Restaurer, Fermer.
+- **Corbeille vide ou pleine** : l'icône suit son contenu.
+- **Masquage automatique** : le Dock glisse sous le bord et revient quand le curseur touche le bas (0,5 s de répit au départ du curseur). Pas de zone réservée dans ce mode. **En plein écran** (jeu, vidéo, F11), le Dock s'efface toujours.
+- **Dépôt de fichiers depuis l'Explorateur** : un `.exe` ou un raccourci entre deux icônes s'épingle ; des fichiers sur une app s'ouvrent avec elle ; sur la Corbeille ils y partent (annulable) ; sur une pile ils y sont déplacés.
+- **Fenêtres réduites** : miniature en direct (DWM) dans le Dock, petite icône de l'app dans le coin.
+- **Icône pressée assombrie**, comme sur macOS.
+
+**Relecture finale** par un agent indépendant : 0 critique, 4 importants + 1 mineur reclassé, tous corrigés (un clic qui tremble n'épingle plus une app ; le dépôt respecte le protocole du Shell et la source ne supprime jamais l'original ; les commandes de menu visent le bon élément même si le Dock change pendant le menu ; options désactivées pour les apps du Store). 9 mineurs notés plus bas.
+
+**Ta machine n'a pas été abîmée par les essais** : tes réglages ont été sauvegardés et restaurés à chaque essai, les fichiers d'essai envoyés à la Corbeille ont été restaurés puis supprimés de `%TEMP%`, ta Corbeille (72 éléments) n'a jamais été vidée.
+
 ### Plan 2 — Géométrie fidèle et Liquid Glass (fusionné dans `main`)
 
 **Tes retours, corrigés :**
@@ -29,7 +46,17 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 - **Le Dock n'apparaît plus sur les captures d'écran** quand le verre est actif : c'est le prix de la lecture de l'écran sous lui. Mets `"glass": false` dans `settings.json` si tu en as besoin.
 - Les icônes de ton bureau ont pu se déplacer : le Dock réserve sa hauteur comme zone de travail, comme avant.
 
-## Vérifications à faire toi-même (je n'ai pas d'écran)
+### ⚠ Le mod Windhawk n'est pas installé
+`macdock-hide-taskbar` n'apparaît pas dans Windhawk : la barre des tâches Windows reste visible et le Dock se pose juste au-dessus d'elle. Pour le rendu final, installe le mod depuis `windhawk\macdock-hide-taskbar.wh.cpp` (Windhawk → Créer un mod → coller → Compiler).
+
+## Vérifications à faire toi-même — plan 3
+1. Miniatures des fenêtres réduites : je n'ai pas pu les voir (sur ton écran HDR, les captures d'écran sortent noires).
+2. Icône de la Corbeille vide : ta Corbeille étant pleine, seule l'icône pleine a été vue.
+3. Glisser un fichier depuis l'Explorateur vers une pile (Téléchargements), puis depuis un autre gestionnaire de fichiers.
+4. Plein écran d'une vidéo YouTube et F11 dans ton navigateur.
+5. Aspect du nuage « poof » et de l'étiquette « Supprimer ».
+
+## Vérifications à faire toi-même — plan 2 (je n'ai pas d'écran)
 1. Le verre sur ton fond d'écran : flou, réfraction sur les bords, liseré.
 2. Une fenêtre déplacée sous le Dock : le verre suit.
 3. Une invite UAC : le Dock passe en verre dépoli, puis reprend.
@@ -47,7 +74,25 @@ Chaque décision est notée avec son coût si elle est fausse. La liste complèt
 - La première image de la capture peut être noire : elle est ignorée.
 - Aucune capture de Tahoe sur cette machine : les valeurs par défaut sont gardées.
 
-## Mineurs reportés
+## Décisions prises sans toi (plan 3)
+- Une seule capture d'écran possible par processus : pendant un menu, celle du Dock est suspendue et le menu capture tout l'écran (≈ 66 Mo de mémoire graphique le temps du menu).
+- Clic droit dans le vide du Dock = menu du séparateur (macOS n'affiche rien).
+- Plein écran vérifié au changement d'app au premier plan et chaque seconde (pour F11 ou une vidéo).
+- Une fenêtre maximisée avec barre de titre ne compte pas comme plein écran (sinon, barre Windows masquée, le Dock ne reviendrait jamais).
+- Badges et barre de progression reportés : le mod ne relaie pas ces informations.
+
+## Mineurs reportés — plan 3
+- Le Dock ne s'anime pas pendant qu'un menu ou une boîte de dialogue Windows est ouvert.
+- Un rechargement de `settings.json` pendant un menu fait passer le Dock en verre dépoli quelques secondes.
+- Appui mémorisé par index (un changement du Dock pile pendant l'appui pourrait tirer la mauvaise icône).
+- Clés Run très longues ignorées par « Ouvrir à la connexion ».
+- Tirer la première icône laisse 4 pt de fond en trop.
+- Interrogation de la Corbeille synchrone (un disque en veille peut figer le Dock un instant).
+- Miniature DWM en échec réessayée à chaque image.
+- Dépôt d'un dossier nommé `x.exe` accepté comme épingle.
+- Détails : emoji coupé dans un titre long, racine de lecteur mal citée, Échap lu au mouvement suivant, menu de plus de 40 fenêtres sans défilement.
+
+## Mineurs reportés — plan 2
 - Région perdue si le Dock bouge pendant une copie.
 - Une image grise possible au redimensionnement.
 - Séparateur peu contrasté en clair sur fond noir.
@@ -59,4 +104,4 @@ Chaque décision est notée avec son coût si elle est fausse. La liste complèt
 - `--snapshot` réécrit tes fichiers de réglages.
 
 ## Suite de la nuit
-Plan 3 — interactions avancées (glisser-déposer, « poof », menus en verre, piles, miniatures, badges et progression, masquage automatique, positions gauche et droite, multi-écran, plein écran, Corbeille).
+Plan 4 — `docs/superpowers/plans/2026-10-07-macdock-plan-4-ecrans-piles.md` : Dock à gauche et à droite, Dock qui suit l'écran où tu pousses le curseur, piles en éventail et en grille, ouverture à la connexion des apps du Store.

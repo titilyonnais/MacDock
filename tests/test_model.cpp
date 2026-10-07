@@ -177,3 +177,58 @@ TEST_CASE(model_app_of_window) {
     CHECK(m.appOfWindow(7) == L"c:\\a.exe");
     CHECK(m.appOfWindow(8).empty());
 }
+
+TEST_CASE(model_pin_keeps_exe_path) {
+    md::AppModel m;
+    md::AppIdentity a;
+    a.exePath = L"C:\\Tools\\x.exe";
+    a.appId = md::makeAppId(L"", a.exePath);
+    a.displayName = L"X";
+    a.launch = L"C:\\Tools\\x.lnk";
+    m.windowOpened(1, a);
+    REQUIRE(m.pin(a.appId, 0));
+    auto pins = m.pinnedEntries();
+    REQUIRE(pins.size() == 1u);
+    CHECK(pins[0].exePath == L"C:\\Tools\\x.exe");   // sans lui, les fenêtres ne se rattachent plus après relance
+    CHECK(pins[0].launch == L"C:\\Tools\\x.lnk");
+}
+
+TEST_CASE(model_hidden_app_windows_not_listed) {
+    // « Masquer » réduit toutes les fenêtres de l'app sans créer de miniatures dans le Dock.
+    md::AppModel m;
+    m.setShowRecents(false);
+    m.windowOpened(3, idOf(L"C:\\a.exe"));
+    m.windowOpened(4, idOf(L"C:\\a.exe"));
+    m.setHidden(L"c:\\a.exe", true);
+    m.windowMinimized(3, true);
+    m.windowMinimized(4, true);
+    CHECK((keys(m) == std::vector<std::wstring>{L"app:c:\\a.exe", L"sep:1", L"trash"}));
+    // Restaurer une fenêtre (clic sur l'app) met fin au masquage : les réductions suivantes redeviennent des tuiles.
+    m.windowMinimized(3, false);
+    m.windowMinimized(3, true);
+    CHECK((keys(m) == std::vector<std::wstring>{L"app:c:\\a.exe", L"sep:1", L"win:4", L"win:3", L"trash"}));
+}
+
+TEST_CASE(model_identity_of_closed_pin_has_exe_path) {
+    // Menu d'une épingle fermée : « Ouvrir à la connexion » et « Afficher dans l'Explorateur » ont besoin de l'exe.
+    md::AppModel m;
+    md::PinnedEntry pin{md::PinKind::App, L"Chrome", L"chrome.lnk", L"Chrome"};
+    pin.exePath = L"C:/Chrome/chrome.exe";
+    m.loadPinned({pin});
+    auto id = m.identityOf(L"Chrome");
+    REQUIRE(id.has_value());
+    CHECK(id->exePath == L"C:/Chrome/chrome.exe");
+}
+
+TEST_CASE(model_trash_full_changes_revision_and_item) {
+    md::AppModel m;
+    CHECK(!m.items().back().trashFull);
+    auto r = m.revision();
+    m.setTrashFull(true);
+    CHECK(m.revision() != r);
+    CHECK(m.items().back().kind == md::ItemKind::Trash);
+    CHECK(m.items().back().trashFull);
+    r = m.revision();
+    m.setTrashFull(true);   // sans changement : pas de nouveau rendu
+    CHECK(m.revision() == r);
+}

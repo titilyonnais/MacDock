@@ -9,6 +9,8 @@ namespace md {
 
 struct LayoutItemSpec {
     bool separator = false;
+    bool placeholder = false;   // emplacement vide (glisser-déposer) : s'agrandit comme une icône, rien n'y est dessiné
+    double presence = 1;        // 0..1 : multiplie l'emplacement et l'espace qui le précède (repli animé)
 };
 
 struct LayoutInput {

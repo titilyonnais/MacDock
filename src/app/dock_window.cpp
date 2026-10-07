@@ -3,6 +3,7 @@
 #include <dcomp.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <cmath>
@@ -12,9 +13,15 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "../core/strings.h"
+#include "../popup/menu_window.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
+#include "dock_menus.h"
+#include "drop_target.h"
+#include "thumbnails.h"
+#include "visibility.h"
 
 namespace md {
 
@@ -29,13 +36,14 @@ constexpr UINT WM_APP_MOUSE = WM_APP + 4;
 constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
+constexpr UINT WM_APP_TRASH = WM_APP + 8;
+constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
+constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
+constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
+constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS" : vérification périodique du plein écran
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
-
-enum MenuId : UINT {
-    kMenuOpen = 1, kMenuShowAll, kMenuPin, kMenuUnpin, kMenuReveal, kMenuQuitApp, kMenuSettings, kMenuQuitDock
-};
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -106,12 +114,71 @@ void DockApp::applySettings() {
     icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
     controller_.setMetrics(metrics_);
+    visibility_.setTimings({metrics_.autohideDelay, metrics_.autohideLeaveDelay, metrics_.autohideShowSeconds,
+                            metrics_.autohideHideSeconds});
+    syncAppBar();
     updateGlass();   // réglage glass modifié à chaud
+    requestFrame();
+}
+
+// Masquage automatique : pas de zone réservée (le Dock passe au-dessus des fenêtres, comme sur macOS).
+void DockApp::syncAppBar() {
+    if (!hwnd_ || snapshot_) return;
+    bool want = !settings_.autohide;
+    if (want == appBar_) return;
+    if (want) registerAppBar();
+    else removeAppBar();
+    reposition();
+}
+
+bool DockApp::detectFullscreen() const {
+    HWND fg = GetForegroundWindow();
+    if (!fg || !IsWindowVisible(fg) || IsIconic(fg)) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    if (pid == GetCurrentProcessId()) return false;   // menus et sprites du Dock
+    wchar_t cls[64] = {};
+    GetClassNameW(fg, cls, 64);
+    for (const wchar_t* shell : {L"Progman", L"WorkerW", L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd"})
+        if (wcscmp(cls, shell) == 0) return false;
+    if (MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY)) return false;
+    RECT rc;
+    bool caption = (GetWindowLongPtrW(fg, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
+    return GetWindowRect(fg, &rc) && isFullscreenWindow(rc, monitor_, IsZoomed(fg) != FALSE, caption);
+}
+
+void DockApp::checkFullscreen() {
+    bool fs = detectFullscreen();
+    if (fs == fullscreen_) return;
+    fullscreen_ = fs;
+    if (trace_) log::info(L"[trace] plein écran : %s", fs ? L"oui" : L"non");
+    requestFrame();
+}
+
+// Entrées du masquage, puis décalage du Dock ; true tant que l'animation continue.
+bool DockApp::stepVisibility(double now) {
+    VisibilityInputs in;
+    in.autohide = settings_.autohide;
+    in.fullscreen = fullscreen_;
+    in.cursorAtEdge = cursorAtEdge_;
+    in.cursorInDock = cursorInDock_;
+    in.menuOpen = menuOpen_;
+    in.dragging = controller_.dragging();
+    bool animating = visibility_.update(in, now);
+    controller_.setShown(visibility_.shown());
+    bool hidden = visibility_.hidden();
+    if (hidden != loggedHidden_) {
+        loggedHidden_ = hidden;
+        if (trace_) log::info(L"[trace] Dock %s", hidden ? L"masqué" : L"visible");
+    }
+    if (double at = visibility_.wakeAt(); at >= 0)
+        SetTimer(hwnd_, kVisibilityTimer, UINT(std::max(1.0, (at - now) * 1000 + 1)), nullptr);
+    return animating;
 }
 
 void DockApp::savePinned() {
     settings_.pinned = model_.pinnedEntries();
-    saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+    saveSettings();
 }
 
 void DockApp::registerAppBar() {
@@ -157,6 +224,7 @@ void DockApp::reposition() {
         bottom = abd.rc.bottom;
     }
     origin_ = POINT{monitor_.left, bottom - height};
+    if (trace_) log::info(L"[trace] zone réservée : %d px", appBar_ ? reserve : 0);
     SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
@@ -207,6 +275,7 @@ void DockApp::updateGlass() {
 void DockApp::restartCapture() {
     capture_.stop();
     glassLive_ = false;
+    capturePaused_ = false;
     if (!excluded_) return;
     RECT rc;
     GetWindowRect(hwnd_, &rc);
@@ -215,7 +284,24 @@ void DockApp::restartCapture() {
     requestFrame();
 }
 
+void DockApp::pauseCapture() {
+    if (capture_.status() != BackdropCapture::Status::Running) return;
+    capturePaused_ = true;
+    capture_.stop();
+}
+
+void DockApp::resumeCapture() {
+    if (!capturePaused_) return;
+    RECT rc;
+    GetWindowRect(hwnd_, &rc);
+    capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
+                   {rc.left, rc.top, rc.right, rc.bottom});
+    requestFrame();
+}
+
 void DockApp::onBackdrop() {
+    auto status = capture_.status();
+    if (status == BackdropCapture::Status::Unavailable || status == BackdropCapture::Status::Failed) capturePaused_ = false;
     if (capture_.status() == BackdropCapture::Status::Failed) {
         // Échec définitif : on rend le Dock aux captures d'écran ; nouvel essai au prochain changement d'affichage.
         captureFailed_ = true;
@@ -231,6 +317,7 @@ void DockApp::onBackdrop() {
         if (capture_.takeLatest(dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); },
                                 scRgb, white)) {
             renderer_.setBackdropWhite(white);
+            capturePaused_ = false;
             if (!glassLive_) log::info(L"Verre : arrière-plan réel reçu (%s)", scRgb ? L"HDR" : L"SDR");
             glassLive_ = true;
             ++capturesTaken_;
@@ -253,19 +340,103 @@ void DockApp::setTransparent(bool transparent) {
 void DockApp::onMouse(POINT screen) {
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     bool inside = controller_.isInsideInteractiveZone(client);
+    bool atEdge = screen.y >= monitor_.bottom - LONG(metrics_.autohideEdgePx) && screen.x >= monitor_.left &&
+                  screen.x < monitor_.right;
+    if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
+        cursorAtEdge_ = atEdge;
+        cursorInDock_ = inside;
+        if (settings_.autohide) requestFrame();   // réveille la boucle : le masquage réévalue ses entrées
+    }
     // Pas de réveil ici : setCursor ne marque le Dock à redessiner que si son état change.
     controller_.setCursor(inside ? std::optional<POINT>(client) : std::nullopt);
     setTransparent(!inside);
 }
 
+void DockApp::logItemPositions(const RenderFrame& frame) {
+    // Position des éléments à l'écran (essais automatisés, calibration).
+    for (std::size_t i = 0; i < frame.icons.size(); ++i)
+        if (const DockItem* it = controller_.itemAt(i))
+            log::info(L"[trace] élément %zu %s : x=%ld y=%ld", i, it->key.c_str(), origin_.x + LONG(frame.icons[i].cx),
+                      origin_.y + LONG(frame.icons[i].cy));
+}
+
+void DockApp::onPointerUp(POINT client) {
+    DragOutcome o = controller_.pointerUp(client);   // avant ReleaseCapture (WM_CAPTURECHANGED annulerait le glisser)
+    if (GetCapture() == hwnd_) ReleaseCapture();
+    updateDragSprite();
+    using Kind = DragOutcome::Kind;
+    if (trace_) log::info(L"[trace] relâchement en %ld,%ld : résultat %d", client.x, client.y, int(o.kind));
+    switch (o.kind) {
+        case Kind::Click: onClick(o.index); break;
+        case Kind::Move:
+            if (model_.movePinned(o.fromPinned, o.toPinned)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : épingle %zu déplacée en %zu", o.fromPinned, o.toPinned);
+            break;
+        case Kind::Pin:
+            if (model_.pin(o.appId, o.toPinned)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : %s épinglée en %zu", o.appId.c_str(), o.toPinned);
+            break;
+        case Kind::Remove:
+            if (model_.unpin(o.key)) savePinned();
+            if (trace_) log::info(L"[trace] glisser : %s retirée%s", o.key.c_str(), o.poof ? L" (poof)" : L"");
+            if (o.poof) {
+                GetCursorPos(&poofCenter_);
+                poofStart_ = nowSeconds();
+            }
+            break;
+        default: break;
+    }
+    requestFrame();
+}
+
+void DockApp::updateDragSprite() {
+    DragVisual v = controller_.dragVisual(icons_);
+    if (!v.active || !v.image) {
+        dragSprite_.hide();
+        dragSpriteKey_ = {};
+        return;
+    }
+    POINT cur;
+    GetCursorPos(&cur);
+    UINT px = UINT(std::lround(v.sizePx));
+    auto& k = dragSpriteKey_;
+    if (k.key != v.key || k.removing != v.removing || k.px != px || k.dark != dark_ || !dragSprite_.visible()) {
+        UINT w = 0, h = 0;
+        auto bgra = sprites_.dragSprite(*v.image, px, v.removing ? L"Supprimer" : L"", scale_, dark_,
+                                        renderer_.fontName(settings_.font), w, h);
+        if (bgra.empty()) return;
+        k = {v.key, v.removing, px, w, h, dark_};
+        dragSprite_.show(bgra, w, h, POINT{cur.x - LONG(w / 2), cur.y - LONG(px / 2)});
+    } else {
+        dragSprite_.move(POINT{cur.x - LONG(k.w / 2), cur.y - LONG(px / 2)});
+    }
+}
+
+bool DockApp::stepPoof(double now) {
+    if (poofStart_ < 0) return false;
+    double t = (now - poofStart_) / std::max(0.05, metrics_.poofSeconds);
+    if (t >= 1) {
+        poofSprite_.hide();
+        poofStart_ = -1;
+        return false;
+    }
+    UINT px = UINT(std::lround(settings_.tileSize * 1.6 * scale_));
+    auto frame = sprites_.poofFrame(t, px);
+    poofSprite_.show(frame, px, px, POINT{poofCenter_.x - LONG(px / 2), poofCenter_.y - LONG(px / 2)});
+    return true;
+}
+
 void DockApp::onClick(std::size_t index) {
-    const DockItem* p = controller_.itemAt(index);
-    if (!p) return;
-    DockItem item = *p;
+    if (const DockItem* p = controller_.itemAt(index)) activateItem(*p);
+}
+
+// Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
+// par index (le Dock a pu changer entre-temps, par exemple pendant un menu).
+void DockApp::activateItem(const DockItem& item) {
     switch (item.kind) {
         case ItemKind::App:
-            if (item.running) {
-                activateApp(toHwnds(item.windows));
+            if (auto windows = model_.windowsOf(item.appId); !windows.empty()) {
+                activateApp(toHwnds(windows));
             } else {
                 std::wstring target = item.launch;
                 if (target.empty())
@@ -284,76 +455,237 @@ void DockApp::onClick(std::size_t index) {
     requestFrame();
 }
 
-void DockApp::showContextMenu(POINT screen, std::optional<std::size_t> index) {
+void DockApp::saveSettings() {
+    saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+}
+
+void DockApp::showContextMenu(std::optional<std::size_t> index) {
     const DockItem* p = index ? controller_.itemAt(*index) : nullptr;
-    DockItem item = p ? *p : DockItem{ItemKind::Separator};
-    HMENU menu = CreatePopupMenu();
+    MenuContext ctx;
+    ctx.item = p ? *p : DockItem{ItemKind::Separator};
+    ctx.settings = settings_;
+    const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
-        AppendMenuW(menu, MF_STRING, item.running ? kMenuShowAll : kMenuOpen,
-                    item.running ? L"Afficher toutes les fenêtres" : L"Ouvrir");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, item.pinned ? kMenuUnpin : kMenuPin,
-                    item.pinned ? L"Retirer du Dock" : L"Garder dans le Dock");
-        AppendMenuW(menu, MF_STRING, kMenuReveal, L"Afficher dans l'Explorateur");
-        if (item.running) {
-            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-            AppendMenuW(menu, MF_STRING, kMenuQuitApp, L"Quitter");
-        }
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    } else if (item.kind == ItemKind::Stack) {
-        AppendMenuW(menu, MF_STRING, kMenuUnpin, L"Retirer du Dock");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        if (auto id = model_.identityOf(item.appId)) ctx.exePath = id->exePath;
+        ctx.openAtLogin = isOpenAtLogin(ctx.exePath);
+        for (WindowId w : model_.windowsOf(item.appId)) ctx.windows.emplace_back(w, model_.titleOf(w));
+    } else if (item.kind == ItemKind::Trash) {
+        ctx.trashFull = recycleBinHasItems();
     }
-    AppendMenuW(menu, MF_STRING, kMenuSettings, L"Réglages du Dock…");
-    AppendMenuW(menu, MF_STRING, kMenuQuitDock, L"Quitter MacDock");
 
-    SetForegroundWindow(hwnd_);
-    UINT cmd = UINT(TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_BOTTOMALIGN | TPM_CENTERALIGN | TPM_NONOTIFY,
-                                     screen.x, screen.y, hwnd_, nullptr));
-    PostMessageW(hwnd_, WM_NULL, 0, 0);
-    DestroyMenu(menu);
+    // Ancrage : centré au-dessus de l'icône (ou du curseur, hors icône), juste au-dessus du Dock.
+    RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    POINT cursor;
+    GetCursorPos(&cursor);
+    float top = frame.bgTop;
+    LONG x = cursor.x;
+    if (index && *index < frame.icons.size()) {
+        const RenderIcon& icon = frame.icons[*index];
+        x = origin_.x + LONG(std::lround(icon.cx));
+        if (!icon.separator) top = std::min(top, icon.cy - icon.size / 2);
+    }
+    POINT anchor{x, origin_.y + LONG(std::lround(top - 6 * scale_))};
 
+    MenuWindow::Env env;
+    env.instance = instance_;
+    env.device = renderer_.device();
+    env.dark = dark_;
+    env.glass = settings_.glass && !captureFailed_ && !renderer_.isWarp();
+    env.scale = scale_;
+    env.font = renderer_.fontName(settings_.font);
+    env.metrics = metrics_;
+    env.trace = trace_;
+    controller_.setCursor(std::nullopt);   // l'agrandissement retombe pendant le menu, comme sur macOS
+    requestFrame();
+    // Une seule duplication de l'écran par processus : celle du Dock cède la place à celle du menu.
+    pauseCapture();
+    menuOpen_ = true;
+    int cmd = MenuWindow::track(env, buildDockMenu(ctx), anchor);
+    menuOpen_ = false;
+    resumeCapture();
+    if (trace_) log::info(L"[trace] menu %s : commande %d", item.key.c_str(), cmd);
+
+    if (cmd >= kCmdWindowBase && std::size_t(cmd - kCmdWindowBase) < ctx.windows.size()) {
+        restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(ctx.windows[cmd - kCmdWindowBase].first)));
+        requestFrame();
+        return;
+    }
     switch (cmd) {
-        case kMenuOpen:
-        case kMenuShowAll:
-            if (index) onClick(*index);
+        case kCmdOpen:
+        case kCmdShowAll:
+            activateItem(item);
             break;
-        case kMenuPin: {
-            std::size_t at = 0;
-            for (auto& e : model_.pinnedEntries()) at += e.kind != PinKind::Stack;
-            if (model_.pin(item.appId, at)) {
+        case kCmdKeep:
+            if (model_.pinnedIndexOf(item.key)) {
+                if (model_.unpin(item.key)) savePinned();
+            } else {
+                // Après la dernière app épinglée (les piles peuvent être n'importe où dans le fichier).
                 auto entries = model_.pinnedEntries();
-                auto id = model_.identityOf(item.appId);
-                for (auto& e : entries)
-                    if (e.appId == item.appId && id) e.exePath = id->exePath;
-                model_.loadPinned(entries);
-                savePinned();
+                std::size_t at = 0;
+                for (std::size_t i = 0; i < entries.size(); ++i)
+                    if (entries[i].kind != PinKind::Stack) at = i + 1;
+                if (model_.pin(item.appId, at)) savePinned();
             }
             break;
-        }
-        case kMenuUnpin:
-            if (model_.unpin(item.key)) savePinned();
+        case kCmdLogin:
+            setOpenAtLogin(ctx.exePath, item.name, !ctx.openAtLogin);
             break;
-        case kMenuReveal: {
-            auto id = model_.identityOf(item.appId);
-            std::wstring path = id ? id->exePath : L"";
-            if (!path.empty()) {
-                std::wstring args = L"/select,\"" + path + L"\"";
-                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
-            }
+        case kCmdReveal:
+            if (item.kind == ItemKind::Stack) openFolder(item.launch);
+            else revealInExplorer(ctx.exePath);
             break;
-        }
-        case kMenuQuitApp:
-            for (HWND h : toHwnds(item.windows)) PostMessageW(h, WM_CLOSE, 0, 0);
+        case kCmdHide:
+            model_.setHidden(item.appId, true);
+            minimizeAll(toHwnds(model_.windowsOf(item.appId)));
             break;
-        case kMenuSettings: {
+        case kCmdQuit:
+            for (HWND h : toHwnds(model_.windowsOf(item.appId))) PostMessageW(h, WM_CLOSE, 0, 0);
+            break;
+        case kCmdAutohide:
+            // Bascule de l'état affiché dans le menu (la configuration a pu être rechargée entre-temps).
+            settings_.autohide = !ctx.settings.autohide;
+            saveSettings();
+            applySettings();
+            break;
+        case kCmdMagnify:
+            settings_.magnification = !ctx.settings.magnification;
+            saveSettings();
+            applySettings();
+            break;
+        case kCmdPosLeft:
+        case kCmdPosBottom:
+        case kCmdPosRight:
+            break;   // Gauche et Droite : plan 4
+        case kCmdSettings: {
             std::wstring path = L"\"" + dataDir_ + L"\\settings.json\"";
             ShellExecuteW(nullptr, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
             break;
         }
-        case kMenuQuitDock:
+        case kCmdTrashOpen: openRecycleBin(); break;
+        case kCmdTrashEmpty: emptyRecycleBin(hwnd_); break;
+        case kCmdRemove:
+            if (model_.unpin(item.key)) savePinned();
+            break;
+        case kCmdRestore:
+            restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
+            break;
+        case kCmdCloseWindow:
+            PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
+            break;
+        case kCmdQuitDock:
             PostMessageW(hwnd_, WM_CLOSE, 0, 0);
             break;
+        default: break;
+    }
+    requestFrame();
+}
+
+// Corbeille vide ou pleine : avis du Shell sur le dossier Corbeille, puis requête différée.
+void DockApp::watchTrash() {
+    refreshTrash();
+    PIDLIST_ABSOLUTE pidl = nullptr;
+    if (FAILED(SHGetSpecialFolderLocation(nullptr, CSIDL_BITBUCKET, &pidl))) return;
+    SHChangeNotifyEntry entry{pidl, TRUE};
+    trashNotify_ = SHChangeNotifyRegister(hwnd_, SHCNRF_ShellLevel | SHCNRF_InterruptLevel | SHCNRF_NewDelivery,
+                                          SHCNE_ALLEVENTS,
+                                          WM_APP_TRASH, 1, &entry);
+    CoTaskMemFree(pidl);
+    if (!trashNotify_) log::warn(L"Surveillance de la Corbeille impossible");
+}
+
+void DockApp::refreshTrash() {
+    bool full = recycleBinHasItems();
+    if (trace_) log::info(L"[trace] corbeille %s", full ? L"pleine" : L"vide");
+    model_.setTrashFull(full);
+    requestFrame();
+}
+
+// Glisser-déposer de fichiers : survol (place ouverte ou icône assombrie), puis action après le retour de
+// Drop (la source, souvent l'Explorateur, attend ce retour ; une copie ou une confirmation ne doit pas la bloquer).
+void DockApp::registerDropTarget() {
+    if (snapshot_) return;
+    DropTarget::Callbacks cb;
+    cb.over = [this](const std::vector<std::wstring>& paths, POINT screen) -> DropAction {
+        POINT client{screen.x - origin_.x, screen.y - origin_.y};
+        DropHover h = controller_.dropOver(client, paths);
+        if (trace_) {
+            static int lastAction = -1;
+            static long lastItem = -2;
+            long item = h.item ? long(*h.item) : -1;
+            if (int(h.action) != lastAction || item != lastItem)
+                log::info(L"[trace] survol de dépôt en %ld,%ld : action %d, élément %ld", client.x, client.y,
+                          int(h.action), item);
+            lastAction = int(h.action);
+            lastItem = item;
+        }
+        requestFrame();
+        return h.action;
+    };
+    cb.leave = [this] {
+        controller_.dropLeave();
+        requestFrame();
+    };
+    cb.drop = [this](const std::vector<std::wstring>& paths, POINT screen) {
+        POINT client{screen.x - origin_.x, screen.y - origin_.y};
+        PendingDrop d;
+        d.hover = controller_.dropOver(client, paths);
+        if (d.hover.item)
+            if (const DockItem* it = controller_.itemAt(*d.hover.item)) d.item = *it;
+        d.paths = paths;
+        pendingDrop_ = std::move(d);
+        PostMessageW(hwnd_, WM_APP_DROP, 0, 0);
+    };
+    dropTarget_ = new DropTarget(hwnd_, std::move(cb));
+    HRESULT hr = RegisterDragDrop(hwnd_, dropTarget_);
+    log::info(L"Dépôt de fichiers : RegisterDragDrop = 0x%08lx", static_cast<unsigned long>(hr));
+    if (FAILED(hr)) {
+        dropTarget_->Release();
+        dropTarget_ = nullptr;
+    }
+}
+
+void DockApp::performDrop() {
+    if (!pendingDrop_) return;
+    PendingDrop d = std::move(*pendingDrop_);
+    pendingDrop_.reset();
+    if (trace_) log::info(L"[trace] dépôt : action %d, %zu fichier(s)", int(d.hover.action), d.paths.size());
+    switch (d.hover.action) {
+        case DropAction::Pin: {
+            const std::wstring& path = d.paths.front();
+            auto id = identifyLaunchTarget(path);
+            AppIdentity app;
+            if (id) app = *id;
+            if (app.appId.empty()) {
+                app.exePath = path;
+                app.appId = makeAppId(L"", path);
+            }
+            if (isPinnableFile(path) && toLower(path).ends_with(L".exe"))
+                if (auto described = exeDisplayName(path); !described.empty()) app.displayName = described;
+            if (app.displayName.empty()) app.displayName = exeDisplayName(path);
+            auto entries = model_.pinnedEntries();
+            bool dup = std::any_of(entries.begin(), entries.end(),
+                                   [&](auto& p) { return p.kind == PinKind::App && p.appId == app.appId; });
+            if (dup) break;
+            std::size_t at = std::min(d.hover.pinIndex, entries.size());
+            entries.insert(entries.begin() + std::ptrdiff_t(at),
+                           PinnedEntry{PinKind::App, app.appId, path, app.displayName, app.exePath});
+            model_.loadPinned(entries);
+            savePinned();
+            log::info(L"Épinglé par dépôt : %s (%s)", app.displayName.c_str(), app.appId.c_str());
+            break;
+        }
+        case DropAction::OpenWith: {
+            auto id = model_.identityOf(d.item.appId);
+            std::wstring exe = id ? id->exePath : L"";
+            std::wstring aumid = id ? id->aumid : L"";
+            const std::wstring prefix = L"shell:AppsFolder\\";
+            if (aumid.empty() && d.item.launch.starts_with(prefix)) aumid = d.item.launch.substr(prefix.size());
+            if (exe.empty() && aumid.empty()) exe = d.item.launch;
+            if (openWith(exe, aumid, d.paths) && !d.item.running) controller_.startLaunchBounce(d.item.appId);
+            break;
+        }
+        case DropAction::Recycle: recycle(d.paths, hwnd_); break;
+        case DropAction::MoveInto: moveInto(d.paths, d.item.launch, hwnd_); break;
         default: break;
     }
     requestFrame();
@@ -367,10 +699,16 @@ void DockApp::requestFrame() {
 
 void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
+        loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
+        logItemPositions(frame);
+    }
     frame.overlay = overlay_;
     frame.overlayOpacity = overlayOpacity_;
     frame.overlayScale = scale_ / 2;   // capture Retina @2x : 2 px par point
-    frame.glass = glassLive_ && capture_.status() == BackdropCapture::Status::Running;
+    // Pendant un menu, la capture du Dock est suspendue : il garde sa dernière image d'arrière-plan.
+    frame.glass = glassLive_ && (capture_.status() == BackdropCapture::Status::Running || capturePaused_);
+    if (!snapshot_) thumbnails_.sync(hwnd_, frame, !visibility_.hidden());
     if (renderer_.render(frame, metrics_, settings_.font)) {
         renderFailures_ = 0;
         return;
@@ -442,7 +780,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == taskbarCreated_ && taskbarCreated_) {
         log::info(L"Explorateur redémarré : réenregistrement");
         removeAppBar();
-        registerAppBar();
+        if (!settings_.autohide) registerAppBar();
         reposition();
         tracker_.rescan();
         return 0;
@@ -455,23 +793,41 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
-            pressed_ = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            controller_.pointerDown(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            if (trace_) {
+                auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+                const DockItem* it = hit ? controller_.itemAt(*hit) : nullptr;
+                log::info(L"[trace] appui en %d,%d sur %s", int(short(LOWORD(lp))), int(short(HIWORD(lp))),
+                          it ? it->key.c_str() : L"(rien)");
+            }
             SetCapture(hwnd_);
             return 0;
-        case WM_LBUTTONUP: {
-            ReleaseCapture();
-            auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
-            if (hit && pressed_ && *hit == *pressed_) onClick(*hit);
-            pressed_.reset();
+        case WM_MOUSEMOVE:
+            if (GetCapture() == hwnd_) {
+                if (controller_.dragging() && (GetAsyncKeyState(VK_ESCAPE) & 0x8000)) {
+                    controller_.cancelDrag();   // Échap : l'icône revient à sa place
+                    ReleaseCapture();
+                } else {
+                    controller_.pointerMove(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+                }
+                updateDragSprite();
+                requestFrame();
+            }
             return 0;
-        }
-        case WM_RBUTTONUP: {
-            POINT client{short(LOWORD(lp)), short(HIWORD(lp))};
-            POINT screen = client;
-            ClientToScreen(hwnd_, &screen);
-            showContextMenu(screen, controller_.hitTest(client));
+        case WM_LBUTTONUP:
+            onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;
-        }
+        case WM_CAPTURECHANGED:
+            if (controller_.dragging()) {
+                controller_.cancelDrag();
+                updateDragSprite();
+                requestFrame();
+            }
+            return 0;
+        case WM_RBUTTONUP:
+            if (controller_.dragging()) return 0;
+            showContextMenu(controller_.hitTestAny(POINT{short(LOWORD(lp)), short(HIWORD(lp))}));
+            return 0;
         case WM_APP_IPC_FLASH: {
             std::wstring app = model_.appOfWindow(WindowId(lp));
             controller_.setAttention(app, true);
@@ -481,7 +837,33 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_CONFIG:
             SetTimer(hwnd_, kConfigTimer, 200, nullptr);   // anti-rebond : plusieurs écritures d'affilée
             return 0;
+        case WM_APP_DROP:
+            performDrop();
+            return 0;
+        case WM_APP_TRASH: {
+            LONG event = 0;
+            PIDLIST_ABSOLUTE* pidls = nullptr;
+            if (HANDLE lock = SHChangeNotification_Lock(HANDLE(wp), DWORD(lp), &pidls, &event))
+                SHChangeNotification_Unlock(lock);
+            if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", static_cast<unsigned long>(event));
+            SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
+            return 0;
+        }
         case WM_TIMER:
+            if (wp == kVisibilityTimer) {
+                KillTimer(hwnd_, kVisibilityTimer);
+                requestFrame();
+                return 0;
+            }
+            if (wp == kFullscreenTimer) {
+                checkFullscreen();
+                return 0;
+            }
+            if (wp == kTrashTimer) {
+                KillTimer(hwnd_, kTrashTimer);
+                refreshTrash();
+                return 0;
+            }
             if (wp == kConfigTimer) {
                 KillTimer(hwnd_, kConfigTimer);
                 double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
@@ -496,6 +878,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             break;
         case WM_APP_APPBAR:
             if (wp == ABN_POSCHANGED) reposition();
+            if (wp == ABN_FULLSCREENAPP) checkFullscreen();
             return 0;
         case WM_DISPLAYCHANGE:
         case WM_DPICHANGED:
@@ -569,6 +952,7 @@ int DockApp::runSnapshot(const Options& options) {
     }
     for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    if (trace_) logItemPositions(frame);
 
     std::vector<std::uint8_t> wallpaper;
     if (!options.wallpaper.empty()) {
@@ -667,7 +1051,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
     renderer_.setGpuTiming(trace_);
-    if (!snapshot_) registerAppBar();
+    if (!snapshot_) {
+        if (!settings_.autohide) registerAppBar();
+        dragSprite_.create(instance);
+        poofSprite_.create(instance);
+    }
     reposition();
     updateGlass();
 
@@ -690,6 +1078,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.activated = [this](HWND h) {
         controller_.setAttention(model_.appOfWindow(toId(h)), false);
+        checkFullscreen();
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
@@ -698,6 +1087,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     tracker_.setTrace(trace_);
+    thumbnails_.setTrace(trace_);
     tracker_.start(hwnd_, ev);
 
     if (snapshot_) {
@@ -721,6 +1111,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     startMouseThread();
     startConfigWatcher();
+    watchTrash();
+    registerDropTarget();
+    // Plein écran : premier plan (tracker), avis de la barre d'application, et vérification chaque seconde
+    // pour les bascules sans changement de premier plan (F11, vidéo) — sans hook EVENT_OBJECT_LOCATIONCHANGE.
+    if (!snapshot_) SetTimer(hwnd_, kFullscreenTimer, 1000, nullptr);
 
     double last = nowSeconds();
     while (running_) {
@@ -752,6 +1147,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         double dt = std::min(now - last, 0.1);
         last = now;
         bool animating = controller_.tick(dt);
+        if (stepVisibility(now)) animating = true;
+        if (stepPoof(now)) animating = true;
         bool dirty = controller_.consumeDirty();
         if (animating || dirty || wakeAnimation_) {
             if (trace_) {
@@ -782,6 +1179,13 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     }
 
     log::info(L"MacDock s'arrête");
+    if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
+    thumbnails_.clear();
+    if (dropTarget_) {
+        RevokeDragDrop(hwnd_);
+        dropTarget_->Release();
+        dropTarget_ = nullptr;
+    }
     capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();

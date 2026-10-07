@@ -28,6 +28,7 @@ struct DockItem {
     std::wstring key;          // "app:<appId>", "apps", "sep:1", "sep:2", "stack:<chemin>", "win:<id>", "trash"
     std::wstring appId, name, launch;
     bool pinned = false, running = false, recent = false;
+    bool trashFull = false;          // Trash
     std::vector<WindowId> windows;   // App : fenêtres ouvertes
     WindowId window = 0;             // MinimizedWindow
 };
@@ -45,10 +46,17 @@ public:
     void windowClosed(WindowId id);
     void windowMinimized(WindowId id, bool minimized);
     void windowTitle(WindowId id, const std::wstring& title);
+    // « Masquer » : les fenêtres réduites de l'app ne deviennent pas des tuiles. Levé dès qu'une
+    // de ses fenêtres est restaurée ou ouverte, ou à la fermeture de l'app.
+    void setHidden(const std::wstring& appId, bool hidden);
+    bool isHidden(const std::wstring& appId) const;
+    void setTrashFull(bool full);
 
     bool pin(const std::wstring& appId, std::size_t index);
     bool unpin(const std::wstring& key);
     bool movePinned(std::size_t from, std::size_t to);
+    // Index dans pinnedEntries() de l'élément de clé key ("app:…", "apps", "stack:…") ; nullopt s'il n'est pas épinglé.
+    std::optional<std::size_t> pinnedIndexOf(const std::wstring& key) const;
 
     std::vector<DockItem> items() const;
     std::vector<WindowId> windowsOf(const std::wstring& appId) const;
@@ -62,6 +70,7 @@ private:
         AppIdentity identity;
         std::vector<WindowId> windows;
         std::uint64_t openSeq = 0;
+        bool hidden = false;
     };
     struct Window {
         std::wstring appId;
@@ -79,6 +88,7 @@ private:
     std::map<WindowId, Window> windows_;
     std::deque<AppIdentity> recents_;     // plus récent en tête
     bool showRecents_ = true;
+    bool trashFull_ = false;
     std::uint64_t seq_ = 0;
     std::uint64_t revision_ = 1;
 };

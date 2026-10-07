@@ -5,8 +5,10 @@
 //   MacDock.exe --snapshot f.png [--hover x]  rendu hors écran du Dock (x : curseur en points depuis le centre)
 //               [--theme light|dark] [--wallpaper fond.png] [--reference ref.png --diff diff.png]   calibration (cf. reference/README.md)
 //   MacDock.exe --capture-test f.png   capture réelle du bas de l'écran (diagnostic du verre)
+//   MacDock.exe --menu-test            menu en verre de démonstration (diagnostic)
 #include <windows.h>
 #include <objbase.h>
+#include <ole2.h>
 #include <shellapi.h>
 
 #include <string>
@@ -14,6 +16,7 @@
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "capture_test.h"
+#include "menu_test.h"
 #include "dock_window.h"
 
 namespace {
@@ -36,11 +39,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     SetUnhandledExceptionFilter(crashFilter);
 
-    bool snapshot = args.find(L"--snapshot") != std::wstring::npos || args.find(L"--capture-test") != std::wstring::npos;
+    bool snapshot = args.find(L"--snapshot") != std::wstring::npos || args.find(L"--capture-test") != std::wstring::npos ||
+                    args.find(L"--menu-test") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    OleInitialize(nullptr);   // COM en STA + glisser-déposer OLE (RegisterDragDrop)
     int code = 0;
     {
         md::DockApp::Options options;
@@ -59,7 +63,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         for (int i = 1; i + 1 < argc; ++i)
             if (wcscmp(argv[i], L"--capture-test") == 0) captureTest = argv[i + 1];
         LocalFree(argv);
-        if (!captureTest.empty()) {
+        if (args.find(L"--menu-test") != std::wstring::npos) {
+            md::log::init(md::appDataDir() + L"\\logs");
+            code = md::runMenuTest(instance);
+        } else if (!captureTest.empty()) {
             md::log::init(md::appDataDir() + L"\\logs");
             code = md::runCaptureTest(captureTest);
         } else {
@@ -67,7 +74,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             code = app.run(instance, options);
         }
     }
-    CoUninitialize();
+    OleUninitialize();
     if (mutex) {
         ReleaseMutex(mutex);
         CloseHandle(mutex);

@@ -53,3 +53,16 @@ TEST_CASE(icons_apps_button_is_drawn) {
     REQUIRE(img != nullptr);
     CHECK(opaquePixels(*img) > 64 * 64 / 2);
 }
+
+TEST_CASE(icons_trash_full_differs) {
+    // Corbeille vide (SIID_RECYCLER) et pleine (SIID_RECYCLERFULL) : deux icônes système distinctes.
+    ComScope com;
+    md::IconProvider p;
+    auto empty = p.trash(false, 96);
+    auto full = p.trash(true, 96);
+    REQUIRE(empty != nullptr);
+    REQUIRE(full != nullptr);
+    CHECK(opaquePixels(*empty) > 96 * 96 / 4);
+    CHECK(opaquePixels(*full) > 96 * 96 / 4);
+    CHECK(empty->bgra != full->bgra);
+}

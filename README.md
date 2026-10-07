@@ -30,7 +30,18 @@ Un Dock façon **macOS Tahoe** pour Windows 11 : magnification, rebonds, infobul
 ## Utilisation
 
 - **Clic** sur une app fermée : elle se lance en rebondissant. Sur une app ouverte : elle passe au premier plan.
-- **Clic droit** : Garder dans le Dock / Retirer du Dock, Afficher dans l'Explorateur, Quitter, Réglages du Dock, Quitter MacDock.
+- **Clic droit** : menus en verre, comme sur macOS.
+  - *App* : ses fenêtres ouvertes, *Options* (Garder dans le Dock, Ouvrir à la connexion, Afficher dans l'Explorateur), Afficher toutes les fenêtres, Masquer, Quitter.
+  - *Séparateur ou zone vide* : masquage automatique, agrandissement, position à l'écran, Réglages du Dock.
+  - *Corbeille* : Ouvrir, Vider la Corbeille. *Pile* : Ouvrir dans l'Explorateur, Retirer du Dock. *Fenêtre réduite* : Restaurer, Fermer.
+- **Glisser une icône** : la déposer ailleurs dans le Dock la déplace ; la tirer vers le haut (« Supprimer ») puis la lâcher la retire, avec le nuage « poof ». Une app ouverte n'est que désépinglée. Échap annule.
+- **Déposer des fichiers** depuis l'Explorateur :
+  - un `.exe`, `.lnk` ou `.appref-ms` **entre deux icônes** : il s'épingle à cet endroit ;
+  - des fichiers **sur une app** : ils s'ouvrent avec elle ;
+  - **sur la Corbeille** : ils y partent (annulable) ; **sur une pile** : ils y sont déplacés.
+- **Masquage automatique** (clic droit sur le séparateur) : le Dock glisse sous le bord de l'écran et revient quand le curseur touche le bas. En plein écran (jeu, vidéo, F11), il s'efface toujours.
+- **Fenêtres réduites** : miniature en direct dans le Dock, avec la petite icône de l'app dans le coin.
+- **Corbeille** : son icône passe de vide à pleine selon son contenu.
 - **Quitter le Dock** : clic droit → *Quitter MacDock*, ou `MacDock.exe --quit`. La barre Windows revient immédiatement.
 
 ## Réglages
@@ -39,7 +50,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 
 | Fichier | Contenu |
 |---|---|
-| `settings.json` | Taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles. |
+| `settings.json` | Taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles. |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `logs\` | Journaux. |

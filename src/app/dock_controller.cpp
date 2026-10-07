@@ -7,10 +7,6 @@
 
 namespace md {
 
-namespace {
-constexpr wchar_t kRecycleBin[] = L"shell:RecycleBinFolder";
-}
-
 void DockController::init(const Settings& s, const Metrics& m, AppModel* model) {
     model_ = model;
     setSettings(s);
@@ -27,6 +23,8 @@ void DockController::setSettings(const Settings& s) {
 void DockController::setMetrics(const Metrics& m) {
     metrics_ = m;
     amount_.setParams(m.magnifyStiffness, m.magnifyDamping);
+    collapse_.setParams(m.dragStiffness, m.dragDamping);
+    for (auto& [key, g] : gaps_) g.setParams(m.dragStiffness, m.dragDamping);
     dirty_ = true;
 }
 
@@ -61,10 +59,19 @@ bool DockController::appRunning(const std::wstring& appId) const {
                        [&](auto& i) { return i.kind == ItemKind::App && i.appId == appId && i.running; });
 }
 
-LayoutResult DockController::layout() const {
+DockController::Laid DockController::layout() const {
+    Laid out;
     LayoutInput in;
-    in.items.reserve(items_.size());
-    for (auto& i : items_) in.items.push_back({i.kind == ItemKind::Separator});
+    in.items.reserve(items_.size() + gaps_.size());
+    out.slot.resize(items_.size());
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const DockItem& it = items_[i];
+        if (auto g = gaps_.find(it.key); g != gaps_.end() && g->second.value() > 1e-3)
+            in.items.push_back({false, true, g->second.value()});
+        out.slot[i] = in.items.size();
+        double presence = !collapsingKey_.empty() && it.key == collapsingKey_ ? collapse_.value() : 1.0;
+        in.items.push_back({it.kind == ItemKind::Separator, false, presence});
+    }
     in.tileSize = settings_.tileSize;
     in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     in.gap = metrics_.iconGap;
@@ -74,29 +81,58 @@ LayoutResult DockController::layout() const {
     in.rangeTiles = metrics_.magnifyRangeTiles;
     in.amount = amount_.value();
     in.cursor = cursor_;
-    return computeLayout(in);
+    out.r = computeLayout(in);
+    return out;
 }
 
 bool DockController::isInsideInteractiveZone(POINT p) const {
     if (width_ <= 0) return false;
-    LayoutResult r = layout();
+    LayoutResult r = layout().r;
     double left = toPx(r.bgStart), right = toPx(r.bgEnd);
     double bottom = bgBottomPx();
     double top = bottom - r.thickness * scale_;
     if (amount_.value() > 0.01) top = std::min(top, bottom - (metrics_.dockPadding + r.maxSize) * scale_);
-    return p.x >= left && p.x <= right && p.y >= top && p.y <= height_;
+    const double y = p.y - hideOffsetPx(r);
+    return p.x >= left && p.x <= right && y >= top && y <= height_;
+}
+
+void DockController::setShown(double shown) {
+    if (shown == shown_) return;
+    shown_ = shown;
+    dirty_ = true;
+}
+
+double DockController::hideOffsetPx(const LayoutResult& r) const {
+    if (shown_ >= 1) return 0;
+    // Du haut du Dock au repos jusqu'au bas de la fenêtre, ombre comprise.
+    const double restTop = bgBottomPx() - r.thickness * scale_;
+    return (1 - shown_) * (height_ - restTop + 2 * metrics_.shadowBlur * scale_);
 }
 
 std::optional<std::size_t> DockController::hitTest(POINT p) const {
     if (!isInsideInteractiveZone(p)) return std::nullopt;
-    LayoutResult r = layout();
+    Laid l = layout();
     double x = toPoints(p.x);
     double halfGap = metrics_.iconGap / 2;
     for (std::size_t i = 0; i < items_.size(); ++i) {
         if (items_[i].kind == ItemKind::Separator) continue;
-        double half = r.items[i].size / 2 + halfGap;
-        if (x >= r.items[i].center - half && x <= r.items[i].center + half) return i;
+        if (drag_ && items_[i].key == collapsingKey_) continue;
+        const LayoutItem& li = l.r.items[l.slot[i]];
+        double half = li.size / 2 + halfGap;
+        if (x >= li.center - half && x <= li.center + half) return i;
     }
+    return std::nullopt;
+}
+
+std::optional<std::size_t> DockController::hitTestAny(POINT p) const {
+    if (auto hit = hitTest(p)) return hit;
+    if (!isInsideInteractiveZone(p)) return std::nullopt;
+    Laid l = layout();
+    double x = toPoints(p.x);
+    // Le séparateur occupe son trait et ses marges.
+    double half = metrics_.separatorWidth / 2 + metrics_.separatorMargin;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].kind == ItemKind::Separator && std::fabs(x - l.r.items[l.slot[i]].center) <= half) return i;
     return std::nullopt;
 }
 
@@ -105,7 +141,7 @@ const DockItem* DockController::itemAt(std::size_t index) const {
 }
 
 std::optional<std::size_t> DockController::hoveredIndex() const {
-    if (!cursorInside_ || !cursor_) return std::nullopt;
+    if (drag_ || !cursorInside_ || !cursor_) return std::nullopt;
     POINT p{LONG(std::lround(toPx(*cursor_))), LONG(std::lround(bgBottomPx() - 1))};
     return hitTest(p);
 }
@@ -184,6 +220,17 @@ bool DockController::tick(double dt) {
         animating = true;
     }
 
+    if (!collapsingKey_.empty()) {
+        if (collapse_.step(dt)) animating = true;
+        if (!drag_ && collapse_.settled() && collapse_.value() > 0.999) collapsingKey_.clear();
+        else animating = true;
+    }
+    for (auto it = gaps_.begin(); it != gaps_.end();) {
+        if (it->second.step(dt)) animating = true;
+        if (it->second.target() == 0 && it->second.settled() && it->second.value() < 1e-3) it = gaps_.erase(it);
+        else ++it;
+    }
+
     auto hovered = hoveredIndex();
     if (hovered) tooltipIndex_ = hovered;
     double target = hovered ? 1.0 : 0.0;
@@ -203,9 +250,299 @@ bool DockController::consumeDirty() {
     return d;
 }
 
+IconProvider::ImagePtr DockController::imageFor(const DockItem& item, IconProvider& icons, int px) const {
+    switch (item.kind) {
+        case ItemKind::App: {
+            std::wstring parsing = item.launch;
+            if (parsing.empty() && model_)
+                if (auto id = model_->identityOf(item.appId)) parsing = id->exePath;
+            return icons.get(item.appId, parsing, px);
+        }
+        case ItemKind::AppsButton: return icons.appsButton(px);
+        case ItemKind::Stack: return icons.get(L"stack:" + item.launch, item.launch, px);
+        case ItemKind::Trash: return icons.trash(item.trashFull, px);
+        case ItemKind::MinimizedWindow: {
+            std::wstring parsing;
+            if (model_)
+                if (auto id = model_->identityOf(item.appId)) parsing = id->launch.empty() ? id->exePath : id->launch;
+            return icons.get(item.appId, parsing, px);
+        }
+        default: return nullptr;
+    }
+}
+
+std::optional<std::size_t> DockController::indexOfKey(const std::wstring& key) const {
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].key == key) return i;
+    return std::nullopt;
+}
+
+namespace {
+bool inSection(const DockItem& it, bool stacks) {
+    if (stacks) return it.kind == ItemKind::Stack;
+    return (it.kind == ItemKind::App && it.pinned) || it.kind == ItemKind::AppsButton;
+}
+} // namespace
+
+std::vector<std::size_t> DockController::candidates(Section section, const std::wstring& exclude) const {
+    std::vector<std::size_t> out;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].key != exclude && inSection(items_[i], section == Section::Stacks)) out.push_back(i);
+    return out;
+}
+
+std::wstring DockController::gapKey(Section section, std::size_t slot) const {
+    auto c = candidates(section, drag_ ? drag_->key : std::wstring());
+    if (slot < c.size()) return items_[c[slot]].key;
+    // Fin de section : devant l'élément qui suit le dernier membre (élément tiré compris).
+    std::optional<std::size_t> last;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (inSection(items_[i], section == Section::Stacks) || (drag_ && items_[i].key == drag_->key)) last = i;
+    if (last && *last + 1 < items_.size()) return items_[*last + 1].key;
+    return items_.empty() ? std::wstring() : items_.front().key;
+}
+
+std::optional<std::size_t> DockController::insertionPinnedIndex(Section section, std::size_t slot) const {
+    if (!drag_) return std::nullopt;
+    return insertionIndex(section, slot, drag_->key);
+}
+
+std::optional<std::size_t> DockController::insertionIndex(Section section, std::size_t slot,
+                                                          const std::wstring& exclude) const {
+    if (!model_) return std::nullopt;
+    auto c = candidates(section, exclude);
+    if (slot < c.size()) return model_->pinnedIndexOf(items_[c[slot]].key);
+    if (!c.empty())
+        if (auto i = model_->pinnedIndexOf(items_[c.back()].key)) return *i + 1;
+    if (!exclude.empty())
+        if (auto self = model_->pinnedIndexOf(exclude)) return self;
+    if (section == Section::Stacks) return model_->pinnedEntries().size();
+    return std::size_t(0);
+}
+
+LayoutResult DockController::stableLayout() const {
+    // Positions sans place ouverte ni repli : cibles stables pendant que les icônes glissent.
+    LayoutInput in;
+    for (auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
+    in.tileSize = settings_.tileSize;
+    in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
+    in.gap = metrics_.iconGap;
+    in.padding = metrics_.dockPadding;
+    in.separatorWidth = metrics_.separatorWidth;
+    in.separatorMargin = metrics_.separatorMargin;
+    in.rangeTiles = metrics_.magnifyRangeTiles;
+    in.amount = amount_.value();
+    in.cursor = cursor_;
+    return computeLayout(in);
+}
+
+bool DockController::overPinnedSection(double xPx, const std::wstring& exclude) const {
+    auto c = candidates(Section::Pinned, exclude);
+    if (c.empty()) return true;
+    LayoutResult r = stableLayout();
+    const LayoutItem& last = r.items[c.back()];
+    return toPoints(LONG(std::lround(xPx))) <= last.center + last.size;   // jusqu'à une demi-case après la dernière
+}
+
+std::size_t DockController::slotAt(Section section, const std::wstring& exclude, double xPx) const {
+    LayoutResult r = stableLayout();
+    double x = toPoints(LONG(std::lround(xPx)));
+    std::size_t slot = 0;
+    for (std::size_t i : candidates(section, exclude))
+        if (r.items[i].center < x) ++slot;
+    return slot;
+}
+
+void DockController::openGap(const std::wstring& target) {
+    for (auto& [key, g] : gaps_) g.setTarget(key == target ? 1.0 : 0.0);
+    if (!target.empty() && !gaps_.contains(target)) {
+        Spring g(metrics_.dragStiffness, metrics_.dragDamping);
+        g.snap(0);
+        g.setTarget(1);
+        gaps_.emplace(target, g);
+    }
+    dirty_ = true;
+}
+
+DropHover DockController::dropOver(POINT p, const std::vector<std::wstring>& paths) {
+    refreshItems();
+    DropHover h;
+    std::optional<std::size_t> item;
+    bool between = false;
+    if (isInsideInteractiveZone(p)) {
+        item = hitTest(p);
+        Laid l = layout();
+        const double x = toPoints(p.x);
+        // Un dépôt vise l'icône elle-même, pas l'intervalle qui la sépare de sa voisine.
+        const bool onIcon = item && std::abs(x - l.r.items[l.slot[*item]].center) <= l.r.items[l.slot[*item]].size / 2;
+        const bool singlePin = paths.size() == 1 && isPinnableFile(paths[0]);
+        if (singlePin) {
+            // Entre deux icônes épinglées : hors du centre d'une icône de la section, ou dans un intervalle.
+            auto c = candidates(Section::Pinned, L"");
+            if (!c.empty()) {
+                const LayoutItem& first = l.r.items[l.slot[c.front()]];
+                const LayoutItem& last = l.r.items[l.slot[c.back()]];
+                bool inSpan = x >= first.center - first.size && x <= last.center + last.size;
+                bool pinnedItem = item && std::find(c.begin(), c.end(), *item) != c.end();
+                if (pinnedItem) {
+                    const LayoutItem& li = l.r.items[l.slot[*item]];
+                    between = std::abs(x - li.center) > li.size * 0.25;
+                } else {
+                    between = !item && inSpan;
+                }
+            }
+        }
+        if (!between && !onIcon) item.reset();
+        DropTargetInfo info;
+        info.betweenPinned = between;
+        if (item) info.kind = items_[*item].kind;
+        h.action = (between || item) ? dropAction(info, paths) : DropAction::None;
+    }
+    if (h.action == DropAction::Pin) {
+        std::size_t slot = slotAt(Section::Pinned, L"", double(p.x));
+        h.pinIndex = insertionIndex(Section::Pinned, slot, L"").value_or(0);
+        openGap(gapKey(Section::Pinned, slot));
+        dropItem_.reset();
+    } else {
+        openGap(L"");
+        if (h.action != DropAction::None) h.item = item;
+        if (dropItem_ != h.item) dirty_ = true;
+        dropItem_ = h.item;
+    }
+    return h;
+}
+
+void DockController::dropLeave() {
+    openGap(L"");
+    dropItem_.reset();
+    dirty_ = true;
+}
+
+void DockController::updateDragTarget(POINT p) {
+    if (!drag_) return;
+    DragState& d = *drag_;
+    double bgTop = bgBottomPx() - (settings_.tileSize + 2 * metrics_.dockPadding) * scale_;
+    bool above = bgTop - p.y > metrics_.dragRemoveDistance * scale_;
+    d.removing = above && d.pinned;
+    d.hasSlot = !above;
+    // Une app ouverte non épinglée ne s'épingle que lâchée sur la section épinglée (sinon : retour à sa place).
+    if (d.hasSlot && d.kind == ItemKind::App && !d.pinned && !overPinnedSection(double(p.x), d.key)) d.hasSlot = false;
+    if (d.hasSlot) d.slot = slotAt(d.section, d.key, double(p.x));
+    openGap(d.hasSlot ? gapKey(d.section, d.slot) : std::wstring());
+}
+
+void DockController::pointerDown(POINT p) {
+    refreshItems();
+    pressPoint_ = p;
+    pressIndex_ = hitTest(p);
+    drag_.reset();
+    dirty_ = true;   // icône pressée assombrie
+}
+
+void DockController::pointerMove(POINT p) {
+    if (drag_) {
+        updateDragTarget(p);
+        return;
+    }
+    if (!pressPoint_ || !pressIndex_ || *pressIndex_ >= items_.size()) return;
+    double dist = std::hypot(double(p.x - pressPoint_->x), double(p.y - pressPoint_->y)) / scale_;
+    if (dist < metrics_.dragThreshold) return;
+    const DockItem& item = items_[*pressIndex_];
+    bool draggable = item.kind == ItemKind::App || item.kind == ItemKind::AppsButton || item.kind == ItemKind::Stack;
+    if (!draggable) return;
+    Laid l = layout();
+    DragState d;
+    d.key = item.key;
+    d.appId = item.appId;
+    d.kind = item.kind;
+    d.pinned = item.pinned;
+    d.running = item.running;
+    d.section = item.kind == ItemKind::Stack ? Section::Stacks : Section::Pinned;
+    d.pickupSize = std::max(settings_.tileSize, l.r.items[l.slot[*pressIndex_]].size);
+    drag_ = d;
+    collapsingKey_ = item.key;
+    collapse_.setParams(metrics_.dragStiffness, metrics_.dragDamping);
+    collapse_.snap(1);
+    collapse_.setTarget(0);
+    gaps_.clear();
+    tooltipOpacity_ = 0;
+    updateDragTarget(p);
+}
+
+DragOutcome DockController::pointerUp(POINT p) {
+    DragOutcome o;
+    if (drag_) {
+        updateDragTarget(p);
+        DragState d = *drag_;
+        if (d.removing) {
+            o.kind = DragOutcome::Kind::Remove;
+            o.key = d.key;
+            o.poof = !d.running;
+        } else if (d.hasSlot) {
+            auto before = insertionPinnedIndex(d.section, d.slot);
+            if (d.pinned && model_) {
+                auto from = model_->pinnedIndexOf(d.key);
+                if (from && before) {
+                    std::size_t to = *before > *from ? *before - 1 : *before;
+                    if (to != *from) {
+                        o.kind = DragOutcome::Kind::Move;
+                        o.fromPinned = *from;
+                        o.toPinned = to;
+                    }
+                }
+            } else if (d.kind == ItemKind::App && before) {
+                o.kind = DragOutcome::Kind::Pin;
+                o.appId = d.appId;
+                o.toPinned = *before;
+            }
+        }
+        drag_.reset();
+        if (o.kind == DragOutcome::Kind::None) {
+            collapse_.setTarget(1);   // retour à sa place
+            for (auto& [key, g] : gaps_) g.setTarget(0);
+        } else {
+            collapsingKey_.clear();   // l'appelant applique le changement : la place ouverte devient l'élément
+            collapse_.snap(1);
+            gaps_.clear();
+        }
+    } else if (pressIndex_ && hitTest(p) == pressIndex_) {
+        o.kind = DragOutcome::Kind::Click;
+        o.index = *pressIndex_;
+    }
+    pressPoint_.reset();
+    pressIndex_.reset();
+    dirty_ = true;
+    return o;
+}
+
+void DockController::cancelDrag() {
+    pressPoint_.reset();
+    pressIndex_.reset();
+    dirty_ = true;
+    if (!drag_) return;
+    drag_.reset();
+    collapse_.setTarget(1);
+    for (auto& [key, g] : gaps_) g.setTarget(0);
+    dirty_ = true;
+}
+
+DragVisual DockController::dragVisual(IconProvider& icons) const {
+    DragVisual v;
+    if (!drag_) return v;
+    auto i = indexOfKey(drag_->key);
+    if (!i) return v;
+    v.active = true;
+    v.sizePx = float(drag_->pickupSize * scale_);
+    v.image = imageFor(items_[*i], icons, int(std::ceil(v.sizePx)));
+    v.removing = drag_->removing && !drag_->running;
+    v.key = drag_->key;
+    return v;
+}
+
 RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     refreshItems();
-    LayoutResult r = layout();
+    Laid laid = layout();
+    const LayoutResult& r = laid.r;
     const float s = scale_;
     RenderFrame f;
     f.scale = s;
@@ -224,7 +561,8 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     for (std::size_t i = 0; i < items_.size(); ++i) {
         const DockItem& item = items_[i];
         RenderIcon icon;
-        icon.cx = float(toPx(r.items[i].center));
+        const LayoutItem& li = r.items[laid.slot[i]];
+        icon.cx = float(toPx(li.center));
         if (item.kind == ItemKind::Separator) {
             icon.separator = true;
             icon.cy = (f.bgTop + f.bgBottom) / 2;
@@ -232,28 +570,17 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
             f.icons.push_back(icon);
             continue;
         }
-        icon.size = float(r.items[i].size) * s;
+        icon.size = float(li.size) * s;
         icon.cy = f.bgBottom - float(metrics_.dockPadding) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
         icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
-        switch (item.kind) {
-            case ItemKind::App: {
-                std::wstring parsing = item.launch;
-                if (parsing.empty())
-                    if (auto id = model_->identityOf(item.appId)) parsing = id->exePath;
-                icon.image = icons.get(item.appId, parsing, imgPx);
-                icon.indicator = item.running;
-                break;
-            }
-            case ItemKind::AppsButton: icon.image = icons.appsButton(imgPx); break;
-            case ItemKind::Stack: icon.image = icons.get(L"stack:" + item.launch, item.launch, imgPx); break;
-            case ItemKind::Trash: icon.image = icons.get(L"trash", kRecycleBin, imgPx); break;
-            case ItemKind::MinimizedWindow: {
-                std::wstring parsing;
-                if (auto id = model_->identityOf(item.appId)) parsing = id->launch.empty() ? id->exePath : id->launch;
-                icon.image = icons.get(item.appId, parsing, imgPx);
-                break;
-            }
-            default: break;
+        icon.image = imageFor(item, icons, imgPx);
+        icon.indicator = item.kind == ItemKind::App && item.running;
+        if (item.kind == ItemKind::MinimizedWindow) icon.window = item.window;
+        if ((dropItem_ && *dropItem_ == i) || (pressIndex_ && *pressIndex_ == i && !drag_)) icon.dim = 0.3f;
+        if (!collapsingKey_.empty() && item.key == collapsingKey_) {
+            // Élément tiré : sa case se vide (il suit le curseur) puis réapparaît s'il revient à sa place.
+            icon.opacity = drag_ ? 0.0f : float(std::clamp(collapse_.value(), 0.0, 1.0));
+            icon.indicator = icon.indicator && icon.opacity > 0.5f;
         }
         f.icons.push_back(std::move(icon));
     }
@@ -270,6 +597,16 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         float visibleTop = icon.cy - icon.size / 2 + icon.size * float(1 - metrics_.iconShapeRatio) / 2;
         f.tooltip.bottom = visibleTop - float(metrics_.tooltipGap) * s;
         f.tooltip.opacity = float(tooltipOpacity_);
+    }
+    // Masquage automatique : tout le Dock glisse vers le bas, hors de la fenêtre.
+    if (const float off = float(hideOffsetPx(r)); off > 0) {
+        f.bgTop += off;
+        f.bgBottom += off;
+        for (auto& icon : f.icons) {
+            icon.cy += off;
+            icon.indicatorY += off;
+        }
+        f.tooltip.bottom += off;
     }
     dirty_ = false;
     return f;
