@@ -4,12 +4,12 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 
 ## Ce qui est fait
 
-### Plan 5 — Piles complètes (branche `feat/plan-5-piles-completes`, relecture finale en cours à 8 h)
+### Plan 5 — Piles complètes (fusionné dans `main`)
 
 - **Icône « Pile »** : dans le Dock, la pile Téléchargements montre ses 3 derniers fichiers empilés, ceux du dessous légèrement inclinés, comme sur macOS. Elle se met à jour en direct quand un fichier arrive ou disparaît. Clic droit › *Afficher comme* › *Dossier* pour revenir à l'icône du dossier.
 - **Présentation en liste** : clic droit › *Présenter le contenu comme* › *Liste*. La pile s'ouvre alors en menu de verre avec les icônes des fichiers ; les sous-dossiers s'ouvrent en sous-menus. La liste se limite à ce qui tient à l'écran.
 - Essais réels : rendu de l'icône composée vérifié sur image (`--snapshot`) ; dossier temporaire épinglé : l'aperçu passe de 0 à 1 fichier puis revient à 0 ; liste ouverte avec un sous-menu. Tes réglages ont été restaurés à chaque fois.
-- Pas encore fusionné dans `main` : j'attends la fin de la relecture et ses corrections.
+- Relecture finale : 3 problèmes importants, corrigés. Un fichier remplacé sous le même nom (capture réenregistrée) met maintenant l'icône à jour ; chaque sous-dossier de la liste se termine par « Ouvrir dans l'Explorateur » ; les icônes de la liste visible passent avant celles des sous-menus. Une rafale d'avis (téléchargement) met l'icône à jour au moins toutes les 2 s.
 
 ### Plan 4 — Positions, écrans et piles (fusionné dans `main`)
 
@@ -102,6 +102,16 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 - « Afficher comme (Pile, Dossier) » et la présentation « Liste » sont reportées au plan 5 : pas d'entrée de menu sans effet.
 - Infobulle d'un Dock vertical posée à côté de l'icône (la fenêtre est plus large de 240 pt pour elle).
 - Le test de « Ouvrir à la connexion » écrit dans un dossier temporaire, jamais dans ton dossier Démarrage.
+
+## Décisions prises sans toi (plan 5)
+- Icônes de la liste tirées de la liste d'icônes système (rapide, jamais de vignette), 400 au plus.
+- La liste se limite à ce qui tient à l'écran (le menu ne défile pas) ; le reste s'ouvre par « Ouvrir dans l'Explorateur ».
+- Rafale d'avis d'un dossier regroupée 400 ms, avec au plus 2 s d'attente.
+- Essai réel de la liste après le plafond de hauteur non refait : il pilote la souris et tu étais là.
+
+## Mineurs reportés — plan 5
+- Couches inclinées de l'icône de pile un peu coupées aux coins et sans lissage de bord.
+- Cache des icônes de fichiers jamais purgé (borné par les piles et les dossiers parcourus).
 
 ## Mineurs reportés — plan 4
 - Raccourci de démarrage nommé d'après le nom affiché (deux apps homonymes, ou un renommage, se gênent).
