@@ -1050,10 +1050,18 @@ GenieRun DockApp::genieRun() const {
     return run;
 }
 
+namespace {
+// Partie visible d'une fenêtre (sans ses bordures de redimensionnement invisibles), comme sa miniature DWM.
+bool visibleBounds(HWND h, RECT& r) {
+    if (SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof r)) && !IsRectEmpty(&r)) return true;
+    return GetWindowRect(h, &r) != FALSE;
+}
+} // namespace
+
 void DockApp::noteForeground() {
     HWND fg = GetForegroundWindow();
     RECT r{};
-    if (fg && !IsIconic(fg) && GetWindowRect(fg, &r)) lastSeen_[toId(fg)] = r;
+    if (fg && !IsIconic(fg) && visibleBounds(fg, r)) lastSeen_[toId(fg)] = r;
 }
 
 bool DockApp::startGenie(HWND window, bool restore) {
@@ -1978,7 +1986,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.moved = [this](HWND h) {   // place exacte au moment d'une réduction (déplacée, ancrée, agrandie…)
         RECT r{};
-        if (!IsIconic(h) && IsWindowVisible(h) && GetWindowRect(h, &r)) lastSeen_[toId(h)] = r;
+        if (!IsIconic(h) && IsWindowVisible(h) && visibleBounds(h, r)) lastSeen_[toId(h)] = r;
     };
     ev.activated = [this](HWND h) {
         mru_.touch(model_.appOfWindow(toId(h)));

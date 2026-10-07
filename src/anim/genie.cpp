@@ -207,6 +207,13 @@ RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monit
     return r;
 }
 
+RECT genieVisibleRect(const RECT& window, SIZE thumb) {
+    const LONG dx = (window.right - window.left) - thumb.cx, dy = (window.bottom - window.top) - thumb.cy;
+    if (dx < 0 || dy < 0 || dx > 64 || dy > 64 || (dx == 0 && dy == 0)) return window;
+    const LONG left = window.left + dx / 2;
+    return RECT{left, window.top, left + thumb.cx, window.top + thumb.cy};
+}
+
 RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor,
                     bool toolWindow, SIZE src) {
     if (lastSeen && !IsRectEmpty(&*lastSeen)) return *lastSeen;

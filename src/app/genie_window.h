@@ -56,5 +56,8 @@ private:
 // Sonde (MacDock.exe --genie-capture-probe) : un génie complet sur une fenêtre factice hors écran ; journalise le
 // délai avant le rendu GPU et la régularité des images. Rien n'est visible.
 bool genieLiveProbe(HINSTANCE instance);
+// Sonde : une vraie fenêtre Windows (cadre standard, hors écran) ; le départ du génie calculé depuis son rectangle
+// et sa miniature doit tomber au pixel près sur sa partie visible, avant comme après réduction.
+bool genieFrameProbe(HINSTANCE instance);
 
 } // namespace md

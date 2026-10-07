@@ -52,7 +52,7 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
         return false;
     }
     source_ = source;
-    from_ = from;
+    from_ = genieVisibleRect(from, src_);   // la miniature n'a que la partie visible : pas d'image étirée ni décalée
     to_ = fitThumbnail(src_.cx, src_.cy, toCell);   // la forme de la miniature dans sa case
     edge_ = edge;
     effect_ = effect;
@@ -204,6 +204,46 @@ bool genieLiveProbe(HINSTANCE instance) {
     ok = ok && gpuAt >= 0;
     }
     DestroyWindow(probe);
+    return ok;
+}
+
+bool genieFrameProbe(HINSTANCE instance) {
+    WNDCLASSEXW wc{sizeof wc};
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = instance;
+    wc.lpszClassName = L"MacDockFrameProbe";
+    wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH));
+    RegisterClassExW(&wc);
+    const int x = GetSystemMetrics(SM_XVIRTUALSCREEN) - 3000, y = GetSystemMetrics(SM_YVIRTUALSCREEN) + 100;
+    HWND w = CreateWindowExW(WS_EX_NOACTIVATE, wc.lpszClassName, L"Sonde", WS_OVERLAPPEDWINDOW, x, y, 800, 600, nullptr, nullptr,
+                             instance, nullptr);
+    if (!w) return false;
+    ShowWindow(w, SW_SHOWNOACTIVATE);
+    for (int i = 0; i < 20; ++i) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
+        Sleep(10);
+    }
+    RECT window{}, visible{};
+    GetWindowRect(w, &window);
+    DwmGetWindowAttribute(w, DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof visible);
+    ShowWindow(w, SW_SHOWMINNOACTIVE);
+    HWND host = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP, wc.lpszClassName, L"", WS_POPUP, x, y, 1, 1, nullptr,
+                                nullptr, instance, nullptr);
+    HTHUMBNAIL t = nullptr;
+    SIZE thumb{};
+    if (host && SUCCEEDED(DwmRegisterThumbnail(host, w, &t))) {
+        DwmQueryThumbnailSourceSize(t, &thumb);
+        DwmUnregisterThumbnail(t);
+    }
+    const RECT start = genieVisibleRect(window, thumb);
+    const bool ok = EqualRect(&start, &visible) != FALSE;
+    log::info(L"Sonde du cadre : fenêtre %ldx%ld, visible %ld,%ld %ldx%ld, miniature %ldx%ld, départ %ld,%ld %ldx%ld : %s",
+              window.right - window.left, window.bottom - window.top, visible.left - window.left, visible.top - window.top,
+              visible.right - visible.left, visible.bottom - visible.top, thumb.cx, thumb.cy, start.left - window.left,
+              start.top - window.top, start.right - start.left, start.bottom - start.top, ok ? L"exact" : L"ÉCART");
+    if (host) DestroyWindow(host);
+    DestroyWindow(w);
     return ok;
 }
 

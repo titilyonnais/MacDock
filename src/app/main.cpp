@@ -144,7 +144,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         LocalFree(argv);
         if (!captureProbe.empty()) {
             md::log::init(md::appDataDir() + L"\\logs");
-            code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) ? 0 : 1;
+            code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) &&
+                           md::genieFrameProbe(GetModuleHandleW(nullptr))
+                       ? 0
+                       : 1;
         } else if (!switcherSnapshot.empty()) {
             static const wchar_t* kNames[] = {L"Explorateur", L"Navigateur", L"Terminal", L"Éditeur de code", L"Musique",
                                               L"Photos", L"Courrier", L"Calendrier", L"Notes", L"Calculatrice"};
