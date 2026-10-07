@@ -113,7 +113,15 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   1. réduire une fenêtre : elle doit s'écouler dans sa miniature, sans la petite animation de Windows ;
   2. cliquer sur sa miniature : elle ressort et reprend sa place ;
   3. une fenêtre agrandie, puis le Dock à gauche ;
-  4. *Effet de réduction* → *Windows* : l'animation d'origine revient.
+  4. *Effet de réduction* → *Windows* : l'animation d'origine revient ;
+  5. une fenêtre ancrée sur une moitié d'écran (Snap) : elle part de sa place ancrée et y revient ;
+  6. relancer le Dock avec des fenêtres déjà réduites : aucune animation au démarrage.
+- **Relecture finale** : 0 critique, 3 importants, plus 1 mineur que j'ai jugé important. Tous sont corrigés avec un test :
+  - au lancement du Dock (ou au redémarrage de l'Explorateur), une fenêtre déjà réduite ne rejoue plus l'animation ;
+  - cliquer une deuxième miniature pendant une restauration ne laisse plus la première fenêtre réduite ;
+  - une fenêtre ancrée (Snap) part de sa vraie place, pas de celle d'avant l'ancrage ;
+  - une fenêtre restaurée ailleurs pendant sa restauration animée n'est plus montrée deux fois.
+- **À savoir** : si tu valides « Options de performances » de Windows pendant que le Dock tourne, Windows enregistre l'animation coupée comme ta préférence. Remets-la dans ce même panneau si tu arrêtes le Dock.
 
 ## Décisions prises sans toi (plan 10)
 - L'agrandissement n'est plus animé tant que l'effet Génie ou Échelle est actif : Windows règle les deux par le même interrupteur.

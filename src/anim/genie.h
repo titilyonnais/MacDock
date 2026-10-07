@@ -3,6 +3,8 @@
 #pragma once
 #include <windows.h>
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "../config/settings.h"
@@ -27,5 +29,23 @@ double minimizeDuration(MinimizeEffect e, bool slow);
 // travail (sauf fenêtre outil) ; réduite depuis l'état agrandi : la zone de travail, débordée des bordures
 // invisibles (src plus grande, centrée).
 RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor, bool toolWindow, SIZE src);
+
+// Départ d'une réduction : le dernier rectangle vu à l'écran (fenêtre ancrée, agrandie…) s'il est connu, sinon
+// restoredRect.
+RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor,
+                    bool toolWindow, SIZE src);
+
+// Animation en cours, vue par le Dock.
+struct GenieRun {
+    bool active = false;
+    std::uint64_t source = 0;
+    bool restoring = false;
+};
+enum class GenieReact { Nothing, Start, Cancel };
+// Fenêtre réduite (minimized) ou restaurée. live : réduction vue à l'instant, pas une fenêtre découverte déjà
+// réduite (lancement du Dock, redémarrage de l'Explorateur). Restaurée ailleurs pendant son animation : annulée.
+GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minimized, bool live);
+// Une animation va en remplacer une autre : une restauration interrompue doit quand même aboutir.
+bool genieMustRestoreFirst(const GenieRun& run);
 
 } // namespace md

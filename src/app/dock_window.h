@@ -162,6 +162,9 @@ private:
     GenieWindow genie_;
     MinAnimateGuard minAnimate_{realMinAnimateApi()};
     std::map<std::uint64_t, RECT> shownTiles_;   // cases des miniatures de la dernière image (pixels de la fenêtre)
+    std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan
+    void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
+    GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée

@@ -656,8 +656,23 @@ void DockApp::restoreFromDock(HWND window) {
     if (!startGenie(window, true)) restoreWindow(window);
 }
 
+GenieRun DockApp::genieRun() const {
+    return GenieRun{genie_.active(), genie_.active() ? toId(genie_.source()) : 0, genie_.restoring()};
+}
+
+void DockApp::noteForeground() {
+    HWND fg = GetForegroundWindow();
+    RECT r{};
+    if (fg && !IsIconic(fg) && GetWindowRect(fg, &r)) lastSeen_[toId(fg)] = r;
+}
+
 bool DockApp::startGenie(HWND window, bool restore) {
     if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !hwnd_) return false;
+    if (genieMustRestoreFirst(genieRun())) {   // une restauration interrompue aboutit quand même
+        const HWND previous = genie_.source();
+        genie_.finish();
+        if (IsWindow(previous)) restoreWindow(previous);
+    }
     // Case de départ (restauration) : celle affichée, agrandie ou non ; sinon celle du Dock au repos.
     std::optional<RECT> cell;
     if (auto it = shownTiles_.find(toId(window)); restore && it != shownTiles_.end()) cell = it->second;
@@ -671,7 +686,9 @@ bool DockApp::startGenie(HWND window, bool restore) {
     MONITORINFO mi{sizeof mi};   // réduite : l'écran de sa place d'avant
     if (!GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &mi)) return false;
     const bool tool = (GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0;
-    const RECT from = restoredRect(wp, mi.rcWork, mi.rcMonitor, tool, SIZE{});
+    std::optional<RECT> seen;
+    if (auto it = lastSeen_.find(toId(window)); it != lastSeen_.end()) seen = it->second;
+    const RECT from = genieStartRect(seen, wp, mi.rcWork, mi.rcMonitor, tool, SIZE{});
     const bool slow = GetAsyncKeyState(VK_SHIFT) < 0;   // Maj : ralenti, comme sur macOS
     if (!genie_.start(instance_, window, from, *cell, settings_.position, settings_.minimizeEffect, restore, nowSeconds(), slow))
         return false;
@@ -684,8 +701,9 @@ bool DockApp::stepGenie(double now) {
     if (!genie_.active()) return false;
     if (genie_.step(now)) return true;
     const HWND window = genie_.source();
-    if (genie_.restoring() && IsWindow(window)) restoreWindow(window);   // la fenêtre prend la place de son image
-    genie_.finish();
+    const bool restoring = genie_.restoring();
+    genie_.finish();   // avant restoreWindow : une animation lancée pendant celle-ci n'est pas coupée
+    if (restoring && IsWindow(window)) restoreWindow(window);   // la fenêtre prend la place de son image
     requestFrame();
     return false;
 }
@@ -1226,6 +1244,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kFullscreenTimer) {
                 checkFullscreen();
+                noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
                 return 0;
             }
             if (wp == kTrashTimer) {
@@ -1423,19 +1442,23 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ev.closed = [this](HWND h) {
         if (trace_) log::info(L"[trace] fermée %p", h);
         model_.windowClosed(toId(h));
+        lastSeen_.erase(toId(h));
         requestFrame();
     };
     ev.minimized = [this](HWND h, bool m) {
         if (trace_) log::info(L"[trace] %s %p", m ? L"réduite" : L"restaurée", h);
         model_.windowMinimized(toId(h), m);
-        if (m) startGenie(h, false);   // vers sa case du Dock
-        else if (genie_.active() && genie_.source() == h && !genie_.restoring()) genie_.cancel();   // restaurée ailleurs
+        if (genieOnMinimize(genieRun(), toId(h), m, false) == GenieReact::Cancel) genie_.cancel();   // restaurée ailleurs
         requestFrame();
+    };
+    ev.minimizeStarted = [this](HWND h) {   // réduction vue à l'instant : vers sa case du Dock
+        if (genieOnMinimize(genieRun(), toId(h), true, true) == GenieReact::Start) startGenie(h, false);
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.activated = [this](HWND h) {
         controller_.setAttention(model_.appOfWindow(toId(h)), false);
         checkFullscreen();
+        noteForeground();
         requestFrame();
     };
     ev.flashed = [this](HWND h) {

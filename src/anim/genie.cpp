@@ -93,4 +93,17 @@ RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monit
     return r;
 }
 
+RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor,
+                    bool toolWindow, SIZE src) {
+    if (lastSeen && !IsRectEmpty(&*lastSeen)) return *lastSeen;
+    return restoredRect(wp, work, monitor, toolWindow, src);
+}
+
+GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minimized, bool live) {
+    if (minimized) return live ? GenieReact::Start : GenieReact::Nothing;
+    return run.active && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
+}
+
+bool genieMustRestoreFirst(const GenieRun& run) { return run.active && run.restoring; }
+
 } // namespace md

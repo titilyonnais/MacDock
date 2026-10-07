@@ -215,3 +215,36 @@ TEST_CASE(min_animate_guard_user_without_animation) {
     CHECK(!live);
     CHECK_EQ(sets, 0);   // rien n'a été touché
 }
+
+TEST_CASE(genie_reacts_only_to_live_minimize) {   // relecture n° 1 : pas d'animation pour une fenêtre déjà réduite
+    md::GenieRun idle;
+    CHECK(md::genieOnMinimize(idle, 7, true, true) == md::GenieReact::Start);
+    CHECK(md::genieOnMinimize(idle, 7, true, false) == md::GenieReact::Nothing);   // découverte au lancement
+    CHECK(md::genieOnMinimize(idle, 7, false, true) == md::GenieReact::Nothing);
+}
+
+TEST_CASE(genie_cancels_when_restored_elsewhere) {   // relecture n° 5 : aussi pendant une restauration animée
+    md::GenieRun minimizing{true, 7, false}, restoring{true, 7, true};
+    CHECK(md::genieOnMinimize(minimizing, 7, false, true) == md::GenieReact::Cancel);
+    CHECK(md::genieOnMinimize(restoring, 7, false, true) == md::GenieReact::Cancel);
+    CHECK(md::genieOnMinimize(restoring, 8, false, true) == md::GenieReact::Nothing);
+}
+
+TEST_CASE(genie_interrupted_restore_still_restores) {   // relecture n° 2
+    CHECK(md::genieMustRestoreFirst(md::GenieRun{true, 7, true}));
+    CHECK(!md::genieMustRestoreFirst(md::GenieRun{true, 7, false}));
+    CHECK(!md::genieMustRestoreFirst(md::GenieRun{}));
+}
+
+TEST_CASE(genie_start_rect_prefers_last_seen) {   // relecture n° 3 : fenêtre ancrée (Snap)
+    WINDOWPLACEMENT wp{sizeof wp};
+    wp.rcNormalPosition = RECT{300, 200, 1100, 800};   // place flottante d'avant l'ancrage
+    const RECT monitor{0, 0, 1920, 1080}, work{0, 0, 1920, 1032};
+    const RECT snapped{-7, 0, 967, 1039};
+    RECT r = md::genieStartRect(snapped, wp, work, monitor, false, SIZE{});
+    CHECK(same(r, snapped));
+    r = md::genieStartRect(std::nullopt, wp, work, monitor, false, SIZE{});
+    CHECK(same(r, wp.rcNormalPosition));
+    r = md::genieStartRect(RECT{0, 0, 0, 0}, wp, work, monitor, false, SIZE{});   // vide : ignoré
+    CHECK(same(r, wp.rcNormalPosition));
+}

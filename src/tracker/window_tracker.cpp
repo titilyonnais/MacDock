@@ -100,6 +100,7 @@ void WindowTracker::onEvent(DWORD event, HWND hwnd) {
                 if (it->second.minimized != minimized) {
                     it->second.minimized = minimized;
                     if (events_.minimized) events_.minimized(hwnd, minimized);
+                    if (minimized && events_.minimizeStarted) events_.minimizeStarted(hwnd);
                 }
             }
             break;
