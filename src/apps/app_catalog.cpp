@@ -47,6 +47,7 @@ std::wstring foldForSearch(std::wstring_view text) {
 bool isListedApp(const AppEntry& e) {
     if (trimmed(e.name).empty() || e.parsingName.empty()) return false;
     const std::wstring target = foldForSearch(e.parsingName);
+    if (target.starts_with(L"http://") || target.starts_with(L"https://")) return false;   // lien web (steam:// reste)
     for (std::wstring_view ext : {L".chm", L".txt", L".pdf", L".htm", L".html", L".url", L".rtf", L".ini", L".log"})
         if (endsWith(target, ext)) return false;
     const std::wstring name = foldForSearch(trimmed(e.name));

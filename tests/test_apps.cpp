@@ -7,6 +7,7 @@
 
 #include "minitest.h"
 #include "../src/apps/app_catalog.h"
+#include "../src/apps/apps_folder.h"
 #include "../src/apps/apps_layout.h"
 
 TEST_CASE(apps_listed_filters_docs_and_uninstallers) {
@@ -17,6 +18,9 @@ TEST_CASE(apps_listed_filters_docs_and_uninstallers) {
     CHECK(!md::isListedApp({L"Foo Help", L"C:\\Foo\\help.chm"}));
     CHECK(!md::isListedApp({L"Site web", L"C:\\Foo\\site.url"}));
     CHECK(!md::isListedApp({L"Lisez-moi", L"C:\\Foo\\README.TXT"}));
+    CHECK(!md::isListedApp({L"Epson Connect Site", L"https://www.epsonconnect.com/?p=0"}));   // lien web
+    CHECK(!md::isListedApp({L"Forum", L"HTTP://example.com/forum"}));
+    CHECK(md::isListedApp({L"Counter-Strike 2", L"steam://rungameid/730"}));                // jeu : gardé
     CHECK(!md::isListedApp({L"", L"x.exe"}));
     CHECK(!md::isListedApp({L"Vide", L""}));
 }
@@ -108,4 +112,16 @@ TEST_CASE(apps_keys_move_across_pages) {
     c = md::appsKey(g, c, VK_HOME, 37);
     CHECK(c.page == 0 && c.selected == 0);
     CHECK(md::appsKey(g, {0, -1}, VK_RIGHT, 0).selected == -1);   // aucune app
+}
+
+TEST_CASE(apps_read_real_folder) {   // lit le dossier Apps de Windows sans rien lancer
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    auto raw = md::readAppsFolder();
+    CHECK(raw.size() >= 5);
+    for (auto& e : raw) CHECK(!e.parsingName.empty());
+    md::AppCatalog cat;
+    cat.refreshAsync();
+    auto list = cat.get(10000);
+    CHECK(!list.empty() && list.size() <= raw.size());
+    CoUninitialize();
 }
