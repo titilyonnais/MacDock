@@ -37,6 +37,7 @@ struct BarDrawItem {      // pixels de la barre
 struct BarFrame {
     float scale = 1;
     bool darkText = false;   // texte foncé (fond clair) ; sinon clair avec ombre
+    float opacity = 1;       // barre d'un écran inactif : 0,6
     std::vector<BarDrawItem> items;
     MenuBarMetrics metrics;
 };
