@@ -56,7 +56,7 @@ LayoutResult computeLayout(const LayoutInput& in) {
     // séparateur). La taille d'une icône est sa largeur étirée : jamais de chevauchement.
     const double amount = std::clamp(std::isfinite(in.amount) ? in.amount : 0.0, 0.0, 1.0);
     const bool hasCursor = in.cursor && std::isfinite(*in.cursor) && amount > 0;
-    const double range = in.rangeTiles * in.tileSize;
+    const double range = std::max(0.0, in.rangeTiles * in.tileSize);
     double cursor = 0, a = 0;
     if (hasCursor) {
         const double lo = restLeft.front() - in.gap / 2;
@@ -67,7 +67,7 @@ LayoutResult computeLayout(const LayoutInput& in) {
             // ni moins.
             const double h = std::min(in.tileSize / 2, range), arc = std::numbers::pi * h / range;
             const double mean = (1 + std::sin(arc) / arc) / 2;
-            a = (in.largeSize / in.tileSize - 1) * amount / mean;
+            a = std::max(-0.99, (in.largeSize / in.tileSize - 1) * amount / mean);   // étirement toujours positif
         }
     }
     auto place = [&](double u) {

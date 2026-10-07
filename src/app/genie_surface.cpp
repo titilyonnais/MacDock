@@ -83,11 +83,16 @@ bool GenieSurface::warm(HINSTANCE instance, HWND source, const RECT* box) {
         }
     }
     capturing_ = capture_.start(instance, dev_.Get(), source);   // sur un fil : retour immédiat
-    if (capturing_) gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
-    warmSource_ = capturing_ ? source : nullptr;
+    if (!capturing_) {   // fenêtre protégée contre la capture… : rien ne reste affiché
+        end();
+        if (diagnosticCapture()) log::info(L"[diag] génie GPU : capture d'avance impossible");
+        return false;
+    }
+    gpu_.setWhite(BackdropCapture::querySdrWhite(capture_.monitor()));
+    warmSource_ = source;
     warmDrawn_ = false;
-    if (diagnosticCapture()) log::info(L"[diag] génie GPU : capture d'avance %s", capturing_ ? L"lancée" : L"impossible");
-    return capturing_;
+    if (diagnosticCapture()) log::info(L"[diag] génie GPU : capture d'avance lancée");
+    return true;
 }
 
 void GenieSurface::pump(const std::vector<GenieVertex>& mesh) {
@@ -109,7 +114,7 @@ void GenieSurface::pump(const std::vector<GenieVertex>& mesh) {
 }
 
 void GenieSurface::cool() {
-    if (warmSource_) end();
+    if (warmSource_ || shown_) end();   // jamais pendant une animation (GenieWindow ne l'appelle qu'au repos)
 }
 
 bool GenieSurface::begin(HINSTANCE instance, HWND source, const RECT& box) {
@@ -188,10 +193,7 @@ bool GenieSurface::frame(const std::vector<GenieVertex>& mesh) {
         if (diagnosticCapture())
             log::info(L"[diag] génie GPU : image de la capture reçue (préparée en %.1f ms)",
                       double(f1.QuadPart - f0.QuadPart) * 1000.0 / double(fq.QuadPart));
-        capturing_ = false;   // une seule image suffit ; l'arrêt (une dizaine de ms) attend la passation
-    } else if (frames_ == 3) {
-        capture_.stop();   // le relais disparaît
-        capturing_ = false;
+        capturing_ = false;   // une seule image suffit ; l'arrêt (une dizaine de ms) attend la fin (end)
     }
     Com<ID3D11Texture2D> back;
     if (FAILED(swap_->GetBuffer(0, IID_PPV_ARGS(&back))) ||

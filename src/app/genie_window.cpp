@@ -25,13 +25,6 @@ void GenieWindow::arm(HINSTANCE instance, HWND source, const RECT& visible, cons
     if (!ensureWindow(instance)) return;
     HTHUMBNAIL t = nullptr;
     if (FAILED(DwmRegisterThumbnail(hwnd_, source, &t))) return;
-    {
-        std::lock_guard lock(coverLock_);
-        armedThumb_ = t;
-        armDown_ = down;
-        armedShown_ = false;
-    }
-    armedSource_ = source;
     armedBox_ = genieHostBox(monitorOf(visible), monitorOf(dock));
     DWM_THUMBNAIL_PROPERTIES p{};
     p.dwFlags = DWM_TNP_VISIBLE | DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
@@ -40,7 +33,15 @@ void GenieWindow::arm(HINSTANCE instance, HWND source, const RECT& visible, cons
     p.fSourceClientAreaOnly = FALSE;
     p.rcDestination = visible;
     OffsetRect(&p.rcDestination, -armedBox_.left, -armedBox_.top);
-    DwmUpdateThumbnailProperties(t, &p);
+    DwmUpdateThumbnailProperties(t, &p);   // réglée avant d'être publiée : le crochet ne la voit que prête
+    {
+        std::lock_guard lock(coverLock_);
+        armedThumb_ = t;
+        armDown_ = down;
+        armedShown_ = false;
+    }
+    armedFlag_ = true;
+    armedSource_ = source;
     // Vide et traversée par les clics : rien ne se voit tant que la couverture est invisible.
     SetWindowPos(hwnd_, HWND_TOPMOST, armedBox_.left, armedBox_.top, armedBox_.right - armedBox_.left,
                  armedBox_.bottom - armedBox_.top, SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -62,8 +63,11 @@ void GenieWindow::pumpArmed() {
 }
 
 bool GenieWindow::revealArmed(POINT up) {
-    std::lock_guard lock(coverLock_);
-    if (!armedThumb_) return false;
+    // Appelée depuis le crochet souris : jamais d'attente (un crochet lent fige la souris de tout le système, et
+    // Windows finit par le retirer). Verrou pris ailleurs : le fil du Dock la rappelle en traitant le relâchement.
+    if (!armedFlag_) return false;
+    std::unique_lock lock(coverLock_, std::try_to_lock);
+    if (!lock.owns_lock() || !armedThumb_) return false;
     if (armedShown_) return true;
     if (!genieMinimizeConfirmed(armDown_, up)) return false;
     DWM_THUMBNAIL_PROPERTIES p{};
@@ -76,11 +80,14 @@ bool GenieWindow::revealArmed(POINT up) {
 
 void GenieWindow::disarm() {
     if (!armedThumb_) return;
+    HTHUMBNAIL t = nullptr;
     {
         std::lock_guard lock(coverLock_);
-        DwmUnregisterThumbnail(armedThumb_);
+        t = armedThumb_;
         armedThumb_ = nullptr;
     }
+    armedFlag_ = false;
+    DwmUnregisterThumbnail(t);   // hors verrou : jusqu'à ~30 ms (mesuré), le crochet ne doit pas l'attendre
     armedSource_ = nullptr;
     if (!active() && hwnd_) ShowWindow(hwnd_, SW_HIDE);
     if (!running_) gpu_.cool();
@@ -135,13 +142,18 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
         std::lock_guard lock(coverLock_);
         first = armedThumb_;
         armedThumb_ = nullptr;
+        armedFlag_ = false;
         armedSource_ = nullptr;
     } else {
         disarm();
         if (running_ || active()) finish();   // sinon la capture lancée d'avance (case survolée) est gardée
     }
     if (effect == MinimizeEffect::Windows || !IsWindow(source) || !ensureWindow(instance)) {
-        if (first) DwmUnregisterThumbnail(first);
+        if (first) {   // couverture adoptée : fenêtre des bandes et surface GPU d'avance retirées aussi
+            DwmUnregisterThumbnail(first);
+            if (hwnd_ && !active()) ShowWindow(hwnd_, SW_HIDE);
+            gpu_.cool();
+        }
         return false;
     }
     QueryPerformanceCounter(&q1);

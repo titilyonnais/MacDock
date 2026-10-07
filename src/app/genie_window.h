@@ -56,6 +56,7 @@ private:
     HTHUMBNAIL armedThumb_ = nullptr;   // couverture posée d'avance (réduction annoncée)
     HWND armedSource_ = nullptr;
     std::atomic<bool> armedShown_{false};   // relâché sur le bouton : la couverture est affichée
+    std::atomic<bool> armedFlag_{false};    // une couverture attend : le crochet ne prend le verrou que dans ce cas
     std::mutex coverLock_;   // armedThumb_ et armDown_ : le crochet souris lit, le fil du Dock écrit
     POINT armDown_{};
     RECT armedBox_{};

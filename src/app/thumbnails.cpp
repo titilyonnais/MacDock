@@ -111,11 +111,13 @@ void Thumbnails::sync(HWND dock, RenderFrame& frame, bool visible) {
             ++it;
             continue;
         }
-        if (it->second.id) {   // masquée tout de suite, retirée au repos (flush)
-            DWM_THUMBNAIL_PROPERTIES p{};
-            p.dwFlags = DWM_TNP_VISIBLE;
-            p.fVisible = FALSE;
-            timedDwm(L"masquage (retrait)", [&] { return DwmUpdateThumbnailProperties(it->second.id, &p); });
+        if (it->second.id) {   // masquée tout de suite (sauf si elle l'est déjà), retirée au repos (flush)
+            if (it->second.opacity != 0 || !IsRectEmpty(&it->second.dest)) {
+                DWM_THUMBNAIL_PROPERTIES p{};
+                p.dwFlags = DWM_TNP_VISIBLE;
+                p.fVisible = FALSE;
+                timedDwm(L"masquage (retrait)", [&] { return DwmUpdateThumbnailProperties(it->second.id, &p); });
+            }
             retired_.push_back(it->second.id);
         }
         if (trace_) log::info(L"[trace] miniature retirée");

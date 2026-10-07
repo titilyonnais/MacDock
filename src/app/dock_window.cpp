@@ -1117,6 +1117,7 @@ void DockApp::onButton(bool down, POINT pt) {
                       static_cast<void*>(w), pt.x, pt.y, onMin ? L"oui" : L"non", buttons.left, buttons.right, int(hit));
         if (!onMin) return;
         // Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente.
+        KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
         genie_.arm(instance_, w, visible, dock, pt);
         if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
         return;
