@@ -123,9 +123,10 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
     rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);   // fond transparent : pas de ClearType
     rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     Com<ID2D1SolidColorBrush> ink, shadow, capsule;
-    rt->CreateSolidColorBrush(f.darkText ? rgba(0, 0, 0, 0.85f) : rgba(1, 1, 1, 1), &ink);
-    rt->CreateSolidColorBrush(rgba(0, 0, 0, 0.25f), &shadow);
-    rt->CreateSolidColorBrush(f.darkText ? rgba(0, 0, 0, 0.10f) : rgba(1, 1, 1, 0.22f), &capsule);
+    const float o = std::clamp(f.opacity, 0.0f, 1.0f);
+    rt->CreateSolidColorBrush(f.darkText ? rgba(0, 0, 0, 0.85f * o) : rgba(1, 1, 1, o), &ink);
+    rt->CreateSolidColorBrush(rgba(0, 0, 0, 0.25f * o), &shadow);
+    rt->CreateSolidColorBrush(f.darkText ? rgba(0, 0, 0, 0.10f * o) : rgba(1, 1, 1, 0.22f * o), &capsule);
     const float shadowDy = std::max(1.0f, std::round(s));
     const bool withShadow = !f.darkText;
 
@@ -172,6 +173,16 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
                     rt->FillRectangle(D2D1::RectF(qx, qy, qx + q, qy + q), b);
                 }
             }
+            continue;
+        }
+        if (it.image && it.imageW && it.imageH && it.image->size() == std::size_t(it.imageW) * it.imageH * 4) {
+            const float size = std::round(float(m.statusIconSize) * s);
+            const float x0 = std::round(it.x + (it.width - size) / 2), y0 = std::round((height - size) / 2);
+            Com<ID2D1Bitmap> bmp;
+            const auto props = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+            if (SUCCEEDED(rt->CreateBitmap(D2D1::SizeU(it.imageW, it.imageH), it.image->data(), it.imageW * 4, props, &bmp)))
+                rt->DrawBitmap(bmp.Get(), D2D1::RectF(x0, y0, x0 + size, y0 + size), o,
+                               D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
             continue;
         }
         if (it.glyph != Glyph::None) {

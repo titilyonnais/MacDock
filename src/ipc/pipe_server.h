@@ -21,6 +21,8 @@ public:
     bool clientConnected() const { return connected_; }
     // Le battement de cœur n'est envoyé que si ce prédicat est vrai (thread d'interface vivant).
     void setLivenessCheck(std::function<bool()> alive) { alive_ = std::move(alive); }
+    // Client connecté (true) ou parti (false), appelé sur le thread du pipe. À fixer avant start.
+    void setConnectionHandler(std::function<void(bool)> h) { onConnection_ = std::move(h); }
 
 private:
     void run();
@@ -29,6 +31,7 @@ private:
     std::wstring name_;
     Handler handler_;
     std::function<bool()> alive_;
+    std::function<void(bool)> onConnection_;
     std::thread thread_;
     HANDLE stopEvent_ = nullptr;
     std::atomic<bool> connected_{false};

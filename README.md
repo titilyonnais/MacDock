@@ -3,9 +3,9 @@
 Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites, Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
-- **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de l'écran, avec le menu du système, le nom de l'app active, ses menus, et la date et l'heure.
+- **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
 
-> État : le Dock est complet (plans 1 à 5). La barre de menus est en cours : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8) ; viennent ensuite les icônes des autres apps et les écrans multiples (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
+> État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -20,7 +20,7 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
    - Remplacer tout le code par le contenu de `windhawk\macdock-hide-taskbar.wh.cpp`.
    - *Compiler le mod*, puis *Quitter l'éditeur* et vérifier qu'il est activé.
 
-   Sans Dock lancé, le mod ne cache rien.
+   Sans Dock lancé, le mod ne cache rien. Depuis sa version 1.2, il transmet aussi à la barre de menus les icônes de la zone de notification (Discord, OneDrive, antivirus…) : si tu avais une version plus ancienne, recolle le code et recompile.
 
 3. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
 
@@ -67,6 +67,8 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - **Batterie** : charge, source d'alimentation, réglages.
   - **Centre de contrôle** : tuiles Wi-Fi ou Ethernet, Bluetooth (s'il y a une radio), Concentration, Recopie d'écran (`Win+K`) ; curseurs de luminosité (si l'écran se règle par WMI ou DDC/CI) et du son ; lecture en cours avec précédent, lecture/pause et suivant.
   - Curseurs, interrupteurs, tuiles et boutons agissent sans fermer le menu, qui se met à jour pendant qu'il est ouvert. Survoler une icône ou un titre passe de l'un à l'autre.
+- **Icônes des autres apps** (avec le mod Windhawk 1.2) : à gauche des icônes d'état, celles de la zone de notification de Windows, la plus récente à gauche. Un clic, un double-clic ou un clic droit leur parvient comme sur la barre des tâches (leur propre menu s'ouvre). S'il n'y a pas la place, celles de gauche s'effacent avant de toucher le logo et le nom de l'app. `"showAppIcons": false` les masque.
+- **Plusieurs écrans** : une barre en haut de chaque écran, avec les mêmes menus. Celle de l'écran où tu travailles est pleine, les autres sont atténuées ; un menu s'ouvre sur la barre cliquée. Brancher ou débrancher un écran ajoute ou retire sa barre.
 - **Plein écran** : la barre s'efface et revient quand le curseur touche le haut de l'écran.
 - **Clic droit dans le vide de la barre** : réglages, masquage automatique, quitter la barre.
 - **Logo** : par défaut celui de Windows. Pour le remplacer, mets une image `menubar-logo.png` dans `%APPDATA%\MacDock\` ; seule sa transparence compte, elle prend la couleur du texte.
@@ -80,7 +82,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 | `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
-| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
+| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`, `showAppIcons`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
 | `menubar-logo.png` | Logo personnalisé du menu du système (facultatif). |
 | `menubar-recent.json` | Apps récentes du menu du système, écrit par la barre (les documents viennent du dossier Récents de Windows, jamais modifié). |
 | `logs\` | Journaux (`logs\menubar\` pour la barre de menus). |

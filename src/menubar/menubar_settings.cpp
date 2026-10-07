@@ -30,6 +30,7 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
     s.showNetwork = readBool(v, "showNetwork", s.showNetwork);
     s.showBattery = readBool(v, "showBattery", s.showBattery);
     s.showSearch = readBool(v, "showSearch", s.showSearch);
+    s.showAppIcons = readBool(v, "showAppIcons", s.showAppIcons);
     if (auto* f = v.find("font")) s.font = fromUtf8(f->asString(""));
     if (auto* c = v.find("clock"); c && c->isObject()) {
         s.clock.weekday = readBool(*c, "weekday", s.clock.weekday);
@@ -68,6 +69,7 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     v.set("showNetwork", s.showNetwork);
     v.set("showBattery", s.showBattery);
     v.set("showSearch", s.showSearch);
+    v.set("showAppIcons", s.showAppIcons);
     const MenuBarMetrics& t = s.metrics;
     json::Value m;
     m.set("height", t.height);

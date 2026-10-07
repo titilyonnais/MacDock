@@ -174,7 +174,7 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
 
 ### 4.7 Écrans
 - Plans 6 à 8 : la barre est sur l'écran principal et suit son DPI.
-- Plan 9 : une barre par écran, comme sur macOS. Celle de l'écran actif est pleine ; les autres sont atténuées à 60 %.
+- Plan 9 : une barre par écran, comme sur macOS. Celle de l'écran actif est pleine ; les autres sont atténuées à 60 % (voir 4.10).
 
 ### 4.8 Vrais menus et Éléments récents (plan 7)
 
@@ -246,6 +246,30 @@ Toucher un curseur, un interrupteur, une tuile ou un bouton de lecture ne ferme 
 **Blocages et défaillances.**
 - Les sources lentes (DDC/CI, WinRT, WlanAPI) sont lues sur un fil de travail ; la barre ne les attend jamais.
 - Une source indisponible masque son élément ou sa tuile ; aucune erreur n'est affichée.
+
+### 4.10 Icônes des autres apps et écrans multiples (plan 9)
+
+**Icônes des apps (zone de notification).** Sur macOS, les apps posent leurs icônes dans la barre de menus, à gauche des icônes système. Sous Windows, elles appellent `Shell_NotifyIcon`, qui envoie un `WM_COPYDATA` à la fenêtre `Shell_TrayWnd` d'explorer.
+- **Relais par le mod Windhawk** (`macdock-hide-taskbar`, version 1.2), seul code qui tourne dans explorer :
+  - un crochet `WH_CALLWNDPROC` sur le fil de `Shell_TrayWnd` lit chaque `WM_COPYDATA` de la zone de notification (`dwData == 1`, signature `0x34753423`, `NOTIFYICONDATA` 32 bits) : ajout, modification, suppression, version ;
+  - le mod tient la liste des icônes, convertit chaque icône en image BGRA 32 × 32 et l'envoie à la barre par le pipe `\\.\pipe\MacMenuBar` (même format d'en-tête que `\\.\pipe\MacDock`, nouveaux types `TrayUpdate` et `TrayRemove`) ;
+  - à la connexion de la barre, il renvoie toute la liste ; au démarrage du mod, il diffuse `TaskbarCreated` pour que les apps déjà lancées redéclarent leurs icônes ;
+  - explorer garde ses propres icônes : le mod observe sans rien bloquer.
+- **Dans la barre** : les icônes visibles (sans `NIS_HIDDEN`) sont placées à gauche des icônes système, la plus récente à gauche, en couleurs, à 16 pt. Réglage `showAppIcons` (activé par défaut).
+- **Clic** : la barre poste à la fenêtre de l'app le message de rappel, au format de sa version :
+  - versions 0 à 3 : `wParam` = identifiant, `lParam` = message souris ;
+  - version 4 : `wParam` = point d'ancrage (`x`, `y`), `lParam` = message souris (mot bas) et identifiant (mot haut) ; après le relâchement, `NIN_SELECT` (gauche) ou `WM_CONTEXTMENU` (droit).
+  
+  Avant de poster, la barre autorise l'app à passer au premier plan (`AllowSetForegroundWindow`) : son menu ou sa fenêtre s'ouvre devant.
+- **Sans le mod** : aucune icône d'app ; rien d'autre ne change.
+- **Une app disparue** (fenêtre détruite) : son icône est retirée au relevé suivant.
+
+**Écrans multiples.** Une barre par écran, comme sur macOS :
+- chaque barre a sa zone réservée, son DPI, la couleur de son texte (fond mesuré sous elle) et son plein écran ;
+- l'écran actif est celui de la fenêtre au premier plan (le bureau : celui du curseur). Sa barre est pleine ; les autres sont atténuées à 60 % ;
+- toutes les barres montrent les mêmes menus et icônes ; un menu s'ouvre sous la barre cliquée ;
+- un écran branché ou débranché ajoute ou retire sa barre ;
+- `--snapshot` rend la barre de l'écran principal.
 
 ## 5. Robustesse
 - **Mutex** `Local\MacMenuBar` : une seule barre à la fois.

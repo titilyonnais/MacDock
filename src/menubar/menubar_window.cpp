@@ -16,6 +16,7 @@
 #include "../core/strings.h"
 #include "../tracker/app_identity.h"
 #include "bar_color.h"
+#include "bar_screens.h"
 #include "clock_format.h"
 #include "foreground_rules.h"
 #include "shortcut.h"
@@ -30,11 +31,14 @@ MenuBarApp* MenuBarApp::self_ = nullptr;
 
 namespace {
 
-constexpr wchar_t kClassName[] = L"MacMenuBarWindow";
+constexpr wchar_t kClassName[] = L"MacMenuBarWindow";   // fenêtre de contrôle (trouvée par le lanceur et --quit)
+constexpr wchar_t kScreenClass[] = L"MacMenuBarScreen";  // une barre par écran
 constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
 constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
 constexpr UINT WM_APP_STATUS = WM_APP + 4;       // lParam : StatusSnapshot* (à libérer)
+constexpr UINT WM_APP_SCREENS = WM_APP + 7;      // DPI d'un écran changé : barres refaites
+constexpr UINT WM_APP_TRAY = WM_APP + 6;         // lParam : ipc::Message* (à libérer) ; wParam 1 : connexion
 constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sortie par défaut changée
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
@@ -52,6 +56,8 @@ constexpr UINT_PTR kConfigTimer = 0x4346;       // "CF"
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS"
 constexpr UINT_PTR kRecentTimer = 0x5243;       // "RC" : écriture différée des apps récentes
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
+constexpr UINT_PTR kTrayLayoutTimer = 0x544C;   // "TL" : rafale de messages du mod regroupée
+constexpr UINT_PTR kTrayPruneTimer = 0x5450;    // "TP" : icônes d'apps fermées
 constexpr int kCmdBarSettings = 1, kCmdBarAutohide = 2, kCmdBarQuit = 3;
 
 double nowSeconds() {
@@ -116,7 +122,7 @@ void MenuBarApp::loadSettings(bool initial) {
         settings_ = menuBarSettingsFromJson(f.value);
     }
     // Fichier absent : on l'écrit avec les valeurs par défaut (pas en --snapshot, qui ne touche à rien).
-    if (!f.fromFile && !f.wasInvalid && !f.unreadable && hwnd_) saveJsonFileAtomic(path, menuBarSettingsToJson(settings_));
+    if (!f.fromFile && !f.wasInvalid && !f.unreadable && ctl_) saveJsonFileAtomic(path, menuBarSettingsToJson(settings_));
     fileTime(path, settingsTime_);
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
     if (m.fromFile && !m.wasInvalid) glassMetrics_ = metricsFromJson(m.value);
@@ -131,84 +137,202 @@ void MenuBarApp::checkSettingsFile() {
 }
 
 void MenuBarApp::applySettings() {
-    visibility_.setTimings({0, 0.5, 0.25, 0.25});
-    syncAppBar();
-    reposition();
+    for (auto& s : screens_) syncAppBar(*s);
+    repositionAll();
 }
 
 void MenuBarApp::loadLogo() {
     UINT w = 0, h = 0;
     auto px = readPng(dataDir_ + L"\\menubar-logo.png", w, h);
-    LogoImage logo;
+    logo_ = {};
     if (!px.empty()) {
-        logo.w = w;
-        logo.h = h;
-        logo.bgra = std::move(px);
+        logo_.w = w;
+        logo_.h = h;
+        logo_.bgra = std::move(px);
         log::info(L"Barre : logo personnalisé %ux%u", w, h);
     }
-    renderer_.setLogo(std::move(logo));
+    for (auto& s : screens_) s->renderer.setLogo(logo_);
+}
+
+// ---- Écrans ----
+
+namespace {
+BOOL CALLBACK collectMonitor(HMONITOR mon, HDC, LPRECT, LPARAM lp) {
+    reinterpret_cast<std::vector<HMONITOR>*>(lp)->push_back(mon);
+    return TRUE;
+}
+} // namespace
+
+MenuBarApp::Screen* MenuBarApp::screenOf(HWND hwnd) {
+    return reinterpret_cast<Screen*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));   // posé après la création, retiré avant la destruction
+}
+
+bool MenuBarApp::createScreen(Screen& s) {
+    s.hwnd = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE, kScreenClass,
+                             L"MacMenuBar", WS_POPUP, s.rect.left, s.rect.top, 100, 24, nullptr, nullptr, instance_, nullptr);
+    if (!s.hwnd) {
+        log::error(L"Barre : CreateWindowEx a échoué (%lu)", GetLastError());
+        return false;
+    }
+    SetWindowLongPtrW(s.hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&s));
+    if (!s.renderer.init(s.hwnd)) {
+        log::error(L"Barre : initialisation graphique impossible");
+        SetWindowLongPtrW(s.hwnd, GWLP_USERDATA, 0);
+        DestroyWindow(s.hwnd);
+        s.hwnd = nullptr;
+        return false;
+    }
+    s.renderer.setLogo(logo_);
+    s.visibility.setTimings({0, 0.5, 0.25, 0.25});
+    s.darkText = !systemDarkMode();
+    if (!settings_.autohide) registerAppBar(s);
+    return true;
+}
+
+void MenuBarApp::destroyScreen(Screen& s) {
+    if (s.sampler.running()) s.sampler.stop();
+    if (s.hwnd) SetWindowLongPtrW(s.hwnd, GWLP_USERDATA, 0);   // ses derniers messages ne la touchent plus
+    removeAppBar(s);
+    if (s.hwnd) DestroyWindow(s.hwnd);
+    s.hwnd = nullptr;
+}
+
+void MenuBarApp::rebuildScreens() {
+    // Le menu ouvert lit sa barre : on attend sa fermeture. Imbriqué (message traité pendant un appel qui suit) :
+    // on refait après.
+    if (!screensGate_.tryBegin(menuOpen_ || menuSession_)) return;
+    std::vector<HMONITOR> mons;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitor, reinterpret_cast<LPARAM>(&mons));
+    std::vector<ScreenInfo> infos;
+    for (HMONITOR mon : mons) {
+        MONITORINFO mi{sizeof mi};
+        if (!GetMonitorInfoW(mon, &mi)) continue;
+        UINT dx = 96, dy = 96;
+        GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dx, &dy);
+        infos.push_back({mi.rcMonitor, dx, (mi.dwFlags & MONITORINFOF_PRIMARY) != 0});
+    }
+    infos = orderScreens(std::move(infos));
+    std::vector<RECT> existing;
+    for (const auto& s : screens_) existing.push_back(s->rect);
+    const ScreenPlan plan = planScreens(existing, infos);   // une barre déjà sur un écran est gardée : pas de clignotement
+    // Les nouvelles barres sont créées à part : pendant CreateWindowEx et l'inscription de la zone réservée, des
+    // messages sont traités et screens_ reste entier.
+    std::vector<std::unique_ptr<Screen>> fresh(infos.size());
+    for (std::size_t i = 0; i < infos.size(); ++i) {
+        if (plan.keep[i] >= 0) continue;
+        auto s = std::make_unique<Screen>();
+        s->rect = infos[i].rect;
+        if (createScreen(*s)) fresh[i] = std::move(s);
+    }
+    // Échange d'un bloc, sans appel à Windows ; les barres débranchées sont détruites une fois hors de screens_.
+    std::vector<std::unique_ptr<Screen>> next, dropped;
+    for (std::size_t i = 0; i < infos.size(); ++i) {
+        auto s = plan.keep[i] >= 0 ? std::move(screens_[std::size_t(plan.keep[i])]) : std::move(fresh[i]);
+        if (!s) continue;
+        s->monitor = MonitorFromRect(&infos[i].rect, MONITOR_DEFAULTTONEAREST);
+        s->dpi = infos[i].dpi;
+        s->primary = infos[i].primary;
+        next.push_back(std::move(s));
+    }
+    for (std::size_t i : plan.drop) dropped.push_back(std::move(screens_[i]));
+    screens_ = std::move(next);
+    for (auto& old : dropped) destroyScreen(*old);
+    if (screens_.empty()) {
+        screensGate_.end();
+        log::error(L"Barre : aucun écran utilisable, arrêt (le lanceur relancera la barre)");
+        exitCode_ = 2;
+        PostQuitMessage(2);
+        return;
+    }
+    log::info(L"Barre : %zu écran(s)", screens_.size());
+    activeScreen_ = std::min(activeScreen_, screens_.size() - 1);
+    repositionAll();
+    updateActiveScreen();
+    startSamples();
+    stepVisibilityAll();   // masquage automatique : les barres neuves se cachent aussi
+    if (screensGate_.end()) PostMessageW(ctl_, WM_APP_SCREENS, 0, 0);   // écrans changés entre-temps
+}
+
+void MenuBarApp::updateActiveScreen() {
+    if (screens_.empty()) return;
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &pid);
+    if (pid == GetCurrentProcessId()) return;   // nos menus : l'écran actif ne change pas
+    std::vector<ScreenInfo> infos;
+    for (auto& s : screens_) infos.push_back({s->rect, s->dpi, s->primary});
+    RECT rc{};
+    const RECT* window = nullptr;
+    wchar_t cls[64] = {};
+    if (fg) GetClassNameW(fg, cls, 64);
+    const bool desktop = wcscmp(cls, L"Progman") == 0 || wcscmp(cls, L"WorkerW") == 0;
+    if (fg && !desktop && !IsIconic(fg) && GetWindowRect(fg, &rc)) window = &rc;
+    POINT pt{};
+    GetCursorPos(&pt);
+    const std::size_t a = activeScreen(infos, window, pt);
+    if (a == activeScreen_) return;
+    activeScreen_ = a;
+    if (trace_) log::info(L"[trace] barre : écran actif %zu", a);
+    render();
 }
 
 // ---- Placement ----
 
-void MenuBarApp::registerAppBar() {
+void MenuBarApp::registerAppBar(Screen& s) {
     APPBARDATA abd{};
     abd.cbSize = sizeof abd;
-    abd.hWnd = hwnd_;
+    abd.hWnd = s.hwnd;
     abd.uCallbackMessage = WM_APP_APPBAR;
-    appBar_ = SHAppBarMessage(ABM_NEW, &abd) != FALSE;
+    s.appBar = SHAppBarMessage(ABM_NEW, &abd) != FALSE;
 }
 
-void MenuBarApp::removeAppBar() {
-    if (!appBar_) return;
+void MenuBarApp::removeAppBar(Screen& s) {
+    if (!s.appBar) return;
     APPBARDATA abd{};
     abd.cbSize = sizeof abd;
-    abd.hWnd = hwnd_;
+    abd.hWnd = s.hwnd;
     SHAppBarMessage(ABM_REMOVE, &abd);
-    appBar_ = false;
+    s.appBar = false;
 }
 
-void MenuBarApp::syncAppBar() {
-    if (!hwnd_) return;
+void MenuBarApp::syncAppBar(Screen& s) {
+    if (!s.hwnd) return;
     const bool want = !settings_.autohide;
-    if (want == appBar_) return;
-    if (want) registerAppBar();
-    else removeAppBar();
+    if (want == s.appBar) return;
+    if (want) registerAppBar(s);
+    else removeAppBar(s);
 }
 
-void MenuBarApp::reposition() {
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-    MONITORINFO mi{sizeof mi};
-    GetMonitorInfoW(mon, &mi);
-    monitor_ = mi.rcMonitor;
-    UINT dpiX = 96, dpiY = 96;
-    GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
-    const float scale = float(dpiX) / 96.0f;
-    heightPx_ = int(std::lround(settings_.metrics.height * scale));
-    if (scale != scale_ || font_.empty() || hwnd_ == nullptr) {
-        scale_ = scale;
-        font_ = renderer_.setFont(settings_.font, float(settings_.metrics.fontSize) * scale_);
-    } else {
-        font_ = renderer_.setFont(settings_.font, float(settings_.metrics.fontSize) * scale_);   // réglage changé
+void MenuBarApp::reposition(Screen& s) {
+    if (s.monitor) {
+        UINT dx = 96, dy = 96;
+        if (SUCCEEDED(GetDpiForMonitor(s.monitor, MDT_EFFECTIVE_DPI, &dx, &dy))) s.dpi = dx;
     }
-    if (hwnd_ && appBar_) {
+    s.scale = float(s.dpi) / 96.0f;
+    s.heightPx = int(std::lround(settings_.metrics.height * s.scale));
+    s.font = s.renderer.setFont(settings_.font, float(settings_.metrics.fontSize) * s.scale);
+    if (s.hwnd && s.appBar) {
         APPBARDATA abd{};
         abd.cbSize = sizeof abd;
-        abd.hWnd = hwnd_;
+        abd.hWnd = s.hwnd;
         abd.uEdge = ABE_TOP;
-        abd.rc = {monitor_.left, monitor_.top, monitor_.right, monitor_.top + heightPx_};
+        abd.rc = {s.rect.left, s.rect.top, s.rect.right, s.rect.top + s.heightPx};
         SHAppBarMessage(ABM_QUERYPOS, &abd);
-        abd.rc.bottom = abd.rc.top + heightPx_;
+        abd.rc.bottom = abd.rc.top + s.heightPx;
         SHAppBarMessage(ABM_SETPOS, &abd);
     }
-    const int width = monitor_.right - monitor_.left;
-    if (hwnd_) {
-        SetWindowPos(hwnd_, HWND_TOPMOST, monitor_.left, monitor_.top - yOffsetPx_, width, heightPx_,
-                     SWP_NOACTIVATE | (visible_ ? SWP_SHOWWINDOW : 0));
-        renderer_.resize(UINT(width), UINT(heightPx_));
+    const int width = s.rect.right - s.rect.left;
+    if (s.hwnd) {
+        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, width, s.heightPx,
+                     SWP_NOACTIVATE | (s.visible ? SWP_SHOWWINDOW : 0));
+        s.renderer.resize(UINT(width), UINT(s.heightPx));
     }
-    if (trace_) log::info(L"[trace] barre : %d x %d px (échelle %.2f), zone réservée %s, police %s", width, heightPx_,
-                          scale_, appBar_ ? L"oui" : L"non", font_.c_str());
+    if (trace_) log::info(L"[trace] barre : écran (%ld, %ld) %d x %d px (échelle %.2f), zone réservée %s, police %s",
+                          s.rect.left, s.rect.top, width, s.heightPx, s.scale, s.appBar ? L"oui" : L"non", s.font.c_str());
+}
+
+void MenuBarApp::repositionAll() {
+    for (auto& s : screens_) reposition(*s);
     relayout();
     render();
 }
@@ -291,10 +415,11 @@ void MenuBarApp::onForeground(HWND h) {
     if (changed && !a.explorer && !a.launch.empty() && a.name != active_.name) {
         pushRecent(recent_.apps, {a.name, a.launch});
         recentDirty_ = true;
-        if (hwnd_) SetTimer(hwnd_, kRecentTimer, 5000, nullptr);
+        if (ctl_) SetTimer(ctl_, kRecentTimer, 5000, nullptr);
     }
     active_ = a;
     checkFullscreen();
+    updateActiveScreen();
     if (!changed) return;
     if (trace_) log::info(L"[trace] barre : app active « %s » (%s), %zu vrais menus", a.name.c_str(), a.appId.c_str(), a.real.size());
     relayout();
@@ -381,7 +506,7 @@ void MenuBarApp::requestUiaTitles(HWND window) {
     if (window == uiaWindow_) return;   // demande déjà en cours pour cette fenêtre
     uiaWindow_ = window;
     const unsigned generation = ++uiaLatest_;
-    HWND bar = hwnd_;
+    HWND bar = ctl_;
     uia_.post([this, window, generation, bar](UiaMenus& uia) {
         if (generation != uiaLatest_.load()) return;   // l'utilisateur est déjà passé à autre chose
         auto* r = new UiaTitles{generation, window, uia.titles(window)};
@@ -414,15 +539,15 @@ void MenuBarApp::loadRecent() {
 }
 
 void MenuBarApp::saveRecent() {
-    if (hwnd_) KillTimer(hwnd_, kRecentTimer);
-    if (!recentDirty_ || !hwnd_) return;
+    if (ctl_) KillTimer(ctl_, kRecentTimer);
+    if (!recentDirty_ || !ctl_) return;
     recentDirty_ = false;
     if (!saveJsonFileAtomic(dataDir_ + L"\\menubar-recent.json", recentToJson(recent_)))
         log::warn(L"Barre : apps récentes non enregistrées");
 }
 
-std::vector<RecentEntry> MenuBarApp::withIcons(std::vector<RecentEntry> list, bool documents) const {
-    const int px = int(std::lround(kMenuIconSize * scale_));
+std::vector<RecentEntry> MenuBarApp::withIcons(std::vector<RecentEntry> list, bool documents, float scale) const {
+    const int px = int(std::lround(kMenuIconSize * scale));
     for (auto& e : list) {
         // Document : par son extension seulement (un raccourci vers un partage hors ligne bloquerait la barre).
         if (documents) {
@@ -442,7 +567,7 @@ std::vector<HWND> MenuBarApp::appWindows() const {
     return out;
 }
 
-BarContext MenuBarApp::context(bool recentDocs) const {
+BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     BarContext c;
     c.appName = active_.name.empty() ? L"Explorateur" : active_.name;
     c.userName = userDisplayName();
@@ -454,10 +579,10 @@ BarContext MenuBarApp::context(bool recentDocs) const {
     c.source = active_.source;
     c.real = active_.real;
     c.menuOwner = toId(active_.menuOwner);
-    c.recentApps = withIcons(recent_.apps, false);
+    c.recentApps = withIcons(recent_.apps, false, scale);
     PWSTR folder = nullptr;
     if (recentDocs && SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
-        c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt), true);
+        c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt), true, scale);
     CoTaskMemFree(folder);
     return c;
 }
@@ -472,23 +597,42 @@ void MenuBarApp::relayout() {
     }
     layoutPending_ = false;
     menus_ = buildBarMenus(context());
-    const MenuBarMetrics& m = settings_.metrics;
-    const double pad = m.titlePadding;
-    layoutIn_ = {};
-    layoutIn_.barWidth = double(monitor_.right - monitor_.left) / scale_;
-    layoutIn_.leftMargin = m.leftMargin;
-    layoutIn_.rightMargin = m.rightMargin;
-    for (const auto& menu : menus_.menus) {
-        if (menu.logo) layoutIn_.leftWidths.push_back(m.logoSize + 2 * pad);
-        else layoutIn_.leftWidths.push_back(std::ceil(renderer_.measure(menu.title, menu.bold) / scale_) + 2 * pad);
-    }
     updateClock();
     status_ = statusItems(statusState());
+    trayLaid_.clear();
+    if (settings_.showAppIcons)
+        for (const TrayIcon* t : tray_.visible()) {
+            TrayShown shown{t->e, std::make_shared<const std::vector<std::uint8_t>>(t->e.bgra)};
+            shown.e.bgra.clear();
+            trayLaid_.push_back(std::move(shown));
+        }
+    for (auto& s : screens_) layoutScreen(*s);
+}
+
+void MenuBarApp::layoutScreen(Screen& s) {
+    const MenuBarMetrics& m = settings_.metrics;
+    const double pad = m.titlePadding;
+    s.layoutIn = {};
+    s.layoutIn.barWidth = double(s.rect.right - s.rect.left) / s.scale;
+    s.layoutIn.leftMargin = m.leftMargin;
+    s.layoutIn.rightMargin = m.rightMargin;
+    for (const auto& menu : menus_.menus) {
+        if (menu.logo) s.layoutIn.leftWidths.push_back(m.logoSize + 2 * pad);
+        else s.layoutIn.leftWidths.push_back(std::ceil(s.renderer.measure(menu.title, menu.bold) / s.scale) + 2 * pad);
+    }
     for (const auto& item : status_)
-        layoutIn_.rightWidths.push_back(item.kind == StatusKind::Clock
-                                            ? std::ceil(renderer_.measure(clock_, false) / scale_) + 2 * pad
-                                            : m.statusWidth);
-    layout_ = layoutBar(layoutIn_);
+        s.layoutIn.rightWidths.push_back(item.kind == StatusKind::Clock
+                                             ? std::ceil(s.renderer.measure(clock_, false) / s.scale) + 2 * pad
+                                             : m.statusWidth);
+    // Trop d'icônes d'apps : celles de gauche cèdent la place au logo et au nom de l'app (comme sur macOS).
+    const std::size_t fit = trayFit(s.layoutIn, trayLaid_.size(), m.statusWidth);
+    s.trayFirst = trayLaid_.size() - fit;
+    s.layoutIn.rightWidths.insert(s.layoutIn.rightWidths.begin(), fit, m.statusWidth);
+    s.layout = layoutBar(s.layoutIn);
+}
+
+std::size_t MenuBarApp::trayShown(const Screen& s) const {
+    return trayLaid_.size() > s.trayFirst ? trayLaid_.size() - s.trayFirst : 0;
 }
 
 StatusState MenuBarApp::statusState() {
@@ -524,58 +668,91 @@ void MenuBarApp::updateStatusItems() {
     render();
 }
 
-BarFrame MenuBarApp::frame() const {
+BarFrame MenuBarApp::frame(const Screen& s) const {
     BarFrame f;
-    f.scale = scale_;
-    f.darkText = darkText_;
+    f.scale = s.scale;
+    f.darkText = s.darkText;
     f.metrics = settings_.metrics;
-    for (std::size_t i = 0; i < layout_.leftVisible && i < menus_.menus.size(); ++i) {
+    const bool active = activeScreen_ < screens_.size() && screens_[activeScreen_].get() == &s;
+    f.opacity = active || screens_.size() < 2 ? 1.0f : 0.6f;   // barres des autres écrans atténuées
+    const int highlight = &s == menuScreen_ ? highlight_ : -1;
+    for (std::size_t i = 0; i < s.layout.leftVisible && i < menus_.menus.size(); ++i) {
         BarDrawItem it;
         it.text = menus_.menus[i].title;
         it.bold = menus_.menus[i].bold;
         it.logo = menus_.menus[i].logo;
-        it.x = float(layout_.leftX[i]) * scale_;
-        it.width = float(layoutIn_.leftWidths[i]) * scale_;
-        it.highlighted = int(i) == highlight_;
+        it.x = float(s.layout.leftX[i]) * s.scale;
+        it.width = float(s.layoutIn.leftWidths[i]) * s.scale;
+        it.highlighted = int(i) == highlight;
         f.items.push_back(std::move(it));
     }
-    for (std::size_t j = 0; j < layout_.rightX.size() && j < status_.size(); ++j) {
+    const std::size_t trayN = trayShown(s);
+    for (std::size_t k = 0; k < trayN && k < s.layout.rightX.size(); ++k) {
+        BarDrawItem it;
+        const TrayShown& t = trayLaid_[s.trayFirst + k];
+        it.image = t.image;
+        it.imageW = t.e.w;
+        it.imageH = t.e.h;
+        it.x = float(s.layout.rightX[k]) * s.scale;
+        it.width = float(s.layoutIn.rightWidths[k]) * s.scale;
+        f.items.push_back(std::move(it));
+    }
+    for (std::size_t j = 0; trayN + j < s.layout.rightX.size() && j < status_.size(); ++j) {
         BarDrawItem it;
         if (status_[j].kind == StatusKind::Clock) it.text = clock_;
         it.glyph = status_[j].glyph;
         it.level = status_[j].level;
         it.alt = status_[j].alt;
-        it.x = float(layout_.rightX[j]) * scale_;
-        it.width = float(layoutIn_.rightWidths[j]) * scale_;
-        it.highlighted = highlight_ == int(layout_.leftVisible + j);
+        it.x = float(s.layout.rightX[trayN + j]) * s.scale;
+        it.width = float(s.layoutIn.rightWidths[trayN + j]) * s.scale;
+        it.highlighted = highlight == int(s.layout.leftVisible + j);
         f.items.push_back(std::move(it));
     }
     return f;
 }
 
 void MenuBarApp::render() {
-    if (!hwnd_) return;
-    if (renderer_.render(frame())) {
-        renderFailures_ = 0;
-        return;
-    }
-    log::warn(L"Barre : rendu impossible (0x%08lX)", static_cast<unsigned long>(renderer_.lastError()));
-    if (isDeviceLost(renderer_.lastError()) || ++renderFailures_ >= 3) recoverDevice();
+    for (std::size_t i = 0; i < screens_.size(); ++i) render(*screens_[i]);
 }
 
-void MenuBarApp::recoverDevice() {
+void MenuBarApp::render(Screen& s) {
+    if (!s.hwnd) return;
+    if (s.renderer.render(frame(s))) {
+        s.renderFailures = 0;
+        return;
+    }
+    log::warn(L"Barre : rendu impossible (0x%08lX)", static_cast<unsigned long>(s.renderer.lastError()));
+    if (isDeviceLost(s.renderer.lastError()) || ++s.renderFailures >= 3) recoverDevice(s);
+}
+
+void MenuBarApp::recoverDevice(Screen& s) {
     if (menuOpen_) return;   // le menu ouvert utilise encore le device : on réessaiera au prochain rendu
     log::warn(L"Barre : device graphique perdu, recréation");
-    renderer_.reset();
-    renderFailures_ = 0;
-    if (!renderer_.init(hwnd_)) {
+    s.renderer.reset();
+    s.renderFailures = 0;
+    if (!s.renderer.init(s.hwnd)) {
         log::error(L"Barre : recréation du device impossible, arrêt (le lanceur relancera la barre)");
         exitCode_ = 3;
         PostQuitMessage(3);
         return;
     }
-    font_.clear();
-    reposition();   // surface à la bonne taille, police, mise en page, puis rendu
+    s.renderer.setLogo(logo_);
+    reposition(s);   // surface à la bonne taille, police, mise en page, puis rendu
+    layoutScreen(s);
+    render(s);
+}
+
+void MenuBarApp::afterMenu() {
+    menuOpen_ = false;
+    menuSession_ = false;
+    highlight_ = -1;
+    menuScreen_ = nullptr;
+    if (screensGate_.pending) {
+        rebuildScreens();   // mise en page et rendu compris
+        return;
+    }
+    if (layoutPending_) relayout();
+    render();
 }
 
 void MenuBarApp::restoreTargetFocus() {
@@ -594,51 +771,59 @@ void MenuBarApp::scheduleClock() {
     SYSTEMTIME t;
     GetLocalTime(&t);
     UINT ms = settings_.clock.seconds ? UINT(1000 - t.wMilliseconds) : UINT((60 - t.wSecond) * 1000 - t.wMilliseconds);
-    SetTimer(hwnd_, kClockTimer, ms + 20, nullptr);
+    SetTimer(ctl_, kClockTimer, ms + 20, nullptr);
 }
 
 // ---- Couleur du texte ----
 
-void MenuBarApp::startSample() {
-    if (menuOpen_ || sampler_.running() || !visible_) return;
+void MenuBarApp::startSample(Screen& s) {
+    if (menuOpen_ || s.sampler.running() || !s.visible || !s.hwnd) return;
     // La barre est exclue de la capture le temps de l'échantillon : on mesure le fond, pas son texte.
-    SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
-    RECT strip{monitor_.left, monitor_.top, monitor_.right, monitor_.top + heightPx_};
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-    if (!sampler_.start(hwnd_, WM_APP_SAMPLE, mon, strip)) {
-        finishSample(std::nullopt);
+    SetWindowDisplayAffinity(s.hwnd, WDA_EXCLUDEFROMCAPTURE);
+    RECT strip{s.rect.left, s.rect.top, s.rect.right, s.rect.top + s.heightPx};
+    if (!s.sampler.start(s.hwnd, WM_APP_SAMPLE, s.monitor, strip)) {
+        finishSample(s, std::nullopt);
         return;
     }
-    SetTimer(hwnd_, kSampleTimeout, 2000, nullptr);
+    SetTimer(s.hwnd, kSampleTimeout, 2000, nullptr);
 }
 
-void MenuBarApp::onSample() {
-    if (!sampler_.running()) return;
-    if (sampler_.failed()) {
-        finishSample(std::nullopt);
+void MenuBarApp::startSamples() {
+    for (std::size_t i = 0; i < screens_.size(); ++i) startSample(*screens_[i]);
+}
+
+void MenuBarApp::stopSamples() {   // une seule duplication d'un écran par processus : le menu capture à son tour
+    for (auto& s : screens_)
+        if (s->sampler.running()) finishSample(*s, std::nullopt);
+}
+
+void MenuBarApp::onSample(Screen& s) {
+    if (!s.sampler.running()) return;
+    if (s.sampler.failed()) {
+        finishSample(s, std::nullopt);
         return;
     }
-    if (auto lum = sampler_.take(renderer_.device())) finishSample(lum);
+    if (auto lum = s.sampler.take(s.renderer.device())) finishSample(s, lum);
 }
 
-void MenuBarApp::finishSample(std::optional<double> luminance) {
-    sampler_.stop();
-    KillTimer(hwnd_, kSampleTimeout);
-    SetWindowDisplayAffinity(hwnd_, WDA_NONE);   // la barre réapparaît dans les captures d'écran
-    lastSample_ = nowSeconds();
-    const bool before = darkText_;
-    if (luminance) darkText_ = chooseDarkText(*luminance, darkText_);
-    else darkText_ = !systemDarkMode();   // repli : le thème de Windows
+void MenuBarApp::finishSample(Screen& s, std::optional<double> luminance) {
+    s.sampler.stop();
+    KillTimer(s.hwnd, kSampleTimeout);
+    SetWindowDisplayAffinity(s.hwnd, WDA_NONE);   // la barre réapparaît dans les captures d'écran
+    s.lastSample = nowSeconds();
+    const bool before = s.darkText;
+    if (luminance) s.darkText = chooseDarkText(*luminance, s.darkText);
+    else s.darkText = !systemDarkMode();   // repli : le thème de Windows
     if (trace_) {
-        if (luminance) log::info(L"[trace] barre : luminance du fond %.3f → texte %s", *luminance, darkText_ ? L"foncé" : L"clair");
-        else log::info(L"[trace] barre : fond non mesuré → texte %s (thème)", darkText_ ? L"foncé" : L"clair");
+        if (luminance) log::info(L"[trace] barre : luminance du fond %.3f → texte %s", *luminance, s.darkText ? L"foncé" : L"clair");
+        else log::info(L"[trace] barre : fond non mesuré → texte %s (thème)", s.darkText ? L"foncé" : L"clair");
     }
-    if (before != darkText_) render();
+    if (before != s.darkText) render(s);
 }
 
 // ---- Plein écran et masquage ----
 
-bool MenuBarApp::detectFullscreen() const {
+bool MenuBarApp::detectFullscreen(const Screen& s) const {
     HWND fg = GetForegroundWindow();
     if (!fg || !IsWindowVisible(fg) || IsIconic(fg)) return false;
     DWORD pid = 0;
@@ -648,71 +833,80 @@ bool MenuBarApp::detectFullscreen() const {
     GetClassNameW(fg, cls, 64);
     for (const wchar_t* shell : {L"Progman", L"WorkerW", L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd"})
         if (wcscmp(cls, shell) == 0) return false;
-    if (MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY))
-        return false;
+    if (MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != s.monitor) return false;
     RECT rc;
     const bool caption = (GetWindowLongPtrW(fg, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
-    return GetWindowRect(fg, &rc) && isFullscreenWindow(rc, monitor_, IsZoomed(fg) != FALSE, caption);
+    return GetWindowRect(fg, &rc) && isFullscreenWindow(rc, s.rect, IsZoomed(fg) != FALSE, caption);
 }
 
 void MenuBarApp::checkFullscreen() {
-    const bool fs = detectFullscreen();
-    if (fs == fullscreen_) return;
-    fullscreen_ = fs;
-    if (trace_) log::info(L"[trace] barre : plein écran %s", fs ? L"oui" : L"non");
-    stepVisibility();
+    for (std::size_t i = 0; i < screens_.size(); ++i) {
+        Screen& s = *screens_[i];
+        const bool fs = detectFullscreen(s);
+        if (fs == s.fullscreen) continue;
+        s.fullscreen = fs;
+        if (trace_) log::info(L"[trace] barre : plein écran %s sur l'écran %zu", fs ? L"oui" : L"non", i);
+        stepVisibility(s);
+    }
 }
 
-void MenuBarApp::stepVisibility() {
-    if (!hwnd_) return;
+void MenuBarApp::stepVisibility(Screen& s) {
+    if (!s.hwnd) return;
     POINT pt{};
     GetCursorPos(&pt);
-    const bool onMonitor = pt.x >= monitor_.left && pt.x < monitor_.right;
     VisibilityInputs in;
     in.autohide = settings_.autohide;
-    in.fullscreen = fullscreen_;
-    in.cursorAtEdge = onMonitor && pt.y <= monitor_.top + 1;
-    in.cursorInDock = onMonitor && pt.y >= monitor_.top && pt.y < monitor_.top + heightPx_ - yOffsetPx_;
-    in.menuOpen = menuOpen_;
-    const bool animating = visibility_.update(in, nowSeconds());
-    const int offset = int(std::lround((1.0 - visibility_.shown()) * heightPx_));
-    const bool show = !visibility_.hidden();
-    if (offset != yOffsetPx_ || show != visible_) {
-        yOffsetPx_ = offset;
-        visible_ = show;
-        SetWindowPos(hwnd_, HWND_TOPMOST, monitor_.left, monitor_.top - yOffsetPx_, 0, 0,
+    in.fullscreen = s.fullscreen;
+    in.cursorAtEdge = cursorAtTopEdge(s.rect, pt);   // un écran placé au-dessus ne fait pas apparaître celle-ci
+    in.cursorInDock = cursorInBar(s.rect, s.heightPx - s.yOffsetPx, pt);
+    in.menuOpen = menuOpen_ && menuScreen_ == &s;
+    const bool animating = s.visibility.update(in, nowSeconds());
+    const int offset = int(std::lround((1.0 - s.visibility.shown()) * s.heightPx));
+    const bool show = !s.visibility.hidden();
+    if (offset != s.yOffsetPx || show != s.visible) {
+        s.yOffsetPx = offset;
+        s.visible = show;
+        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, 0, 0,
                      SWP_NOACTIVATE | SWP_NOSIZE | (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
     }
     // Tant que le curseur peut faire apparaître la barre ou qu'elle s'anime, on la suit de près.
-    const bool watch = animating || settings_.autohide || fullscreen_;
-    if (watch && !visibilityTimer_) SetTimer(hwnd_, kVisibilityTimer, 16, nullptr);
-    if (!watch && visibilityTimer_) KillTimer(hwnd_, kVisibilityTimer);
-    visibilityTimer_ = watch;
+    const bool watch = animating || settings_.autohide || s.fullscreen;
+    if (watch && !s.visibilityTimer) SetTimer(s.hwnd, kVisibilityTimer, 16, nullptr);
+    if (!watch && s.visibilityTimer) KillTimer(s.hwnd, kVisibilityTimer);
+    s.visibilityTimer = watch;
+}
+
+void MenuBarApp::stepVisibilityAll() {
+    for (std::size_t i = 0; i < screens_.size(); ++i) stepVisibility(*screens_[i]);
 }
 
 // ---- Menus et actions ----
 
-MenuWindow::Env MenuBarApp::menuEnv() const {
+MenuWindow::Env MenuBarApp::menuEnv(const Screen& s) const {
     MenuWindow::Env env;
     env.instance = instance_;
-    env.device = renderer_.device();
+    env.device = s.renderer.device();
     env.dark = systemDarkMode();
     env.glass = true;
-    env.scale = scale_;
-    env.font = font_;
+    env.scale = s.scale;
+    env.font = s.font;
     env.metrics = glassMetrics_;
     env.trace = trace_;
     return env;
 }
 
-void MenuBarApp::onPress(POINT client) {
-    const BarHit hit = hitTestBar(layout_, layoutIn_, double(client.x) / scale_);
+void MenuBarApp::onPress(Screen& s, POINT client, bool doubleClick) {
+    const BarHit hit = hitTestBar(s.layout, s.layoutIn, double(client.x) / s.scale);
+    const std::size_t trayN = trayShown(s);
     if (hit.kind == BarHit::Kind::Left) {
-        openMenu(hit.index);
-    } else if (hit.kind == BarHit::Kind::Right && hit.index < status_.size()) {
-        const StatusKind k = status_[hit.index].kind;
+        openMenu(s, hit.index);
+    } else if (hit.kind == BarHit::Kind::Right && hit.index < trayN) {
+        trayClickAt(s, hit.index, doubleClick ? 2 : 0);   // double-clic : relayé à l'app (certaines s'ouvrent ainsi)
+    } else if (hit.kind == BarHit::Kind::Right && hit.index - trayN < status_.size()) {
+        const std::size_t j = hit.index - trayN;
+        const StatusKind k = status_[j].kind;
         if (opensMenu(k)) {
-            openMenu(layout_.leftVisible + hit.index);
+            openMenu(s, s.layout.leftVisible + j);
         } else {   // recherche de Windows (Win+S) ; horloge : centre de notifications (Win+N)
             auto inputs = shortcutInputs(*parseShortcut(k == StatusKind::Search ? L"Win+S" : L"Win+N"));
             SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT));
@@ -724,8 +918,13 @@ void MenuBarApp::openSettingsFile() {
     ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr, SW_SHOWNORMAL);
 }
 
-void MenuBarApp::onRightClick(POINT client) {
-    if (hitTestBar(layout_, layoutIn_, double(client.x) / scale_).kind != BarHit::Kind::None) return;
+void MenuBarApp::onRightClick(Screen& s, POINT client) {
+    const BarHit hit = hitTestBar(s.layout, s.layoutIn, double(client.x) / s.scale);
+    if (hit.kind == BarHit::Kind::Right && hit.index < trayShown(s)) {
+        trayClickAt(s, hit.index, 1);   // menu de l'app
+        return;
+    }
+    if (hit.kind != BarHit::Kind::None) return;
     MenuModel m;
     m.items.push_back({kCmdBarSettings, L"Réglages de la barre des menus…"});
     MenuItem autohide{kCmdBarAutohide, L"Masquer automatiquement la barre des menus"};
@@ -733,16 +932,16 @@ void MenuBarApp::onRightClick(POINT client) {
     m.items.push_back(autohide);
     m.items.push_back({});
     m.items.push_back({kCmdBarQuit, L"Quitter la barre des menus"});
-    POINT anchor{client.x + monitor_.left, monitor_.top + heightPx_ + LONG(std::lround(scale_))};
-    if (sampler_.running()) finishSample(std::nullopt);
+    RECT win{};
+    GetWindowRect(s.hwnd, &win);
+    POINT anchor{client.x + win.left, win.bottom + LONG(std::lround(s.scale))};
+    stopSamples();
+    menuSession_ = true;
     menuOpen_ = true;
+    menuScreen_ = &s;
     ReleaseCapture();
-    const int r = MenuWindow::track(menuEnv(), m, anchor, MenuWindow::Side::Below);
-    menuOpen_ = false;
-    if (layoutPending_) {
-        relayout();
-        render();
-    }
+    const int r = MenuWindow::track(menuEnv(s), m, anchor, MenuWindow::Side::Below);
+    afterMenu();   // s n'est plus utilisée : les écrans ont pu changer
     if (r <= 0) restoreTargetFocus();
     switch (r) {
         case kCmdBarSettings: openSettingsFile(); break;
@@ -751,20 +950,22 @@ void MenuBarApp::onRightClick(POINT client) {
             saveJsonFileAtomic(dataDir_ + L"\\menubar.json", menuBarSettingsToJson(settings_));
             fileTime(dataDir_ + L"\\menubar.json", settingsTime_);
             applySettings();
-            stepVisibility();
+            stepVisibilityAll();
             break;
-        case kCmdBarQuit: PostMessageW(hwnd_, WM_CLOSE, 0, 0); break;
+        case kCmdBarQuit: PostMessageW(ctl_, WM_CLOSE, 0, 0); break;
         default: break;
     }
 }
 
-void MenuBarApp::openMenu(std::size_t index) {
-    if (sampler_.running()) finishSample(std::nullopt);   // une seule duplication de l'écran par processus
+void MenuBarApp::openMenu(Screen& s, std::size_t index) {
+    stopSamples();
+    menuSession_ = true;   // jusqu'à afterMenu : les écrans ne sont pas refaits sous le menu
+    menuScreen_ = &s;
     int current = int(index), previous = -1;
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     for (;;) {
         menuOpen_ = false;
-        const int left = int(layout_.leftVisible), n = left + int(status_.size());
+        const int left = int(s.layout.leftVisible), n = left + int(status_.size());
         const auto hasMenu = [&](int i) { return i < left || opensMenu(status_[std::size_t(i - left)].kind); };
         if (previous >= 0 && current >= 0 && current < n && !hasMenu(current)) {
             // Flèches du clavier : la recherche et l'horloge n'ont pas de menu, on passe au suivant dans le même sens.
@@ -775,18 +976,15 @@ void MenuBarApp::openMenu(std::size_t index) {
             if (!hasMenu(current)) break;
             menuOpen_ = true;
             highlight_ = current;
-            render();
+            render(s);
             StatusCommand chosen;
-            const int r = trackStatus(std::size_t(current - left), barLink(current), chosen);
+            const int r = trackStatus(s, std::size_t(current - left), barLink(s, current), chosen);
             if (auto next = menuSwitchTarget(r)) {
                 previous = current;
                 current = *next;
                 continue;
             }
-            menuOpen_ = false;
-            highlight_ = -1;
-            if (layoutPending_) relayout();
-            render();
+            afterMenu();   // s n'est plus utilisée : les écrans ont pu changer
             target_ = target;
             if (chosen.first != StatusAction::None) runStatus(chosen);
             else restoreTargetFocus();
@@ -803,28 +1001,25 @@ void MenuBarApp::openMenu(std::size_t index) {
             if (current < 0) break;
         }
         if (current >= 0 && std::size_t(current) < menus_.menus.size()) refreshRealMenu(menus_.menus[std::size_t(current)].real);
-        menus_ = buildBarMenus(context(true));   // liste des fenêtres, vrais menus et documents récents à jour
+        menus_ = buildBarMenus(context(true, s.scale));   // liste des fenêtres, vrais menus et documents récents à jour
         menuOpen_ = true;
-        if (current < 0 || std::size_t(current) >= layout_.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
+        if (current < 0 || std::size_t(current) >= s.layout.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
         // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.
         const MenuModel model = menus_.menus[std::size_t(current)].model;
         const std::map<int, MenuAction> actions = menus_.actions;
         highlight_ = current;
-        render();
-        const MenuWindow::BarLink link = barLink(current);
-        POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(scale_))};
+        render(s);
+        const MenuWindow::BarLink link = barLink(s, current);
+        POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(s.scale))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
         if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
-        const int r = MenuWindow::track(menuEnv(), model, anchor, MenuWindow::Side::Below, &link);
+        const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link);
         if (auto next = menuSwitchTarget(r)) {
             previous = current;
             current = *next;
             continue;
         }
-        menuOpen_ = false;
-        highlight_ = -1;
-        if (layoutPending_) relayout();
-        render();
+        afterMenu();   // s n'est plus utilisée : les écrans ont pu changer
         target_ = target;
         if (r > 0) {
             if (auto it = actions.find(r); it != actions.end()) execute(it->second);
@@ -833,28 +1028,58 @@ void MenuBarApp::openMenu(std::size_t index) {
         }
         return;
     }
-    highlight_ = -1;
-    menuOpen_ = false;
-    if (layoutPending_) relayout();
-    render();
+    afterMenu();
 }
 
-MenuWindow::BarLink MenuBarApp::barLink(int current) const {
+void MenuBarApp::onTray(WPARAM wp, LPARAM lp) {
+    std::unique_ptr<ipc::Message> m(reinterpret_cast<ipc::Message*>(lp));
+    if (wp == 1) {
+        tray_.clear();   // le mod (re)connecté renvoie toute sa liste ; parti, ses icônes ne sont plus à jour
+    } else if (m) {
+        if (auto e = ipc::parseTrayUpdate(*m)) tray_.update(*e);
+        else if (auto r = ipc::parseTrayRemove(*m)) tray_.remove(*r);
+        else return;
+    }
+    SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);   // une rafale (connexion) : une seule mise en page
+}
+
+void MenuBarApp::trayClickAt(Screen& s, std::size_t k, int button) {
+    if (k >= trayShown(s) || k >= s.layout.rightX.size()) return;
+    const ipc::TrayIconEvent& e = trayLaid_[s.trayFirst + k].e;
+    HWND app = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(e.hwnd));
+    if (!IsWindow(app)) {   // app fermée sans retirer son icône
+        tray_.remove(e);
+        SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);
+        return;
+    }
     RECT win{};
-    GetWindowRect(hwnd_, &win);
+    GetWindowRect(s.hwnd, &win);
+    const POINT anchor{win.left + LONG(std::lround((s.layout.rightX[k] + s.layoutIn.rightWidths[k] / 2) * s.scale)), win.bottom};
+    DWORD pid = 0;
+    GetWindowThreadProcessId(app, &pid);
+    AllowSetForegroundWindow(pid);   // son menu ou sa fenêtre s'ouvre devant
+    for (const TrayPost& p : trayClick(e, button, anchor)) PostMessageW(app, p.msg, p.wp, p.lp);
+    if (trace_) log::info(L"[trace] barre : clic %s sur l'icône « %s »", button == 1 ? L"droit" : button == 2 ? L"double" : L"gauche", e.tip.c_str());
+}
+
+MenuWindow::BarLink MenuBarApp::barLink(const Screen& s, int current) const {
+    RECT win{};
+    GetWindowRect(s.hwnd, &win);
     MenuWindow::BarLink link;
     const auto box = [&](double x, double w) {
-        const LONG l = win.left + LONG(std::lround(x * scale_));
-        return RECT{l, win.top, l + LONG(std::lround(w * scale_)), win.bottom};
+        const LONG l = win.left + LONG(std::lround(x * s.scale));
+        return RECT{l, win.top, l + LONG(std::lround(w * s.scale)), win.bottom};
     };
-    for (std::size_t i = 0; i < layout_.leftVisible; ++i) link.titles.push_back(box(layout_.leftX[i], layoutIn_.leftWidths[i]));
-    for (std::size_t j = 0; j < status_.size() && j < layout_.rightX.size(); ++j)   // sans menu : rectangle vide
-        link.titles.push_back(opensMenu(status_[j].kind) ? box(layout_.rightX[j], layoutIn_.rightWidths[j]) : RECT{});
+    for (std::size_t i = 0; i < s.layout.leftVisible; ++i) link.titles.push_back(box(s.layout.leftX[i], s.layoutIn.leftWidths[i]));
+    const std::size_t trayN = trayShown(s);   // icônes d'apps : leur menu est celui de l'app, hors de la barre
+    for (std::size_t j = 0; j < status_.size() && trayN + j < s.layout.rightX.size(); ++j)   // sans menu : rectangle vide
+        link.titles.push_back(opensMenu(status_[j].kind) ? box(s.layout.rightX[trayN + j], s.layoutIn.rightWidths[trayN + j])
+                                                          : RECT{});
     link.current = current;
     return link;
 }
 
-int MenuBarApp::trackStatus(std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
+int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
     const StatusKind kind = status_[j].kind;
     StatusState opened = statusState();
     if (kind == StatusKind::Sound) opened.outputs = audio_.outputs();   // relues à la prochaine ouverture
@@ -895,10 +1120,10 @@ int MenuBarApp::trackStatus(std::size_t j, const MenuWindow::BarLink& link, Stat
     };
     hub_.refreshNow();
     const RECT& box = link.titles[std::size_t(link.current)];
-    POINT anchor{box.left, box.bottom + LONG(std::lround(scale_))};
+    POINT anchor{box.left, box.bottom + LONG(std::lround(s.scale))};
     ReleaseCapture();
     if (trace_) log::info(L"[trace] barre : menu d'état %d ouvert", int(kind));
-    const int r = MenuWindow::track(menuEnv(), menu.model, anchor, MenuWindow::Side::Below, &link, &live);
+    const int r = MenuWindow::track(menuEnv(s), menu.model, anchor, MenuWindow::Side::Below, &link, &live);
     if (r > 0)
         if (auto it = menu.actions.find(r); it != menu.actions.end()) chosen = it->second;
     return r;
@@ -956,27 +1181,60 @@ void MenuBarApp::execute(const MenuAction& a) {
 
 // ---- Fenêtre ----
 
-LRESULT CALLBACK MenuBarApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    if (self_ && self_->hwnd_ == hwnd) return self_->handle(msg, wp, lp);
+LRESULT CALLBACK MenuBarApp::controlProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (self_ && self_->ctl_ == hwnd) return self_->handle(msg, wp, lp);
     return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+LRESULT CALLBACK MenuBarApp::screenProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (self_)
+        if (Screen* s = self_->screenOf(hwnd)) return self_->handleScreen(*s, msg, wp, lp);
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+LRESULT MenuBarApp::handleScreen(Screen& s, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // le clavier reste à l'app
+        case WM_LBUTTONDOWN: onPress(s, POINT{short(LOWORD(lp)), short(HIWORD(lp))}); return 0;
+        case WM_LBUTTONDBLCLK: onPress(s, POINT{short(LOWORD(lp)), short(HIWORD(lp))}, true); return 0;
+        case WM_RBUTTONUP: onRightClick(s, POINT{short(LOWORD(lp)), short(HIWORD(lp))}); return 0;
+        case WM_APP_APPBAR:
+            if (wp == ABN_POSCHANGED) {
+                reposition(s);
+                layoutScreen(s);
+                render(s);
+            } else if (wp == ABN_FULLSCREENAPP) {
+                checkFullscreen();
+            }
+            return 0;
+        case WM_APP_SAMPLE: onSample(s); return 0;
+        case WM_TIMER:
+            if (wp == kSampleTimeout) finishSample(s, s.sampler.sawBlack() ? std::optional<double>(0.0) : std::nullopt);
+            else if (wp == kVisibilityTimer) stepVisibility(s);
+            return 0;
+        case WM_DPICHANGED: PostMessageW(ctl_, WM_APP_SCREENS, 0, 0); return 0;   // échelle changée : barres refaites
+        case WM_CLOSE: PostMessageW(ctl_, WM_CLOSE, 0, 0); return 0;
+        default: break;
+    }
+    return DefWindowProcW(s.hwnd, msg, wp, lp);
 }
 
 LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
     switch (msg) {
-        case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // le clavier reste à l'app
-        case WM_LBUTTONDOWN: onPress(POINT{short(LOWORD(lp)), short(HIWORD(lp))}); return 0;
-        case WM_RBUTTONUP: onRightClick(POINT{short(LOWORD(lp)), short(HIWORD(lp))}); return 0;
-        case WM_APP_APPBAR:
-            if (wp == ABN_POSCHANGED) reposition();
-            else if (wp == ABN_FULLSCREENAPP) checkFullscreen();
-            return 0;
-        case WM_APP_SAMPLE: onSample(); return 0;
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
+        case WM_APP_TRAY: onTray(wp, lp); return 0;
         case WM_APP_VOLUME:
-            if (wp == 1) audio_.watch(hwnd_, WM_APP_VOLUME);   // nouvelle sortie par défaut : on la suit
+            if (wp == 1) audio_.watch(ctl_, WM_APP_VOLUME);   // nouvelle sortie par défaut : on la suit
             updateStatusItems();
+            return 0;
+        case WM_DISPLAYCHANGE:   // envoyé (pas posté) : il peut arriver pendant un appel à Windows, on refait après
+            PostMessageW(ctl_, WM_APP_SCREENS, 0, 0);
+            return 0;
+        case WM_APP_SCREENS:
+            rebuildScreens();
+            SetTimer(ctl_, kResampleSoon, 800, nullptr);
             return 0;
         case WM_TIMER:
             switch (wp) {
@@ -988,25 +1246,30 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     scheduleClock();
                     break;
                 }
-                case kSampleTimeout: finishSample(sampler_.sawBlack() ? std::optional<double>(0.0) : std::nullopt); break;
-                case kResampleTimer: startSample(); break;
-                case kResampleSoon: KillTimer(hwnd_, kResampleSoon); startSample(); break;
+                case kResampleTimer: startSamples(); break;
+                case kResampleSoon: KillTimer(ctl_, kResampleSoon); startSamples(); break;
                 case kConfigTimer: checkSettingsFile(); break;
                 case kRecentTimer: saveRecent(); break;
-                case kFullscreenTimer: checkFullscreen(); break;
-                case kVisibilityTimer: stepVisibility(); break;
+                case kFullscreenTimer:
+                    checkFullscreen();
+                    updateActiveScreen();   // une fenêtre déplacée vers un autre écran
+                    break;
+                case kTrayLayoutTimer:
+                    KillTimer(ctl_, kTrayLayoutTimer);
+                    relayout();
+                    render();
+                    break;
+                case kTrayPruneTimer:
+                    if (tray_.prune([](std::uint64_t h) { return IsWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(h))) != FALSE; }))
+                        SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);
+                    break;
                 default: break;
             }
             return 0;
         case WM_SETTINGCHANGE:
             if (wp == SPI_SETDESKWALLPAPER ||
                 (lp && CompareStringOrdinal(reinterpret_cast<const wchar_t*>(lp), -1, L"ImmersiveColorSet", -1, TRUE) == CSTR_EQUAL))
-                SetTimer(hwnd_, kResampleSoon, 800, nullptr);   // après la transition du fond
-            return 0;
-        case WM_DISPLAYCHANGE:
-        case WM_DPICHANGED:
-            reposition();
-            SetTimer(hwnd_, kResampleSoon, 800, nullptr);
+                SetTimer(ctl_, kResampleSoon, 800, nullptr);   // après la transition du fond
             return 0;
         case WM_TIMECHANGE:
             updateClock();
@@ -1015,29 +1278,36 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             scheduleClock();
             return 0;
         case WM_ENDSESSION:
-            if (wp) removeAppBar();
+            if (wp)
+                for (auto& s : screens_) removeAppBar(*s);
             return 0;
         case WM_CLOSE:
-            removeAppBar();
+            for (auto& s : screens_) removeAppBar(*s);
             PostQuitMessage(0);
             return 0;
         default: break;
     }
-    return DefWindowProcW(hwnd_, msg, wp, lp);
+    return DefWindowProcW(ctl_, msg, wp, lp);
 }
 
 int MenuBarApp::runSnapshot(const Options& options) {
-    if (!renderer_.initOffscreen()) return 2;
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    auto owned = std::make_unique<Screen>();   // barre de l'écran principal, sans fenêtre
+    Screen& s = *owned;
+    if (!s.renderer.initOffscreen()) return 2;
+    s.renderer.setLogo(logo_);
+    s.monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi{sizeof mi};
-    GetMonitorInfoW(mon, &mi);
-    monitor_ = mi.rcMonitor;
+    GetMonitorInfoW(s.monitor, &mi);
+    s.rect = mi.rcMonitor;
+    s.primary = true;
     UINT dpiX = 96, dpiY = 96;
-    GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
-    scale_ = float(dpiX) / 96.0f;
-    heightPx_ = int(std::lround(settings_.metrics.height * scale_));
-    font_ = renderer_.setFont(settings_.font, float(settings_.metrics.fontSize) * scale_);
-    const UINT W = UINT(monitor_.right - monitor_.left), H = UINT(heightPx_);
+    GetDpiForMonitor(s.monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+    s.dpi = dpiX;
+    s.scale = float(dpiX) / 96.0f;
+    s.heightPx = int(std::lround(settings_.metrics.height * s.scale));
+    s.font = s.renderer.setFont(settings_.font, float(settings_.metrics.fontSize) * s.scale);
+    screens_.push_back(std::move(owned));
+    const UINT W = UINT(s.rect.right - s.rect.left), H = UINT(s.heightPx);
     const bool dark = options.dark.value_or(systemDarkMode());
 
     // Fond : le fond d'écran donné (mis à la taille de l'écran, bande du haut), sinon un dégradé selon le thème.
@@ -1045,7 +1315,7 @@ int MenuBarApp::runSnapshot(const Options& options) {
     UINT ww = 0, wh = 0;
     auto wall = options.wallpaper.empty() ? std::vector<std::uint8_t>() : readPng(options.wallpaper, ww, wh);
     if (!wall.empty()) {
-        const UINT mh = UINT(monitor_.bottom - monitor_.top);
+        const UINT mh = UINT(s.rect.bottom - s.rect.top);
         auto scaled = resizeBgra(wall, ww, wh, W, mh);
         std::copy(scaled.begin(), scaled.begin() + std::ptrdiff_t(bg.size()), bg.begin());
     } else {
@@ -1059,21 +1329,22 @@ int MenuBarApp::runSnapshot(const Options& options) {
             }
     }
     const double lum = stripLuminance(bg.data(), int(W), int(H), int(W * 4));
-    darkText_ = chooseDarkText(lum, false);
+    s.darkText = chooseDarkText(lum, false);
     active_.name = options.app.empty() ? L"Notes" : options.app;
     active_.explorer = active_.name == L"Explorateur";
     audio_.init();
     snap_.network = readNetwork();   // les radios et la lecture en cours (WinRT, fil MTA) ne servent pas ici
     snap_.battery = readBattery();
     relayout();
+    menuScreen_ = &s;
     highlight_ = options.open;
     std::vector<std::uint8_t> out;
-    if (!renderer_.renderToImage(frame(), bg, W, H, out) || !writePng(options.snapshot, out.data(), W, H)) {
+    if (!s.renderer.renderToImage(frame(s), bg, W, H, out) || !writePng(options.snapshot, out.data(), W, H)) {
         log::error(L"Barre : --snapshot impossible");
         return 1;
     }
     log::info(L"Barre --snapshot : %ux%u, luminance %.3f, texte %s, police %s, %zu titres visibles sur %zu", W, H, lum,
-              darkText_ ? L"foncé" : L"clair", font_.c_str(), layout_.leftVisible, menus_.menus.size());
+              s.darkText ? L"foncé" : L"clair", s.font.c_str(), s.layout.leftVisible, menus_.menus.size());
     return 0;
 }
 
@@ -1089,27 +1360,30 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacMenuBar démarre");
     sys_ = realSystemActions();
-    darkText_ = !systemDarkMode();
-    WNDCLASSEXW wc{sizeof wc};
-    wc.lpfnWndProc = wndProc;
-    wc.hInstance = instance;
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.lpszClassName = kClassName;
-    RegisterClassExW(&wc);
-    hwnd_ = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE, kClassName,
-                            L"MacMenuBar", WS_POPUP, 0, 0, 100, 24, nullptr, nullptr, instance, nullptr);
-    if (!hwnd_) {
+    WNDCLASSEXW control{sizeof control};
+    control.lpfnWndProc = controlProc;
+    control.hInstance = instance;
+    control.lpszClassName = kClassName;
+    RegisterClassExW(&control);
+    WNDCLASSEXW bar{sizeof bar};
+    bar.style = CS_DBLCLKS;   // double-clic sur une icône d'app
+    bar.lpfnWndProc = screenProc;
+    bar.hInstance = instance;
+    bar.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    bar.lpszClassName = kScreenClass;
+    RegisterClassExW(&bar);
+    // Fenêtre de contrôle cachée, de premier niveau : elle reçoit les messages diffusés (écrans, réglages, heure).
+    ctl_ = CreateWindowExW(WS_EX_TOOLWINDOW, kClassName, L"MacMenuBar", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, nullptr);
+    if (!ctl_) {
         log::error(L"Barre : CreateWindowEx a échoué (%lu)", GetLastError());
         return 2;
     }
-    if (!renderer_.init(hwnd_)) {
-        log::error(L"Barre : initialisation graphique impossible");
-        return 2;
+    loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
+    rebuildScreens();
+    if (screens_.empty()) {
+        DestroyWindow(ctl_);
+        return exitCode_ ? exitCode_ : 2;
     }
-    loadSettings(false);   // écrit menubar.json s'il manque (hwnd_ existe maintenant)
-    visibility_.setTimings({0, 0.5, 0.25, 0.25});
-    if (!settings_.autohide) registerAppBar();
-    reposition();
 
     WindowTracker::Events ev;
     ev.opened = [this](HWND h, const AppIdentity& id) { model_.windowOpened(toId(h), id); };
@@ -1118,11 +1392,18 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.foreground = [this](HWND h) { onForeground(h); };   // bureau et dialogues compris
     ev.flashed = [](HWND) {};
-    tracker_.start(hwnd_, ev);
+    tracker_.start(ctl_, ev);
     uia_.start();   // sinon : menus Win32 et génériques seulement
     audio_.init();   // sinon : pas d'icône du son
-    audio_.watch(hwnd_, WM_APP_VOLUME);
-    if (!hub_.start(hwnd_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
+    audio_.watch(ctl_, WM_APP_VOLUME);
+    if (!hub_.start(ctl_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
+    trayPipe_.setConnectionHandler([ctl = ctl_](bool) { PostMessageW(ctl, WM_APP_TRAY, 1, 0); });
+    trayPipe_.start(L"\\\\.\\pipe\\MacMenuBar", [ctl = ctl_](const ipc::Message& m) {
+        if (m.type != ipc::MsgType::TrayUpdate && m.type != ipc::MsgType::TrayRemove) return;
+        auto* copy = new ipc::Message(m);
+        if (!PostMessageW(ctl, WM_APP_TRAY, 0, reinterpret_cast<LPARAM>(copy))) delete copy;
+    });
+    SetTimer(ctl_, kTrayPruneTimer, 5000, nullptr);
     loadRecent();
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
@@ -1130,15 +1411,16 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         active_.explorer = active_.desktop = true;
         relayout();
     }
+    updateActiveScreen();
 
     render();
     scheduleClock();
-    startSample();
-    SetTimer(hwnd_, kResampleTimer, 60000, nullptr);
-    SetTimer(hwnd_, kConfigTimer, 2000, nullptr);
-    SetTimer(hwnd_, kFullscreenTimer, 1000, nullptr);
+    startSamples();
+    SetTimer(ctl_, kResampleTimer, 60000, nullptr);
+    SetTimer(ctl_, kConfigTimer, 2000, nullptr);
+    SetTimer(ctl_, kFullscreenTimer, 1000, nullptr);
     checkFullscreen();
-    stepVisibility();
+    stepVisibilityAll();
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -1146,18 +1428,21 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         DispatchMessageW(&msg);
     }
     log::info(L"MacMenuBar s'arrête");
-    sampler_.stop();
     tracker_.stop();
     uia_.stop();
     hub_.stop();
+    trayPipe_.stop();
     audio_.unwatch();
     saveRecent();
-    removeAppBar();
-    DestroyWindow(hwnd_);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_UIA_TITLES, WM_APP_UIA_TITLES, PM_REMOVE);)   // résultats en attente
         delete reinterpret_cast<UiaTitles*>(m.lParam);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_STATUS, WM_APP_STATUS, PM_REMOVE);)
         delete reinterpret_cast<StatusSnapshot*>(m.lParam);
+    for (MSG m; PeekMessageW(&m, nullptr, WM_APP_TRAY, WM_APP_TRAY, PM_REMOVE);)
+        delete reinterpret_cast<ipc::Message*>(m.lParam);
+    for (auto& s : screens_) destroyScreen(*s);   // zones réservées rendues
+    screens_.clear();
+    DestroyWindow(ctl_);
     return exitCode_;
 }
 

@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -29,11 +30,14 @@ struct BarDrawItem {      // pixels de la barre
     Glyph glyph = Glyph::None;  // icône d'état (à la place du texte)
     float level = 1;            // volume, force du signal, charge
     bool alt = false;           // sourdine, Wi-Fi coupé, en charge
+    std::shared_ptr<const std::vector<std::uint8_t>> image;   // icône d'app : BGRA prémultipliée, en couleurs
+    UINT imageW = 0, imageH = 0;
 };
 
 struct BarFrame {
     float scale = 1;
     bool darkText = false;   // texte foncé (fond clair) ; sinon clair avec ombre
+    float opacity = 1;       // barre d'un écran inactif : 0,6
     std::vector<BarDrawItem> items;
     MenuBarMetrics metrics;
 };

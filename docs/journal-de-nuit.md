@@ -80,6 +80,54 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   2. le Centre de contrôle, avec ta vidéo en cours (titre, pause, suivant) ;
   3. sur un portable : le Wi-Fi, la batterie et le Bluetooth (absents ici).
 
+### Plan 9 — Icônes des autres apps et une barre par écran (fusionné dans `main`)
+
+- **Icônes de la zone de notification** dans la barre, à gauche des icônes d'état :
+  - le mod Windhawk (version 1.2) écoute ce que les apps envoient à la barre des tâches (`Shell_NotifyIcon`), dessine chaque icône et la transmet à la barre par le pipe `\\.\pipe\MacMenuBar` ;
+  - la barre relaie les clics à l'app au format qu'elle attend (version 4 ou ancienne) : clic, double-clic, clic droit pour son menu ;
+  - une app fermée sans retirer son icône est oubliée (contrôle toutes les 5 s et au clic) ;
+  - sans le mod, rien ne change : pas d'icônes d'apps.
+- **Une barre par écran** : la même barre en haut de chaque écran, pleine sur l'écran actif (celui de la fenêtre au premier plan), atténuée ailleurs. Chaque barre a sa zone réservée, sa couleur de texte, son masquage et son plein écran.
+- **Vérifié hors écran** : `--snapshot` (capsule, icônes d'état). Le mod est contrôlé avec le compilateur de Windhawk et testé dans `tests.exe` avec un faux Windhawk ; il n'a pas été installé et aucun crochet n'a été posé sur ton poste.
+- **Relecture finale** : 1 problème critique, 2 importants, et 3 mineurs que j'ai jugés importants. Tous sont corrigés :
+  - brancher ou débrancher un écran faisait planter la barre ;
+  - un changement d'écran arrivé pendant la reconstruction des barres la relançait par-dessus elle-même ;
+  - en masquage automatique, une barre recréée restait affichée ;
+  - trop d'icônes d'apps recouvraient le logo et le nom de l'app ;
+  - le double-clic n'arrivait pas aux icônes d'apps ;
+  - avec deux écrans l'un au-dessus de l'autre, le bord haut de l'écran du bas faisait apparaître la barre de l'écran du haut.
+- **À vérifier toi-même** :
+  1. installe le mod 1.2 (Windhawk → ton mod → recoller le code → Compiler) : les icônes de tes apps (Discord, OneDrive…) doivent apparaître dans la barre ;
+  2. un clic gauche, un double-clic et un clic droit sur ces icônes ;
+  3. tes deux écrans : une barre sur chacun, l'autre atténuée, un menu qui s'ouvre sur la barre cliquée.
+
+## Décisions prises sans toi (plan 9)
+- Les icônes d'apps passent par le pipe de la barre ; c'est le mod qui se connecte, et il renvoie tout à chaque reconnexion.
+- Une fenêtre de contrôle cachée garde le nom de classe `MacMenuBarWindow` (le lanceur et `--quit` la trouvent) ; les barres ont leur propre classe.
+- Les autres barres sont à 60 % d'opacité, sans capsule : seul l'écran du menu ouvert la montre.
+- Trop d'icônes d'apps : celles de gauche (les plus récentes) s'effacent d'abord, comme sur macOS où les icônes qui touchent les menus disparaissent.
+- Le double-clic envoie d'abord le clic simple, puis le double-clic, comme Windows.
+- Le masquage d'une barre recréée n'a pas de test automatique : la barre elle-même n'est pas dans `tests.exe`.
+- Laissés en l'état après la relecture :
+  - les barres de deux écrans ne se renvoient pas leurs changements de zone réservée en boucle ;
+  - la barre n'écoute pas `TaskbarCreated` : Explorer garde ses zones réservées ;
+  - quand Explorer redémarre, Windhawk recharge le mod avec lui, et donc son crochet ;
+  - une fenêtre d'app recyclée est oubliée en 5 s au plus ;
+  - après la mesure du fond, la dernière couleur du texte est gardée ;
+  - au-delà de 200 %, les icônes de 32 px sont agrandies ;
+  - les icônes rangées sous le chevron de Windows sont montrées comme les autres.
+
+## Mineurs reportés — plan 9
+- Au déchargement du mod, le crochet n'attend que les appels déjà comptés.
+- Le mod se reconnecte au pipe sans délai croissant.
+- La minuterie de mise en page des icônes est relancée à chaque rafale.
+- Chaque changement d'icône refait toute la mise en page.
+- Les apps à l'ancien format (version 3) ne reçoivent ni `NIN_SELECT` ni `WM_CONTEXTMENU`.
+- Après `TaskbarCreated`, la version d'une icône reste inconnue jusqu'à ce que l'app la redonne.
+- `TaskbarCreated`, diffusé par le mod, fait refaire au Dock sa zone réservée.
+- Le pipe n'est pas restreint à ta session.
+- `barWidthPoints` n'est pas utilisé hors des tests.
+
 ## Décisions prises sans toi (plan 8)
 - Les tuiles Wi-Fi et Bluetooth ne basculent pas d'avance : elles prennent l'état du relevé suivant, une seconde au plus après le clic.
 - Les titres des tuiles sont « Concentration » et « Recopie d'écran », et le Centre de contrôle fait 340 pt de large. Avec les titres d'origine, le texte était tronqué.
