@@ -29,6 +29,7 @@ private:
         HWND target = nullptr;
         SIZE size{};
         bool zoomed = false, valid = false;
+        UINT dpi = 0;
         Spot spot = Spot::None;
         RECT buttons{};          // boutons de Windows, relatifs au coin haut droit du cadre
         LONG titleBottom = 0;    // bas de la barre de titre, relatif au haut du cadre
@@ -63,6 +64,11 @@ private:
     SIZE paintedSize_{}, coverSize_{};
     ULONGLONG bounceStart_ = 0;
     int probeRetries_ = 0;         // sondes interrompues (app occupée) reprises au plus 3 fois
+    // Pendant une sonde, SendMessageTimeout laisse passer les messages envoyés à notre fil (WinEvent, activation) :
+    // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
+    bool probing_ = false, attachPending_ = false, placePending_ = false;
+    HWND pendingTarget_ = nullptr;
+    LightsMode pendingMode_ = LightsMode::Standard;
     static TrafficWindow* self_;
 };
 

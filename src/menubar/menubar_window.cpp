@@ -130,7 +130,8 @@ void MenuBarApp::loadSettings(bool initial) {
     if (!f.fromFile && !f.wasInvalid && !f.unreadable && ctl_) saveJsonFileAtomic(path, menuBarSettingsToJson(settings_));
     fileTime(path, settingsTime_);
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
-    if (m.fromFile && !m.wasInvalid) glassMetrics_ = metricsFromJson(m.value);
+    // Migré en mémoire : le Dock, lancé en même temps, n'a peut-être pas encore réécrit le fichier.
+    if (m.fromFile && !m.wasInvalid) glassMetrics_ = metricsFromJson(migrateMetricsJson(m.value));
 }
 
 void MenuBarApp::checkSettingsFile() {

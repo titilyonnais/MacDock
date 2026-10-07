@@ -110,7 +110,7 @@ std::vector<MenuCatalog> build() {
         a.menus.push_back({L"Outils",
                            {K(L"Téléchargements", L"Ctrl+Maj+Y"), K(L"Modules et thèmes", L"Ctrl+Maj+A"), Sep(),
                             Sub(L"Outils de navigation", {K(L"Outils de développement", L"Ctrl+Maj+I"),
-                                                           K(L"Console du navigateur", L"Ctrl+Maj+K"),
+                                                           K(L"Console web", L"Ctrl+Maj+K"),
                                                            K(L"Code source de la page", L"Ctrl+U")})}});
         a.menus.push_back({L"Aide", {K(L"Aide de Firefox", L"F1")}});
         all.push_back(std::move(a));
@@ -218,7 +218,7 @@ std::vector<MenuCatalog> build() {
         a.menus.push_back({L"Fichier", {K(L"Nouvelle playlist", L"Ctrl+N")}});
         a.menus.push_back({L"Édition", editItems(L"Ctrl+Y", {})});
         a.menus.push_back({L"Lecture",
-                           {K(L"Lecture/Pause", L"Espace"), K(L"Suivant", L"Ctrl+→"), K(L"Précédent", L"Ctrl+←"), Sep(),
+                           {K(L"Suivant", L"Ctrl+→"), K(L"Précédent", L"Ctrl+←"), Sep(),
                             K(L"Monter le volume", L"Ctrl+↑"), K(L"Baisser le volume", L"Ctrl+↓"), Sep(),
                             K(L"Lecture aléatoire", L"Ctrl+S"), K(L"Répétition", L"Ctrl+R")}});
         all.push_back(std::move(a));

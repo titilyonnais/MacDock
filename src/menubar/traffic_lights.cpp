@@ -74,7 +74,7 @@ bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitPro
     return true;
 }
 
-LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi) {
+LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;
     l.window = buttons;
@@ -88,14 +88,14 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi) {
         l.circles[i] = RECT{cx - r, cy - r, cx + r, cy + r};
     }
     l.fade = false;
-    l.topGap = std::min(LONG(std::lround(kTopGap * k)), (buttons.bottom - buttons.top) / 4);
+    l.topGap = zoomed ? 0 : std::min(LONG(std::lround(kTopGap * k)), (buttons.bottom - buttons.top) / 4);
     l.patch = l.window;
     l.patch.top += l.topGap;
     return l;
 }
 
-LightsLayout buttonsCover(const RECT& buttons, UINT dpi) {
-    LightsLayout l = lightsOverButtons(buttons, dpi);
+LightsLayout buttonsCover(const RECT& buttons, UINT dpi, bool zoomed) {
+    LightsLayout l = lightsOverButtons(buttons, dpi, zoomed);
     l.window = buttons;
     l.patch = buttons;
     l.patch.top += l.topGap;

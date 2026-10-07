@@ -131,8 +131,15 @@ BgraImage macWallpaper(int w, int h, bool dark) {
     }
     std::vector<std::thread> pool;
     const int band = (h + threads - 1) / threads;
-    for (int t = 0; t < threads; ++t)
-        if (t * band < h) pool.emplace_back(rows, t * band, std::min(h, (t + 1) * band));
+    int done = 0;   // lignes confiées à un fil
+    try {
+        for (int t = 0; t < threads && t * band < h; ++t) {
+            pool.emplace_back(rows, t * band, std::min(h, (t + 1) * band));
+            done = std::min(h, (t + 1) * band);
+        }
+    } catch (...) {   // fil impossible à créer : le reste est calculé ici
+    }
+    if (done < h) rows(done, h);
     for (auto& t : pool) t.join();
     return im;
 }

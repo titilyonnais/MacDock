@@ -165,7 +165,7 @@ ThemeResult restoreTheme(ThemeApi& api, const ThemeBackup& backup, const std::ws
             note(r, L"Curseur non rétabli : " + name);
         }
     }
-    if (!api.reloadCursors()) {
+    if (!backup.cursors.empty() && !api.reloadCursors()) {   // « fond d'écran seul » : aucun curseur à recharger
         r.ok = false;
         note(r, L"Windows n'a pas rechargé les curseurs");
     }

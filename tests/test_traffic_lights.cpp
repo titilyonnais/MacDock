@@ -246,6 +246,15 @@ TEST_CASE(lights_over_windows_buttons) {
     CHECK_EQ(int(px[(std::size_t(20) * 138 + 2) * 4 + 3]), 255);    // plus bas : fond opaque
 }
 
+TEST_CASE(lights_zoomed_cover_buttons_to_the_top) {
+    // Fenêtre agrandie : pas de bord à redimensionner, et une bande transparente laisserait cliquer (ou survoler,
+    // menu Snap) les vrais boutons de Windows juste au-dessus des pastilles.
+    const RECT buttons{862, 0, 1000, 30};
+    CHECK_EQ(md::lightsOverButtons(buttons, 96, true).topGap, 0L);
+    CHECK_EQ(md::buttonsCover(buttons, 96, true).topGap, 0L);
+    CHECK(md::lightsOverButtons(buttons, 96).topGap > 0);
+}
+
 TEST_CASE(lights_cover_hides_buttons_without_lights) {
     // Pastilles à gauche : un cache de la couleur de la barre de titre recouvre les boutons de Windows.
     const RECT buttons{862, 0, 1000, 30};

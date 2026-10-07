@@ -335,6 +335,18 @@ Cible : macOS 27 « Golden Gate » (sorti le 14 septembre 2026). La recherche (s
 - **Animations environ 12 % plus courtes** : génie, échelle, Mission Control, Launchpad, piles, Spotlight, masquage du Dock.
 - **Spotlight** affiche « Rechercher ou demander » (« Search or Ask » de macOS 27).
 - **Rien à retirer pour les icônes des menus** : Golden Gate a supprimé les icônes que Tahoe avait ajoutées à presque chaque entrée, mais MacDock n'en avait pas mis. Seuls les éléments récents gardent l'icône de leur fichier, comme sur macOS.
+- **Pastilles absentes après une restauration depuis le Dock** : la fenêtre devenait active alors qu'elle était encore réduite, si bien qu'elle était écartée pour de bon. Elle est maintenant suivie et reçoit ses pastilles en réapparaissant.
+- **Relecture finale (Opus)** : 0 critique et 3 importants, tous corrigés.
+  - Le cache des boutons Windows ne réagissait pas à la souris : ses messages partaient vers le mauvais calque.
+  - Sur une fenêtre agrandie, une bande de 3 pt laissait atteindre les vrais boutons Windows au-dessus des pastilles. Un test couvre ce cas.
+  - Une activation arrivant au milieu d'une sonde était traitée en pleine sonde ; elle est maintenant reportée juste après.
+  - 7 mineurs ont aussi été corrigés : sonde interrompue, DPI dans le cache, glissement, rechargement des curseurs, fils du fond d'écran, verre de la barre de menus, libellés Firefox et Spotify.
+
+## Mineurs reportés — plan 25
+- Après « Fond d'écran Golden Gate seul », la coche se met sur « Appliquer (curseurs et fond d'écran) », alors que les curseurs n'ont pas changé.
+- `leftCaptionFree` ne sonde que trois rangées, alors que le calque de gauche couvre toute la hauteur de la barre de titre (28 pt par défaut quand la barre est dessinée par l'app). Pour un dialogue à un seul bouton, la zone élargie n'est pas sondée.
+- Une fenêtre toujours au premier plan (`WS_EX_TOPMOST`) passe au-dessus de ses pastilles. Le problème existait déjà avant ce plan.
+- À vérifier : « Diviser » de Windows Terminal (`Alt+Maj+Plus` envoyé avec le + du pavé numérique), et Ctrl+, dans Spotify et Telegram.
 
 ## Mineurs reportés — plan 24
 - Sous forte charge DWM (menu en verre ouvert), chaque placement de miniature coûte 4 à 9 ms : avec 9 fenêtres réduites, une image du Dock de 55 ms. À passer sur un fil à part.

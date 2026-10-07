@@ -21,6 +21,7 @@ constexpr UINT_PTR kSampleTimer = 1;   // couleur remesurée 200 ms après le de
 constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois le redimensionnement calmé
 constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
 constexpr double kBounceMs = 240;
+constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
 
 // DPI réel de l'écran de la fenêtre (une app non consciente du DPI répond 96 à GetDpiForWindow).
 UINT effectiveDpi(HWND h) {
@@ -143,6 +144,13 @@ void TrafficWindow::hide() {
 
 void TrafficWindow::attach(HWND target, LightsMode mode) {
     if (!hwnd_) return;
+    if (probing_) {
+        attachPending_ = true;
+        pendingTarget_ = target;
+        pendingMode_ = mode;
+        SetTimer(hwnd_, kDeferTimer, 0, nullptr);
+        return;
+    }
     mode_ = mode;
     if (target != target_ || !hook_) {   // nouvelle cible, ou cible sans pastilles réévaluée (réglage changé)
         detach();
@@ -174,6 +182,11 @@ void TrafficWindow::attach(HWND target, LightsMode mode) {
 void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD) {
     TrafficWindow* t = self_;
     if (!t || !t->target_) return;
+    if (t->probing_) {   // au milieu d'une sonde : replacé juste après
+        t->placePending_ = true;
+        SetTimer(t->hwnd_, kDeferTimer, 0, nullptr);
+        return;
+    }
     if (event == EVENT_OBJECT_REORDER) {   // ordre d'affichage changé dans ce processus : on reste au-dessus
         if (t->shown_) t->raise();
         return;
@@ -221,6 +234,7 @@ TrafficWindow::Placement TrafficWindow::measure(const LightsWindowInfo& info, UI
     p.target = target_;
     p.size = SIZE{info.frame.right - info.frame.left, info.frame.bottom - info.frame.top};
     p.zoomed = info.zoomed;
+    p.dpi = dpi;
     p.valid = true;
     const HWND target = target_;
     // Sonde en lecture seule : WM_NCHITTEST ne fait que répondre une zone. 20 ms par appel au plus et 60 ms en
@@ -275,16 +289,31 @@ void TrafficWindow::place(bool resample, bool probe) {
     }
     const RECT& f = info.frame;
     const SIZE size{f.right - f.left, f.bottom - f.top};
-    if (probe || !placement_.valid || placement_.target != target_ || placement_.zoomed != info.zoomed) {
+    if (probe || !placement_.valid || placement_.target != target_ || placement_.zoomed != info.zoomed ||
+        placement_.dpi != dpi) {
         bool complete = true;
         const ULONGLONG t0 = GetTickCount64();
-        placement_ = measure(info, dpi, complete);
+        const HWND probed = target_;
+        probing_ = true;
+        Placement p = measure(info, dpi, complete);
+        probing_ = false;
+        if (target_ != probed) return;   // par sécurité : la cible ne change qu'après la sonde (kDeferTimer)
         if (diagnosticCapture())
             log::info(L"[diag] pastilles %p : place %d, boutons %ld,%ld,%ld,%ld, titre %ld, complet %d, %llu ms", target_,
-                      int(placement_.spot), placement_.buttons.left, placement_.buttons.top, placement_.buttons.right,
-                      placement_.buttons.bottom, placement_.titleBottom, int(complete), GetTickCount64() - t0);
-        if (complete) probeRetries_ = 0;
-        else if (probeRetries_++ < 3) SetTimer(hwnd_, kProbeTimer, 500, nullptr);
+                      int(p.spot), p.buttons.left, p.buttons.top, p.buttons.right, p.buttons.bottom, p.titleBottom,
+                      int(complete), GetTickCount64() - t0);
+        if (complete) {
+            probeRetries_ = 0;
+            placement_ = p;
+        } else {
+            // Sonde interrompue (app occupée) : réponses manquantes, la place déduite serait fausse. On garde la mesure
+            // précédente de cette fenêtre, sinon rien jusqu'à la reprise.
+            if (!(placement_.valid && placement_.target == target_)) {
+                placement_ = p;
+                placement_.spot = Spot::None;
+            }
+            if (probeRetries_++ < 3) SetTimer(hwnd_, kProbeTimer, 500, nullptr);
+        }
     } else if (size.cx != placement_.size.cx || size.cy != placement_.size.cy) {
         // Redimensionnement : les boutons restent ancrés à droite ; nouvelle sonde une fois le geste calmé.
         SetTimer(hwnd_, kProbeTimer, 150, nullptr);
@@ -299,7 +328,7 @@ void TrafficWindow::place(bool resample, bool probe) {
         title.top = f.top + placement_.titleBottom;
         l = lightsLayout(f, title, dpi);
     } else if (spot_ == Spot::Over && hasButtons) {
-        l = lightsOverButtons(buttons, dpi);
+        l = lightsOverButtons(buttons, dpi, info.zoomed);
     } else {
         hide();
         return;
@@ -310,7 +339,7 @@ void TrafficWindow::place(bool resample, bool probe) {
     layout_ = l;
     const bool wantCover = cover_ && spot_ == Spot::Left && hasButtons;
     if (wantCover) {
-        const LightsLayout c = buttonsCover(buttons, dpi);
+        const LightsLayout c = buttonsCover(buttons, dpi, info.zoomed);
         if (c.window.right - c.window.left != coverSize_.cx || c.window.bottom - c.window.top != coverSize_.cy ||
             c.topGap != coverLayout_.topGap)
             coverPainted_ = false;
@@ -406,10 +435,9 @@ LRESULT CALLBACK TrafficWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
 LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
     const bool cover = from == cover_;   // le cache se comporte comme le fond de la barre de titre
-    const auto screenPoint = [&] {
-        POINT p{short(LOWORD(lp)), short(HIWORD(lp))};
-        ClientToScreen(from, &p);
-        return p;
+    const auto screenPoint = [] {   // position écran du message : juste même si le calque a bougé depuis
+        const DWORD pos = GetMessagePos();
+        return POINT{short(LOWORD(pos)), short(HIWORD(pos))};
     };
     const auto overGroup = [&](POINT p) {
         return p.x >= layout_.circles[0].left - 2 && p.x <= layout_.circles[2].right + 2 && p.y >= layout_.circles[0].top - 2 &&
@@ -508,7 +536,17 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
-            if (wp == kSampleTimer) {
+            if (wp == kDeferTimer) {
+                KillTimer(hwnd_, kDeferTimer);
+                if (attachPending_) {
+                    attachPending_ = placePending_ = false;
+                    attach(pendingTarget_, pendingMode_);
+                } else if (placePending_) {
+                    placePending_ = false;
+                    if (target_ && !IsWindow(target_)) detach();
+                    else place(false);
+                }
+            } else if (wp == kSampleTimer) {
                 KillTimer(hwnd_, kSampleTimer);
                 place(true);
             } else if (wp == kProbeTimer) {
@@ -528,7 +566,7 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         default: break;
     }
-    return DefWindowProcW(hwnd_, msg, wp, lp);
+    return DefWindowProcW(from, msg, wp, lp);
 }
 
 } // namespace md
