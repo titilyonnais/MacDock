@@ -1403,9 +1403,12 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             applySettings();
             break;
         case kCmdThemeApply:
+        case kCmdThemeWallpaper:
         case kCmdThemeRestore: {   // à la demande seulement ; plusieurs secondes en Debug : hors du fil de l'interface
-            const bool apply = cmd == kCmdThemeApply;
-            if (!themeJob_.start([apply] { return apply ? applyMacTheme() : restoreWindowsTheme(); }, hwnd_, WM_APP_THEME))
+            const bool apply = cmd != kCmdThemeRestore;
+            const ThemeParts parts{.cursors = cmd == kCmdThemeApply};
+            if (!themeJob_.start([apply, parts] { return apply ? applyMacTheme(parts) : restoreWindowsTheme(); }, hwnd_,
+                                 WM_APP_THEME))
                 log::info(L"Thème : une application ou un rétablissement est déjà en cours");
             break;
         }

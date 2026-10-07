@@ -174,7 +174,7 @@ std::wstring themeDir() { return appDataDir() + L"\\theme"; }
 
 bool themeBackupExists() { return fileExists(themeBackupPath()); }
 
-ThemeResult applyMacTheme() {
+ThemeResult applyMacTheme(const ThemeParts& parts) {
     ThemeLock lock;   // le Dock et --theme, ou deux --theme : l'un après l'autre
     bool unreadable = false;
     std::optional<ThemeBackup> backup = loadBackup(unreadable);
@@ -186,7 +186,7 @@ ThemeResult applyMacTheme() {
     } else {
         CreateDirectoryW(themeDir().c_str(), nullptr);
         ThemeApi api = realThemeApi();
-        r = applyTheme(api, themeDir(), backup);
+        r = applyTheme(api, themeDir(), backup, parts);
     }
     logResult(L"Thème macOS appliqué", r);
     return r;
@@ -248,7 +248,7 @@ bool writeThemeSnapshot(const std::wstring& dir) {
     drawCursorRow(sheet, 240, 32, 40);
     bool ok = writePng(dir + L"\\cursors.png", sheet.px.data(), UINT(sheet.w), UINT(sheet.h));
     for (bool dark : {false, true}) {
-        const BgraImage wall = tahoeWallpaper(1920, 1080, dark);
+        const BgraImage wall = macWallpaper(1920, 1080, dark);
         ok = writePng(dir + (dark ? L"\\wallpaper-dark.png" : L"\\wallpaper-light.png"), wall.px.data(), 1920, 1080) && ok;
     }
     return ok;

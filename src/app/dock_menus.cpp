@@ -64,6 +64,7 @@ void separatorMenu(const MenuContext& c, std::vector<MenuItem>& out) {
     out.push_back(effect);
     MenuItem theme{-1, L"Thème macOS"};   // curseurs et fond d'écran, rendus à l'identique au rétablissement
     theme.submenu = {entry(kCmdThemeApply, L"Appliquer (curseurs et fond d'écran)", true, c.themeApplied),
+                     entry(kCmdThemeWallpaper, L"Fond d'écran Golden Gate seul"),   // curseurs installés à part
                      entry(kCmdThemeRestore, L"Rétablir le thème Windows", c.themeApplied)};
     out.push_back(theme);
     out.push_back({});

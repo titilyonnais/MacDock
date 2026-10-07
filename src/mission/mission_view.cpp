@@ -226,7 +226,7 @@ bool Session::addScreen(HMONITOR mon) {
         dc->CreateBitmap(D2D1::SizeU(s.w(), s.h()), wp->px.data(), s.w() * 4, &props, &s.wall);
     if (!s.wall) {
         if (env.trace) log::info(L"[trace] mission : fond de repli (%s)", path.empty() ? L"pas de fichier" : path.c_str());
-        const BgraImage t = tahoeWallpaper(int(s.w()), int(s.h()), env.dark);
+        const BgraImage t = macWallpaper(int(s.w()), int(s.h()), env.dark);
         dc->CreateBitmap(D2D1::SizeU(s.w(), s.h()), t.px.data(), s.w() * 4, &props, &s.wall);
     }
     s.wallSrc = {0, 0, float(s.w()), float(s.h())};
@@ -539,7 +539,7 @@ BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, in
                                 D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, fmt),
                                 &readback)))
         return out;
-    const BgraImage wall = tahoeWallpaper(width, height, dark);
+    const BgraImage wall = macWallpaper(width, height, dark);
     dc->CreateBitmap(size, wall.px.data(), UINT32(width * 4), D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, fmt), &wallBmp);
     const auto rects = missionLayout(windows, missionArea({0, 0, double(width), double(height)}, 1), kMissionGap,
                                      kMissionGap + kMissionLabelRoom);

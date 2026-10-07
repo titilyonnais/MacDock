@@ -45,8 +45,14 @@ struct ThemeResult {
 json::Value themeBackupToJson(const ThemeBackup& b);
 std::optional<ThemeBackup> themeBackupFromJson(const json::Value& v);
 
+// Ce que l'application change : tout, ou le fond d'écran seul (curseurs installés à part par l'utilisateur).
+struct ThemeParts {
+    bool cursors = true;
+    bool wallpaper = true;
+};
+
 // Écrit les fichiers dans dir, sauvegarde l'état actuel si backup est vide, puis change curseurs et fonds.
-ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<ThemeBackup>& backup);
+ThemeResult applyTheme(ThemeApi& api, const std::wstring& dir, std::optional<ThemeBackup>& backup, const ThemeParts& parts = {});
 // Rend les valeurs sauvegardées ; les écrans absents sont ignorés.
 ThemeResult restoreTheme(ThemeApi& api, const ThemeBackup& backup, const std::wstring& dir);
 

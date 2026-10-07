@@ -190,13 +190,14 @@ TEST_CASE(dock_menu_theme) {
     for (auto& it : m.items)
         if (it.text == L"Thème macOS") theme = &it;
     REQUIRE(theme != nullptr);
-    REQUIRE(theme->submenu.size() == 2);
+    REQUIRE(theme->submenu.size() == 3);
     CHECK(theme->submenu[0].id == md::kCmdThemeApply && theme->submenu[0].checked);
-    CHECK(theme->submenu[1].id == md::kCmdThemeRestore && theme->submenu[1].enabled);
+    CHECK(theme->submenu[1].id == md::kCmdThemeWallpaper && theme->submenu[1].enabled);   // curseurs installés à part
+    CHECK(theme->submenu[2].id == md::kCmdThemeRestore && theme->submenu[2].enabled);
     c.themeApplied = false;
     auto off = md::buildDockMenu(c);
     for (auto& it : off.items)
-        if (it.text == L"Thème macOS") CHECK(!it.submenu[0].checked && !it.submenu[1].enabled);
+        if (it.text == L"Thème macOS") CHECK(!it.submenu[0].checked && it.submenu[1].enabled && !it.submenu[2].enabled);
 }
 
 TEST_CASE(dock_menu_apps_button) {
