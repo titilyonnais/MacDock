@@ -7,10 +7,6 @@
 
 namespace md {
 
-namespace {
-constexpr wchar_t kRecycleBin[] = L"shell:RecycleBinFolder";
-}
-
 void DockController::init(const Settings& s, const Metrics& m, AppModel* model) {
     model_ = model;
     setSettings(s);
@@ -250,7 +246,7 @@ IconProvider::ImagePtr DockController::imageFor(const DockItem& item, IconProvid
         }
         case ItemKind::AppsButton: return icons.appsButton(px);
         case ItemKind::Stack: return icons.get(L"stack:" + item.launch, item.launch, px);
-        case ItemKind::Trash: return icons.get(L"trash", kRecycleBin, px);
+        case ItemKind::Trash: return icons.trash(item.trashFull, px);
         case ItemKind::MinimizedWindow: {
             std::wstring parsing;
             if (model_)

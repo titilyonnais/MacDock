@@ -27,6 +27,7 @@ public:
     // parsingName : nom Shell (chemin, .lnk, shell:AppsFolder\AUMID, ::{CLSID}).
     ImagePtr get(const std::wstring& key, const std::wstring& parsingName, int px);
     ImagePtr appsButton(int px);            // icône « Apps » dessinée par le code
+    ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
     void clear() { cache_.clear(); }
 
 private:

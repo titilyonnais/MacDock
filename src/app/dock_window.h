@@ -60,7 +60,9 @@ private:
     void restartCapture();
     void pauseCapture();      // le temps d'un menu (une seule duplication de l'écran par processus)
     void resumeCapture();
-    void onBackdrop();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
+    void onBackdrop();
+    void watchTrash();
+    void refreshTrash();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
     void onPointerUp(POINT client);
     void logItemPositions(const RenderFrame& frame);
@@ -112,7 +114,8 @@ private:
     double poofStart_ = -1;
     std::uint64_t loggedRevision_ = 0;   // [trace] dernière révision du modèle dont les positions ont été journalisées
     POINT poofCenter_{};
-    bool captureFailed_ = false;   // échec définitif : pas de nouvel essai avant un changement d'affichage
+    bool captureFailed_ = false;
+    ULONG trashNotify_ = 0;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

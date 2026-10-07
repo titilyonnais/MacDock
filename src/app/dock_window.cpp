@@ -3,6 +3,7 @@
 #include <dcomp.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +32,9 @@ constexpr UINT WM_APP_MOUSE = WM_APP + 4;
 constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
+constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
+constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
@@ -494,6 +497,26 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     requestFrame();
 }
 
+// Corbeille vide ou pleine : avis du Shell sur le dossier Corbeille, puis requête différée.
+void DockApp::watchTrash() {
+    refreshTrash();
+    PIDLIST_ABSOLUTE pidl = nullptr;
+    if (FAILED(SHGetSpecialFolderLocation(nullptr, CSIDL_BITBUCKET, &pidl))) return;
+    SHChangeNotifyEntry entry{pidl, TRUE};
+    trashNotify_ = SHChangeNotifyRegister(hwnd_, SHCNRF_ShellLevel | SHCNRF_InterruptLevel | SHCNRF_NewDelivery,
+                                          SHCNE_ALLEVENTS,
+                                          WM_APP_TRASH, 1, &entry);
+    CoTaskMemFree(pidl);
+    if (!trashNotify_) log::warn(L"Surveillance de la Corbeille impossible");
+}
+
+void DockApp::refreshTrash() {
+    bool full = recycleBinHasItems();
+    if (trace_) log::info(L"[trace] corbeille %s", full ? L"pleine" : L"vide");
+    model_.setTrashFull(full);
+    requestFrame();
+}
+
 void DockApp::requestFrame() {
     wakeAnimation_ = true;
     // Réveille WaitMessage, y compris depuis un message envoyé (SendMessage) qui ne le réveille pas.
@@ -639,7 +662,21 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_CONFIG:
             SetTimer(hwnd_, kConfigTimer, 200, nullptr);   // anti-rebond : plusieurs écritures d'affilée
             return 0;
+        case WM_APP_TRASH: {
+            LONG event = 0;
+            PIDLIST_ABSOLUTE* pidls = nullptr;
+            if (HANDLE lock = SHChangeNotification_Lock(HANDLE(wp), DWORD(lp), &pidls, &event))
+                SHChangeNotification_Unlock(lock);
+            if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", unsigned long(event));
+            SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
+            return 0;
+        }
         case WM_TIMER:
+            if (wp == kTrashTimer) {
+                KillTimer(hwnd_, kTrashTimer);
+                refreshTrash();
+                return 0;
+            }
             if (wp == kConfigTimer) {
                 KillTimer(hwnd_, kConfigTimer);
                 double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
@@ -884,6 +921,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     startMouseThread();
     startConfigWatcher();
+    watchTrash();
 
     double last = nowSeconds();
     while (running_) {
@@ -946,6 +984,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     }
 
     log::info(L"MacDock s'arrête");
+    if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
     capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();

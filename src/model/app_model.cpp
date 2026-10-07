@@ -102,6 +102,12 @@ void AppModel::setHidden(const std::wstring& appId, bool hidden) {
     touch();
 }
 
+void AppModel::setTrashFull(bool full) {
+    if (trashFull_ == full) return;
+    trashFull_ = full;
+    touch();
+}
+
 bool AppModel::isHidden(const std::wstring& appId) const {
     auto a = apps_.find(appId);
     return a != apps_.end() && a->second.hidden;
@@ -273,6 +279,7 @@ std::vector<DockItem> AppModel::items() const {
     DockItem trash;
     trash.kind = ItemKind::Trash;
     trash.key = L"trash";
+    trash.trashFull = trashFull_;
     out.push_back(std::move(trash));
     return out;
 }

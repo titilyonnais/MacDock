@@ -1,6 +1,7 @@
 #include "icon_provider.h"
 
 #include <windows.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <wincodec.h>
@@ -49,15 +50,9 @@ Pixels resize(const Pixels& src, int srcSize, int dstSize) {
 }
 
 // Image Shell 256 px (BGRA prémultiplié) ; vide si échec.
-Pixels shellImage(const std::wstring& parsingName, int& size) {
+// Pixels BGRA d'une image 32 bits (carrée après centrage) ; libère hbmp.
+Pixels bitmapPixels(HBITMAP hbmp, int& size) {
     size = 0;
-    ComPtr<IShellItemImageFactory> factory;
-    if (FAILED(SHCreateItemFromParsingName(parsingName.c_str(), nullptr, IID_PPV_ARGS(&factory)))) return {};
-    HBITMAP hbmp = nullptr;
-    SIZE req{256, 256};
-    if (FAILED(factory->GetImage(req, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &hbmp)) &&
-        FAILED(factory->GetImage(req, SIIGBF_RESIZETOFIT, &hbmp)))
-        return {};
     BITMAP bm{};
     GetObjectW(hbmp, sizeof bm, &bm);
     int w = bm.bmWidth, h = std::abs(bm.bmHeight);
@@ -90,6 +85,38 @@ Pixels shellImage(const std::wstring& parsingName, int& size) {
         px.swap(sq);
     }
     size = s;
+    return px;
+}
+
+Pixels shellImage(const std::wstring& parsingName, int& size) {
+    size = 0;
+    ComPtr<IShellItemImageFactory> factory;
+    if (FAILED(SHCreateItemFromParsingName(parsingName.c_str(), nullptr, IID_PPV_ARGS(&factory)))) return {};
+    HBITMAP hbmp = nullptr;
+    SIZE req{256, 256};
+    if (FAILED(factory->GetImage(req, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &hbmp)) &&
+        FAILED(factory->GetImage(req, SIIGBF_RESIZETOFIT, &hbmp)))
+        return {};
+    return bitmapPixels(hbmp, size);
+}
+
+// Icône système (SHSTOCKICONID) extraite en 256 px depuis son emplacement (imageres.dll…).
+Pixels stockImage(SHSTOCKICONID id, int& size) {
+    size = 0;
+    SHSTOCKICONINFO info{sizeof info};
+    if (FAILED(SHGetStockIconInfo(id, SHGSI_ICONLOCATION, &info))) return {};
+    HICON icon = nullptr;
+    if (SHDefExtractIconW(info.szPath, info.iIcon, 0, &icon, nullptr, MAKELONG(256, 0)) != S_OK || !icon) return {};
+    ICONINFO ii{};
+    BOOL ok = GetIconInfo(icon, &ii);
+    DestroyIcon(icon);
+    if (!ok) return {};
+    if (ii.hbmMask) DeleteObject(ii.hbmMask);
+    if (!ii.hbmColor) return {};
+    Pixels px = bitmapPixels(ii.hbmColor, size);
+    // Couleurs d'icône en alpha droit : prémultipliées comme celles du Shell.
+    for (size_t i = 0; i + 3 < px.size(); i += 4)
+        for (int c = 0; c < 3; ++c) px[i + c] = std::uint8_t((px[i + c] * px[i + 3] + 127) / 255);
     return px;
 }
 
@@ -280,7 +307,10 @@ IconProvider::ImagePtr IconProvider::build(const std::wstring& key, const std::w
         src = loadPng(customDir_ + L"\\" + safeFileName(key) + L".png", srcSize);
         custom = !src.empty();
     }
-    if (src.empty() && !parsingName.empty()) src = shellImage(parsingName, srcSize);
+    if (src.empty() && parsingName.starts_with(L"stock:"))
+        src = stockImage(SHSTOCKICONID(_wtoi(parsingName.c_str() + 6)), srcSize);
+    else if (src.empty() && !parsingName.empty())
+        src = shellImage(parsingName, srcSize);
     if (src.empty()) {
         log::warn(L"Icône introuvable pour %s", parsingName.c_str());
         return finish(genericIcon(s, cornerRatio_, dark_), s, px);
@@ -304,6 +334,11 @@ IconProvider::ImagePtr IconProvider::build(const std::wstring& key, const std::w
     Pixels icon = resize(src, srcSize, inner);
     blendOver(shaped, s, icon, inner, (s - inner) / 2, (s - inner) / 2);
     return finish(std::move(shaped), s, px);
+}
+
+IconProvider::ImagePtr IconProvider::trash(bool full, int px) {
+    return full ? get(L"trash-full", L"stock:" + std::to_wstring(int(SIID_RECYCLERFULL)), px)
+                : get(L"trash", L"stock:" + std::to_wstring(int(SIID_RECYCLER)), px);
 }
 
 IconProvider::ImagePtr IconProvider::appsButton(int px) {

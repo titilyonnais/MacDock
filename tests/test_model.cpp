@@ -219,3 +219,16 @@ TEST_CASE(model_identity_of_closed_pin_has_exe_path) {
     REQUIRE(id.has_value());
     CHECK(id->exePath == L"C:/Chrome/chrome.exe");
 }
+
+TEST_CASE(model_trash_full_changes_revision_and_item) {
+    md::AppModel m;
+    CHECK(!m.items().back().trashFull);
+    auto r = m.revision();
+    m.setTrashFull(true);
+    CHECK(m.revision() != r);
+    CHECK(m.items().back().kind == md::ItemKind::Trash);
+    CHECK(m.items().back().trashFull);
+    r = m.revision();
+    m.setTrashFull(true);   // sans changement : pas de nouveau rendu
+    CHECK(m.revision() == r);
+}

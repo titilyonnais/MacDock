@@ -28,6 +28,7 @@ struct DockItem {
     std::wstring key;          // "app:<appId>", "apps", "sep:1", "sep:2", "stack:<chemin>", "win:<id>", "trash"
     std::wstring appId, name, launch;
     bool pinned = false, running = false, recent = false;
+    bool trashFull = false;          // Trash
     std::vector<WindowId> windows;   // App : fenêtres ouvertes
     WindowId window = 0;             // MinimizedWindow
 };
@@ -49,6 +50,7 @@ public:
     // de ses fenêtres est restaurée ou ouverte, ou à la fermeture de l'app.
     void setHidden(const std::wstring& appId, bool hidden);
     bool isHidden(const std::wstring& appId) const;
+    void setTrashFull(bool full);
 
     bool pin(const std::wstring& appId, std::size_t index);
     bool unpin(const std::wstring& key);
@@ -86,6 +88,7 @@ private:
     std::map<WindowId, Window> windows_;
     std::deque<AppIdentity> recents_;     // plus récent en tête
     bool showRecents_ = true;
+    bool trashFull_ = false;
     std::uint64_t seq_ = 0;
     std::uint64_t revision_ = 1;
 };
