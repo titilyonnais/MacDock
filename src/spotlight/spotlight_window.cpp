@@ -486,8 +486,7 @@ std::wstring clipboardLine(HWND owner) {   // lecture seule
             GlobalUnlock(h);
         }
     CloseClipboard();
-    out = out.substr(0, out.find_first_of(L"\r\n"));
-    return out.substr(0, 128);
+    return spotPasteLine(out);
 }
 
 LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
@@ -513,7 +512,7 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case VK_BACK:
                     if (!view.query.empty()) {
                         if (ctrl) view.query.clear();
-                        else view.query.pop_back();
+                        else spotEraseLast(view.query);
                         queryChanged();
                     }
                     return 0;

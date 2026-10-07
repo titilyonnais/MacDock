@@ -64,3 +64,17 @@ TEST_CASE(hot_corners_delay) {
     CHECK(md::hotCornerDelayMs(md::HotCornerAction::MissionControl) == 0);
     CHECK(md::hotCornerDelayMs(md::HotCornerAction::Desktop) == 0);
 }
+
+TEST_CASE(hot_corners_offset_screens) {
+    // Second écran décalé d'un pixel vers le bas : en y = 1, le pointeur passe à droite sur lui.
+    const std::vector<RECT> mons{{0, 0, 1920, 1080}, {1920, 1, 3840, 1081}};
+    CHECK(!md::cornerAt({1919, 1}, mons));
+    CHECK(md::cornerAt({1919, 0}, mons) == Corner::TopRight);   // en y = 0, rien à droite : il bute
+}
+
+TEST_CASE(hot_corners_rearm_along_edge) {
+    md::HotCornerTracker t;
+    CHECK(t.update(Corner::BottomLeft, {0, 1079}, false) == Corner::BottomLeft);
+    CHECK(!t.update(std::nullopt, {30, 1079}, false));   // glissé le long du bord : réarmé
+    CHECK(t.update(Corner::BottomLeft, {0, 1079}, false) == Corner::BottomLeft);
+}

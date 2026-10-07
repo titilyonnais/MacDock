@@ -10,7 +10,7 @@ namespace md {
 namespace {
 
 // Analyseur récursif : expr := terme (± terme)* ; terme := puissance (×÷ puissance)* ;
-// puissance := unaire (^ puissance)? ; unaire := - unaire | primaire %* ; primaire := nombre | ( expr ).
+// puissance := unaire (^ puissance)? ; unaire := - puissance | primaire %* ; primaire := nombre | ( expr ).
 class Parser {
 public:
     explicit Parser(std::wstring_view s) : s_(s) {}
@@ -90,8 +90,8 @@ private:
     }
 
     std::optional<double> unary() {
-        if (eat(L'-') || eat(L'−')) {
-            auto v = unary();
+        if (eat(L'-') || eat(L'−')) {   // après la puissance, comme une calculatrice : -2^2 = -4
+            auto v = power();
             if (!v) return std::nullopt;
             return -*v;
         }

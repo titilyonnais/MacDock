@@ -35,10 +35,10 @@
 
 ```cpp
 TEST_CASE(spot_calc_unary_minus_after_power) {
-    CHECK(*md::evaluateExpression(L"-2^2") == -4);
-    CHECK(*md::evaluateExpression(L"2^-1") == 0.5);
-    CHECK(*md::evaluateExpression(L"(-2)^2") == 4);
-    CHECK(*md::evaluateExpression(L"--2") == 2);
+    CHECK(md::evaluateExpression(L"-2^2").value_or(1e9) == -4);
+    CHECK(md::evaluateExpression(L"2^-1").value_or(1e9) == 0.5);
+    CHECK(md::evaluateExpression(L"(-2)^2").value_or(1e9) == 4);
+    CHECK(!md::evaluateExpression(L"--2"));   // aucun opérateur binaire : pas un calcul
 }
 
 TEST_CASE(spot_erase_last_keeps_surrogates) {

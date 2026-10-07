@@ -70,4 +70,9 @@ struct HotkeySpec {
 // « alt+space » ou « ctrl+space » (casse ignorée) ; nullopt pour « off » ou une valeur inconnue.
 std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text);
 
+// Saisie : efface le dernier caractère (une paire de substitution, comme un émoji, d'un coup).
+void spotEraseLast(std::wstring& query);
+// Collage : première ligne, tabulations en espaces, 128 unités au plus sans couper une paire de substitution.
+std::wstring spotPasteLine(const std::wstring& clip);
+
 } // namespace md

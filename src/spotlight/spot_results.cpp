@@ -124,4 +124,21 @@ std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text) {
     return std::nullopt;
 }
 
+void spotEraseLast(std::wstring& query) {
+    if (query.empty()) return;
+    query.pop_back();
+    if (!query.empty() && IS_HIGH_SURROGATE(query.back())) query.pop_back();
+}
+
+std::wstring spotPasteLine(const std::wstring& clip) {
+    std::wstring out = clip.substr(0, clip.find_first_of(L"\r\n"));
+    for (wchar_t& c : out)
+        if (c == L'\t') c = L' ';
+    if (out.size() > 128) {
+        out.resize(128);
+        if (IS_HIGH_SURROGATE(out.back())) out.pop_back();
+    }
+    return out;
+}
+
 } // namespace md

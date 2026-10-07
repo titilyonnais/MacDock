@@ -172,3 +172,26 @@ TEST_CASE(spot_calc_copies_plain_number) {   // collé dans un tableur : un nomb
     CHECK(s[0].items[0].title == L"1\u202F234,5");
     CHECK(s[0].items[0].target == L"1234,5");
 }
+
+TEST_CASE(spot_calc_unary_minus_after_power) {
+    CHECK(md::evaluateExpression(L"-2^2").value_or(1e9) == -4);
+    CHECK(md::evaluateExpression(L"2^-1").value_or(1e9) == 0.5);
+    CHECK(md::evaluateExpression(L"(-2)^2").value_or(1e9) == 4);
+    CHECK(!md::evaluateExpression(L"--2"));   // aucun opérateur binaire : pas un calcul
+}
+
+TEST_CASE(spot_erase_last_keeps_surrogates) {
+    std::wstring q = L"a\U0001F600";
+    md::spotEraseLast(q);
+    CHECK(q == L"a");
+    md::spotEraseLast(q);
+    CHECK(q.empty());
+    md::spotEraseLast(q);
+    CHECK(q.empty());
+}
+
+TEST_CASE(spot_paste_line) {
+    CHECK(md::spotPasteLine(L"a\tb\r\nc") == L"a b");
+    const std::wstring longText = std::wstring(127, L'x') + L"\U0001F600";
+    CHECK(md::spotPasteLine(longText).size() == 127);   // la paire ne tient pas : écartée entière
+}
