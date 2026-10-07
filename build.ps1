@@ -32,7 +32,7 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\interact\*.cpp', 'src\popup\menu_model.cpp', 'src\stack\*.cpp',
                   'src\menubar\bar_layout.cpp', 'src\menubar\bar_color.cpp', 'src\menubar\clock_format.cpp',
                   'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
-                  'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp')
+                  'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp', 'src\menubar\uia_menu.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE';

@@ -25,6 +25,7 @@ enum class ActionKind {
     GoTo,             // arg : dossier (shell:…) ; dans la fenêtre de l'Explorateur active, sinon une nouvelle
     Sleep, Lock, SignOut, Restart, Shutdown,
     MenuCommand,      // vrai menu Win32 : WM_COMMAND (command) à la fenêtre window
+    UiaInvoke,        // vrai menu UI Automation : entrée au chemin path (titre, entrée…), nommée arg, de window
 };
 
 enum class MenuSource { Generic, Win32, Uia };
@@ -34,6 +35,7 @@ struct MenuAction {
     std::wstring arg;
     std::uint64_t window = 0;
     int command = 0;
+    std::vector<int> path;
 };
 
 struct BarMenu {

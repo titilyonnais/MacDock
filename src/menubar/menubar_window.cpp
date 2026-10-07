@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
@@ -27,6 +28,14 @@ namespace {
 constexpr wchar_t kClassName[] = L"MacMenuBarWindow";
 constexpr UINT WM_APP_APPBAR = WM_APP + 1;
 constexpr UINT WM_APP_SAMPLE = WM_APP + 2;
+constexpr UINT WM_APP_UIA_TITLES = WM_APP + 3;   // lParam : UiaTitles* (à libérer)
+constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
+
+struct UiaTitles {
+    unsigned generation = 0;
+    HWND window = nullptr;
+    std::vector<RawMenuItem> titles;
+};
 constexpr UINT_PTR kClockTimer = 0x434C;        // "CL"
 constexpr UINT_PTR kSampleTimeout = 0x5354;     // "ST" : pas d'image utilisable de la capture
 constexpr UINT_PTR kResampleTimer = 0x5253;     // "RS" : diaporama de fonds d'écran
@@ -231,6 +240,21 @@ void MenuBarApp::onForeground(HWND h) {
         a.exePath = id->exePath;
     }
     if (!a.explorer) readRealMenus(top, root, a);
+    if (!a.explorer && a.source == MenuSource::Generic) {
+        if (active_.source == MenuSource::Uia && active_.menuOwner == top) {   // même fenêtre : titres déjà lus
+            a.source = active_.source;
+            a.real = active_.real;
+            a.menuOwner = top;
+        } else {
+            wchar_t topCls[256] = {};
+            GetClassNameW(top, topCls, 256);
+            if (shouldProbeUia(topCls)) requestUiaTitles(top);
+            else uiaWindow_ = nullptr;
+        }
+    } else {
+        uiaWindow_ = nullptr;
+        ++uiaLatest_;   // une demande en cours ne s'appliquera plus
+    }
     target_ = keepTarget(target_, top, kind, a.appId);
     const bool changed = a.name != active_.name || a.explorer != active_.explorer || a.desktop != active_.desktop ||
                          a.menuOwner != active_.menuOwner || a.real.size() != active_.real.size() ||
@@ -273,8 +297,19 @@ void MenuBarApp::readRealMenus(HWND top, HWND root, Active& a) {
 }
 
 void MenuBarApp::refreshRealMenu(int real) {
-    if (active_.source != MenuSource::Win32 || real < 0 || std::size_t(real) >= active_.real.size()) return;
+    if (active_.source == MenuSource::Generic || real < 0 || std::size_t(real) >= active_.real.size()) return;
     HWND owner = active_.menuOwner;
+    if (active_.source == MenuSource::Uia) {
+        RawMenuItem& title = active_.real[std::size_t(real)];
+        // Attente bornée sans traiter les messages : rien ne change sous le menu qui va s'ouvrir.
+        auto out = std::make_shared<std::optional<std::vector<RawMenuItem>>>();
+        const int position = title.position;
+        if (uia_.call([out, owner, position](UiaMenus& uia) { *out = uia.items(owner, position); }, kUiaItemsWaitMs) && *out)
+            title.children = std::move(**out);
+        else
+            log::warn(L"Barre : menu « %s » de l'app illisible par UI Automation", title.text.c_str());
+        return;
+    }
     HMENU bar = IsWindow(owner) ? GetMenu(owner) : nullptr;
     if (!bar || !IsMenu(bar)) return;
     RawMenuItem& title = active_.real[std::size_t(real)];
@@ -284,6 +319,32 @@ void MenuBarApp::refreshRealMenu(int real) {
     if (!sub) return;
     title.children = readWin32Menu(sub);
     if (!IsWindowEnabled(owner)) disableAll(title.children);
+}
+
+void MenuBarApp::requestUiaTitles(HWND window) {
+    if (window == uiaWindow_) return;   // demande déjà en cours pour cette fenêtre
+    uiaWindow_ = window;
+    const unsigned generation = ++uiaLatest_;
+    HWND bar = hwnd_;
+    uia_.post([this, window, generation, bar](UiaMenus& uia) {
+        if (generation != uiaLatest_.load()) return;   // l'utilisateur est déjà passé à autre chose
+        auto* r = new UiaTitles{generation, window, uia.titles(window)};
+        if (!PostMessageW(bar, WM_APP_UIA_TITLES, 0, reinterpret_cast<LPARAM>(r))) delete r;
+    });
+}
+
+void MenuBarApp::onUiaTitles(LPARAM lp) {
+    std::unique_ptr<UiaTitles> r(reinterpret_cast<UiaTitles*>(lp));
+    if (r->generation != uiaLatest_.load() || r->window != uiaWindow_ || active_.source != MenuSource::Generic ||
+        active_.explorer)
+        return;
+    if (trace_) log::info(L"[trace] barre : %zu menus lus par UI Automation", r->titles.size());
+    if (r->titles.empty()) return;
+    active_.source = MenuSource::Uia;
+    active_.real = std::move(r->titles);
+    active_.menuOwner = r->window;
+    relayout();
+    render();
 }
 
 std::vector<HWND> MenuBarApp::appWindows() const {
@@ -609,6 +670,15 @@ void MenuBarApp::openMenu(std::size_t index) {
 }
 
 void MenuBarApp::execute(const MenuAction& a) {
+    if (a.kind == ActionKind::UiaInvoke) {
+        restoreTargetFocus();   // le menu de l'app se déplie dans une app au premier plan
+        HWND w = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(a.window));
+        uia_.post([w, path = a.path, name = a.arg, trace = trace_](UiaMenus& uia) {
+            const bool done = uia.invoke(w, path, name);
+            if (trace) log::info(L"[trace] barre : entrée « %s » %s", name.c_str(), done ? L"invoquée" : L"introuvable");
+        });
+        return;
+    }
     ActionContext ctx;
     ctx.target = target_;
     ctx.appWindows = appWindows();
@@ -636,6 +706,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             else if (wp == ABN_FULLSCREENAPP) checkFullscreen();
             return 0;
         case WM_APP_SAMPLE: onSample(); return 0;
+        case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_TIMER:
             switch (wp) {
                 case kClockTimer: {
@@ -773,6 +844,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ev.foreground = [this](HWND h) { onForeground(h); };   // bureau et dialogues compris
     ev.flashed = [](HWND) {};
     tracker_.start(hwnd_, ev);
+    uia_.start();   // sinon : menus Win32 et génériques seulement
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
         active_.name = L"Explorateur";
@@ -797,8 +869,11 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     log::info(L"MacMenuBar s'arrête");
     sampler_.stop();
     tracker_.stop();
+    uia_.stop();
     removeAppBar();
     DestroyWindow(hwnd_);
+    for (MSG m; PeekMessageW(&m, nullptr, WM_APP_UIA_TITLES, WM_APP_UIA_TITLES, PM_REMOVE);)   // résultats en attente
+        delete reinterpret_cast<UiaTitles*>(m.lParam);
     return exitCode_;
 }
 

@@ -3,6 +3,7 @@
 #pragma once
 #include <windows.h>
 
+#include <atomic>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "bar_layout.h"
 #include "bar_renderer.h"
 #include "menubar_settings.h"
+#include "uia_menu.h"
 
 namespace md {
 
@@ -55,7 +57,9 @@ private:
     void syncAppBar();
     void onForeground(HWND h);
     static void readRealMenus(HWND top, HWND root, Active& a);
-    void refreshRealMenu(int real);   // à l'ouverture d'un vrai menu : l'app le prépare, la barre le relit
+    void refreshRealMenu(int real);
+    void requestUiaTitles(HWND window);   // titres lus sur le fil UI Automation, reçus par WM_APP_UIA_TITLES
+    void onUiaTitles(LPARAM result);   // à l'ouverture d'un vrai menu : l'app le prépare, la barre le relit
     void relayout();
     void render();
     void recoverDevice();   // device perdu : recréé ; sinon sortie en erreur (le lanceur relance la barre)
@@ -92,6 +96,9 @@ private:
     BarRenderer renderer_;
     std::wstring font_;
     SystemActions sys_;
+    UiaWorker uia_;
+    std::atomic<unsigned> uiaLatest_{0};   // dernière demande de titres : les plus anciennes sont abandonnées
+    HWND uiaWindow_ = nullptr;             // fenêtre de la dernière demande
 
     RECT monitor_{};
     float scale_ = 1;

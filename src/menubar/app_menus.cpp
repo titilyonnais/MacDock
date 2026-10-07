@@ -191,20 +191,31 @@ bool isHelpTitle(const std::wstring& t) {
     return l == L"aide" || l == L"help" || l == L"?";
 }
 
-MenuItem realItem(Builder& b, const RawMenuItem& r, const BarContext& c) {
+MenuAction uiaAction(const RawMenuItem& r, const BarContext& c, std::vector<int> path) {
+    MenuAction a{ActionKind::UiaInvoke, r.text, c.menuOwner};
+    a.path = std::move(path);
+    return a;
+}
+
+// path : positions depuis le titre (UI Automation retrouve l'entrée par ce chemin).
+MenuItem realItem(Builder& b, const RawMenuItem& r, const BarContext& c, std::vector<int> path) {
     if (r.separator) return {};
+    path.push_back(r.position);
+    const bool uia = c.source == MenuSource::Uia;
     if (r.popup) {
         MenuItem it;
-        if (r.children.empty()) {
-            it = b.item(r.text, {}, {}, false);   // sous-menu vide : rien à montrer
-        } else {
+        if (!r.children.empty()) {
             it.text = r.text;
             it.enabled = r.enabled;
-            for (const auto& child : r.children) it.submenu.push_back(realItem(b, child, c));
+            for (const auto& child : r.children) it.submenu.push_back(realItem(b, child, c, path));
+        } else if (uia) {
+            it = b.item(r.text, uiaAction(r, c, path), {}, r.enabled);   // sous-menu non lu : déplié dans l'app
+        } else {
+            it = b.item(r.text, {}, {}, false);   // sous-menu vide : rien à montrer
         }
         return it;
     }
-    MenuAction a{ActionKind::MenuCommand, {}, c.menuOwner, int(r.id)};
+    MenuAction a = uia ? uiaAction(r, c, path) : MenuAction{ActionKind::MenuCommand, {}, c.menuOwner, int(r.id)};
     MenuItem it = b.item(r.text, std::move(a), r.shortcut, r.enabled);
     it.checked = r.checked;
     return it;
@@ -219,7 +230,8 @@ void realMenus(Builder& b, const BarContext& c) {
         if (i == helpAt && !hasWindow) windowMenu(b, c);
         BarMenu& m = b.menu(c.real[i].text);
         m.real = int(i);
-        for (const auto& child : c.real[i].children) m.model.items.push_back(realItem(b, child, c));
+        for (const auto& child : c.real[i].children) m.model.items.push_back(realItem(b, child, c, {c.real[i].position}));
+        if (m.model.items.empty()) b.add(m, L"Aucun élément", {}, {}, false);   // pas encore lu, ou illisible
     }
     if (helpAt == c.real.size() && !hasWindow) windowMenu(b, c);
 }
