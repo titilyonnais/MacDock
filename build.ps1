@@ -25,7 +25,7 @@ function Get-Sources([string[]]$Patterns) {
 }
 
 # Modules partagés par les tests (surtout logiques ; quelques rendus hors écran, sans fenêtre).
-$LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp', 'src\spotlight\*.cpp', 'src\mission\*.cpp', 'src\switcher\*.cpp',
+$LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp', 'src\anim\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp', 'src\spotlight\*.cpp', 'src\mission\*.cpp', 'src\switcher\*.cpp', 'src\hud\*.cpp',
                   'src\model\*.cpp', 'src\ipc\*.cpp', 'src\launcher\crash_policy.cpp', 'src\launcher\supervisor.cpp',
                   'src\icons\*.cpp', 'src\tracker\app_identity.cpp', 'src\shell\*.cpp',
                   'src\app\dock_controller.cpp', 'src\app\dock_menus.cpp', 'src\app\visibility.cpp', 'src\app\monitor_choice.cpp', 'src\app\thumbnails.cpp', 'src\app\min_animate.cpp', 'src\app\cli_args.cpp',
@@ -47,7 +47,7 @@ $Targets = @{
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib') }
     menubar  = @{ Exe = 'MacMenuBar.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
                       'src\icons\*.cpp', 'src\tracker\*.cpp', 'src\shell\*.cpp', 'src\glass\*.cpp', 'src\calib\*.cpp',
-                      'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp', 'src\ipc\*.cpp'); Subsystem = 'WINDOWS';
+                      'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\popup\popup_glass.cpp', 'src\theme\wallpaper_art.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp', 'src\hud\*.cpp', 'src\ipc\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'shcore.lib', 'dxguid.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib',

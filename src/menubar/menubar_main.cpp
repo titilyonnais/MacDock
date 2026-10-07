@@ -5,6 +5,8 @@
 //   MacMenuBar.exe --lights-snapshot f.png   planche des feux tricolores (aucune fenêtre, aucun réglage)
 //   MacMenuBar.exe --snapshot f.png [--wallpaper fond.png] [--app Nom] [--theme light|dark] [--open k]
 //                                 rendu hors écran de la barre (k : titre dont le menu est ouvert)
+//   MacMenuBar.exe --hud-snapshot f.png [--kind volume|brightness] [--level x] [--muted] [--theme light|dark]
+//                                 pastille du volume ou de la luminosité (aucune fenêtre, rien n'est réglé)
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
@@ -13,6 +15,7 @@
 
 #include "../calib/png_io.h"
 #include "../core/log.h"
+#include "../hud/hud_window.h"
 #include "menubar_window.h"
 #include "traffic_lights.h"
 
@@ -39,9 +42,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     options.trace = args.find(L"--trace") != std::wstring::npos;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::wstring lightsSnapshot;
+    std::wstring lightsSnapshot, hudSnapshotPath;
+    md::HudContent hud;
+    hud.level = 0.5f;
+    hud.detail = L"Haut-parleurs";
+    hud.muted = args.find(L"--muted") != std::wstring::npos;
     for (int i = 1; i + 1 < argc; ++i) {
         if (wcscmp(argv[i], L"--lights-snapshot") == 0) lightsSnapshot = argv[i + 1];
+        if (wcscmp(argv[i], L"--hud-snapshot") == 0) hudSnapshotPath = argv[i + 1];
+        if (wcscmp(argv[i], L"--kind") == 0 && wcscmp(argv[i + 1], L"brightness") == 0) hud.kind = md::HudKind::Brightness;
+        if (wcscmp(argv[i], L"--level") == 0) hud.level = float(_wtof(argv[i + 1]));
         if (wcscmp(argv[i], L"--snapshot") == 0) options.snapshot = argv[i + 1];
         if (wcscmp(argv[i], L"--wallpaper") == 0) options.wallpaper = argv[i + 1];
         if (wcscmp(argv[i], L"--app") == 0) options.app = argv[i + 1];
@@ -54,6 +64,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         UINT w = 0, h = 0;
         const auto sheet = md::lightsSheet(w, h);
         const bool ok = md::writePng(lightsSnapshot, sheet.data(), w, h);
+        CoUninitialize();
+        return ok ? 0 : 1;
+    }
+    if (!hudSnapshotPath.empty()) {   // aucune fenêtre, aucun réglage lu ni écrit, volume et luminosité intacts
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // WIC
+        const md::BgraImage img = md::hudSnapshot(hud, options.dark.value_or(false), 900, 300);
+        const bool ok = !img.px.empty() && md::writePng(hudSnapshotPath, img.px.data(), UINT(img.w), UINT(img.h));
         CoUninitialize();
         return ok ? 0 : 1;
     }

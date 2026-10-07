@@ -229,6 +229,38 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - depuis le bureau, un Alt+Tab rapide sautait l'app la plus récente : il y revient maintenant (test) ;
   - un menu, une pile, Spotlight ou Mission Control ouverts pendant la sélection (clic droit sur le Dock, coin actif) terminent la sélection sans rien activer.
 
+### Plan 17 — HUD du volume et de la luminosité (sous-projet 10)
+
+- **Pastille de Tahoe** : en haut à droite, sous la barre de menus, un petit panneau en verre (« Volume » et le nom de ta sortie audio, ou « Luminosité », pictogramme, jauge). Il s'efface 1,5 s après le dernier changement, en 0,25 s.
+- **Touches de volume** : la barre de menus les reprend (raccourcis globaux ordinaires, pas de crochet) et règle elle-même le volume par seizièmes, comme un Mac ; `Maj+Alt` donne des quarts de seizième. Le panneau de volume de Windows ne s'affiche plus. Si un autre outil tient déjà ces touches, Windows les garde et la pastille suit le volume.
+- **Luminosité** : Windows prévient la barre à chaque changement (touches d'un portable, curseur des réglages rapides) ; la pastille suit. Les touches de luminosité d'un portable sont traitées par l'ordinateur lui-même : le panneau de Windows apparaît aussi, je ne peux pas l'éviter sans crochet. Un écran externe réglé par DDC/CI ne prévient pas : pas de pastille.
+- **Pas de pastille** pendant qu'un menu de la barre est ouvert (son curseur est déjà sous tes yeux), ni juste après un réglage de luminosité fait dans le Centre de contrôle.
+- `"hud": false` dans `menubar.json` rend les touches à Windows.
+- **Vérifié hors écran** : `--hud-snapshot` (volume 50 % en clair, sourdine en sombre, luminosité 80 %) et les tests (pas du volume sur la grille, fondu, place sous la barre à toutes les échelles, avis de luminosité filtrés, réglage). **Je n'ai touché ni au volume ni à la luminosité, ni enregistré les touches pendant les essais.**
+- **À vérifier toi-même** (après avoir relancé la barre de menus) :
+  1. volume + et volume − : la pastille apparaît en haut à droite, la jauge avance par seizièmes, le panneau de Windows n'apparaît plus ;
+  2. sourdine : haut-parleur barré, jauge vide ; volume + rend le son ;
+  3. sur un portable : les touches de luminosité montrent la pastille de luminosité ;
+  4. le curseur du volume dans le menu Son ne fait pas apparaître la pastille.
+- **Relecture finale** : 1 critique, 3 importants, tous corrigés :
+  - avec deux écrans, la capture du fond passait d'un écran à l'autre sans changer de device graphique (risque de plantage de la barre) : elle est refaite (test) ;
+  - barre masquée (plein écran, masquage automatique) : la pastille se plaçait une barre trop bas (test) ;
+  - la fenêtre de la pastille avalait les clics sur la droite de la barre (icône Son, horloge) : ils passent maintenant ;
+  - la pastille de luminosité pouvait surgir seule (sortie de veille, passage secteur/batterie, écran rallumé) : seulement si le niveau change, et pas dans les 2 s qui suivent ces événements (test).
+
+## Décisions prises sans toi (plan 17)
+- La barre de menus reprend les touches de volume (le panneau de Windows ne s'affiche plus pour elles) ; `"hud": false` les rend à Windows.
+- Les touches de luminosité d'un portable restent à Windows (traitées par l'ordinateur) : son panneau et la pastille s'affichent tous les deux.
+- Un clic sur la pastille va à la barre dessous ; ailleurs, il est perdu pendant l'affichage (1,75 s).
+
+## Mineurs reportés — plan 17
+- Juste après un réglage de luminosité très lent (WMI), la pastille peut apparaître à la fermeture du Centre de contrôle.
+- Sortie audio débranchée pendant l'affichage : nom et niveau périmés jusqu'au fondu.
+- `hud` passé à `false` alors que les touches n'avaient pas pu être prises : la pastille n'est pas cachée tout de suite.
+- Un relevé du fond interrompu par la pastille n'est pas relancé : la couleur du texte de la barre peut rester celle du thème jusqu'à une minute.
+- Maj, Ctrl ou Win avec une touche de volume : panneau de Windows, pas de pastille.
+- La minuterie du fondu tourne aussi pendant les 1,5 s de maintien.
+
 ## Décisions prises sans toi (plan 16)
 - `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
 - Le panneau s'affiche sur l'écran du curseur.

@@ -485,3 +485,13 @@ TEST_CASE(bar_renderer_detects_device_loss) {
     CHECK(!md::isDeviceLost(S_OK));
     CHECK(!md::isDeviceLost(E_INVALIDARG));
 }
+
+TEST_CASE(menubar_settings_hud) {
+    CHECK(md::MenuBarSettings{}.hud);
+    auto v = md::json::parse(R"({"hud": false})");
+    REQUIRE(v.has_value());
+    CHECK(!md::menuBarSettingsFromJson(*v).hud);
+    md::MenuBarSettings s;
+    s.hud = false;
+    CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).hud);
+}

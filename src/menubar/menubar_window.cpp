@@ -58,6 +58,11 @@ constexpr UINT_PTR kRecentTimer = 0x5243;       // "RC" : écriture différée d
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
 constexpr UINT_PTR kTrayLayoutTimer = 0x544C;   // "TL" : rafale de messages du mod regroupée
 constexpr UINT_PTR kTrayPruneTimer = 0x5450;    // "TP" : icônes d'apps fermées
+constexpr UINT_PTR kHudTimer = 0x4855;          // "HU" : fondu de la pastille du volume et de la luminosité
+// Touches de volume reprises (ctl_) ; Maj+Alt : pas fin, comme Maj+Option sur macOS.
+constexpr int kHotVolUp = 1, kHotVolDown = 2, kHotMute = 3, kHotVolUpFine = 4, kHotVolDownFine = 5;
+
+double hudNow() { return double(GetTickCount64()) / 1000.0; }
 constexpr int kCmdBarSettings = 1, kCmdBarAutohide = 2, kCmdBarQuit = 3;
 
 double nowSeconds() {
@@ -137,6 +142,7 @@ void MenuBarApp::checkSettingsFile() {
 }
 
 void MenuBarApp::applySettings() {
+    if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
     lights_.attach(lights_.target(), settings_.trafficLights);
     for (auto& s : screens_) syncAppBar(*s);
     repositionAll();
@@ -789,7 +795,7 @@ void MenuBarApp::scheduleClock() {
 // ---- Couleur du texte ----
 
 void MenuBarApp::startSample(Screen& s) {
-    if (menuOpen_ || s.sampler.running() || !s.visible || !s.hwnd) return;
+    if (menuOpen_ || hud_.visible() || s.sampler.running() || !s.visible || !s.hwnd) return;
     // La barre est exclue de la capture le temps de l'échantillon : on mesure le fond, pas son texte.
     SetWindowDisplayAffinity(s.hwnd, WDA_EXCLUDEFROMCAPTURE);
     RECT strip{s.rect.left, s.rect.top, s.rect.right, s.rect.top + s.heightPx};
@@ -805,8 +811,91 @@ void MenuBarApp::startSamples() {
 }
 
 void MenuBarApp::stopSamples() {   // une seule duplication d'un écran par processus : le menu capture à son tour
+    hideHud();
     for (auto& s : screens_)
         if (s->sampler.running()) finishSample(*s, std::nullopt);
+}
+
+// ---- Pastille du volume et de la luminosité ----
+
+void MenuBarApp::registerVolumeKeys() {
+    const bool want = settings_.hud;
+    if (want == volumeKeys_) return;
+    for (int id : {kHotVolUp, kHotVolDown, kHotMute, kHotVolUpFine, kHotVolDownFine}) UnregisterHotKey(ctl_, id);
+    volumeKeys_ = false;
+    if (!want) {
+        hideHud();
+        log::info(L"HUD : désactivé, touches de volume rendues à Windows");
+        return;
+    }
+    const bool ok = RegisterHotKey(ctl_, kHotVolUp, 0, VK_VOLUME_UP) && RegisterHotKey(ctl_, kHotVolDown, 0, VK_VOLUME_DOWN) &&
+                    RegisterHotKey(ctl_, kHotMute, 0, VK_VOLUME_MUTE);
+    if (!ok) {
+        log::warn(L"HUD : touches de volume déjà prises (%lu) ; Windows les garde, la pastille suit le volume", GetLastError());
+        for (int id : {kHotVolUp, kHotVolDown, kHotMute}) UnregisterHotKey(ctl_, id);
+        return;
+    }
+    RegisterHotKey(ctl_, kHotVolUpFine, MOD_SHIFT | MOD_ALT, VK_VOLUME_UP);   // facultatifs
+    RegisterHotKey(ctl_, kHotVolDownFine, MOD_SHIFT | MOD_ALT, VK_VOLUME_DOWN);
+    volumeKeys_ = true;
+    log::info(L"HUD : touches de volume reprises");
+}
+
+HudContent MenuBarApp::volumeContent() {
+    HudContent c;
+    c.level = audio_.volume();
+    c.muted = c.level >= 0 && audio_.muted();
+    if (outputName_.empty())
+        for (const AudioOutput& o : audio_.outputs())
+            if (o.isDefault) outputName_ = o.name;
+    c.detail = outputName_;
+    return c;
+}
+
+void MenuBarApp::onVolumeKey(int id) {
+    if (!volumeKeys_) return;
+    const float v = audio_.volume();
+    if (v < 0) return;   // aucune sortie audio : rien à régler (Windows non plus)
+    if (id == kHotMute) {
+        audio_.setMuted(!audio_.muted());
+    } else {
+        const bool up = id == kHotVolUp || id == kHotVolUpFine;
+        audio_.setVolume(volumeStep(v, up ? 1 : -1, id == kHotVolUpFine || id == kHotVolDownFine));   // enlève la sourdine
+    }
+    updateStatusItems();
+    if (!menuOpen_ && !menuSession_) showHud(volumeContent());
+}
+
+void MenuBarApp::showHud(const HudContent& c) {
+    POINT pt{};
+    GetCursorPos(&pt);
+    const Screen* at = nullptr;
+    for (const auto& s : screens_)
+        if (PtInRect(&s->rect, pt)) at = s.get();
+    if (!at && !screens_.empty()) at = screens_.front().get();
+    if (!at) return;
+    // Sous la barre visible ; barre masquée (masquage automatique, plein écran) : sous le haut de l'écran.
+    const int barBottom = hudBarBottom(at->rect.top, at->heightPx, at->yOffsetPx);
+    for (auto& s : screens_)   // une seule duplication d'écran par processus : la pastille capture à son tour
+        if (s->sampler.running()) finishSample(*s, std::nullopt);
+    if (!hud_.show(menuEnv(*at), at->monitor, hudPlace(at->rect, barBottom, at->scale), c)) return;
+    hudFade_.show(hudNow());
+    SetTimer(ctl_, kHudTimer, 16, nullptr);
+}
+
+void MenuBarApp::stepHud() {
+    const float o = hudFade_.opacity(hudNow());
+    if (o <= 0) {
+        hideHud();
+        return;
+    }
+    hud_.setOpacity(o);
+}
+
+void MenuBarApp::hideHud() {
+    if (ctl_) KillTimer(ctl_, kHudTimer);
+    hudFade_.reset();
+    if (hud_.visible()) hud_.hide();
 }
 
 void MenuBarApp::onSample(Screen& s) {
@@ -1105,7 +1194,10 @@ int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink&
     MenuWindow::Live live;
     live.slider = [this, actionOf](int id, double v) {
         if (actionOf(id) == StatusAction::Volume) audio_.setVolume(float(v));
-        else if (actionOf(id) == StatusAction::Brightness) hub_.post([v] { setBrightness(v); }, kBrightnessJob);
+        else if (actionOf(id) == StatusAction::Brightness) {
+            brightnessGate_.noteOwnChange(hudNow());   // l'avis qui suivra ne montre pas la pastille
+            hub_.post([v] { setBrightness(v); }, kBrightnessJob);
+        }
     };
     live.toggle = [this, actionOf](int id, bool on) {
         if (actionOf(id) == StatusAction::WifiPower) hub_.post([on] { setRadio(false, on); });
@@ -1240,13 +1332,42 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_STATUS: onStatus(lp); return 0;
         case WM_APP_TRAY: onTray(wp, lp); return 0;
         case WM_APP_VOLUME:
-            if (wp == 1) audio_.watch(ctl_, WM_APP_VOLUME);   // nouvelle sortie par défaut : on la suit
+            if (wp == 1) {   // nouvelle sortie par défaut : on la suit
+                audio_.watch(ctl_, WM_APP_VOLUME);
+                outputName_.clear();
+            }
             updateStatusItems();
+            // Touches non reprises : la pastille suit le volume changé ailleurs (pas sous un menu : son curseur suffit).
+            if (wp == 0 && settings_.hud && !volumeKeys_ && !menuOpen_ && !menuSession_) {
+                const HudContent c = volumeContent();
+                if (c.level >= 0) showHud(c);
+            }
             return 0;
+        case WM_HOTKEY:
+            onVolumeKey(int(wp));
+            return 0;
+        case WM_POWERBROADCAST:
+            if (wp == PBT_APMRESUMEAUTOMATIC) brightnessGate_.noteSystemChange(hudNow());   // le niveau est réappliqué
+            if (wp == PBT_POWERSETTINGCHANGE && lp) {
+                const auto* p = reinterpret_cast<const POWERBROADCAST_SETTING*>(lp);
+                if (IsEqualGUID(p->PowerSetting, GUID_CONSOLE_DISPLAY_STATE) || IsEqualGUID(p->PowerSetting, GUID_ACDC_POWER_SOURCE))
+                    brightnessGate_.noteSystemChange(hudNow());   // écran rallumé, secteur ou batterie : niveau du profil
+                DWORD pct = 0;
+                if (IsEqualGUID(p->PowerSetting, GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS) && p->DataLength >= sizeof(DWORD) &&
+                    (memcpy(&pct, p->Data, sizeof pct), brightnessGate_.accept(hudNow(), menuOpen_ || menuSession_, int(pct))) &&
+                    settings_.hud) {
+                    HudContent c;
+                    c.kind = HudKind::Brightness;
+                    c.level = float(std::min<DWORD>(pct, 100)) / 100.0f;
+                    showHud(c);
+                }
+            }
+            return TRUE;
         case WM_DISPLAYCHANGE:   // envoyé (pas posté) : il peut arriver pendant un appel à Windows, on refait après
             PostMessageW(ctl_, WM_APP_SCREENS, 0, 0);
             return 0;
         case WM_APP_SCREENS:
+            hideHud();   // sa place (écran, échelle) n'est plus sûre
             rebuildScreens();
             SetTimer(ctl_, kResampleSoon, 800, nullptr);
             return 0;
@@ -1273,6 +1394,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     relayout();
                     render();
                     break;
+                case kHudTimer: stepHud(); break;
                 case kTrayPruneTimer:
                     if (tray_.prune([](std::uint64_t h) { return IsWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(h))) != FALSE; }))
                         SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);
@@ -1411,6 +1533,10 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     uia_.start();   // sinon : menus Win32 et génériques seulement
     audio_.init();   // sinon : pas d'icône du son
     audio_.watch(ctl_, WM_APP_VOLUME);
+    registerVolumeKeys();
+    brightnessNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS, DEVICE_NOTIFY_WINDOW_HANDLE);
+    displayNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
+    powerNotify_ = RegisterPowerSettingNotification(ctl_, &GUID_ACDC_POWER_SOURCE, DEVICE_NOTIFY_WINDOW_HANDLE);
     if (!hub_.start(ctl_, WM_APP_STATUS)) log::warn(L"Barre : relevés d'état indisponibles");
     trayPipe_.setConnectionHandler([ctl = ctl_](bool) { PostMessageW(ctl, WM_APP_TRAY, 1, 0); });
     trayPipe_.start(L"\\\\.\\pipe\\MacMenuBar", [ctl = ctl_](const ipc::Message& m) {
@@ -1443,6 +1569,10 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         DispatchMessageW(&msg);
     }
     log::info(L"MacMenuBar s'arrête");
+    hideHud();
+    for (int id : {kHotVolUp, kHotVolDown, kHotMute, kHotVolUpFine, kHotVolDownFine}) UnregisterHotKey(ctl_, id);
+    for (HPOWERNOTIFY n : {brightnessNotify_, displayNotify_, powerNotify_})
+        if (n) UnregisterPowerSettingNotification(n);
     tracker_.stop();
     uia_.stop();
     hub_.stop();
