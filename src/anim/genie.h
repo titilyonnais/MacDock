@@ -22,9 +22,19 @@ struct GenieSlice {
 std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
                                       int slices = 48);
 
+// Sommet du maillage du génie : position écran (pixels, non arrondie) et coordonnées de texture dans [0, 1].
+struct GenieVertex {
+    float x, y, u, v;
+};
+// Maillage de la même animation que minimizeFrame : rows + 1 lignes de deux sommets (côté u0 puis côté u1 du repère
+// du Dock), de la plus éloignée à la plus proche du Dock ; une rangée pour l'effet échelle ; vide pour l'effet Windows
+// ou une source vide. Sous le pixel : bords courbes sans marches.
+std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
+                                   int rows);
+
 // Durée en secondes (Maj enfoncée : ralenti × 8) ; 0 pour l'effet Windows.
 double minimizeDuration(MinimizeEffect e, bool slow);
-// Nombre de bandes pour une fenêtre de extent pixels dans l'axe du Dock : une toutes les 2 px, 16 à 400.
+// Bandes du repli par miniatures DWM (un appel à DWM par bande et par image) : une toutes les 4 px, 16 à 128.
 int genieSliceCount(long extent);
 
 // Rectangle écran d'une fenêtre réduite avant sa réduction. rcNormalPosition est en coordonnées de la zone de

@@ -76,7 +76,50 @@ std::vector<GenieSlice> minimizeFrame(MinimizeEffect e, SIZE src, const RECT& fr
     return out;
 }
 
-int genieSliceCount(long extent) { return std::clamp(int(extent / 2), 16, 400); }
+int genieSliceCount(long extent) { return std::clamp(int(extent / 4), 16, 128); }
+
+std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from, const RECT& to, DockPosition edge, double t,
+                                   int rows) {
+    std::vector<GenieVertex> out;
+    if (e == MinimizeEffect::Windows || src.cx <= 0 || src.cy <= 0) return out;
+    t = clamp01(t);
+    if (e == MinimizeEffect::Scale) {
+        const double k = easeInOut(t);
+        const float l = float(lerp(from.left, to.left, k)), tp = float(lerp(from.top, to.top, k)),
+                    r = float(lerp(from.right, to.right, k)), b = float(lerp(from.bottom, to.bottom, k));
+        return {{l, tp, 0, 0}, {r, tp, 1, 0}, {l, b, 0, 1}, {r, b, 1, 1}};
+    }
+    const Local w = toLocal(from, edge), c = toLocal(to, edge);
+    const int n = std::max(1, rows);
+    const double p = easeInOut(clamp01(t / 0.45));          // mêmes courbes que minimizeFrame
+    const double q = easeInOut(clamp01((t - 0.2) / 0.8));
+    const double top = lerp(w.v0, c.v0, q), bottom = lerp(w.v1, c.v1, q);
+    const double span = c.v0 - w.v0;
+    const auto weight = [&](double v) { return span > 0 ? smooth(clamp01((v - w.v0) / span)) : 1.0; };
+    out.reserve(std::size_t(n + 1) * 2);
+    for (int k = 0; k <= n; ++k) {
+        const double f = double(k) / n;
+        const double v = lerp(top, bottom, f);
+        const double bend = weight(v) * p;
+        const double u0 = lerp(w.u0, c.u0, bend), u1 = lerp(w.u1, c.u1, bend);
+        const float ff = float(f);
+        switch (edge) {   // repère local → écran ; texture : la ligne (ou colonne) f de la source
+            case DockPosition::Left:
+                out.push_back({float(-v), float(u0), 1 - ff, 0});
+                out.push_back({float(-v), float(u1), 1 - ff, 1});
+                break;
+            case DockPosition::Right:
+                out.push_back({float(v), float(u0), ff, 0});
+                out.push_back({float(v), float(u1), ff, 1});
+                break;
+            default:
+                out.push_back({float(u0), float(v), 0, ff});
+                out.push_back({float(u1), float(v), 1, ff});
+                break;
+        }
+    }
+    return out;
+}
 
 double minimizeDuration(MinimizeEffect e, bool slow) {
     const double base = e == MinimizeEffect::Genie ? 0.55 : e == MinimizeEffect::Scale ? 0.3 : 0.0;

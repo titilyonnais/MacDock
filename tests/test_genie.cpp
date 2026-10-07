@@ -4,6 +4,7 @@
 #include <objbase.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 #include "../src/anim/genie.h"
@@ -250,11 +251,10 @@ TEST_CASE(genie_start_rect_prefers_last_seen) {   // relecture n° 3 : fenêtre 
 }
 
 TEST_CASE(genie_slice_count_fine) {
-    // Une bande toutes les 2 px : les bords courbes du génie n'ont plus de marches visibles.
-    CHECK(md::genieSliceCount(800) == 400);
-    CHECK(md::genieSliceCount(600) == 300);
+    // Repli par miniatures DWM : chaque bande coûte un appel à DWM (128 bandes = 4 ms par image), plafond 128.
+    CHECK(md::genieSliceCount(400) == 100);
     CHECK(md::genieSliceCount(20) == 16);      // petite fenêtre : un minimum
-    CHECK(md::genieSliceCount(4000) == 400);   // très grande : plafonné (une miniature DWM par bande)
+    CHECK(md::genieSliceCount(4000) == 128);   // très grande : plafonné
 }
 
 TEST_CASE(genie_strips_tile_without_gaps) {
@@ -264,4 +264,58 @@ TEST_CASE(genie_strips_tile_without_gaps) {
         auto s = md::minimizeFrame(md::MinimizeEffect::Genie, SIZE{1000, 800}, from, to, md::DockPosition::Bottom, t, 400);
         for (std::size_t i = 1; i < s.size(); ++i) CHECK(s[i].dst.top == s[i - 1].dst.bottom);
     }
+}
+
+namespace {
+bool approx(float a, double b) { return std::abs(double(a) - b) < 0.01; }
+} // namespace
+
+TEST_CASE(genie_mesh_start_is_window) {
+    auto m = md::genieMesh(md::MinimizeEffect::Genie, kSrc, kWin, kTile, md::DockPosition::Bottom, 0.0, 64);
+    REQUIRE(m.size() == 2 * 65);
+    CHECK(approx(m.front().x, kWin.left) && approx(m.front().y, kWin.top));   // haut gauche
+    CHECK(approx(m[1].x, kWin.right) && approx(m[1].y, kWin.top));            // haut droite
+    CHECK(approx(m[m.size() - 2].x, kWin.left) && approx(m.back().y, kWin.bottom));
+    CHECK(approx(m.front().u, 0) && approx(m.front().v, 0) && approx(m.back().u, 1) && approx(m.back().v, 1));
+    for (std::size_t i = 0; i < m.size(); i += 2) {   // à t = 0 : rectangle exact, lignes de la source dans l'ordre
+        CHECK(approx(m[i].x, kWin.left) && approx(m[i + 1].x, kWin.right));
+        CHECK(approx(m[i].v, double(i / 2) / 64));
+    }
+}
+
+TEST_CASE(genie_mesh_end_in_tile_and_subpixel) {
+    auto m = md::genieMesh(md::MinimizeEffect::Genie, kSrc, kWin, kTile, md::DockPosition::Bottom, 1.0, 64);
+    REQUIRE(!m.empty());
+    for (auto& p : m) CHECK(p.x >= kTile.left - 0.5f && p.x <= kTile.right + 0.5f && p.y >= kTile.top - 0.5f && p.y <= kTile.bottom + 0.5f);
+    // Milieu de l'animation : des positions sous le pixel (pas d'arrondi, bords sans marches).
+    auto mid = md::genieMesh(md::MinimizeEffect::Genie, kSrc, kWin, kTile, md::DockPosition::Bottom, 0.5, 64);
+    bool fractional = false;
+    for (auto& p : mid) fractional |= std::abs(p.x - std::round(p.x)) > 0.01f;
+    CHECK(fractional);
+    for (std::size_t i = 2; i < mid.size(); i += 2) {   // lignes de haut en bas, plus étroites vers le Dock
+        CHECK(mid[i].y >= mid[i - 2].y);
+        CHECK(mid[i + 1].x - mid[i].x <= mid[i - 1].x - mid[i - 2].x + 0.01f);
+    }
+}
+
+TEST_CASE(genie_mesh_side_docks) {
+    const RECT win{400, 100, 1000, 500};
+    const RECT tile{8, 300, 56, 336};
+    auto m = md::genieMesh(md::MinimizeEffect::Genie, SIZE{600, 400}, win, tile, md::DockPosition::Left, 0.0, 10);
+    REQUIRE(m.size() == 22);
+    // Première ligne : la plus éloignée du Dock, le bord droit (colonne u = 1), de haut (v = 0) en bas (v = 1).
+    CHECK(approx(m[0].x, win.right) && approx(m[0].y, win.top) && approx(m[0].u, 1) && approx(m[0].v, 0));
+    CHECK(approx(m[1].x, win.right) && approx(m[1].y, win.bottom) && approx(m[1].u, 1) && approx(m[1].v, 1));
+    CHECK(approx(m[20].x, win.left) && approx(m[20].u, 0));
+    auto r = md::genieMesh(md::MinimizeEffect::Genie, SIZE{600, 400}, RECT{100, 100, 700, 500}, RECT{1860, 300, 1908, 336},
+                           md::DockPosition::Right, 0.0, 10);
+    CHECK(approx(r[0].x, 100) && approx(r[0].u, 0) && approx(r[0].y, 100) && approx(r[1].y, 500) && approx(r[1].v, 1));
+}
+
+TEST_CASE(genie_mesh_scale_and_windows) {
+    auto s = md::genieMesh(md::MinimizeEffect::Scale, kSrc, kWin, kTile, md::DockPosition::Bottom, 1.0, 64);
+    REQUIRE(s.size() == 4);   // une seule rangée
+    CHECK(approx(s[0].x, kTile.left) && approx(s[0].y, kTile.top) && approx(s[3].x, kTile.right) && approx(s[3].y, kTile.bottom));
+    CHECK(md::genieMesh(md::MinimizeEffect::Windows, kSrc, kWin, kTile, md::DockPosition::Bottom, 0.5, 64).empty());
+    CHECK(md::genieMesh(md::MinimizeEffect::Genie, SIZE{0, 0}, kWin, kTile, md::DockPosition::Bottom, 0.5, 64).empty());
 }
