@@ -77,6 +77,9 @@ Settings settingsFromJson(const json::Value& v) {
     s.screen = readString(v, "screen");
     const std::wstring hotkey = toLower(readString(v, "spotlightHotkey"));
     if (hotkey == L"alt+space" || hotkey == L"ctrl+space" || hotkey == L"off") s.spotlightHotkey = hotkey;
+    const std::wstring mission = toLower(readString(v, "missionControlHotkey"));
+    if (mission == L"ctrl+alt+up" || mission == L"ctrl+up" || mission == L"f3" || mission == L"off")
+        s.missionControlHotkey = mission;
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
     if (auto* pins = v.find("pinned")) {
         for (auto& p : pins->asArray()) {
@@ -124,6 +127,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("font", toUtf8(s.font));
     if (!s.screen.empty()) v.set("screen", toUtf8(s.screen));
     v.set("spotlightHotkey", toUtf8(s.spotlightHotkey));
+    v.set("missionControlHotkey", toUtf8(s.missionControlHotkey));
     v.set("pinnedInitialized", s.pinnedInitialized);
     json::Value pins = json::Array{};
     for (auto& p : s.pinned) {

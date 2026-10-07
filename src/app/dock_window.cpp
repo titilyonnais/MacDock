@@ -3,6 +3,7 @@
 #include <dcomp.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shobjidl.h>
 #include <shlobj.h>
 
 #include <algorithm>
@@ -24,6 +25,7 @@
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
+#include "../mission/mission_view.h"
 #include "../spotlight/spotlight_window.h"
 #include "dock_menus.h"
 #include "drop_target.h"
@@ -68,7 +70,7 @@ std::vector<MonitorInfo> enumMonitors() {
     return out;
 }
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
-constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4;
+constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4, kHotMission = 5;
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -147,6 +149,7 @@ void DockApp::applySettings() {
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     updateGlass();   // réglage glass modifié à chaud
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
+    if (missionMsg_) registerMissionHotkey();
     requestFrame();
 }
 
@@ -746,6 +749,53 @@ void DockApp::openSpotlight() {
     requestFrame();
 }
 
+// Mission Control sur tous les écrans ; un second appui le ferme.
+void DockApp::openMissionControl() {
+    if (MissionView::isOpen()) {
+        MissionView::closeOpen();
+        return;
+    }
+    if (menuOpen_) return;   // une autre fenêtre modale est ouverte
+    MissionView::Request r;
+    Microsoft::WRL::ComPtr<IVirtualDesktopManager> desktops;
+    CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&desktops));
+    for (const DockItem& it : model_.items()) {
+        if (it.kind != ItemKind::App) continue;
+        for (WindowId id : it.windows) {   // visibles, non réduites, sur le bureau courant
+            const HWND h = toHwnds({id}).front();
+            if (!IsWindowVisible(h) || IsIconic(h)) continue;
+            DWORD cloaked = 0;
+            if (SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked) continue;
+            BOOL here = TRUE;
+            if (desktops && SUCCEEDED(desktops->IsWindowOnCurrentVirtualDesktop(h, &here)) && !here) continue;
+            r.windows.push_back({h, model_.titleOf(id)});
+        }
+    }
+    MenuWindow::Env env = popupEnv();
+    controller_.setCursor(std::nullopt);
+    requestFrame();
+    menuOpen_ = true;
+    const std::optional<HWND> chosen = MissionView::track(env, r);
+    menuOpen_ = false;
+    if (chosen) activateApp({*chosen});
+    requestFrame();
+}
+
+void DockApp::registerMissionHotkey() {
+    if (settings_.missionControlHotkey == missionHotkeyOn_) return;
+    UnregisterHotKey(hwnd_, kHotMission);
+    missionHotkeyOn_ = settings_.missionControlHotkey;
+    const auto spec = parseMissionHotkey(missionHotkeyOn_);
+    if (!spec) {
+        log::info(L"Mission Control : raccourci désactivé");
+    } else if (!RegisterHotKey(hwnd_, kHotMission, spec->mods | MOD_NOREPEAT, spec->vk)) {
+        log::warn(L"Mission Control : raccourci %s déjà pris par une autre app (%lu)", missionHotkeyOn_.c_str(),
+                  GetLastError());
+    } else {
+        log::info(L"Mission Control : raccourci %s", missionHotkeyOn_.c_str());
+    }
+}
+
 void DockApp::registerSpotlightHotkey() {
     if (settings_.spotlightHotkey == spotlightHotkeyOn_) return;
     UnregisterHotKey(hwnd_, kHotSpotlight);
@@ -1288,6 +1338,10 @@ LRESULT CALLBACK DockApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
+    if (msg == missionMsg_ && missionMsg_) {
+        openMissionControl();
+        return 0;
+    }
     if (msg == spotlightMsg_ && spotlightMsg_) {
         openSpotlight();
         return 0;
@@ -1541,6 +1595,10 @@ int DockApp::runSnapshot(const Options& options) {
 }
 
 void DockApp::onHotKey(int id) {
+    if (id == kHotMission) {
+        openMissionControl();
+        return;
+    }
     if (id == kHotSpotlight) {
         openSpotlight();
         return;
@@ -1657,6 +1715,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     spotlightMsg_ = RegisterWindowMessageW(L"MacDockSpotlight");
     ChangeWindowMessageFilterEx(hwnd_, spotlightMsg_, MSGFLT_ALLOW, nullptr);
     registerSpotlightHotkey();
+    missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
+    ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
+    registerMissionHotkey();
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);

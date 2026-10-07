@@ -15,11 +15,14 @@
 //               écran Apps hors écran avec les vraies apps (dossier Apps lu, rien lancé, aucune fenêtre)
 //   MacDock.exe --spotlight-snapshot f.png [--query texte] [--theme light|dark]
 //               panneau Spotlight hors écran (vraies apps, documents de l'index en lecture seule, aucune fenêtre)
+//   MacDock.exe --mission-snapshot f.png [--count n] [--hover i] [--theme light|dark]
+//               Mission Control hors écran avec des fenêtres factices (aucune fenêtre réelle touchée)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
 #include <shellapi.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -27,6 +30,7 @@
 #include "../apps/apps_folder.h"
 #include "../apps/apps_window.h"
 #include "../calib/png_io.h"
+#include "../mission/mission_view.h"
 #include "../spotlight/file_search.h"
 #include "../spotlight/spotlight_window.h"
 #include "../config/config_store.h"
@@ -85,7 +89,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                     args.find(L"--menu-test") != std::wstring::npos || args.find(L"--genie-snapshot") != std::wstring::npos ||
                     !themeAction.empty() || !themeSnapshot.empty() ||
                     args.find(L"--apps-snapshot") != std::wstring::npos ||
-                    args.find(L"--spotlight-snapshot") != std::wstring::npos;
+                    args.find(L"--spotlight-snapshot") != std::wstring::npos ||
+                    args.find(L"--mission-snapshot") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
@@ -104,7 +109,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--diff") == 0) options.diff = argv[i + 1];
             if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         }
-        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot;
+        std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot, missionSnapshot;
+        int missionCount = 6, missionHover = -1;
         int appsPage = 0;
         md::MinimizeEffect effect = md::MinimizeEffect::Genie;
         md::DockPosition edge = md::DockPosition::Bottom;
@@ -113,6 +119,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--genie-snapshot") == 0) genieSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--apps-snapshot") == 0) appsSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--spotlight-snapshot") == 0) spotSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--mission-snapshot") == 0) missionSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--count") == 0) missionCount = std::clamp(_wtoi(argv[i + 1]), 0, 60);
+            if (wcscmp(argv[i], L"--hover") == 0) missionHover = _wtoi(argv[i + 1]);
             if (wcscmp(argv[i], L"--query") == 0) appsQuery = argv[i + 1];
             if (wcscmp(argv[i], L"--page") == 0) appsPage = _wtoi(argv[i + 1]);
             if (wcscmp(argv[i], L"--effect") == 0 && wcscmp(argv[i + 1], L"scale") == 0) effect = md::MinimizeEffect::Scale;
@@ -122,7 +131,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                                                             : md::DockPosition::Bottom;
         }
         LocalFree(argv);
-        if (!spotSnapshot.empty()) {
+        if (!missionSnapshot.empty()) {
+            std::vector<md::MissionRect> wins;   // fenêtres factices, toujours les mêmes
+            for (int i = 0; i < missionCount; ++i)
+                wins.push_back({double(i * 211 % 1200), double(i * 131 % 600), 640.0 + i * 173 % 700, 420.0 + i * 97 % 420});
+            const md::BgraImage im = md::missionSnapshot(wins, options.dark.value_or(false), 1920, 1080, missionHover);
+            code = md::writePng(missionSnapshot, im.px.data(), UINT(im.w), UINT(im.h)) ? 0 : 1;
+        } else if (!spotSnapshot.empty()) {
             wchar_t profile[MAX_PATH] = {};
             GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
             const md::BgraImage im = md::spotlightSnapshot(appsQuery, md::catalogFrom(md::readAppsFolder()),
