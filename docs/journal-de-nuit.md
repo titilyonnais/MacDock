@@ -136,6 +136,24 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   4. Chrome, Edge, Paint ou une fenêtre lancée en administrateur : pas de pastilles ;
   5. une fenêtre agrandie, et ton deuxième écran.
 
+### Plan 12 — Thème macOS (sous-projet 5, fusionné dans `main`)
+
+- **Curseurs façon macOS**, dessinés par le code (aucune ressource Apple) : flèche noire bordée de blanc, attente (anneau gris qui tourne, pas de roue arc-en-ciel), démarrage d'app, quatre flèches de redimensionnement, déplacement, précision, interdit. Chaque fichier contient 32, 48, 64, 96 et 128 px : Windows prend la bonne taille selon l'échelle.
+- **Fond d'écran façon Tahoe**, dessiné par le code à la résolution de chaque écran : ondes bleues, turquoise et violettes ; version nuit si Windows est en mode sombre.
+- **À la demande seulement** : clic droit sur le séparateur → *Thème macOS* → *Appliquer (curseurs et fond d'écran)* ou *Rétablir le thème Windows* ; ou `MacDock.exe --theme apply|restore`.
+- **Sauvegarde** : `%APPDATA%\MacDock\theme-backup.json`, écrite avant le premier changement et jamais écrasée par une deuxième application. Si elle ne peut pas être écrite, rien ne change. Elle est effacée quand tout a été rendu.
+- **Vérifié hors écran** : planche `--theme-snapshot` (curseurs sur fonds clair et sombre, deux fonds d'écran) ; Windows relit bien nos `.cur` et `.ani` (fichiers temporaires) ; application et rétablissement testés avec une API factice. **Je n'ai changé ni tes curseurs ni ton fond d'écran.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. *Thème macOS* → *Appliquer* : les curseurs et le fond changent sur tes deux écrans ;
+  2. survole un bord de fenêtre, un lien, lance une app : flèches de redimensionnement et attente ;
+  3. *Rétablir le thème Windows* : tes curseurs et ton fond d'avant reviennent.
+
+## Décisions prises sans toi (plan 12)
+- Le thème couvre les curseurs et le fond d'écran seulement : polices, coins et ombres des fenêtres ne se règlent pas proprement sans crochet.
+- Le fond suit le mode **système** de Windows (`SystemUsesLightTheme`, comme le Dock et la barre), pas celui des apps.
+- `--theme apply|restore` partage le nom de l'option `--theme light|dark` de `--snapshot` : seules les valeurs `apply` et `restore` déclenchent le thème.
+- Un échec à l'application ou au rétablissement s'affiche dans une boîte de message (tu as cliqué) et dans le journal.
+
 ## Décisions prises sans toi (plan 11)
 - Pastilles seulement sur la fenêtre active (macOS les montre grises sur les autres) : un calque par fenêtre visible demanderait de suivre l'ordre de toutes les fenêtres.
 - Les boutons de Windows restent à droite.
