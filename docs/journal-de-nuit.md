@@ -224,6 +224,23 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   2. garde Alt enfoncé : le panneau apparaît ; Tab plusieurs fois, puis relâche : l'app choisie passe devant ;
   3. pendant la sélection, Q sur une app sans document en cours : elle se ferme et quitte la rangée ;
   4. relâcher Alt seul après une sélection n'ouvre pas le menu de l'app au premier plan.
+- **Relecture finale** : 0 critique, 3 importants, tous corrigés :
+  - H (masquer) pendant la sélection était défait au relâchement d'Alt : l'app masquée reste masquée (test) ;
+  - depuis le bureau, un Alt+Tab rapide sautait l'app la plus récente : il y revient maintenant (test) ;
+  - un menu, une pile, Spotlight ou Mission Control ouverts pendant la sélection (clic droit sur le Dock, coin actif) terminent la sélection sans rien activer.
+
+## Décisions prises sans toi (plan 16)
+- `Alt+Tab` remplace celui de Windows (réglable : `appSwitcherHotkey: "off"`).
+- Le panneau s'affiche sur l'écran du curseur.
+- Pendant la sélection, Alt+Espace n'ouvre pas Spotlight.
+- Les apps dont les fenêtres sont sur un autre bureau virtuel restent dans la rangée (les choisir change de bureau, comme les Spaces de macOS).
+
+## Mineurs reportés — plan 16
+- Sans aucune app ouverte, Alt+Tab puis relâcher Alt ouvre le menu de l'app au premier plan.
+- Une app fermée dans les 0,15 s avant l'affichage laisse une case vide.
+- Alt+Q ou Alt+H pris par un autre outil : rien n'est journalisé.
+- La spec du sélecteur décrit encore un découpage de fichiers et des mesures que le plan a remplacés.
+
 
 ## Décisions prises sans toi (plan 15)
 - Raccourci `Ctrl+Alt+↑` par défaut (`Win+Tab` impossible sans crochet clavier) ; si ton pilote Intel fait pivoter l'écran avec ce raccourci, prends `ctrl+up` ou `f3`.
