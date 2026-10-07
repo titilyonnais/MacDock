@@ -53,6 +53,7 @@ Settings settingsFromJson(const json::Value& v) {
     s.largeSize = std::clamp(readNumber(v, "largeSize", s.largeSize), s.tileSize, 128.0);
     s.glass = readBool(v, "glass", s.glass);
     s.font = readString(v, "font");
+    s.screen = readString(v, "screen");
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
     if (auto* pins = v.find("pinned")) {
         for (auto& p : pins->asArray()) {
@@ -85,6 +86,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("largeSize", s.largeSize);
     v.set("glass", s.glass);
     v.set("font", toUtf8(s.font));
+    if (!s.screen.empty()) v.set("screen", toUtf8(s.screen));
     v.set("pinnedInitialized", s.pinnedInitialized);
     json::Value pins = json::Array{};
     for (auto& p : s.pinned) {

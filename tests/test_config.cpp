@@ -38,6 +38,14 @@ TEST_CASE(settings_roundtrip_with_pins) {
     CHECK(back.pinnedInitialized);
 }
 
+TEST_CASE(settings_screen_roundtrip) {
+    md::Settings s;
+    s.screen = L"\\\\.\\DISPLAY2";
+    auto back = md::settingsFromJson(md::settingsToJson(s));
+    CHECK(back.screen == L"\\\\.\\DISPLAY2");
+    CHECK(md::settingsFromJson(md::json::Object{}).screen.empty());
+}
+
 TEST_CASE(metrics_partial_override) {
     auto m = md::metricsFromJson(*md::json::parse(R"({"dockCornerRadius":30,"unknown":1})"));
     CHECK_NEAR(m.dockCornerRadius, 30, 1e-9);

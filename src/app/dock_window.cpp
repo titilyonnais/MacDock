@@ -42,6 +42,23 @@ constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
 constexpr UINT_PTR kFullscreenTimer = 0x4653;   // "FS" : vérification périodique du plein écran
+constexpr UINT_PTR kScreenPushTimer = 0x5350;   // "SP" : fin de la poussée vers un autre écran
+constexpr UINT kScreenPushMs = 350;             // durée de poussée contre le bord pour changer d'écran
+
+BOOL CALLBACK collectMonitor(HMONITOR mon, HDC, LPRECT, LPARAM lp) {
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof mi;
+    if (GetMonitorInfoW(mon, &mi))
+        reinterpret_cast<std::vector<MonitorInfo>*>(lp)->push_back(
+            {mi.szDevice, mi.rcMonitor, (mi.dwFlags & MONITORINFOF_PRIMARY) != 0});
+    return TRUE;
+}
+
+std::vector<MonitorInfo> enumMonitors() {
+    std::vector<MonitorInfo> out;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitor, reinterpret_cast<LPARAM>(&out));
+    return out;
+}
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3;
 
@@ -199,8 +216,50 @@ void DockApp::removeAppBar() {
     appBar_ = false;
 }
 
+HMONITOR DockApp::dockMonitor() {
+    monitors_ = enumMonitors();
+    // Écran courant s'il existe encore ; sinon l'écran enregistré, sinon le principal.
+    std::size_t i = initialMonitor(monitors_, screenName_.empty() ? settings_.screen : screenName_);
+    if (i >= monitors_.size()) return MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    if (monitors_[i].name != screenName_) {
+        screenName_ = monitors_[i].name;
+        log::info(L"[trace] écran du Dock : %s", screenName_.c_str());
+    }
+    const RECT& r = monitors_[i].rect;
+    return MonitorFromPoint(POINT{(r.left + r.right) / 2, (r.top + r.bottom) / 2}, MONITOR_DEFAULTTOPRIMARY);
+}
+
+void DockApp::checkScreenPush(POINT screen) {
+    auto hit = pushedMonitor(monitors_, screen, settings_.position, int(metrics_.autohideEdgePx));
+    std::wstring target = hit ? monitors_[*hit].name : std::wstring();
+    if (target == screenName_) target.clear();   // poussée sur l'écran du Dock : rien à faire
+    if (target == pushTarget_) return;
+    pushTarget_ = target;
+    if (target.empty()) KillTimer(hwnd_, kScreenPushTimer);
+    else SetTimer(hwnd_, kScreenPushTimer, kScreenPushMs, nullptr);
+}
+
+void DockApp::onDisplayChanged() {
+    icons_.clear();
+    renderer_.releaseImages();
+    reposition();
+    captureFailed_ = false;
+    if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
+        // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
+        capture_.stop();
+        glassLive_ = false;
+        if (initRenderer()) {
+            RECT rc;
+            GetClientRect(hwnd_, &rc);
+            renderer_.resize(UINT(rc.right), UINT(rc.bottom));
+        }
+    }
+    if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
+    updateGlass();
+}
+
 void DockApp::reposition() {
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR mon = dockMonitor();
     MONITORINFO mi{sizeof mi};
     GetMonitorInfoW(mon, &mi);
     monitor_ = mi.rcMonitor;
@@ -252,7 +311,7 @@ void DockApp::reposition() {
 }
 
 bool DockApp::initRenderer() {
-    HMONITOR mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR mon = hwnd_ ? MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY) : dockMonitor();
     auto adapter = BackdropCapture::adapterFor(mon);
     return renderer_.init(hwnd_, adapter.Get());
 }
@@ -369,6 +428,7 @@ void DockApp::onMouse(POINT screen) {
         default:
             atEdge = screen.y >= monitor_.bottom - 1 - edgePx && screen.x >= monitor_.left && screen.x < monitor_.right;
     }
+    checkScreenPush(screen);
     if (atEdge != cursorAtEdge_ || inside != cursorInDock_) {
         cursorAtEdge_ = atEdge;
         cursorInDock_ = inside;
@@ -898,6 +958,22 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 requestFrame();
                 return 0;
             }
+            if (wp == kScreenPushTimer) {
+                KillTimer(hwnd_, kScreenPushTimer);
+                POINT cursor;
+                GetCursorPos(&cursor);
+                auto hit = pushedMonitor(monitors_, cursor, settings_.position, int(metrics_.autohideEdgePx));
+                // Toujours poussé contre le bord du même écran : le Dock y passe et s'en souvient.
+                if (hit && monitors_[*hit].name == pushTarget_ && pushTarget_ != screenName_) {
+                    screenName_ = pushTarget_;
+                    settings_.screen = screenName_;
+                    saveSettings();
+                    log::info(L"[trace] écran du Dock : %s (poussée)", screenName_.c_str());
+                    onDisplayChanged();
+                }
+                pushTarget_.clear();
+                return 0;
+            }
             if (wp == kFullscreenTimer) {
                 checkFullscreen();
                 return 0;
@@ -925,22 +1001,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DISPLAYCHANGE:
         case WM_DPICHANGED:
-            icons_.clear();
-            renderer_.releaseImages();
-            reposition();
-            captureFailed_ = false;
-            if (!renderer_.isWarp() && !rendererOnDockAdapter()) {
-                // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
-                capture_.stop();
-                glassLive_ = false;
-                if (initRenderer()) {
-                    RECT rc;
-                    GetClientRect(hwnd_, &rc);
-                    renderer_.resize(UINT(rc.right), UINT(rc.bottom));
-                }
-            }
-            if (capture_.status() != BackdropCapture::Status::Off) restartCapture();
-            updateGlass();
+            onDisplayChanged();
             return 0;
         case WM_APP_BACKDROP:
             onBackdrop();

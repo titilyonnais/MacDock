@@ -10,6 +10,7 @@
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
+#include "monitor_choice.h"
 #include "../icons/icon_provider.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
@@ -46,6 +47,9 @@ private:
     void savePinned();
     void saveSettings();
     void reposition();
+    HMONITOR dockMonitor();              // écran choisi (enregistré, sinon principal), liste des écrans rafraîchie
+    void onDisplayChanged();             // écran, résolution ou DPI changés : icônes, place, carte, capture
+    void checkScreenPush(POINT screen);  // curseur poussé contre le bord du Dock sur un autre écran
     void registerAppBar();
     void removeAppBar();
     void onMouse(POINT screen);
@@ -95,6 +99,9 @@ private:
     ipc::PipeServer pipe_;
 
     RECT monitor_{};
+    std::vector<MonitorInfo> monitors_;   // écrans connus (rafraîchis à chaque placement)
+    std::wstring screenName_;             // écran où le Dock est placé (\\.\DISPLAYn)
+    std::wstring pushTarget_;             // écran visé par une poussée en cours
     POINT origin_{};
     float scale_ = 1;
     bool dark_ = false;
