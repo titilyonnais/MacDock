@@ -141,3 +141,34 @@ TEST_CASE(spot_short_folder) {   // emplacement court sous le titre d'un documen
     CHECK(md::shortFolder(L"Bureau") == L"Bureau");
     CHECK(md::shortFolder(L"").empty());
 }
+
+TEST_CASE(spot_dock_click_gate) {   // le Dock n'active jamais : un clic dessus doit fermer Spotlight
+    CHECK(md::dockClickGate(true, true) == md::DockClick::CloseSpotlight);
+    CHECK(md::dockClickGate(false, true) == md::DockClick::Ignore);   // menu, pile ou écran Apps ouvert
+    CHECK(md::dockClickGate(false, false) == md::DockClick::Proceed);
+}
+
+TEST_CASE(spot_doc_feed_keeps_docs_while_typing) {   // le panneau ne saute pas à chaque frappe
+    md::DocFeed f;
+    f.asked(3);
+    CHECK(f.arrived(3, {{md::SpotKind::File, L"a", L"", L"C:\\a"}}));
+    f.typed(true);
+    CHECK(f.shown.size() == 1);    // gardés jusqu'à la nouvelle réponse
+    CHECK(!f.arrived(3, {}));      // réponse à une ancienne frappe : ignorée
+    CHECK(f.shown.size() == 1);
+    f.asked(4);
+    CHECK(f.arrived(4, {}));
+    CHECK(f.shown.empty());
+    f.asked(5);
+    CHECK(f.arrived(5, {{md::SpotKind::File, L"b", L"", L"C:\\b"}}));
+    f.typed(false);                // calcul ou champ vide : plus de documents
+    CHECK(f.shown.empty());
+    CHECK(!f.arrived(5, {{md::SpotKind::File, L"b", L"", L"C:\\b"}}));
+}
+
+TEST_CASE(spot_calc_copies_plain_number) {   // collé dans un tableur : un nombre, sans espace fine
+    auto s = md::spotlightResults(L"1000+234,5", {}, {});
+    REQUIRE(!s.empty() && !s[0].items.empty());
+    CHECK(s[0].items[0].title == L"1\u202F234,5");
+    CHECK(s[0].items[0].target == L"1234,5");
+}

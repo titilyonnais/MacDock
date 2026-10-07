@@ -179,6 +179,7 @@ private:
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
     GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
+    bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée
 

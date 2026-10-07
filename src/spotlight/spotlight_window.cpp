@@ -222,9 +222,8 @@ struct Session {
     float sc = 1;
     View view;
     Painter painter;
-    std::vector<SpotItem> files;
+    DocFeed docs;
     std::unique_ptr<FileSearcher> searcher;
-    unsigned fileGen = 0;
     std::size_t maxRows = kMaxRows;
 
     Com<ID2D1Factory3> d2dFactory;
@@ -395,7 +394,7 @@ void Session::updateRegion() {
 }
 
 void Session::recompute(bool keepSelection) {
-    view.sections = spotTrim(spotlightResults(view.query, req->apps, files), maxRows);
+    view.sections = spotTrim(spotlightResults(view.query, req->apps, docs.shown), maxRows);
     const int count = int(spotCount(view.sections));
     if (!keepSelection || view.selected >= count) view.selected = count ? 0 : -1;
     if (view.selected < 0 && count) view.selected = 0;
@@ -405,8 +404,7 @@ void Session::recompute(bool keepSelection) {
 }
 
 void Session::queryChanged() {
-    files.clear();   // les documents de l'ancienne frappe ne correspondent plus
-    ++fileGen;       // un résultat en route sera ignoré
+    docs.typed(wantsFileSearch(view.query));   // anciens documents gardés jusqu'à la nouvelle réponse
     KillTimer(hwnd, kSearchTimer);
     if (wantsFileSearch(view.query)) SetTimer(hwnd, kSearchTimer, kSearchDelayMs, nullptr);
     view.caret = true;
@@ -573,16 +571,13 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 render();
             } else if (wp == kSearchTimer) {
                 KillTimer(hwnd, kSearchTimer);
-                if (wantsFileSearch(view.query) && searcher) fileGen = searcher->request(view.query, hwnd, WM_SPOT_FILES);
+                if (wantsFileSearch(view.query) && searcher) docs.asked(searcher->request(view.query, hwnd, WM_SPOT_FILES));
             }
             return 0;
         case WM_SPOT_FILES: {
             unsigned gen = 0;
             std::vector<SpotItem> found = FileSearcher::take(wp, lp, gen);
-            if (gen == fileGen) {   // seulement la réponse à la dernière frappe
-                files = std::move(found);
-                recompute(true);
-            }
+            if (docs.arrived(gen, std::move(found))) recompute(true);   // seulement la réponse à la dernière frappe
             return 0;
         }
         case WM_SPOT_ICON: {

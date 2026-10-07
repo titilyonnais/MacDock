@@ -563,6 +563,7 @@ std::size_t DockApp::listCapacity(const StackWindow::Request& r) const {
 }
 
 void DockApp::openStack(std::size_t index) {
+    if (menuOpen_) return;   // pas de fenêtre modale dans une autre
     const DockItem* p = controller_.itemAt(index);
     if (!p) return;
     const DockItem item = *p;
@@ -847,6 +848,7 @@ void DockApp::saveSettings() {
 }
 
 void DockApp::showContextMenu(std::optional<std::size_t> index) {
+    if (menuOpen_) return;   // pas de fenêtre modale dans une autre
     const DockItem* p = index ? controller_.itemAt(*index) : nullptr;
     MenuContext ctx;
     ctx.item = p ? *p : DockItem{ItemKind::Separator};
@@ -1306,6 +1308,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
+            if (dockClickGate(SpotlightWindow::isOpen(), menuOpen_) == DockClick::CloseSpotlight) {
+                SpotlightWindow::closeOpen();   // le Dock n'active pas : ce clic est le « clic ailleurs »
+                swallowClick_ = true;
+                return 0;
+            }
             controller_.pointerDown(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             if (trace_) {
                 auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
@@ -1328,6 +1335,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_LBUTTONUP:
+            if (swallowClick_) {
+                swallowClick_ = false;
+                return 0;
+            }
             onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;
         case WM_CAPTURECHANGED:
@@ -1339,6 +1350,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_RBUTTONUP:
             if (controller_.dragging()) return 0;
+            switch (dockClickGate(SpotlightWindow::isOpen(), menuOpen_)) {
+                case DockClick::CloseSpotlight: SpotlightWindow::closeOpen(); return 0;
+                case DockClick::Ignore: return 0;
+                case DockClick::Proceed: break;
+            }
             showContextMenu(controller_.hitTestAny(POINT{short(LOWORD(lp)), short(HIWORD(lp))}));
             return 0;
         case WM_APP_IPC_FLASH: {

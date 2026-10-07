@@ -47,7 +47,10 @@ std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::
     std::size_t next = 0;
     if (const auto v = evaluateExpression(q)) {
         const std::wstring result = formatNumber(*v);
-        best.items.push_back({SpotKind::Calc, result, q + L" =", result});
+        std::wstring plain;   // copié : sans séparateur de milliers, lisible par un tableur
+        for (wchar_t c : result)
+            if (c != L' ') plain.push_back(c);
+        best.items.push_back({SpotKind::Calc, result, q + L" =", plain});
     } else if (!found.empty()) {
         best.items.push_back(appItem(apps[found[0]]));
         next = 1;
@@ -83,6 +86,11 @@ std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t
         if (!s.items.empty()) out.push_back(std::move(s));
     }
     return out;
+}
+
+DockClick dockClickGate(bool spotlightOpen, bool modalOpen) {
+    if (spotlightOpen) return DockClick::CloseSpotlight;
+    return modalOpen ? DockClick::Ignore : DockClick::Proceed;
 }
 
 bool wantsFileSearch(const std::wstring& query) {

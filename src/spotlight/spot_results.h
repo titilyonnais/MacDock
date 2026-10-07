@@ -41,6 +41,28 @@ std::wstring shortFolder(const std::wstring& folder);
 // Dossier de recherche du Shell (index de Windows) sur folder : search-ms:query=…&crumb=location:…
 std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder);
 
+// Clic sur le Dock (qui n'active jamais) pendant une fenêtre modale : il ferme Spotlight, comme un clic ailleurs ;
+// pendant un menu, une pile ou l'écran Apps, il est ignoré (pas de fenêtre modale dans une autre).
+enum class DockClick { Proceed, CloseSpotlight, Ignore };
+DockClick dockClickGate(bool spotlightOpen, bool modalOpen);
+
+// Documents du panneau : les anciens restent affichés pendant la frappe, jusqu'à la réponse à la dernière
+// demande ; une réponse à une demande dépassée est ignorée.
+struct DocFeed {
+    std::vector<SpotItem> shown;
+    unsigned awaited = 0;   // génération attendue (FileSearcher::request) ; 0 : aucune
+    void typed(bool searching) {   // nouvelle frappe ; searching faux : calcul ou champ vide
+        awaited = 0;
+        if (!searching) shown.clear();
+    }
+    void asked(unsigned generation) { awaited = generation; }
+    bool arrived(unsigned generation, std::vector<SpotItem> items) {
+        if (!awaited || generation != awaited) return false;
+        shown = std::move(items);
+        return true;
+    }
+};
+
 struct HotkeySpec {
     UINT mods = 0;
     UINT vk = 0;
