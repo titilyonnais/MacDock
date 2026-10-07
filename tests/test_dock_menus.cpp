@@ -198,3 +198,13 @@ TEST_CASE(dock_menu_theme) {
     for (auto& it : off.items)
         if (it.text == L"Thème macOS") CHECK(!it.submenu[0].checked && !it.submenu[1].enabled);
 }
+
+TEST_CASE(dock_menu_apps_button) {
+    md::MenuContext c;
+    c.item = md::DockItem{md::ItemKind::AppsButton};
+    auto m = md::buildDockMenu(c);
+    REQUIRE(m.items.size() == 5);                          // + séparateur et « Quitter MacDock », comme partout
+    CHECK(m.items[0].id == md::kCmdStartMenu && m.items[0].text == L"Ouvrir le menu Démarrer");
+    CHECK(m.items[2].id == md::kCmdRemove);
+    CHECK(m.items[4].id == md::kCmdQuitDock);
+}

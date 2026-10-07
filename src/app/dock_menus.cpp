@@ -112,7 +112,11 @@ MenuModel buildDockMenu(const MenuContext& c) {
             out.push_back(entry(kCmdTrashEmpty, L"Vider la Corbeille", c.trashFull));
             break;
         case ItemKind::Stack: stackMenu(c, out); break;
-        case ItemKind::AppsButton: out.push_back(entry(kCmdRemove, L"Retirer du Dock")); break;
+        case ItemKind::AppsButton:
+            out.push_back(entry(kCmdStartMenu, L"Ouvrir le menu Démarrer"));
+            out.push_back({});
+            out.push_back(entry(kCmdRemove, L"Retirer du Dock"));
+            break;
         case ItemKind::MinimizedWindow:
             out.push_back(entry(kCmdRestore, L"Restaurer"));
             out.push_back(entry(kCmdCloseWindow, L"Fermer"));
