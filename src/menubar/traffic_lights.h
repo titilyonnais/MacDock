@@ -35,4 +35,15 @@ UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, 
 // Couleur la plus fréquente (à 8 niveaux près par canal), 0xRRGGBB ; 0 sans échantillon.
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);
 
+struct LightsState {
+    bool hover = false;                          // symboles ×, −, + (survol du groupe)
+    bool enabled[3] = {true, true, true};        // indisponible : gris, sans action
+    bool dark = false;                           // thème de la barre de titre (gris des pastilles indisponibles)
+    std::uint32_t patchColor = 0xF3F3F3;         // 0xRRGGBB, couleur de la barre de titre
+};
+// Image BGRA prémultipliée du calque (taille de l.window) ; scale = dpi / 96.
+std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState& s, double scale);
+// Planche hors écran (BGRA opaque) : thème clair puis sombre ; normal, survol, indisponible ; à 200 %.
+std::vector<std::uint8_t> lightsSheet(UINT& w, UINT& h);
+
 } // namespace md

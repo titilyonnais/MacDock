@@ -1,4 +1,6 @@
 // Feux tricolores : éligibilité, géométrie, rendu, couleur du fond.
+#include <cstdlib>
+
 #include "minitest.h"
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/traffic_lights.h"
@@ -94,4 +96,42 @@ TEST_CASE(lights_setting) {
     CHECK(md::menuBarSettingsFromJson(*md::json::parse(R"({"trafficLights":"x"})")).trafficLights == md::LightsMode::Standard);
     s.trafficLights = md::LightsMode::Off;
     CHECK(md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).trafficLights == md::LightsMode::Off);
+}
+
+TEST_CASE(lights_render_colors) {
+    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    md::LightsState st;
+    st.enabled[0] = st.enabled[1] = st.enabled[2] = true;
+    st.patchColor = 0xF3F3F3;
+    auto px = md::renderLights(l, st, 1.0);
+    const int w = l.window.right - l.window.left, h = l.window.bottom - l.window.top;
+    REQUIRE(px.size() == std::size_t(w * h * 4));
+    auto at = [&](LONG x, LONG y) { return &px[(std::size_t(y - l.window.top) * w + (x - l.window.left)) * 4]; };
+    const std::uint8_t* red = at(120, 115);
+    CHECK(red[2] > 240 && red[1] < 120 && red[3] == 255);
+    const std::uint8_t* yellow = at(140, 115);
+    CHECK(yellow[2] > 240 && yellow[1] > 160 && yellow[0] < 80);
+    const std::uint8_t* green = at(160, 115);
+    CHECK(green[1] > 180 && green[2] < 80);
+    const std::uint8_t* patch = at(106, 103);   // fond : couleur de la barre de titre, opaque
+    CHECK(patch[3] == 255 && patch[0] == 0xF3);
+    CHECK(at(l.window.right - 1, 103)[3] < at(l.window.right - 8, 103)[3]);   // fondu à droite
+    st.enabled[1] = false;
+    auto gray = md::renderLights(l, st, 1.0);
+    const std::uint8_t* g = &gray[(std::size_t(115 - l.window.top) * w + (140 - l.window.left)) * 4];
+    CHECK(std::abs(int(g[0]) - int(g[2])) < 8);   // gris
+}
+
+TEST_CASE(lights_hover_draws_symbols) {
+    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 192);
+    md::LightsState st;
+    st.enabled[0] = st.enabled[1] = st.enabled[2] = true;
+    st.patchColor = 0xF3F3F3;
+    auto plain = md::renderLights(l, st, 2.0);
+    st.hover = true;
+    auto hover = md::renderLights(l, st, 2.0);
+    CHECK(plain != hover);
+    UINT w = 0, h = 0;
+    auto sheet = md::lightsSheet(w, h);
+    CHECK(w > 0 && h > 0 && sheet.size() == std::size_t(w) * h * 4);
 }
