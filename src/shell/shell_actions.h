@@ -23,6 +23,12 @@ bool isOpenAtLogin(const std::wstring& exePath);
 bool runCommandLaunches(const std::wstring& command, const std::wstring& exePath);   // casse ignorée
 bool setOpenAtLogin(const std::wstring& exePath, const std::wstring& name, bool on);
 
+// Dépôt de fichiers. openWith : AUMID non vide → activation de l'app empaquetée, sinon exe.
+bool openWith(const std::wstring& exePath, const std::wstring& aumid, const std::vector<std::wstring>& paths);
+bool recycle(const std::vector<std::wstring>& paths, HWND owner);                 // progression standard
+bool moveInto(const std::vector<std::wstring>& paths, const std::wstring& folder, HWND owner);
+std::wstring quoteArguments(const std::vector<std::wstring>& paths);             // "a" "b"
+
 bool recycleBinHasItems();
 void emptyRecycleBin(HWND owner);   // avec la confirmation de l'Explorateur
 

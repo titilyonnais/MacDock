@@ -303,42 +303,45 @@ std::wstring DockController::gapKey(Section section, std::size_t slot) const {
 }
 
 std::optional<std::size_t> DockController::insertionPinnedIndex(Section section, std::size_t slot) const {
-    if (!model_ || !drag_) return std::nullopt;
-    auto c = candidates(section, drag_->key);
+    if (!drag_) return std::nullopt;
+    return insertionIndex(section, slot, drag_->key);
+}
+
+std::optional<std::size_t> DockController::insertionIndex(Section section, std::size_t slot,
+                                                          const std::wstring& exclude) const {
+    if (!model_) return std::nullopt;
+    auto c = candidates(section, exclude);
     if (slot < c.size()) return model_->pinnedIndexOf(items_[c[slot]].key);
     if (!c.empty())
         if (auto i = model_->pinnedIndexOf(items_[c.back()].key)) return *i + 1;
-    if (auto self = model_->pinnedIndexOf(drag_->key)) return self;
+    if (!exclude.empty())
+        if (auto self = model_->pinnedIndexOf(exclude)) return self;
+    if (section == Section::Stacks) return model_->pinnedEntries().size();
     return std::size_t(0);
 }
 
-void DockController::updateDragTarget(POINT p) {
-    if (!drag_) return;
-    DragState& d = *drag_;
-    double bgTop = bgBottomPx() - (settings_.tileSize + 2 * metrics_.dockPadding) * scale_;
-    bool above = bgTop - p.y > metrics_.dragRemoveDistance * scale_;
-    d.removing = above && d.pinned;
-    d.hasSlot = !above;
-    if (d.hasSlot) {
-        // Positions sans place ouverte ni repli : cibles stables pendant que les icônes glissent.
-        LayoutInput in;
-        for (auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
-        in.tileSize = settings_.tileSize;
-        in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
-        in.gap = metrics_.iconGap;
-        in.padding = metrics_.dockPadding;
-        in.separatorWidth = metrics_.separatorWidth;
-        in.separatorMargin = metrics_.separatorMargin;
-        in.rangeTiles = metrics_.magnifyRangeTiles;
-        in.amount = amount_.value();
-        in.cursor = cursor_;
-        LayoutResult r = computeLayout(in);
-        double x = toPoints(p.x);
-        d.slot = 0;
-        for (std::size_t i : candidates(d.section, d.key))
-            if (r.items[i].center < x) ++d.slot;
-    }
-    std::wstring target = d.hasSlot ? gapKey(d.section, d.slot) : std::wstring();
+std::size_t DockController::slotAt(Section section, const std::wstring& exclude, double xPx) const {
+    // Positions sans place ouverte ni repli : cibles stables pendant que les icônes glissent.
+    LayoutInput in;
+    for (auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
+    in.tileSize = settings_.tileSize;
+    in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
+    in.gap = metrics_.iconGap;
+    in.padding = metrics_.dockPadding;
+    in.separatorWidth = metrics_.separatorWidth;
+    in.separatorMargin = metrics_.separatorMargin;
+    in.rangeTiles = metrics_.magnifyRangeTiles;
+    in.amount = amount_.value();
+    in.cursor = cursor_;
+    LayoutResult r = computeLayout(in);
+    double x = toPoints(LONG(std::lround(xPx)));
+    std::size_t slot = 0;
+    for (std::size_t i : candidates(section, exclude))
+        if (r.items[i].center < x) ++slot;
+    return slot;
+}
+
+void DockController::openGap(const std::wstring& target) {
     for (auto& [key, g] : gaps_) g.setTarget(key == target ? 1.0 : 0.0);
     if (!target.empty() && !gaps_.contains(target)) {
         Spring g(metrics_.dragStiffness, metrics_.dragDamping);
@@ -349,11 +352,77 @@ void DockController::updateDragTarget(POINT p) {
     dirty_ = true;
 }
 
+DropHover DockController::dropOver(POINT p, const std::vector<std::wstring>& paths) {
+    refreshItems();
+    DropHover h;
+    std::optional<std::size_t> item;
+    bool between = false;
+    if (isInsideInteractiveZone(p)) {
+        item = hitTest(p);
+        Laid l = layout();
+        const double x = toPoints(p.x);
+        // Un dépôt vise l'icône elle-même, pas l'intervalle qui la sépare de sa voisine.
+        const bool onIcon = item && std::abs(x - l.r.items[l.slot[*item]].center) <= l.r.items[l.slot[*item]].size / 2;
+        const bool singlePin = paths.size() == 1 && isPinnableFile(paths[0]);
+        if (singlePin) {
+            // Entre deux icônes épinglées : hors du centre d'une icône de la section, ou dans un intervalle.
+            auto c = candidates(Section::Pinned, L"");
+            if (!c.empty()) {
+                const LayoutItem& first = l.r.items[l.slot[c.front()]];
+                const LayoutItem& last = l.r.items[l.slot[c.back()]];
+                bool inSpan = x >= first.center - first.size && x <= last.center + last.size;
+                bool pinnedItem = item && std::find(c.begin(), c.end(), *item) != c.end();
+                if (pinnedItem) {
+                    const LayoutItem& li = l.r.items[l.slot[*item]];
+                    between = std::abs(x - li.center) > li.size * 0.25;
+                } else {
+                    between = !item && inSpan;
+                }
+            }
+        }
+        if (!between && !onIcon) item.reset();
+        DropTargetInfo info;
+        info.betweenPinned = between;
+        if (item) info.kind = items_[*item].kind;
+        h.action = (between || item) ? dropAction(info, paths) : DropAction::None;
+    }
+    if (h.action == DropAction::Pin) {
+        std::size_t slot = slotAt(Section::Pinned, L"", double(p.x));
+        h.pinIndex = insertionIndex(Section::Pinned, slot, L"").value_or(0);
+        openGap(gapKey(Section::Pinned, slot));
+        dropItem_.reset();
+    } else {
+        openGap(L"");
+        if (h.action != DropAction::None) h.item = item;
+        if (dropItem_ != h.item) dirty_ = true;
+        dropItem_ = h.item;
+    }
+    return h;
+}
+
+void DockController::dropLeave() {
+    openGap(L"");
+    dropItem_.reset();
+    dirty_ = true;
+}
+
+void DockController::updateDragTarget(POINT p) {
+    if (!drag_) return;
+    DragState& d = *drag_;
+    double bgTop = bgBottomPx() - (settings_.tileSize + 2 * metrics_.dockPadding) * scale_;
+    bool above = bgTop - p.y > metrics_.dragRemoveDistance * scale_;
+    d.removing = above && d.pinned;
+    d.hasSlot = !above;
+    if (d.hasSlot) d.slot = slotAt(d.section, d.key, double(p.x));
+    openGap(d.hasSlot ? gapKey(d.section, d.slot) : std::wstring());
+}
+
 void DockController::pointerDown(POINT p) {
     refreshItems();
     pressPoint_ = p;
     pressIndex_ = hitTest(p);
     drag_.reset();
+    dirty_ = true;   // icône pressée assombrie
 }
 
 void DockController::pointerMove(POINT p) {
@@ -435,6 +504,7 @@ DragOutcome DockController::pointerUp(POINT p) {
 void DockController::cancelDrag() {
     pressPoint_.reset();
     pressIndex_.reset();
+    dirty_ = true;
     if (!drag_) return;
     drag_.reset();
     collapse_.setTarget(1);
@@ -491,6 +561,7 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
         icon.image = imageFor(item, icons, imgPx);
         icon.indicator = item.kind == ItemKind::App && item.running;
+        if ((dropItem_ && *dropItem_ == i) || (pressIndex_ && *pressIndex_ == i && !drag_)) icon.dim = 0.3f;
         if (!collapsingKey_.empty() && item.key == collapsingKey_) {
             // Élément tiré : sa case se vide (il suit le curseur) puis réapparaît s'il revient à sa place.
             icon.opacity = drag_ ? 0.0f : float(std::clamp(collapse_.value(), 0.0, 1.0));

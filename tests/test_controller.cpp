@@ -173,3 +173,68 @@ TEST_CASE(controller_hidden_dock_slides_out_of_window) {
     auto half = f.c.buildFrame(false, icons);
     CHECK(half.bgTop < h);
 }
+
+namespace {
+// Centre (pixels client) de l'élément i au repos.
+POINT centerOf(Fixture& f, std::size_t i) {
+    md::IconProvider icons;
+    auto frame = f.c.buildFrame(false, icons);
+    return POINT{LONG(frame.icons[i].cx), LONG(frame.icons[i].cy)};
+}
+} // namespace
+
+TEST_CASE(controller_drop_exe_between_pinned_opens_gap) {
+    Fixture f;
+    md::IconProvider icons;
+    POINT a = centerOf(f, 0), b = centerOf(f, 1);
+    auto rest = f.c.buildFrame(false, icons);
+    auto hover = f.c.dropOver(POINT{(a.x + b.x) / 2, a.y}, {L"C:/Tools/nouveau.exe"});
+    CHECK(hover.action == md::DropAction::Pin);
+    CHECK_EQ(hover.pinIndex, size_t(1));
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 60);
+    auto open = f.c.buildFrame(false, icons);
+    CHECK((open.bgRight - open.bgLeft) > (rest.bgRight - rest.bgLeft) + f.s.tileSize * 0.8f);   // place ouverte
+    f.c.dropLeave();
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 60);
+    auto closed = f.c.buildFrame(false, icons);
+    CHECK(std::abs((closed.bgRight - closed.bgLeft) - (rest.bgRight - rest.bgLeft)) < 1.0f);
+}
+
+TEST_CASE(controller_drop_files_on_app_dims_icon) {
+    Fixture f;
+    md::IconProvider icons;
+    auto hover = f.c.dropOver(centerOf(f, 0), {L"C:/doc.txt"});
+    CHECK(hover.action == md::DropAction::OpenWith);
+    REQUIRE(hover.item.has_value());
+    CHECK_EQ(*hover.item, size_t(0));
+    auto frame = f.c.buildFrame(false, icons);
+    CHECK(frame.icons[0].dim > 0.2f);
+    CHECK_EQ(frame.icons[1].dim, 0.0f);
+    f.c.dropLeave();
+    auto after = f.c.buildFrame(false, icons);
+    CHECK_EQ(after.icons[0].dim, 0.0f);
+}
+
+TEST_CASE(controller_drop_outside_or_refused_is_none) {
+    Fixture f;
+    md::IconProvider icons;
+    CHECK(f.c.dropOver(POINT{2, 2}, {L"C:/doc.txt"}).action == md::DropAction::None);
+    POINT a = centerOf(f, 0), b = centerOf(f, 1);
+    // Un document entre deux apps : refusé, sans place ouverte ni icône assombrie.
+    CHECK(f.c.dropOver(POINT{(a.x + b.x) / 2, a.y}, {L"C:/doc.txt"}).action == md::DropAction::None);
+    auto frame = f.c.buildFrame(false, icons);
+    for (auto& icon : frame.icons) CHECK_EQ(icon.dim, 0.0f);
+}
+
+TEST_CASE(controller_pressed_icon_is_dimmed) {
+    // macOS assombrit l'icône tant que le bouton reste enfoncé.
+    Fixture f;
+    md::IconProvider icons;
+    POINT b = centerOf(f, 1);
+    f.c.pointerDown(b);
+    auto pressed = f.c.buildFrame(false, icons);
+    CHECK(pressed.icons[1].dim > 0.2f);
+    f.c.pointerUp(b);
+    auto released = f.c.buildFrame(false, icons);
+    CHECK_EQ(released.icons[1].dim, 0.0f);
+}

@@ -13,11 +13,13 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/log.h"
+#include "../core/strings.h"
 #include "../popup/menu_window.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
 #include "dock_menus.h"
+#include "drop_target.h"
 #include "visibility.h"
 
 namespace md {
@@ -34,6 +36,7 @@ constexpr UINT WM_APP_WAKE = WM_APP + 5;
 constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT WM_APP_TRASH = WM_APP + 8;
+constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
@@ -589,6 +592,103 @@ void DockApp::refreshTrash() {
     requestFrame();
 }
 
+// Glisser-déposer de fichiers : survol (place ouverte ou icône assombrie), puis action après le retour de
+// Drop (la source, souvent l'Explorateur, attend ce retour ; une copie ou une confirmation ne doit pas la bloquer).
+void DockApp::registerDropTarget() {
+    if (snapshot_) return;
+    DropTarget::Callbacks cb;
+    cb.over = [this](const std::vector<std::wstring>& paths, POINT screen) -> DWORD {
+        POINT client{screen.x - origin_.x, screen.y - origin_.y};
+        DropHover h = controller_.dropOver(client, paths);
+        if (trace_) {
+            static int lastAction = -1;
+            static long lastItem = -2;
+            long item = h.item ? long(*h.item) : -1;
+            if (int(h.action) != lastAction || item != lastItem)
+                log::info(L"[trace] survol de dépôt en %ld,%ld : action %d, élément %ld", client.x, client.y,
+                          int(h.action), item);
+            lastAction = int(h.action);
+            lastItem = item;
+        }
+        requestFrame();
+        switch (h.action) {
+            case DropAction::Pin: return DROPEFFECT_LINK;
+            case DropAction::OpenWith: return DROPEFFECT_COPY;
+            case DropAction::Recycle:
+            case DropAction::MoveInto: return DROPEFFECT_MOVE;
+            default: return DROPEFFECT_NONE;
+        }
+    };
+    cb.leave = [this] {
+        controller_.dropLeave();
+        requestFrame();
+    };
+    cb.drop = [this](const std::vector<std::wstring>& paths, POINT screen) {
+        POINT client{screen.x - origin_.x, screen.y - origin_.y};
+        PendingDrop d;
+        d.hover = controller_.dropOver(client, paths);
+        if (d.hover.item)
+            if (const DockItem* it = controller_.itemAt(*d.hover.item)) d.item = *it;
+        d.paths = paths;
+        pendingDrop_ = std::move(d);
+        PostMessageW(hwnd_, WM_APP_DROP, 0, 0);
+    };
+    dropTarget_ = new DropTarget(hwnd_, std::move(cb));
+    HRESULT hr = RegisterDragDrop(hwnd_, dropTarget_);
+    log::info(L"Dépôt de fichiers : RegisterDragDrop = 0x%08lx", static_cast<unsigned long>(hr));
+    if (FAILED(hr)) {
+        dropTarget_->Release();
+        dropTarget_ = nullptr;
+    }
+}
+
+void DockApp::performDrop() {
+    if (!pendingDrop_) return;
+    PendingDrop d = std::move(*pendingDrop_);
+    pendingDrop_.reset();
+    if (trace_) log::info(L"[trace] dépôt : action %d, %zu fichier(s)", int(d.hover.action), d.paths.size());
+    switch (d.hover.action) {
+        case DropAction::Pin: {
+            const std::wstring& path = d.paths.front();
+            auto id = identifyLaunchTarget(path);
+            AppIdentity app;
+            if (id) app = *id;
+            if (app.appId.empty()) {
+                app.exePath = path;
+                app.appId = makeAppId(L"", path);
+            }
+            if (isPinnableFile(path) && toLower(path).ends_with(L".exe"))
+                if (auto described = exeDisplayName(path); !described.empty()) app.displayName = described;
+            if (app.displayName.empty()) app.displayName = exeDisplayName(path);
+            auto entries = model_.pinnedEntries();
+            bool dup = std::any_of(entries.begin(), entries.end(),
+                                   [&](auto& p) { return p.kind == PinKind::App && p.appId == app.appId; });
+            if (dup) break;
+            std::size_t at = std::min(d.hover.pinIndex, entries.size());
+            entries.insert(entries.begin() + std::ptrdiff_t(at),
+                           PinnedEntry{PinKind::App, app.appId, path, app.displayName, app.exePath});
+            model_.loadPinned(entries);
+            savePinned();
+            log::info(L"Épinglé par dépôt : %s (%s)", app.displayName.c_str(), app.appId.c_str());
+            break;
+        }
+        case DropAction::OpenWith: {
+            auto id = model_.identityOf(d.item.appId);
+            std::wstring exe = id ? id->exePath : L"";
+            std::wstring aumid = id ? id->aumid : L"";
+            const std::wstring prefix = L"shell:AppsFolder\\";
+            if (aumid.empty() && d.item.launch.starts_with(prefix)) aumid = d.item.launch.substr(prefix.size());
+            if (exe.empty() && aumid.empty()) exe = d.item.launch;
+            if (openWith(exe, aumid, d.paths) && !d.item.running) controller_.startLaunchBounce(d.item.appId);
+            break;
+        }
+        case DropAction::Recycle: recycle(d.paths, hwnd_); break;
+        case DropAction::MoveInto: moveInto(d.paths, d.item.launch, hwnd_); break;
+        default: break;
+    }
+    requestFrame();
+}
+
 void DockApp::requestFrame() {
     wakeAnimation_ = true;
     // Réveille WaitMessage, y compris depuis un message envoyé (SendMessage) qui ne le réveille pas.
@@ -734,12 +834,15 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_CONFIG:
             SetTimer(hwnd_, kConfigTimer, 200, nullptr);   // anti-rebond : plusieurs écritures d'affilée
             return 0;
+        case WM_APP_DROP:
+            performDrop();
+            return 0;
         case WM_APP_TRASH: {
             LONG event = 0;
             PIDLIST_ABSOLUTE* pidls = nullptr;
             if (HANDLE lock = SHChangeNotification_Lock(HANDLE(wp), DWORD(lp), &pidls, &event))
                 SHChangeNotification_Unlock(lock);
-            if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", unsigned long(event));
+            if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", static_cast<unsigned long>(event));
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
             return 0;
         }
@@ -1005,6 +1108,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     startMouseThread();
     startConfigWatcher();
     watchTrash();
+    registerDropTarget();
     // Plein écran : premier plan (tracker), avis de la barre d'application, et vérification chaque seconde
     // pour les bascules sans changement de premier plan (F11, vidéo) — sans hook EVENT_OBJECT_LOCATIONCHANGE.
     if (!snapshot_) SetTimer(hwnd_, kFullscreenTimer, 1000, nullptr);
@@ -1072,6 +1176,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacDock s'arrête");
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
+    if (dropTarget_) {
+        RevokeDragDrop(hwnd_);
+        dropTarget_->Release();
+        dropTarget_ = nullptr;
+    }
     capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();

@@ -11,6 +11,7 @@
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../icons/icon_provider.h"
+#include "../interact/drop_rules.h"
 #include "../layout/dock_geometry.h"
 #include "../layout/dock_layout.h"
 #include "../model/app_model.h"
@@ -36,6 +37,13 @@ struct DragVisual {
     std::wstring key;
 };
 
+// Survol d'un dépôt de fichiers (glisser OLE depuis l'Explorateur).
+struct DropHover {
+    DropAction action = DropAction::None;
+    std::optional<std::size_t> item;   // élément visé (OpenWith, Recycle, MoveInto)
+    std::size_t pinIndex = 0;          // Pin : index d'insertion dans les épingles
+};
+
 class DockController {
 public:
     void init(const Settings& s, const Metrics& m, AppModel* model);
@@ -55,6 +63,10 @@ public:
     void cancelDrag();
     bool dragging() const { return drag_.has_value(); }
     DragVisual dragVisual(IconProvider& icons) const;
+
+    // Dépôt de fichiers : place ouverte (épinglage) ou icône visée assombrie.
+    DropHover dropOver(POINT clientPx, const std::vector<std::wstring>& paths);
+    void dropLeave();
 
     std::optional<std::size_t> hitTest(POINT clientPx) const;
     // Comme hitTest, mais reconnaît aussi les séparateurs (clic droit : menu du Dock).
@@ -104,6 +116,9 @@ private:
     std::vector<std::size_t> candidates(Section section, const std::wstring& exclude) const;
     std::wstring gapKey(Section section, std::size_t slot) const;   // clé de l'élément devant lequel s'ouvre la place
     std::optional<std::size_t> insertionPinnedIndex(Section section, std::size_t slot) const;
+    std::optional<std::size_t> insertionIndex(Section section, std::size_t slot, const std::wstring& exclude) const;
+    std::size_t slotAt(Section section, const std::wstring& exclude, double xPx) const;   // positions stables
+    void openGap(const std::wstring& key);   // une seule place ouverte (vide : toutes se referment)
     void updateDragTarget(POINT clientPx);
     std::optional<std::size_t> indexOfKey(const std::wstring& key) const;
     double bgBottomPx() const { return height_ - metrics_.dockScreenMargin * scale_; }
@@ -129,6 +144,7 @@ private:
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;
     double shown_ = 1;
+    std::optional<std::size_t> dropItem_;   // icône visée par un dépôt
 
     std::optional<POINT> pressPoint_;
     std::optional<std::size_t> pressIndex_;

@@ -63,6 +63,8 @@ private:
     void resumeCapture();
     void onBackdrop();
     void watchTrash();
+    void registerDropTarget();
+    void performDrop();
     void syncAppBar();                 // zone réservée seulement sans masquage automatique
     bool detectFullscreen() const;
     void checkFullscreen();
@@ -121,6 +123,13 @@ private:
     POINT poofCenter_{};
     bool captureFailed_ = false;
     ULONG trashNotify_ = 0;
+    class DropTarget* dropTarget_ = nullptr;
+    struct PendingDrop {
+        DropHover hover;
+        DockItem item;
+        std::vector<std::wstring> paths;
+    };
+    std::optional<PendingDrop> pendingDrop_;   // exécuté après le retour de Drop (WM_APP_DROP)
     Visibility visibility_;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     bool loggedHidden_ = false;        // SHChangeNotifyRegister sur la Corbeille   // échec définitif : pas de nouvel essai avant un changement d'affichage

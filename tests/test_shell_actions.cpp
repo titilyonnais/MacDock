@@ -14,3 +14,8 @@ TEST_CASE(run_command_matches_exe) {
     CHECK(!md::runCommandLaunches(L"", exe));
     CHECK(!md::runCommandLaunches(L"\"C:\\x.exe\"", L""));
 }
+
+TEST_CASE(open_with_quotes_each_path) {
+    CHECK(md::quoteArguments({L"C:/a b/c.txt", L"D:/x.png"}) == L"\"C:/a b/c.txt\" \"D:/x.png\"");
+    CHECK(md::quoteArguments({}).empty());
+}

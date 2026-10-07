@@ -29,6 +29,7 @@ struct RenderIcon {            // en pixels de la fenêtre (y vers le bas)
     bool separator = false;
     float sepLength = 0;
     float opacity = 1;
+    float dim = 0;             // assombrissement (icône pressée, cible d'un dépôt) : part de noir
 };
 
 struct RenderTooltip {

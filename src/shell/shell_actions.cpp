@@ -2,12 +2,16 @@
 
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shobjidl.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 
 #include "../core/log.h"
 
 namespace md {
+
+using Microsoft::WRL::ComPtr;
 
 bool launch(const std::wstring& target) {
     SHELLEXECUTEINFOW sei{sizeof sei};
@@ -136,6 +140,86 @@ bool setOpenAtLogin(const std::wstring& exePath, const std::wstring& name, bool 
     return st == ERROR_SUCCESS;
 }
 
+std::wstring quoteArguments(const std::vector<std::wstring>& paths) {
+    std::wstring out;
+    for (auto& p : paths) {
+        if (!out.empty()) out += L' ';
+        out += L"\"" + p + L"\"";
+    }
+    return out;
+}
+
+namespace {
+ComPtr<IShellItemArray> itemArray(const std::vector<std::wstring>& paths) {
+    std::vector<PIDLIST_ABSOLUTE> pidls;
+    for (auto p : paths) {
+        std::replace(p.begin(), p.end(), L'/', L'\\');   // ILCreateFromPath refuse les barres obliques
+        if (PIDLIST_ABSOLUTE id = ILCreateFromPathW(p.c_str())) pidls.push_back(id);
+        else log::warn(L"Fichier introuvable : %s", p.c_str());
+    }
+    ComPtr<IShellItemArray> arr;
+    if (!pidls.empty())
+        SHCreateShellItemArrayFromIDLists(UINT(pidls.size()), const_cast<LPCITEMIDLIST*>(
+                                              reinterpret_cast<const LPCITEMIDLIST*>(pidls.data())), &arr);
+    for (auto id : pidls) ILFree(id);
+    return arr;
+}
+} // namespace
+
+bool openWith(const std::wstring& exePath, const std::wstring& aumid, const std::vector<std::wstring>& paths) {
+    if (paths.empty()) return false;
+    if (!aumid.empty()) {
+        ComPtr<IApplicationActivationManager> mgr;
+        auto arr = itemArray(paths);
+        DWORD pid = 0;
+        HRESULT hr = arr ? CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&mgr))
+                         : E_FAIL;
+        if (SUCCEEDED(hr)) hr = mgr->ActivateForFile(aumid.c_str(), arr.Get(), L"open", &pid);
+        if (SUCCEEDED(hr)) return true;
+        log::warn(L"Ouverture avec %s impossible (0x%08lx)", aumid.c_str(), static_cast<unsigned long>(hr));
+        if (exePath.empty()) return false;
+    }
+    std::wstring args = quoteArguments(paths);
+    SHELLEXECUTEINFOW sei{sizeof sei};
+    sei.fMask = SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
+    sei.lpVerb = L"open";
+    sei.lpFile = exePath.c_str();
+    sei.lpParameters = args.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+    if (ShellExecuteExW(&sei)) return true;
+    log::warn(L"Ouverture avec %s impossible (%lu)", exePath.c_str(), GetLastError());
+    return false;
+}
+
+namespace {
+// IFileOperation avec l'interface de progression de l'Explorateur ; apply ajoute les opérations.
+template <class F> bool fileOperation(HWND owner, DWORD flags, F apply) {
+    ComPtr<IFileOperation> op;
+    if (FAILED(CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))) return false;
+    op->SetOwnerWindow(owner);
+    op->SetOperationFlags(flags);
+    if (FAILED(apply(op.Get()))) return false;
+    HRESULT hr = op->PerformOperations();
+    if (FAILED(hr)) log::warn(L"Opération sur les fichiers impossible (0x%08lx)", static_cast<unsigned long>(hr));
+    return SUCCEEDED(hr);
+}
+} // namespace
+
+bool recycle(const std::vector<std::wstring>& paths, HWND owner) {
+    auto arr = itemArray(paths);
+    if (!arr) return false;
+    return fileOperation(owner, FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOFX_ADDUNDORECORD,
+                         [&](IFileOperation* op) { return op->DeleteItems(arr.Get()); });
+}
+
+bool moveInto(const std::vector<std::wstring>& paths, const std::wstring& folder, HWND owner) {
+    auto arr = itemArray(paths);
+    ComPtr<IShellItem> dest;
+    if (!arr || FAILED(SHCreateItemFromParsingName(folder.c_str(), nullptr, IID_PPV_ARGS(&dest)))) return false;
+    return fileOperation(owner, FOF_ALLOWUNDO | FOFX_ADDUNDORECORD,
+                         [&](IFileOperation* op) { return op->MoveItems(arr.Get(), dest.Get()); });
+}
+
 bool recycleBinHasItems() {
     SHQUERYRBINFO info{sizeof info};
     if (FAILED(SHQueryRecycleBinW(nullptr, &info))) return false;
@@ -145,7 +229,7 @@ bool recycleBinHasItems() {
 void emptyRecycleBin(HWND owner) {
     HRESULT hr = SHEmptyRecycleBinW(owner, nullptr, 0);
     if (FAILED(hr) && hr != HRESULT_FROM_WIN32(ERROR_CANCELLED) && hr != E_UNEXPECTED)
-        log::warn(L"Vidage de la Corbeille impossible (0x%08lx)", unsigned long(hr));
+        log::warn(L"Vidage de la Corbeille impossible (0x%08lx)", static_cast<unsigned long>(hr));
 }
 
 std::wstring downloadsFolder() {

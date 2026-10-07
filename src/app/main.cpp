@@ -8,6 +8,7 @@
 //   MacDock.exe --menu-test            menu en verre de démonstration (diagnostic)
 #include <windows.h>
 #include <objbase.h>
+#include <ole2.h>
 #include <shellapi.h>
 
 #include <string>
@@ -43,7 +44,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    OleInitialize(nullptr);   // COM en STA + glisser-déposer OLE (RegisterDragDrop)
     int code = 0;
     {
         md::DockApp::Options options;
@@ -73,7 +74,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             code = app.run(instance, options);
         }
     }
-    CoUninitialize();
+    OleUninitialize();
     if (mutex) {
         ReleaseMutex(mutex);
         CloseHandle(mutex);
