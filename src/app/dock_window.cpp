@@ -16,6 +16,7 @@
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
 #include "../popup/stack_window.h"
+#include "../stack/stack_icon.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -39,6 +40,8 @@ constexpr UINT WM_APP_PING = WM_APP + 6;
 constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
+constexpr UINT WM_APP_STACKS = WM_APP + 10;
+constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
 constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI" : fin du délai de masquage
@@ -126,6 +129,7 @@ void DockApp::loadConfig(bool initial) {
 
 void DockApp::applySettings() {
     model_.setShowRecents(settings_.showRecents);
+    watchStacks();   // piles ajoutées, retirées ou triées autrement (rechargement de settings.json)
     icons_.setStrictTahoe(settings_.tahoeStrictIcons);
     icons_.setGrid(metrics_.iconShapeRatio, metrics_.iconCornerRatio, metrics_.iconJailInset, metrics_.iconShadowOpacity);
     controller_.setSettings(settings_);
@@ -196,6 +200,7 @@ bool DockApp::stepVisibility(double now) {
 void DockApp::savePinned() {
     settings_.pinned = model_.pinnedEntries();
     saveSettings();
+    watchStacks();
 }
 
 void DockApp::registerAppBar() {
@@ -643,6 +648,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             const PinnedEntry e = model_.pinnedEntries()[*i];
             ctx.stackView = e.stackView;
             ctx.stackSort = e.stackSort;
+            ctx.stackDisplay = e.stackDisplay;
         }
     }
 
@@ -766,6 +772,11 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             if (model_.setStackOptions(item.key, view, ctx.stackSort)) savePinned();
             break;
         }
+        case kCmdDisplayStack:
+        case kCmdDisplayFolder:
+            if (model_.setStackDisplay(item.key, cmd == kCmdDisplayFolder ? StackDisplay::Folder : StackDisplay::Stack))
+                savePinned();
+            break;
         case kCmdRestore:
             restoreWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)));
             break;
@@ -791,6 +802,43 @@ void DockApp::watchTrash() {
                                           WM_APP_TRASH, 1, &entry);
     CoTaskMemFree(pidl);
     if (!trashNotify_) log::warn(L"Surveillance de la Corbeille impossible");
+}
+
+void DockApp::watchStacks() {
+    if (!hwnd_ || snapshot_) return;
+    std::vector<std::wstring> folders;
+    for (const auto& e : model_.pinnedEntries())
+        if (e.kind == PinKind::Stack) folders.push_back(e.launch);
+    if (folders != watchedStacks_) {
+        for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
+        stackNotify_.clear();
+        watchedStacks_ = folders;
+        for (const auto& folder : folders) {
+            PIDLIST_ABSOLUTE pidl = nullptr;
+            if (FAILED(SHParseDisplayName(folder.c_str(), nullptr, &pidl, 0, nullptr))) {
+                log::warn(L"Surveillance de la pile impossible : %s", folder.c_str());
+                continue;
+            }
+            SHChangeNotifyEntry entry{pidl, FALSE};
+            if (ULONG id = SHChangeNotifyRegister(hwnd_, SHCNRF_ShellLevel | SHCNRF_InterruptLevel | SHCNRF_NewDelivery,
+                                                  SHCNE_ALLEVENTS, WM_APP_STACKS, 1, &entry))
+                stackNotify_.push_back(id);
+            CoTaskMemFree(pidl);
+        }
+    }
+    refreshStacks();
+}
+
+void DockApp::refreshStacks() {
+    bool changed = false;
+    for (const auto& e : model_.pinnedEntries()) {
+        if (e.kind != PinKind::Stack) continue;
+        auto preview = stackPreview(sortStack(listFolder(e.launch), e.stackSort));
+        if (trace_) log::info(L"[trace] pile %s : aperçu de %zu élément(s)%s%s", e.launch.c_str(), preview.size(),
+                              preview.empty() ? L"" : L", dessus : ", preview.empty() ? L"" : preview[0].c_str());
+        changed |= model_.setStackPreview(L"stack:" + e.launch, std::move(preview));
+    }
+    if (changed) requestFrame();
 }
 
 void DockApp::refreshTrash() {
@@ -1049,7 +1097,20 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
             return 0;
         }
+        case WM_APP_STACKS: {
+            LONG event = 0;
+            PIDLIST_ABSOLUTE* pidls = nullptr;
+            if (HANDLE lock = SHChangeNotification_Lock(HANDLE(wp), DWORD(lp), &pidls, &event))
+                SHChangeNotification_Unlock(lock);
+            SetTimer(hwnd_, kStacksTimer, 400, nullptr);   // un téléchargement envoie une rafale d'avis
+            return 0;
+        }
         case WM_TIMER:
+            if (wp == kStacksTimer) {
+                KillTimer(hwnd_, kStacksTimer);
+                refreshStacks();
+                return 0;
+            }
             if (wp == kVisibilityTimer) {
                 KillTimer(hwnd_, kVisibilityTimer);
                 requestFrame();
@@ -1135,6 +1196,7 @@ int DockApp::runSnapshot(const Options& options) {
         POINT p{LONG(w / 2.0 + *options.hover * scale_), LONG(bgBottom - 10 * scale_)};
         controller_.setCursor(p);
     }
+    refreshStacks();   // icônes « Pile » comme dans le vrai Dock
     for (int i = 0; i < 240; ++i) controller_.tick(1.0 / 120);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     if (trace_) logItemPositions(frame);
@@ -1297,6 +1359,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     startMouseThread();
     startConfigWatcher();
     watchTrash();
+    watchStacks();
     registerDropTarget();
     // Plein écran : premier plan (tracker), avis de la barre d'application, et vérification chaque seconde
     // pour les bascules sans changement de premier plan (F11, vidéo) — sans hook EVENT_OBJECT_LOCATIONCHANGE.
@@ -1365,6 +1428,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacDock s'arrête");
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
+    for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
     thumbnails_.clear();
     if (dropTarget_) {
         RevokeDragDrop(hwnd_);

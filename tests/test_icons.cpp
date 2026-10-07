@@ -80,3 +80,25 @@ TEST_CASE(icons_file_image_is_plain_and_sized) {
     CHECK(opaquePixels(*img) > 64 * 64 / 8);
     CHECK(p.file(L"C:\\nexiste\\pas.zzz", 64) != nullptr);   // fichier absent : icône générique du type
 }
+
+TEST_CASE(icons_compose_stack_stays_in_cell) {
+    // Icône « Pile » : derniers éléments empilés et inclinés, sans déborder de la case.
+    ComScope com;
+    md::IconProvider p;
+    wchar_t win[MAX_PATH];
+    GetWindowsDirectoryW(win, MAX_PATH);
+    const std::wstring w = win;
+    auto img = p.composeStack(L"stack:test", {w + L"\\notepad.exe", w + L"\\win.ini", w}, 96);
+    REQUIRE(img != nullptr);
+    CHECK_EQ(img->size, 96);
+    CHECK(opaquePixels(*img) > 96 * 96 / 6);
+    int edge = 0;
+    for (int i = 0; i < 96; ++i)
+        for (int k : {0, 95}) {
+            edge += img->bgra[(size_t(k) * 96 + i) * 4 + 3] > 8;
+            edge += img->bgra[(size_t(i) * 96 + k) * 4 + 3] > 8;
+        }
+    CHECK_EQ(edge, 0);   // rien sur le bord de la case
+    CHECK(p.composeStack(L"stack:test", {w + L"\\notepad.exe", w + L"\\win.ini", w}, 96) == img);   // cache
+    CHECK(p.composeStack(L"stack:vide", {}, 96) == nullptr);
+}

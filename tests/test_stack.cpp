@@ -1,6 +1,7 @@
 // Piles : tri, présentation automatique, géométrie de l'éventail et de la grille (logique pure).
 #include <cmath>
 
+#include "../src/stack/stack_icon.h"
 #include "minitest.h"
 #include "../src/stack/stack_layout.h"
 #include "../src/stack/stack_model.h"
@@ -98,4 +99,33 @@ TEST_CASE(stack_fan_capacity_fits_screen) {
     CHECK(-slots.back().dy + 24 <= room);                         // le plus haut tient
     CHECK(-md::fanLayout(cap + 1, 48).back().dy + 24 > room);    // un de plus ne tiendrait pas
     CHECK_EQ(md::fanCapacity(48, 10), std::size_t(1));           // toujours au moins « Ouvrir dans l'Explorateur »
+}
+
+TEST_CASE(stack_icon_layers_capped_at_three) {
+    CHECK(md::stackIconLayers(0).empty());
+    CHECK_EQ(md::stackIconLayers(1).size(), std::size_t(1));
+    CHECK_EQ(md::stackIconLayers(2).size(), std::size_t(2));
+    CHECK_EQ(md::stackIconLayers(9).size(), std::size_t(3));
+    for (auto& l : md::stackIconLayers(3)) {
+        CHECK(l.scale > 0.5 && l.scale <= 1.0);
+        CHECK(std::abs(l.dx) < 0.2 && std::abs(l.dy) < 0.2);   // reste dans la case
+    }
+}
+
+TEST_CASE(stack_icon_top_layer_is_upright) {
+    auto layers = md::stackIconLayers(3);
+    REQUIRE(layers.size() == 3);
+    CHECK_NEAR(layers.back().angle, 0, 1e-9);     // l'élément le plus récent, au-dessus, est droit
+    CHECK(layers[0].angle != 0);                  // ceux du dessous sont inclinés, dans des sens différents
+    CHECK(layers[0].angle * layers[1].angle < 0);
+    CHECK(layers.back().scale >= layers[0].scale);
+}
+
+TEST_CASE(stack_preview_takes_first_three) {
+    std::vector<md::StackItem> sorted{item(L"a", 1, 1), item(L"b", 1, 1), item(L"c", 1, 1), item(L"d", 1, 1)};
+    auto p = md::stackPreview(sorted);
+    REQUIRE(p.size() == 3);
+    CHECK(p[0] == L"C:\\D\\a");   // le premier selon le tri : au-dessus de la pile
+    CHECK(p[2] == L"C:\\D\\c");
+    CHECK(md::stackPreview({}).empty());
 }

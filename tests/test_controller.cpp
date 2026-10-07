@@ -1,3 +1,6 @@
+#include <windows.h>
+#include <objbase.h>
+
 #include "minitest.h"
 #include "../src/app/dock_controller.h"
 
@@ -335,4 +338,33 @@ TEST_CASE(controller_dock_shrinks_to_fit_axis) {
         auto hit = c.hitTest(POINT{LONG(f.icons.back().cx), LONG(f.icons.back().cy)});
         CHECK(hit.has_value());             // la dernière icône (Corbeille) reste atteignable
     }
+}
+
+TEST_CASE(controller_stack_icon_uses_preview) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // icônes Shell réelles
+    md::AppModel model;
+    md::DockController c;
+    md::Settings s;
+    md::Metrics m;
+    md::IconProvider icons;
+    wchar_t win[MAX_PATH];
+    GetWindowsDirectoryW(win, MAX_PATH);
+    const std::wstring w = win;
+    s.showRecents = false;
+    model.setShowRecents(false);
+    model.loadPinned({{md::PinKind::Stack, L"", w, L"Windows"}});
+    c.init(s, m, &model);
+    c.setViewport(1000, UINT(md::DockController::windowHeightPx(s, m, 1)), 1);
+    std::size_t k = 0;   // la pile suit un séparateur
+    while (c.itemAt(k) && c.itemAt(k)->kind != md::ItemKind::Stack) ++k;
+    REQUIRE(c.itemAt(k) != nullptr);
+    auto folderIcon = c.buildFrame(false, icons).icons[k].image;
+    CHECK(folderIcon != nullptr);
+    model.setStackPreview(L"stack:" + w, {w + L"\\notepad.exe"});
+    auto stackIcon = c.buildFrame(false, icons).icons[k].image;
+    CHECK(stackIcon != nullptr);
+    CHECK(stackIcon != folderIcon);   // « Pile » : les derniers éléments, pas l'icône du dossier
+    model.setStackDisplay(L"stack:" + w, md::StackDisplay::Folder);
+    CHECK(c.buildFrame(false, icons).icons[k].image == folderIcon);
+    CoUninitialize();
 }

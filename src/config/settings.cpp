@@ -90,6 +90,7 @@ Settings settingsFromJson(const json::Value& v) {
                 if (sort == L"name") e.stackSort = StackSort::Name;
                 else if (sort == L"modified") e.stackSort = StackSort::Modified;
                 else if (sort == L"kind") e.stackSort = StackSort::Kind;
+                if (readString(p, "display") == L"folder") e.stackDisplay = StackDisplay::Folder;
             }
             if (e.kind == PinKind::App && e.appId.empty()) continue;
             if (e.kind == PinKind::Stack && e.launch.empty()) continue;
@@ -124,6 +125,7 @@ json::Value settingsToJson(const Settings& s) {
         if (p.kind == PinKind::Stack) {
             e.set("view", viewName(p.stackView));
             e.set("sort", sortName(p.stackSort));
+            e.set("display", p.stackDisplay == StackDisplay::Folder ? "folder" : "stack");
         }
         pins.push(std::move(e));
     }

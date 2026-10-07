@@ -17,6 +17,7 @@ enum MenuCmd : int {
     kCmdTrashOpen, kCmdTrashEmpty, kCmdRemove, kCmdQuitDock, kCmdRestore, kCmdCloseWindow,
     kCmdSortDateAdded, kCmdSortName, kCmdSortModified, kCmdSortKind,   // pile : Trier par
     kCmdViewAuto, kCmdViewFan, kCmdViewGrid,                           // pile : Présenter le contenu comme
+    kCmdDisplayStack, kCmdDisplayFolder,                               // pile : Afficher comme
     kCmdWindowBase = 1000   // + index dans MenuContext::windows
 };
 
@@ -28,6 +29,7 @@ struct MenuContext {
     bool trashFull = false;
     StackView stackView = StackView::Auto;        // Stack : réglages de la pile épinglée
     StackSort stackSort = StackSort::DateAdded;
+    StackDisplay stackDisplay = StackDisplay::Stack;
     Settings settings;
     std::vector<std::pair<WindowId, std::wstring>> windows;   // App ouverte : fenêtres et titres
 };

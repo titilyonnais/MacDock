@@ -12,6 +12,8 @@ enum class PinKind { App, AppsButton, Stack };
 // Pile : présentation du contenu (automatique = éventail jusqu'à 9 éléments, grille au-delà) et tri.
 enum class StackView { Auto, Fan, Grid };
 enum class StackSort { DateAdded, Name, Modified, Kind };
+// Pile : icône dans le Dock = ses derniers éléments empilés (macOS par défaut) ou l'icône du dossier.
+enum class StackDisplay { Stack, Folder };
 
 struct PinnedEntry {
     PinKind kind = PinKind::App;
@@ -21,6 +23,7 @@ struct PinnedEntry {
     std::wstring exePath;  // App : exécutable cible, pour rattacher les fenêtres sans AUMID
     StackView stackView = StackView::Auto;        // Stack
     StackSort stackSort = StackSort::DateAdded;   // Stack
+    StackDisplay stackDisplay = StackDisplay::Stack;   // Stack
 };
 
 struct Settings {

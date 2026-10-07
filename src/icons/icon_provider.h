@@ -31,6 +31,9 @@ public:
     // Élément de pile : vignette Shell (images…) ou icône du fichier, telle quelle (ni plaque ni forme),
     // px x px ; icône générique du type si le fichier n'existe plus.
     ImagePtr file(const std::wstring& path, int px);
+    // Pile « comme Pile » : images des éléments (le premier au-dessus) empilées dans la forme d'icône, avec
+    // l'ombre des icônes du Dock ; nullptr si aucune image.
+    ImagePtr composeStack(const std::wstring& key, const std::vector<std::wstring>& paths, int px);
     void clear() { cache_.clear(); }
 
 private:

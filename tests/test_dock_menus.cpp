@@ -151,3 +151,17 @@ TEST_CASE(dock_menus_login_enabled_for_aumid) {
     c.openAtLogin = true;
     CHECK(find(md::buildDockMenu(c).items, md::kCmdLogin)->checked);
 }
+
+TEST_CASE(dock_menus_stack_display_checked) {
+    md::MenuContext c;
+    c.item.kind = md::ItemKind::Stack;
+    c.item.key = L"stack:C:\\D";
+    c.stackDisplay = md::StackDisplay::Folder;
+    auto m = md::buildDockMenu(c);
+    REQUIRE(find(m.items, md::kCmdDisplayStack) != nullptr);
+    REQUIRE(find(m.items, md::kCmdDisplayFolder) != nullptr);
+    CHECK(find(m.items, md::kCmdDisplayFolder)->checked);
+    CHECK(!find(m.items, md::kCmdDisplayStack)->checked);
+    CHECK(m.items[0].text == L"Trier par");
+    CHECK(m.items[1].text == L"Afficher comme");
+}
