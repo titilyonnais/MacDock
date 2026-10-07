@@ -33,6 +33,10 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 ## Utilisation
 
 - **Clic** sur une app fermée : elle se lance en rebondissant. Sur une app ouverte : elle passe au premier plan.
+- **Bouton Apps** : ouvre l'écran **Apps**, comme sur macOS Tahoe : toutes les apps du menu Démarrer (Win32 et Store) en grille sur un fond de verre, triées par nom, page par page.
+  - Tape pour chercher (majuscules et accents ignorés) ; Entrée lance le premier résultat ; flèches, Page précédente / suivante, Début, Fin et molette pour se déplacer ; Échap efface la recherche, puis ferme.
+  - Un clic sur une app la lance ; un clic dans le vide, un clic droit ou Échap ferment sans rien lancer.
+  - Clic droit sur le bouton Apps → *Ouvrir le menu Démarrer* pour le menu de Windows (il s'ouvre aussi si l'écran Apps ne peut pas s'afficher).
 - **Clic sur une pile** (Téléchargements…) : son contenu s'ouvre comme sur macOS, en **éventail** (icônes en arc au-dessus de la pile, nom à gauche) jusqu'à 9 éléments, en **grille** de verre au-delà (molette pour défiler), ou en **liste** (menu en verre, sous-dossiers en sous-menus) si tu la choisis. Un clic ouvre l'élément ; *Ouvrir dans l'Explorateur* ouvre le dossier ; Échap ou un clic à côté referme. Dans le Dock, l'icône d'une pile montre ses derniers fichiers empilés (ou l'icône du dossier, au choix), et se met à jour en direct.
 - **Clic droit** : menus en verre, comme sur macOS.
   - *App* : ses fenêtres ouvertes, *Options* (Garder dans le Dock, Ouvrir à la connexion — aussi pour les apps du Store, par un raccourci dans le dossier Démarrage —, Afficher dans l'Explorateur), Afficher toutes les fenêtres, Masquer, Quitter.
@@ -119,6 +123,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacDock.exe --snapshot capture.png --wallpaper fond.png --reference mac.png --diff diff.png` : comparaison avec une capture de macOS (voir `reference/README.md`).
 - `MacDock.exe --capture-test bas.png` : capture réelle du bas de l'écran, telle que le verre la voit.
 - `MacDock.exe --genie-snapshot planche.png [--effect genie|scale] [--edge bottom|left|right]` : six étapes de l'effet de réduction sur une fenêtre factice, sans rien afficher.
+- `MacDock.exe --apps-snapshot apps.png [--query texte] [--page n] [--theme light|dark]` : l'écran Apps avec tes apps dans une image, sans l'afficher ni rien lancer.
 - `MacDock.exe --theme-snapshot dossier` : planche des curseurs du thème (32 et 64 px, fonds clair et sombre) et les deux fonds d'écran, sans rien appliquer.
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.

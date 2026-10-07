@@ -156,6 +156,26 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - deux applications en même temps (Dock et `--theme`) passent l'une après l'autre, et nos propres fichiers ne sont jamais pris pour l'état d'origine ;
   - l'application se fait hors du fil du Dock : il ne se fige plus (en Debug, cela durait plus de 5 s, assez pour que Windhawk rende la barre des tâches).
 
+### Plan 13 — Écran Apps (sous-projet 6, fusionné dans `main`)
+
+- **Le bouton Apps** du Dock ouvre maintenant l'écran **Apps** de macOS Tahoe au lieu du menu Démarrer : vue plein écran en verre, champ de recherche en haut, toutes tes apps en grille (7 × 5 par page sur un écran 1080p), points de pages en bas.
+- **Les apps** viennent du dossier « Apps » de Windows, celui du menu Démarrer : Win32, Store, jeux Steam… Les désinstalleurs, aides, documents et liens web sont écartés (chez toi : 334 entrées, 291 gardées). Le Dock lit la liste au démarrage puis après chaque ouverture, dans un fil à part.
+- **Recherche** : en tapant, le début du nom passe en premier, puis le début d'un mot (« co » trouve « Assetto **Co**rsa »), puis le reste ; majuscules et accents ignorés.
+- **Icônes** : les mêmes que celles du Dock (même plaque et même forme), chargées en arrière-plan, la page affichée d'abord.
+- **Menu Démarrer** : toujours là par un clic droit sur le bouton Apps, et en repli si l'écran Apps ne peut pas s'ouvrir.
+- **Vérifié hors écran** : `--apps-snapshot` avec tes vraies apps (sombre, clair avec recherche, deuxième page), tests du tri, de la recherche, de la grille, du clavier et de la lecture du dossier Apps. **Je n'ai pas ouvert l'écran Apps devant toi et je n'ai lancé aucune app.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. clic sur le bouton Apps : l'écran s'ouvre en fondu sur l'écran du Dock, les icônes arrivent ;
+  2. tape « calc », Entrée : la Calculatrice se lance et l'écran se ferme ;
+  3. molette et flèches : pages suivantes ; Échap, clic dans le vide : fermeture ;
+  4. clic droit sur le bouton Apps → *Ouvrir le menu Démarrer*.
+
+## Décisions prises sans toi (plan 13)
+- Pas de réorganisation à la main ni de dossiers : l'ordre est alphabétique, comme la vue Apps sans dossiers.
+- Les liens web du dossier Apps sont écartés ; les liens `steam://` et autres jeux restent.
+- Le texte de l'écran Apps est toujours blanc sur un verre sombre, en mode clair comme en mode sombre (comme Launchpad).
+- Pas de glisser horizontal à la souris pour changer de page : molette, flèches et points.
+
 ## Décisions prises sans toi (plan 12)
 - Le thème couvre les curseurs et le fond d'écran seulement : polices, coins et ombres des fenêtres ne se règlent pas proprement sans crochet.
 - Le fond suit le mode **système** de Windows (`SystemUsesLightTheme`, comme le Dock et la barre), pas celui des apps.
