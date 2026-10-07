@@ -8,7 +8,7 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 - pour chacun, j'écris une spec et un plan, je les exécute, un agent fait la relecture finale, puis je fusionne dans `main` en local ;
 - tes quatre choix sont dans la spec de la barre de menus (`docs/superpowers/specs/2026-10-07-macmenubar-design.md`).
 
-### Plan 6 — Barre de menus (`MacMenuBar.exe`)
+### Plan 6 — Barre de menus (`MacMenuBar.exe`, fusionné dans `main`)
 
 - **Barre transparente** en haut de l'écran (24 pt réservés). Le texte est clair ou foncé selon ton fond d'écran, mesuré sous la barre.
 - **Contenu de la barre** :
@@ -27,6 +27,32 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - le lanceur démarre et arrête les deux processus ;
   - tes réglages ont été restaurés.
 - **Limite** : les apps sans vraie barre de menus (la plupart des apps modernes) reçoivent des menus génériques. Une commande n'agit que si l'app connaît le raccourci. Les vrais menus des apps Win32 et UI Automation arrivent au plan 7.
+- **Relecture finale** : 5 problèmes importants, plus 3 que j'ai jugés importants (1 du lot, 2 classés mineurs par le relecteur). Tous sont corrigés :
+  - la barre suit maintenant le bureau et les dialogues ;
+  - le menu ouvert ne lit plus de mémoire libérée quand l'heure ou l'app change ;
+  - le clavier revient à ton app quand tu fermes un menu sans choisir ;
+  - aucune frappe n'est envoyée si ton app n'a pas pu repasser au premier plan ;
+  - une app figée ne bloque plus la barre ;
+  - la barre se relance si le pilote graphique est réinitialisé ;
+  - « Suspendre » obtient le privilège nécessaire.
+- **Essai réel sans souris ni clavier** : `tests\real\menubar_unlisted_foreground.ps1` prouve que la barre suit une fenêtre non éligible au Dock.
+
+## Décisions prises sans toi (plan 6)
+- Processus séparé (`MacMenuBar.exe`), surveillé par le même lanceur : un plantage de l'un n'emporte pas l'autre, et chacun a sa propre capture d'écran pour le verre.
+- Logo par défaut : celui de Windows (quatre carrés), car pas de pomme. Remplaçable par `menubar-logo.png`.
+- Couleur du texte : foncé au-dessus d'une luminance de 0,45, clair sous 0,35. La barre n'est exclue des captures d'écran que le temps de mesurer le fond : elle apparaît dans tes captures.
+- « Fermer la fenêtre » envoie `WM_CLOSE` (jamais Alt+F4, qui ouvrirait la boîte d'arrêt sur le bureau).
+- L'Explorateur ne se quitte pas (comme le Finder) ; son menu propose « Vider la Corbeille… » (avec la confirmation de Windows).
+- Redémarrer, Éteindre et Fermer la session demandent confirmation ; Suspendre et Verrouiller, non (comme macOS).
+- Un Dock qui plante en boucle n'est plus relancé, mais la barre continue.
+- Sur les machines en veille moderne (S0), « Suspendre » n'a pas d'effet : c'est une limite de Windows.
+
+## Mineurs reportés — plan 6
+- Un nom d'app très long n'est pas tronqué : il peut recouvrir l'horloge.
+- Le nom d'utilisateur est relu à chaque changement d'app (lent sur un domaine d'entreprise).
+- Après un plantage de la barre, Windows peut garder la bande de 24 pt réservée jusqu'à la relance.
+- « Vider la Corbeille » fige la barre le temps de la suppression.
+- Une autre barre d'application déjà en haut de l'écran n'est pas prise en compte.
 
 ## Ce qui est fait (nuit)
 
