@@ -137,6 +137,7 @@ void MenuBarApp::checkSettingsFile() {
 }
 
 void MenuBarApp::applySettings() {
+    lights_.attach(lights_.target(), settings_.trafficLights);
     for (auto& s : screens_) syncAppBar(*s);
     repositionAll();
 }
@@ -359,6 +360,7 @@ std::vector<std::wstring> childClasses(HWND top) {
 
 void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
+    lights_.attach(GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h, settings_.trafficLights);   // il décide
     // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
     // premier plan (un dialogue « Enregistrer sous » reçoit Ctrl+V, pas sa fenêtre principale désactivée).
     HWND root = GetAncestor(h, GA_ROOTOWNER);
@@ -1379,6 +1381,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         return 2;
     }
     loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
+    lights_.create(instance);
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);
@@ -1440,6 +1443,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         delete reinterpret_cast<StatusSnapshot*>(m.lParam);
     for (MSG m; PeekMessageW(&m, nullptr, WM_APP_TRAY, WM_APP_TRAY, PM_REMOVE);)
         delete reinterpret_cast<ipc::Message*>(m.lParam);
+    lights_.destroy();
     for (auto& s : screens_) destroyScreen(*s);   // zones réservées rendues
     screens_.clear();
     DestroyWindow(ctl_);

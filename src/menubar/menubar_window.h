@@ -27,6 +27,7 @@
 #include "status_audio.h"
 #include "status_hub.h"
 #include "status_menus.h"
+#include "traffic_window.h"
 #include "tray_model.h"
 #include "uia_menu.h"
 
@@ -158,6 +159,7 @@ private:
     std::size_t activeScreen_ = 0;                   // barre pleine ; les autres sont atténuées
     RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
+    TrafficWindow lights_;   // feux tricolores de la fenêtre active
     WindowTracker tracker_;
     AppModel model_;
     SystemActions sys_;
