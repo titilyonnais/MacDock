@@ -248,6 +248,18 @@ Tu m'as écrit « je veux un windows qui ressemble complètement à macos ». J'
   - la fenêtre de la pastille avalait les clics sur la droite de la barre (icône Son, horloge) : ils passent maintenant ;
   - la pastille de luminosité pouvait surgir seule (sortie de veille, passage secteur/batterie, écran rallumé) : seulement si le niveau change, et pas dans les 2 s qui suivent ces événements (test).
 
+### Plan 18 — Coins actifs (sous-projet 11)
+
+- **Coins actifs** : pousser le pointeur dans un coin lance l'action choisie : Mission Control, bureau, Apps, Centre de notifications, verrouillage, veille de l'écran ou économiseur. Par défaut, seul le coin en bas à droite agit : il montre le bureau (comme le bord de la barre des tâches de Windows ; sur macOS ce coin a aussi une action par défaut). Le réglage est `hotCorners` dans `settings.json`.
+- **Comme sur macOS** : l'action part une fois à l'arrivée ; il faut s'éloigner de 24 pixels pour la relancer. Le coin de Mission Control le referme quand il est ouvert.
+- **Garde-fous** : rien pendant un glisser (bouton enfoncé), en plein écran, pendant Alt+Tab ou un menu, ni dans un coin collé à un autre écran (le pointeur y glisserait vers l'écran voisin au lieu de s'arrêter).
+- Le Dock suivait déjà le pointeur : aucun crochet de plus.
+- **Vérifié** : tests des coins (un écran, deux écrans de tailles différentes, zone de 2 px), du suivi (une fois par arrivée, réarmement, blocage) et du réglage. **Je n'ai pas déplacé ton pointeur et n'ai lancé aucune action.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. pointeur tout en bas à droite : le bureau apparaît ; à nouveau (après t'en être éloigné) : les fenêtres reviennent ;
+  2. mets `"hotCorners": {"topLeft": "missionControl"}` dans `settings.json` (attention au logo de la barre, juste à côté) : le coin en haut à gauche ouvre Mission Control ;
+  3. glisse une fenêtre jusqu'au coin : rien ne se passe.
+
 ## Décisions prises sans toi (plan 17)
 - La barre de menus reprend les touches de volume (le panneau de Windows ne s'affiche plus pour elles) ; `"hud": false` les rend à Windows.
 - Les touches de luminosité d'un portable restent à Windows (traitées par l'ordinateur) : son panneau et la pastille s'affichent tous les deux.
