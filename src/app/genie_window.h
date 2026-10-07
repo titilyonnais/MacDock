@@ -33,7 +33,8 @@ public:
 private:
     bool ensureWindow(HINSTANCE instance);
     void show(double t);
-    void growStrips();   // bandes ajoutées si le GPU tarde ou fait défaut
+    void placeStrips(double t);   // miniatures DWM à l'instant t (repli et attente du GPU)
+    void growStrips();            // bandes ajoutées tant que la fenêtre attend, toutes dès qu'elle bouge
 
     HWND hwnd_ = nullptr;
     std::vector<HTHUMBNAIL> thumbs_;

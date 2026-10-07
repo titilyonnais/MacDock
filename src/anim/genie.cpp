@@ -147,8 +147,9 @@ GenieWait genieWaitStep(bool gpuReady, double waited) {
     return waited < 0.15 ? GenieWait::Hold : GenieWait::GoStrips;
 }
 
-int genieStripTarget(int full, bool gpuPending, double elapsed) {
-    return gpuPending && elapsed < 0.15 ? std::min(48, full) : full;
+int genieStripTarget(int full, bool waiting, int have) {
+    if (have <= 0 || waiting) return 1;
+    return full;
 }
 
 int genieSliceCount(long extent) { return std::clamp(int(extent / 4), 16, 128); }

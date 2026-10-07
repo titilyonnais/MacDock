@@ -39,9 +39,9 @@ double minimizeDuration(MinimizeEffect e, bool slow);
 // rendu par le GPU, sans raccord visible ; au-delà de 150 ms, l'animation part sur les bandes.
 enum class GenieWait { Hold, Go, GoStrips };
 GenieWait genieWaitStep(bool gpuReady, double waited);
-// Bandes à tenir pour une fenêtre qui en vaut full : 48 au plus tant que le rendu GPU est attendu (il couvre
-// l'animation vers 70 ms), toutes s'il est absent ou encore là au bout de 150 ms (capture ratée).
-int genieStripTarget(int full, bool gpuPending, double elapsed);
+// Bandes à tenir (have déjà posées, full au plein) : une seule au départ et tant que la fenêtre attend le GPU,
+// immobile (pas encore déformée : affichée sans délai) ; toutes si elle bouge sans le GPU.
+int genieStripTarget(int full, bool waiting, int have);
 // Bandes du repli par miniatures DWM (un appel à DWM par bande et par image) : une toutes les 4 px, 16 à 128.
 int genieSliceCount(long extent);
 

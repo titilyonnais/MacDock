@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/diag.h"
 #include "../anim/genie_preview.h"
 #include "genie_window.h"
 #include "window_capture.h"
@@ -96,7 +97,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     int code = 0;
     {
         md::DockApp::Options options;
-        options.trace = args.find(L"--trace-windows") != std::wstring::npos;
+        options.trace = args.find(L"--trace-windows") != std::wstring::npos || md::diagnosticCapture();
         int argc = 0;
         LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         for (int i = 1; i + 1 < argc; ++i) {

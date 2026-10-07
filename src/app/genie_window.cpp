@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "window_capture.h"
 #include "thumbnails.h"
@@ -42,8 +43,11 @@ bool GenieWindow::ensureWindow(HINSTANCE instance) {
 
 bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const RECT& toCell, DockPosition edge,
                         MinimizeEffect effect, bool restore, double now, bool slow) {
+    LARGE_INTEGER q0, q1, q2, q3, qf;
+    QueryPerformanceCounter(&q0);
     finish();
     if (effect == MinimizeEffect::Windows || !IsWindow(source) || !ensureWindow(instance)) return false;
+    QueryPerformanceCounter(&q1);
     HTHUMBNAIL first = nullptr;
     if (FAILED(DwmRegisterThumbnail(hwnd_, source, &first))) return false;
     thumbs_.push_back(first);
@@ -59,30 +63,36 @@ bool GenieWindow::start(HINSTANCE instance, HWND source, const RECT& from, const
     restore_ = restore;
     UnionRect(&box_, &from_, &to_);
     InflateRect(&box_, 2, 2);
-    // Rendu GPU lancé d'abord (capture sur un fil) ; les bandes couvrent l'attente : peu s'il doit arriver vite,
-    // toutes (une toutes les 4 px) s'il est absent, ou s'il tarde (growStrips).
-    gpuStarted_ = gpu_.begin(instance, source, box_);
     const LONG extent = edge == DockPosition::Bottom ? from.bottom - from.top : from.right - from.left;
     fullSlices_ = effect == MinimizeEffect::Scale ? 1 : genieSliceCount(extent);
-    slices_ = genieStripTarget(fullSlices_, gpuStarted_, 0);
     rows_ = effect == MinimizeEffect::Scale ? 1 : std::clamp(int(extent / 3), 48, 256);   // maillage GPU : une rangée / 3 px
-    for (int i = 1; i < slices_; ++i) {
-        HTHUMBNAIL t = nullptr;
-        if (FAILED(DwmRegisterThumbnail(hwnd_, source, &t))) {
-            finish();
-            return false;
-        }
-        thumbs_.push_back(t);
-    }
+    slices_ = genieStripTarget(fullSlices_, true, 0);   // une : la fenêtre n'est pas encore déformée
     start_ = begun_ = now;
     elapsed_ = 0;
-    waiting_ = gpuStarted_;   // l'horloge part avec la première image GPU (step)
     duration_ = minimizeDuration(effect, slow);
     running_ = true;
     stripsHidden_ = false;
-    show(restore ? 1.0 : 0.0);   // première image posée avant d'afficher la fenêtre : pas d'éclair
+    gpuStarted_ = false;
+    // Couverture d'abord : Windows a déjà retiré la fenêtre réduite de l'écran ; chaque milliseconde ici est un trou.
+    QueryPerformanceCounter(&q2);
+    placeStrips(restore ? 1.0 : 0.0);
     SetWindowPos(hwnd_, HWND_TOPMOST, box_.left, box_.top, box_.right - box_.left, box_.bottom - box_.top,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    LARGE_INTEGER q3b;
+    QueryPerformanceCounter(&q3b);
+    // Puis le rendu GPU (capture sur un fil) ; les bandes de secours s'ajoutent pendant l'attente (step).
+    gpuStarted_ = gpu_.begin(instance, source, box_);
+    waiting_ = gpuStarted_;   // l'horloge part avec la première image GPU (step)
+    QueryPerformanceCounter(&q3);
+    if (diagnosticCapture()) {
+        LARGE_INTEGER q4;
+        QueryPerformanceCounter(&q4);
+        QueryPerformanceFrequency(&qf);
+        auto ms = [&](LARGE_INTEGER a, LARGE_INTEGER b) { return double(b.QuadPart - a.QuadPart) * 1000.0 / double(qf.QuadPart); };
+        log::info(L"[diag] génie : départ %.1f ms (fenêtre %.1f, miniature %.1f, couverture %.1f, GPU %.1f) ; "
+                  L"qpc couverture %.1f ms", ms(q0, q4), ms(q0, q1), ms(q1, q2), ms(q2, q3b), ms(q3b, q3),
+                  double(q3b.QuadPart) * 1000.0 / double(qf.QuadPart));
+    }
     return true;
 }
 
@@ -98,6 +108,10 @@ void GenieWindow::show(double t) {
         gpuStarted_ = false;
     }
     growStrips();
+    placeStrips(t);
+}
+
+void GenieWindow::placeStrips(double t) {
     const auto slices = minimizeFrame(effect_, src_, from_, to_, edge_, t, slices_);
     for (std::size_t i = 0; i < thumbs_.size(); ++i) {
         DWM_THUMBNAIL_PROPERTIES p{};
@@ -116,7 +130,7 @@ void GenieWindow::show(double t) {
 }
 
 void GenieWindow::growStrips() {
-    const int want = genieStripTarget(fullSlices_, gpuStarted_, elapsed_);
+    const int want = genieStripTarget(fullSlices_, waiting_, int(thumbs_.size()));
     while (int(thumbs_.size()) < want) {
         HTHUMBNAIL t = nullptr;
         if (FAILED(DwmRegisterThumbnail(hwnd_, source_, &t))) break;
@@ -133,12 +147,20 @@ bool GenieWindow::step(double now) {
     }
     if (waiting_) {
         const double t0 = restore_ ? 1.0 : 0.0;
-        const bool ready = gpu_.frame(genieMesh(effect_, src_, from_, to_, edge_, t0, rows_));
+        // Passation à l'instant de départ, où GPU et miniature montrent la même image : le mouvement ne part qu'une
+        // fois le GPU à l'écran (deux images présentées) et la miniature retirée.
+        const bool ready = gpu_.frame(genieMesh(effect_, src_, from_, to_, edge_, t0, rows_)) && gpu_.framesShown() >= 2;
         switch (genieWaitStep(ready, now - begun_)) {
-            case GenieWait::Hold: return true;   // les bandes tiennent la fenêtre à sa place
+            case GenieWait::Hold: return true;   // une miniature tient la fenêtre à sa place
             case GenieWait::GoStrips: gpuStarted_ = false; break;   // la capture n'arrive pas : bandes complètes
-            case GenieWait::Go: break;
+            case GenieWait::Go:
+                ShowWindow(hwnd_, SW_HIDE);
+                stripsHidden_ = true;
+                break;
         }
+        if (diagnosticCapture())
+            log::info(L"[diag] génie : %s après %.1f ms d'attente", ready ? L"GPU prêt" : L"bandes (GPU en retard)",
+                      (now - begun_) * 1000.0);
         waiting_ = false;
         start_ = now;
     }

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../glass/backdrop_capture.h"
 
@@ -46,7 +47,8 @@ bool GenieSurface::prepare(HINSTANCE instance) {
                                 kClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, instance, nullptr);
         if (!hwnd_) return false;
         SetLayeredWindowAttributes(hwnd_, 0, 255, LWA_ALPHA);
-        SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);   // ni le verre du Dock ni les captures ne la voient
+        if (!diagnosticCapture())   // ni le verre du Dock ni les captures ne la voient
+            SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
     }
     Com<IDXGIDevice> dxgi;
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,

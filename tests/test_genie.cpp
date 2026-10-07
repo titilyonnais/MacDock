@@ -320,12 +320,17 @@ TEST_CASE(genie_mesh_scale_and_windows) {
     CHECK(md::genieMesh(md::MinimizeEffect::Genie, SIZE{0, 0}, kWin, kTile, md::DockPosition::Bottom, 0.5, 64).empty());
 }
 
-TEST_CASE(genie_strip_target_grows_when_gpu_is_late) {   // relecture n° 1 : capture ratée → toutes les bandes
-    CHECK_EQ(md::genieStripTarget(128, true, 0.0), 48);     // GPU attendu : peu de bandes au début
-    CHECK_EQ(md::genieStripTarget(128, true, 0.149), 48);
-    CHECK_EQ(md::genieStripTarget(128, true, 0.15), 128);   // toujours rien après 150 ms : qualité complète
-    CHECK_EQ(md::genieStripTarget(128, false, 0.0), 128);   // GPU absent ou en échec
-    CHECK_EQ(md::genieStripTarget(20, true, 0.0), 20);      // petite fenêtre : jamais plus que le plein
+TEST_CASE(genie_strip_target_covers_first_then_grows) {
+    // Mesuré à 165 Hz : la fenêtre réduite disparaît aussitôt ; enregistrer 48 miniatures (20 ms) et lancer la capture
+    // (12 ms) avant d'afficher quoi que ce soit laissait un trou de 60 ms, puis la fenêtre réapparaissait (éclair).
+    // Au départ elle n'est pas déformée : une seule miniature la reproduit exactement, tout de suite.
+    CHECK_EQ(md::genieStripTarget(128, true, 0), 1);
+    CHECK_EQ(md::genieStripTarget(128, false, 0), 1);
+    // Attente du GPU, fenêtre immobile : rien de plus. Mesuré : ajouter des miniatures pendant l'attente (appels
+    // synchrones à DWM) retardait la première image GPU de 100 à 140 ms.
+    CHECK_EQ(md::genieStripTarget(128, true, 1), 1);
+    CHECK_EQ(md::genieStripTarget(128, false, 9), 128);    // en mouvement sans GPU : toutes les bandes
+    CHECK_EQ(md::genieStripTarget(1, true, 1), 1);         // effet « échelle » : une seule
 }
 
 TEST_CASE(genie_settling_restore_is_not_cancelled) {   // fin d'ouverture : la fenêtre est restaurée sous l'image

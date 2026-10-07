@@ -1999,7 +1999,12 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     ev.minimized = [this](HWND h, bool m) {
-        if (trace_) log::info(L"[trace] %s %p", m ? L"réduite" : L"restaurée", h);
+        if (trace_) {
+            LARGE_INTEGER q, f;
+            QueryPerformanceCounter(&q);
+            QueryPerformanceFrequency(&f);
+            log::info(L"[trace] %s %p (qpc %.1f ms)", m ? L"réduite" : L"restaurée", h, double(q.QuadPart) * 1000.0 / double(f.QuadPart));
+        }
         model_.windowMinimized(toId(h), m);
         if (genieOnMinimize(genieRun(), toId(h), m, false) == GenieReact::Cancel) genie_.cancel();   // restaurée ailleurs
         requestFrame();
