@@ -20,6 +20,7 @@ enum MenuCmd : int {
     kCmdDisplayStack, kCmdDisplayFolder,                               // pile : Afficher comme
     kCmdViewList,                                                      // pile : … en liste
     kCmdEffectGenie, kCmdEffectScale, kCmdEffectWindows,               // séparateur : Effet de réduction
+    kCmdThemeApply, kCmdThemeRestore,                                  // séparateur : Thème macOS
     kCmdWindowBase = 1000   // + index dans MenuContext::windows
 };
 
@@ -33,6 +34,7 @@ struct MenuContext {
     StackSort stackSort = StackSort::DateAdded;
     StackDisplay stackDisplay = StackDisplay::Stack;
     Settings settings;
+    bool themeApplied = false;      // Separator : une sauvegarde du thème Windows existe
     std::vector<std::pair<WindowId, std::wstring>> windows;   // App ouverte : fenêtres et titres
 };
 

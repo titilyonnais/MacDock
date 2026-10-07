@@ -4,14 +4,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "../core/bgra_image.h"
 #include "genie.h"
 
 namespace md {
-
-struct BgraImage {
-    int w = 0, h = 0;
-    std::vector<std::uint8_t> px;   // BGRA, alpha non prémultiplié
-};
 
 // Chaque bande de src (plus proche voisin) posée à sa destination, par-dessus dst.
 void drawSlices(const BgraImage& src, const std::vector<GenieSlice>& slices, BgraImage& dst);

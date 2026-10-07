@@ -18,6 +18,7 @@
 #include "../popup/stack_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
+#include "../theme/theme_system.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
 #include "genie_window.h"
@@ -161,6 +162,7 @@ private:
     Thumbnails thumbnails_;
     GenieWindow genie_;
     MinAnimateGuard minAnimate_{realMinAnimateApi()};
+    ThemeJob themeJob_;   // thème macOS appliqué ou rétabli hors du fil de l'interface
     std::map<std::uint64_t, RECT> shownTiles_;   // cases des miniatures de la dernière image (pixels de la fenêtre)
     std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan

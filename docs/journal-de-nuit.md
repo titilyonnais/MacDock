@@ -136,6 +136,41 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   4. Chrome, Edge, Paint ou une fenêtre lancée en administrateur : pas de pastilles ;
   5. une fenêtre agrandie, et ton deuxième écran.
 
+### Plan 12 — Thème macOS (sous-projet 5, fusionné dans `main`)
+
+- **Curseurs façon macOS**, dessinés par le code (aucune ressource Apple) : flèche noire bordée de blanc, attente (anneau gris qui tourne, pas de roue arc-en-ciel), démarrage d'app, quatre flèches de redimensionnement, déplacement, précision, interdit. Chaque fichier contient 32, 48, 64, 96 et 128 px : Windows prend la bonne taille selon l'échelle.
+- **Fond d'écran façon Tahoe**, dessiné par le code à la résolution de chaque écran : ondes bleues, turquoise et violettes ; version nuit si Windows est en mode sombre.
+- **À la demande seulement** : clic droit sur le séparateur → *Thème macOS* → *Appliquer (curseurs et fond d'écran)* ou *Rétablir le thème Windows* ; ou `MacDock.exe --theme apply|restore`.
+- **Sauvegarde** : `%APPDATA%\MacDock\theme-backup.json`, écrite avant le premier changement et jamais écrasée par une deuxième application. Si elle ne peut pas être écrite, rien ne change. Elle est effacée quand tout a été rendu (un écran débranché y reste pour la prochaine fois).
+- **Vérifié hors écran** : planche `--theme-snapshot` (curseurs sur fonds clair et sombre, deux fonds d'écran) ; Windows relit bien nos `.cur` et `.ani` (fichiers temporaires) ; application et rétablissement testés avec une API factice. **Je n'ai changé ni tes curseurs ni ton fond d'écran.**
+- **À vérifier toi-même** (après avoir relancé le Dock) :
+  1. *Thème macOS* → *Appliquer* : les curseurs et le fond changent sur tes deux écrans ;
+  2. survole un bord de fenêtre, un lien, lance une app : flèches de redimensionnement et attente ;
+  3. *Rétablir le thème Windows* : tes curseurs et ton fond d'avant reviennent ;
+  4. après *Appliquer*, change toi-même un curseur (Propriétés de la souris) ou la taille du pointeur, puis *Rétablir* : ton choix doit rester ;
+  5. ferme ta session et reviens : les curseurs du thème doivent encore être là.
+- **Relecture finale** : 0 critique, 4 importants, plus 1 mineur que j'ai jugé important. Tous sont corrigés avec un test :
+  - si tu changes toi-même un curseur ou un fond après l'application, la sauvegarde suit ton choix et le rétablissement ne l'écrase pas ;
+  - un fond d'origine supprimé depuis ne bloque plus le rétablissement : notre fond reste sur cet écran, et c'est signalé ;
+  - un écran débranché au rétablissement garde son fond d'origine en sauvegarde pour la prochaine fois ;
+  - deux applications en même temps (Dock et `--theme`) passent l'une après l'autre, et nos propres fichiers ne sont jamais pris pour l'état d'origine ;
+  - l'application se fait hors du fil du Dock : il ne se fige plus (en Debug, cela durait plus de 5 s, assez pour que Windhawk rende la barre des tâches).
+
+## Décisions prises sans toi (plan 12)
+- Le thème couvre les curseurs et le fond d'écran seulement : polices, coins et ombres des fenêtres ne se règlent pas proprement sans crochet.
+- Le fond suit le mode **système** de Windows (`SystemUsesLightTheme`, comme le Dock et la barre), pas celui des apps.
+- `--theme apply|restore` partage le nom de l'option `--theme light|dark` de `--snapshot` : seules les valeurs `apply` et `restore` déclenchent le thème.
+- Un échec à l'application ou au rétablissement s'affiche dans une boîte de message (tu as cliqué) et dans le journal.
+- Un curseur qui ne peut pas être écrit n'arrête pas l'application : le reste est appliqué et l'échec signalé (la sauvegarde est déjà faite, *Rétablir* répare).
+- Un écran branché après l'application garde notre fond au rétablissement ; son fond d'origine entre dans la sauvegarde à la prochaine application.
+
+## Mineurs reportés — plan 12
+- Si Windows ne donne aucun écran, seuls les curseurs changent, sans message.
+- `--theme` avec une valeur inconnue, ou `--theme-snapshot` vers un dossier inexistant : pas de message d'erreur clair.
+- Le type de la valeur du registre (`REG_SZ` ou `REG_EXPAND_SZ`) n'est pas conservé : tout est rendu en `REG_EXPAND_SZ`.
+- Un fond en diaporama ou en couleur unie n'est pas rétabli tel quel.
+- Pas de test d'un `.ani` à cinq tailles relu par Windows (seulement à une taille).
+
 ## Décisions prises sans toi (plan 11)
 - Pastilles seulement sur la fenêtre active (macOS les montre grises sur les autres) : un calque par fenêtre visible demanderait de suivre l'ordre de toutes les fenêtres.
 - Les boutons de Windows restent à droite.

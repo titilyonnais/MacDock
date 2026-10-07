@@ -19,6 +19,7 @@
 #include "../popup/stack_window.h"
 #include "../stack/stack_icon.h"
 #include "../stack/stack_list.h"
+#include "../theme/theme_system.h"
 #include "../shell/default_pins.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
@@ -43,6 +44,7 @@ constexpr UINT WM_APP_BACKDROP = WM_APP + 7;
 constexpr UINT WM_APP_TRASH = WM_APP + 8;
 constexpr UINT WM_APP_DROP = WM_APP + 9;
 constexpr UINT WM_APP_STACKS = WM_APP + 10;
+constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob_
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
 constexpr UINT_PTR kTrashTimer = 0x5442;    // "TB"
@@ -717,6 +719,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     MenuContext ctx;
     ctx.item = p ? *p : DockItem{ItemKind::Separator};
     ctx.settings = settings_;
+    if (ctx.item.kind == ItemKind::Separator) ctx.themeApplied = themeBackupExists();
     const DockItem& item = ctx.item;
     if (item.kind == ItemKind::App) {
         std::optional<AppIdentity> id = model_.identityOf(item.appId);
@@ -883,6 +886,13 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             saveSettings();
             applySettings();
             break;
+        case kCmdThemeApply:
+        case kCmdThemeRestore: {   // à la demande seulement ; plusieurs secondes en Debug : hors du fil de l'interface
+            const bool apply = cmd == kCmdThemeApply;
+            if (!themeJob_.start([apply] { return apply ? applyMacTheme() : restoreWindowsTheme(); }, hwnd_, WM_APP_THEME))
+                log::info(L"Thème : une application ou un rétablissement est déjà en cours");
+            break;
+        }
         case kCmdCloseWindow:
             PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(item.window)), WM_CLOSE, 0, 0);
             break;
@@ -1211,6 +1221,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 SHChangeNotification_Unlock(lock);
             if (trace_) log::info(L"[trace] corbeille : avis 0x%lx", static_cast<unsigned long>(event));
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
+            return 0;
+        }
+        case WM_APP_THEME: {   // le résultat est aussi dans le journal
+            const ThemeResult r = ThemeJob::take(lp);
+            if (!r.ok) MessageBoxW(hwnd_, r.message.c_str(), L"Thème macOS", MB_OK | MB_ICONWARNING);
             return 0;
         }
         case WM_APP_STACKS: {
