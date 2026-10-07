@@ -5,12 +5,67 @@
 
 namespace md {
 
+namespace {
+double heightOf(const MenuItem& it) { return it.separator() ? kMenuSeparatorHeight : menuRowHeight(it.row); }
+} // namespace
+
+double menuRowHeight(MenuRow r) {
+    switch (r) {
+        case MenuRow::Header: return kMenuHeaderHeight;
+        case MenuRow::Slider: return kMenuSliderHeight;
+        case MenuRow::Toggle: return kMenuToggleHeight;
+        case MenuRow::Tiles: return kMenuTilesHeight;
+        case MenuRow::Media: return kMenuMediaHeight;
+        case MenuRow::Normal: break;
+    }
+    return kMenuItemHeight;
+}
+
+double sliderValueAt(double rowWidth, double x) {
+    const double span = rowWidth - kMenuSliderLeft - kMenuSliderRight;
+    if (!(span > 0) || !std::isfinite(x)) return 0;
+    return std::clamp((x - kMenuSliderLeft) / span, 0.0, 1.0);
+}
+
+int tileAt(std::size_t tiles, double rowWidth, double x) {
+    if (tiles == 0) return -1;
+    const double inner = rowWidth - 2 * kMenuTileInset;
+    const double w = (inner - double(tiles - 1) * kMenuTileGap) / double(tiles);
+    if (w <= 0) return -1;
+    const double rel = x - kMenuTileInset;
+    if (rel < 0) return -1;
+    const int k = int(rel / (w + kMenuTileGap));
+    if (k >= int(tiles) || rel - k * (w + kMenuTileGap) > w) return -1;
+    return k;
+}
+
+int mediaButtonAt(double rowWidth, double x) {
+    const double right = rowWidth - kMenuMediaRight, left = right - 3 * kMenuMediaButton;
+    if (x < left || x >= right) return -1;
+    return int((x - left) / kMenuMediaButton);
+}
+
+bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, int draggingId) {
+    if (!refresh) return false;
+    MenuModel copy = m;
+    if (!refresh(copy) || copy.items.size() != m.items.size()) return false;
+    for (std::size_t i = 0; i < m.items.size(); ++i)
+        if (copy.items[i].row != m.items[i].row || copy.items[i].id != m.items[i].id ||
+            copy.items[i].tiles.size() != m.items[i].tiles.size())
+            return false;
+    for (std::size_t i = 0; i < m.items.size(); ++i)
+        if (draggingId != 0 && m.items[i].id == draggingId) copy.items[i].value = m.items[i].value;
+    copy.width = m.width;
+    m = std::move(copy);
+    return true;
+}
+
 MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax) {
     MenuLayout l;
     double y = kMenuPadding;
     for (auto& it : m.items) {
         l.top.push_back(y);
-        y += it.separator() ? kMenuSeparatorHeight : kMenuItemHeight;
+        y += heightOf(it);
     }
     l.height = y + kMenuPadding;
     double text = std::isfinite(textWidthMax) ? std::max(0.0, textWidthMax) : 0.0;
@@ -19,6 +74,7 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWi
     double shortcut = std::isfinite(shortcutWidthMax) && shortcutWidthMax > 0 ? kMenuShortcutGap + shortcutWidthMax : 0.0;
     l.width = std::max(kMenuMinWidth,
                        std::ceil(2 * kMenuPadding + kMenuTextLeft + l.iconSpace + text + shortcut + kMenuTextRight));
+    if (m.width > 0) l.width = m.width;
     return l;
 }
 
@@ -38,8 +94,15 @@ int nextSelectable(const MenuModel& m, int from, int dir) {
 int hitTestMenu(const MenuLayout& l, const MenuModel& m, double y) {
     for (size_t i = 0; i < m.items.size() && i < l.top.size(); ++i) {
         const MenuItem& it = m.items[i];
-        double h = it.separator() ? kMenuSeparatorHeight : kMenuItemHeight;
-        if (y >= l.top[i] && y < l.top[i] + h) return it.selectable() ? int(i) : -1;
+        if (y >= l.top[i] && y < l.top[i] + heightOf(it)) return it.selectable() ? int(i) : -1;
+    }
+    return -1;
+}
+
+int rowAt(const MenuLayout& l, const MenuModel& m, double y) {
+    for (size_t i = 0; i < m.items.size() && i < l.top.size(); ++i) {
+        const MenuItem& it = m.items[i];
+        if (y >= l.top[i] && y < l.top[i] + heightOf(it)) return it.separator() ? -1 : int(i);
     }
     return -1;
 }

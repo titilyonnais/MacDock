@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "../popup/glyph_kind.h"
 #include "menubar_settings.h"
 
 namespace md {
@@ -25,6 +26,9 @@ struct BarDrawItem {      // pixels de la barre
     bool bold = false, logo = false;
     float x = 0, width = 0;
     bool highlighted = false;   // menu ouvert : capsule derrière le titre
+    Glyph glyph = Glyph::None;  // icône d'état (à la place du texte)
+    float level = 1;            // volume, force du signal, charge
+    bool alt = false;           // sourdine, Wi-Fi coupé, en charge
 };
 
 struct BarFrame {

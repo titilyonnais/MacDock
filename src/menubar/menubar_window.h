@@ -21,6 +21,9 @@
 #include "bar_layout.h"
 #include "bar_renderer.h"
 #include "menubar_settings.h"
+#include "status_audio.h"
+#include "status_hub.h"
+#include "status_menus.h"
 #include "uia_menu.h"
 
 namespace md {
@@ -74,7 +77,14 @@ private:
     BarFrame frame() const;
     void onPress(POINT client);
     void onRightClick(POINT client);
-    void openMenu(std::size_t index);
+    void openMenu(std::size_t index);   // titre (gauche) ou icône d'état (leftVisible + j)
+    MenuWindow::BarLink barLink(int current) const;   // titres visibles puis icônes d'état (recherche, horloge : vides)
+    int trackStatus(std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen);
+    void runStatus(const StatusCommand& c);
+    StatusState statusState();
+    void onStatus(LPARAM snapshot);
+    void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
+    void openSettingsFile();
     void execute(const MenuAction& a);
     BarContext context(bool recentDocs = false) const;   // recentDocs : lit le dossier Récents (ouverture d'un menu)
     MenuWindow::Env menuEnv() const;
@@ -110,6 +120,10 @@ private:
     RecentState recent_;                   // menubar-recent.json
     bool recentDirty_ = false;             // à écrire (minuterie : pas d'écriture à chaque changement d'app)
     mutable IconProvider icons_;           // icônes des Éléments récents
+    AudioStatus audio_;                    // son (Core Audio, fil de la barre)
+    StatusHub hub_;                        // réseau, radios, lecture en cours, luminosité, batterie (fil de travail)
+    StatusSnapshot snap_;                  // dernier relevé du hub
+    std::vector<StatusItem> status_;       // partie droite affichée (alignée sur layoutIn_.rightWidths)
 
     RECT monitor_{};
     float scale_ = 1;

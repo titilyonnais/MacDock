@@ -200,6 +200,53 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
 - **Documents** : les derniers documents du dossier Récents de Windows (raccourcis dont le nom porte une extension), 10 au plus, avec l'icône de leur type.
 - **Effacer le menu** : oublie les applications et masque les documents ouverts avant ce moment (date gardée dans `menubar-recent.json`) ; le dossier Récents de Windows n'est pas touché.
 
+### 4.9 Icônes d'état et Centre de contrôle (plan 8)
+
+**Partie droite**, de droite à gauche :
+- l'horloge ;
+- le Centre de contrôle (deux interrupteurs dessinés) ;
+- la recherche (loupe : `Win+S`) ;
+- la batterie (si l'appareil en a une : icône remplie selon la charge, éclair en charge) ;
+- le réseau : Wi-Fi (arcs selon le signal) si une interface sans fil existe, sinon rien, comme macOS sur un Mac filaire ;
+- le son (haut-parleur et 0 à 3 ondes selon le volume, barré en sourdine).
+
+Chaque élément se masque par un réglage : `showSound`, `showNetwork`, `showBattery`, `showSearch`.
+
+Les icônes sont dessinées par le code, dans la couleur du texte. Un clic ouvre le menu de l'élément, en verre, sous l'icône, aligné à droite. Tant qu'un menu est ouvert, survoler un autre élément de la barre l'ouvre, à gauche comme à droite.
+
+**Lignes de menu enrichies.** Comme les `NSMenuItem` à vue de macOS, une entrée peut être :
+- un intitulé (petit texte gris en gras) ;
+- un curseur, avec une icône à gauche, qui agit en direct ;
+- un interrupteur à droite du texte ;
+- une rangée de tuiles : deux tuiles, chacune avec icône, titre et état, bleue quand elle est active ;
+- la lecture en cours : titre, artiste, et les boutons précédent, lecture/pause et suivant.
+
+Toucher un curseur, un interrupteur, une tuile ou un bouton de lecture ne ferme pas le menu. Pendant qu'il est ouvert, le menu se met à jour toutes les 500 ms (volume changé ailleurs, morceau suivant).
+
+**Menus des éléments :**
+- **Son** : intitulé « Son », curseur du volume, puis « Sortie » avec les périphériques de sortie, l'actuel coché ; un clic en fait la sortie par défaut. Dernière entrée : « Réglages Son… » (`ms-settings:sound`).
+- **Wi-Fi** : interrupteur Wi-Fi, réseau connecté coché, puis « Autres réseaux ». Un réseau déjà connu se connecte d'un clic ; un nouveau réseau ouvre les réglages Wi-Fi. Dernière entrée : « Réglages Wi-Fi… ».
+- **Batterie** : pourcentage, source d'alimentation, « Réglages de la batterie… ».
+- **Centre de contrôle** :
+  - tuiles « Réseau » (Wi-Fi activable, ou Ethernet) et « Bluetooth » (activable si une radio existe) ;
+  - tuile « Concentration » (Ne pas déranger : ouvre les réglages de notification) et tuile « Recopie d'écran » (`Win+K`) ;
+  - curseur « Écran » (luminosité, s'il y a moyen de la régler) ;
+  - curseur « Son » ;
+  - lecture en cours, s'il y en a une ;
+  - « Réglages de la barre des menus… » (ouvre `menubar.json`).
+
+**Sources** (fichiers `src/menubar/status_*`) :
+- **Son** : Core Audio (`IAudioEndpointVolume`), avec notification de changement. La sortie par défaut change par l'interface `IPolicyConfig` de Windows (non documentée mais stable depuis Windows 7). Si elle échoue, les réglages Son s'ouvrent.
+- **Réseau** : WlanAPI (interface, réseau connecté, qualité du signal, réseaux visibles, connexion par profil).
+- **Radios** : Wi-Fi et Bluetooth par `Windows.Devices.Radios` (C++/WinRT).
+- **Batterie** : `GetSystemPowerStatus`.
+- **Luminosité** : WMI (`WmiMonitorBrightness`) pour l'écran intégré ; sinon DDC/CI (`dxva2`) pour l'écran principal ; sinon pas de curseur.
+- **Lecture en cours** : `GlobalSystemMediaTransportControlsSessionManager` (C++/WinRT).
+
+**Blocages et défaillances.**
+- Les sources lentes (DDC/CI, WinRT, WlanAPI) sont lues sur un fil de travail ; la barre ne les attend jamais.
+- Une source indisponible masque son élément ou sa tuile ; aucune erreur n'est affichée.
+
 ## 5. Robustesse
 - **Mutex** `Local\MacMenuBar` : une seule barre à la fois.
 - **Plantage** : il est journalisé, et le lanceur relance la barre.
