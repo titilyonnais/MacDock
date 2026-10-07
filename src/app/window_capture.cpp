@@ -14,9 +14,11 @@
 #include <DirectXPackedVector.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include "../anim/genie.h"
@@ -47,6 +49,13 @@ struct WindowCapture::Impl {
     HWND relay = nullptr;
     HTHUMBNAIL thumb = nullptr;
     SIZE size{};
+    ID3D11Device* deviceFor = nullptr;   // device enveloppé dans device (WinRT), gardé d'une capture à l'autre
+    d3d::IDirect3DDevice device{nullptr};
+    // Démarrage de la capture (40 ms environ, même à chaud) sur un fil de travail : le génie part sans attendre.
+    std::thread worker;
+    std::atomic<bool> ready{false};
+    std::atomic<HRESULT> error{S_OK};
+    // Écrits par le fil de travail avant ready, lus par le fil d'interface après.
     wgc::GraphicsCaptureItem item{nullptr};
     wgc::Direct3D11CaptureFramePool pool{nullptr};
     wgc::GraphicsCaptureSession session{nullptr};
@@ -54,6 +63,7 @@ struct WindowCapture::Impl {
     ~Impl() { close(); }
 
     void close() {
+        if (worker.joinable()) worker.join();   // au pire la fin d'un démarrage en cours
         try {
             if (session) session.Close();
             if (pool) pool.Close();
@@ -62,6 +72,8 @@ struct WindowCapture::Impl {
         session = nullptr;
         pool = nullptr;
         item = nullptr;
+        ready = false;
+        error = S_OK;
         if (thumb) DwmUnregisterThumbnail(thumb);
         thumb = nullptr;
         if (relay) ShowWindow(relay, SW_HIDE);   // gardé pour la prochaine fois
@@ -78,6 +90,55 @@ struct WindowCapture::Impl {
         relay = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP, kRelayClass, L"", WS_POPUP, 0, 0,
                                 1, 1, nullptr, nullptr, instance, nullptr);
         return relay != nullptr;
+    }
+
+    bool ensureDevice(ID3D11Device* dev) {
+        if (device && deviceFor == dev) return true;
+        device = nullptr;
+        deviceFor = nullptr;
+        Com<IDXGIDevice> dxgi;
+        winrt::com_ptr<::IInspectable> insp;
+        if (FAILED(dev->QueryInterface(IID_PPV_ARGS(&dxgi))) || FAILED(CreateDirect3D11DeviceFromDXGIDevice(dxgi.Get(), insp.put())))
+            return false;
+        try {
+            device = insp.as<d3d::IDirect3DDevice>();
+        } catch (...) {
+            return false;
+        }
+        deviceFor = dev;
+        return true;
+    }
+
+    void run() {   // fil de travail
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        try {
+            auto interop = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
+            wgc::GraphicsCaptureItem it{nullptr};
+            const HRESULT hr = interop->CreateForWindow(relay, winrt::guid_of<wgc::GraphicsCaptureItem>(), winrt::put_abi(it));
+            if (FAILED(hr)) {
+                error = hr;
+            } else {
+                // scRGB : sur un écran HDR, une capture 8 bits écrête le blanc SDR (couleurs délavées, × 3 environ).
+                auto p = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(device, wdx::DirectXPixelFormat::R16G16B16A16Float, 2,
+                                                                             it.Size());
+                auto s = p.CreateCaptureSession(it);
+                try {
+                    s.IsBorderRequired(false);   // Windows 11 : pas de cadre jaune (le relais est hors écran de toute façon)
+                    s.IsCursorCaptureEnabled(false);
+                } catch (...) {
+                }
+                s.StartCapture();
+                item = it;
+                pool = p;
+                session = s;
+                ready = true;
+            }
+        } catch (const winrt::hresult_error& e) {
+            error = e.code();
+        } catch (...) {
+            error = E_FAIL;
+        }
+        winrt::uninit_apartment();
     }
 };
 
@@ -96,14 +157,18 @@ bool WindowCapture::supported() {
     return ok;
 }
 
-bool WindowCapture::active() const { return impl_->session != nullptr; }
+bool WindowCapture::active() const { return impl_->thumb != nullptr; }
+
+void WindowCapture::prepare(HINSTANCE instance) {
+    if (supported()) impl_->ensureRelay(instance);
+}
 
 void WindowCapture::stop() { impl_->close(); }
 
 bool WindowCapture::start(HINSTANCE instance, ID3D11Device* dev, HWND source) {
     stop();
     Impl& m = *impl_;
-    if (!dev || !IsWindow(source) || !supported() || !m.ensureRelay(instance)) return false;
+    if (!dev || !IsWindow(source) || !supported() || !m.ensureRelay(instance) || !m.ensureDevice(dev)) return false;
     if (FAILED(DwmRegisterThumbnail(m.relay, source, &m.thumb))) {
         m.thumb = nullptr;
         return false;
@@ -122,40 +187,21 @@ bool WindowCapture::start(HINSTANCE instance, ID3D11Device* dev, HWND source) {
     p.rcDestination = RECT{0, 0, m.size.cx, m.size.cy};
     DwmUpdateThumbnailProperties(m.thumb, &p);
     try {
-        Com<IDXGIDevice> dxgi;
-        winrt::com_ptr<::IInspectable> insp;
-        if (FAILED(dev->QueryInterface(IID_PPV_ARGS(&dxgi))) || FAILED(CreateDirect3D11DeviceFromDXGIDevice(dxgi.Get(), insp.put()))) {
-            stop();
-            return false;
-        }
-        const auto device = insp.as<d3d::IDirect3DDevice>();
-        auto interop = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
-        if (FAILED(interop->CreateForWindow(m.relay, winrt::guid_of<wgc::GraphicsCaptureItem>(), winrt::put_abi(m.item)))) {
-            stop();
-            return false;
-        }
-        // scRGB : sur un écran HDR, une capture 8 bits écrête le blanc SDR (couleurs délavées, × 3 environ).
-        m.pool = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(device, wdx::DirectXPixelFormat::R16G16B16A16Float, 2,
-                                                                     m.item.Size());
-        m.session = m.pool.CreateCaptureSession(m.item);
-        try {
-            m.session.IsBorderRequired(false);   // Windows 11 : pas de cadre jaune (le relais est hors écran de toute façon)
-            m.session.IsCursorCaptureEnabled(false);
-        } catch (...) {
-        }
-        m.session.StartCapture();
-        return true;
-    } catch (const winrt::hresult_error& e) {
-        log::warn(L"Génie : capture impossible (0x%08X)", unsigned(e.code()));
+        m.worker = std::thread([&m] { m.run(); });
     } catch (...) {
+        stop();
+        return false;
     }
-    stop();
-    return false;
+    return true;
 }
 
 bool WindowCapture::poll(const std::function<void(ID3D11Texture2D*, UINT, UINT)>& use) {
     Impl& m = *impl_;
-    if (!m.pool) return false;
+    if (!m.ready) {
+        if (const HRESULT hr = m.error.exchange(S_OK); FAILED(hr)) log::warn(L"Génie : capture impossible (0x%08X)", unsigned(hr));
+        return false;
+    }
+    if (m.worker.joinable()) m.worker.join();   // fini (ready) : rien n'attend
     try {
         wgc::Direct3D11CaptureFrame frame{nullptr};
         for (auto next = m.pool.TryGetNextFrame(); next; next = m.pool.TryGetNextFrame()) frame = next;   // la plus récente
@@ -198,8 +244,8 @@ void pump(double ms) {
 
 } // namespace
 
-bool genieCaptureProbe(HINSTANCE instance, const std::wstring& png) {
-    // Fenêtre factice en couches (contenu posé par UpdateLayeredWindow, donc défini même hors écran).
+HWND createMinimizedProbe(HINSTANCE instance) {
+    // Contenu posé par UpdateLayeredWindow : défini même hors écran.
     const BgraImage look = syntheticWindow(640, 400);
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = DefWindowProcW;
@@ -208,7 +254,7 @@ bool genieCaptureProbe(HINSTANCE instance, const std::wstring& png) {
     RegisterClassExW(&wc);
     HWND probe = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, kProbeClass, L"Sonde", WS_POPUP, 0, 0, look.w,
                                  look.h, nullptr, nullptr, instance, nullptr);
-    if (!probe) return false;
+    if (!probe) return nullptr;
     HDC screen = GetDC(nullptr);
     HDC mem = CreateCompatibleDC(screen);
     BITMAPINFO bi{};
@@ -230,6 +276,12 @@ bool genieCaptureProbe(HINSTANCE instance, const std::wstring& png) {
     pump(100);
     ShowWindow(probe, SW_SHOWMINNOACTIVE);
     pump(100);
+    return probe;
+}
+
+bool genieCaptureProbe(HINSTANCE instance, const std::wstring& png) {
+    HWND probe = createMinimizedProbe(instance);
+    if (!probe) return false;
     const bool iconic = IsIconic(probe) != FALSE;
 
     Com<ID3D11Device> dev;

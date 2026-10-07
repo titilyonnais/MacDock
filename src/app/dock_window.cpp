@@ -155,6 +155,7 @@ void DockApp::applySettings() {
     syncAppBar();
     if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
+    if (!snapshot_) genie_.prepare(instance_);
     updateGlass();   // réglage glass modifié à chaud
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
