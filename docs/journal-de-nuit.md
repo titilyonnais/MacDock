@@ -123,6 +123,24 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
   - une fenêtre restaurée ailleurs pendant sa restauration animée n'est plus montrée deux fois.
 - **À savoir** : si tu valides « Options de performances » de Windows pendant que le Dock tourne, Windows enregistre l'animation coupée comme ta préférence. Remets-la dans ce même panneau si tu arrêtes le Dock.
 
+### Plan 11 — Feux tricolores (sous-projet 4, fusionné dans `main`)
+
+- **Pastilles** rouge, jaune et verte en haut à gauche de la fenêtre active : fermer, réduire (l'effet génie joue), agrandir ou restaurer. Au survol du groupe : ×, −, +. Grises quand l'action n'existe pas pour la fenêtre.
+- **Comment** : la barre de menus pose un petit calque sur la barre de titre, juste au-dessus de la fenêtre, et le déplace avec elle. Un fond de la couleur de la barre de titre (mesurée à l'écran) cache l'icône de Windows sous les pastilles. Les commandes sont celles du menu système : une app qui demande « Enregistrer ? » le demande toujours.
+- **Quelles fenêtres** : par défaut, celles dont Windows dessine la barre de titre. Chez Chrome, Edge, l'Explorateur à onglets ou les apps récentes, la barre de titre est à eux : des pastilles cacheraient des onglets. `trafficLights` dans `menubar.json` : `standard`, `all`, `off`.
+- **Vérifié hors écran** : planche `--lights-snapshot`, tests de l'éligibilité, de la géométrie (100 % et 200 %), des clics et du rendu. Aucun calque n'a été affiché devant toi.
+- **À vérifier toi-même** (après avoir relancé la barre) :
+  1. ouvre `regedit` ou Paint : les pastilles sont dans la barre de titre et suivent la fenêtre ;
+  2. survol, puis clic sur chacune ; tirer la fenêtre depuis le fond à côté des pastilles ;
+  3. Chrome ou Edge : pas de pastilles ;
+  4. une fenêtre agrandie, et ton deuxième écran.
+
+## Décisions prises sans toi (plan 11)
+- Pastilles seulement sur la fenêtre active (macOS les montre grises sur les autres) : un calque par fenêtre visible demanderait de suivre l'ordre de toutes les fenêtres.
+- Les boutons de Windows restent à droite.
+- La couleur du fond est mesurée juste à droite des pastilles, à 4 pt du haut du cadre.
+- Aucun test automatique du calque lui-même : il faudrait l'afficher devant toi.
+
 ## Décisions prises sans toi (plan 10)
 - L'agrandissement n'est plus animé tant que l'effet Génie ou Échelle est actif : Windows règle les deux par le même interrupteur.
 - Seule la restauration depuis le Dock est animée : ailleurs, la fenêtre est déjà affichée quand le Dock l'apprend.

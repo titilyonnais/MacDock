@@ -5,7 +5,7 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
 
-> État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Les fenêtres se réduisent dans le Dock avec l'effet génie (plan 10). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
+> État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Les fenêtres se réduisent dans le Dock avec l'effet génie (plan 10) et ont des feux tricolores (plan 11). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
 ## Installation
 
@@ -72,6 +72,9 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
   - Curseurs, interrupteurs, tuiles et boutons agissent sans fermer le menu, qui se met à jour pendant qu'il est ouvert. Survoler une icône ou un titre passe de l'un à l'autre.
 - **Icônes des autres apps** (avec le mod Windhawk 1.2) : à gauche des icônes d'état, celles de la zone de notification de Windows, la plus récente à gauche. Un clic, un double-clic ou un clic droit leur parvient comme sur la barre des tâches (leur propre menu s'ouvre). S'il n'y a pas la place, celles de gauche s'effacent avant de toucher le logo et le nom de l'app. `"showAppIcons": false` les masque.
 - **Plusieurs écrans** : une barre en haut de chaque écran, avec les mêmes menus. Celle de l'écran où tu travailles est pleine, les autres sont atténuées ; un menu s'ouvre sur la barre cliquée. Brancher ou débrancher un écran ajoute ou retire sa barre.
+- **Feux tricolores** : en haut à gauche de la fenêtre active, trois pastilles rouge, jaune et verte ferment, réduisent (avec l'effet génie) et agrandissent la fenêtre ; au survol, elles montrent ×, − et +. Une pastille grise n'est pas disponible pour cette fenêtre (un dialogue ne se réduit pas). On peut toujours déplacer la fenêtre en tirant à côté des pastilles.
+  - Par défaut, seulement sur les fenêtres dont Windows dessine la barre de titre (Bloc-notes historique, Paint, regedit, la plupart des outils) : chez les apps qui dessinent la leur (Chrome, Edge, l'Explorateur à onglets, les apps récentes), elles cacheraient des onglets ou des boutons. `"trafficLights": "all"` les met partout, `"off"` les retire.
+  - Les boutons de Windows restent à droite (on ne peut pas les retirer sans modifier les apps).
 - **Plein écran** : la barre s'efface et revient quand le curseur touche le haut de l'écran.
 - **Clic droit dans le vide de la barre** : réglages, masquage automatique, quitter la barre.
 - **Logo** : par défaut celui de Windows. Pour le remplacer, mets une image `menubar-logo.png` dans `%APPDATA%\MacDock\` ; seule sa transparence compte, elle prend la couleur du texte.
@@ -85,7 +88,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 | `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), effet de réduction (`minimizeEffect` : `genie`, `scale`, `windows`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
-| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`, `showAppIcons`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
+| `menubar.json` | Barre de menus : masquage automatique (`autohide`), police, horloge (`clock` : `weekday`, `date`, `seconds`, `hour24`), icônes affichées (`showSound`, `showNetwork`, `showBattery`, `showSearch`, `showAppIcons`), feux tricolores (`trafficLights` : `standard`, `all`, `off`), mesures (`metrics` : hauteur, taille du texte, marges, `statusWidth`, `statusIconSize`…). |
 | `menubar-logo.png` | Logo personnalisé du menu du système (facultatif). |
 | `menubar-recent.json` | Apps récentes du menu du système, écrit par la barre (les documents viennent du dossier Récents de Windows, jamais modifié). |
 | `logs\` | Journaux (`logs\menubar\` pour la barre de menus). |
@@ -115,6 +118,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.
 - `MacMenuBar.exe --snapshot barre.png [--wallpaper fond.png] [--app "Nom"] [--theme light|dark] [--open 1]` : rendu de la barre dans une image, sans l'afficher.
+- `MacMenuBar.exe --lights-snapshot planche.png` : les feux tricolores (clair, sombre ; normal, survol, indisponible) dans une image, sans rien afficher.
 - `MacMenuBar.exe --quit` : ferme la barre seule.
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
