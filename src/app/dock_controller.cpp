@@ -306,6 +306,13 @@ bool DockController::consumeDirty() {
     return d;
 }
 
+IconProvider::ImagePtr DockController::appIcon(const std::wstring& appId, IconProvider& icons) const {
+    const double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
+    for (const DockItem& item : items_)
+        if (item.kind == ItemKind::App && item.appId == appId) return imageFor(item, icons, int(std::ceil(large * scale_)));
+    return nullptr;
+}
+
 IconProvider::ImagePtr DockController::imageFor(const DockItem& item, IconProvider& icons, int px) const {
     switch (item.kind) {
         case ItemKind::App: {

@@ -71,6 +71,10 @@ std::vector<MonitorInfo> enumMonitors() {
 }
 // Raccourcis de calibration (Ctrl+Alt+Maj) : superposition, opacité + et −.
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4, kHotMission = 5;
+// Sélecteur d'apps : Alt+Tab, Alt+Maj+Tab, puis le temps d'une session Alt+Échap, Alt+←, Alt+→, Alt+Q, Alt+H.
+constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchLeft = 9, kHotSwitchRight = 10,
+              kHotSwitchQuit = 11, kHotSwitchHide = 12;
+constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -149,7 +153,10 @@ void DockApp::applySettings() {
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     updateGlass();   // réglage glass modifié à chaud
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
-    if (missionMsg_) registerMissionHotkey();
+    if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
+        registerMissionHotkey();
+        registerSwitcherHotkey();
+    }
     requestFrame();
 }
 
@@ -811,6 +818,135 @@ void DockApp::registerSpotlightHotkey() {
     }
 }
 
+void DockApp::registerSwitcherHotkey() {
+    if (settings_.appSwitcherHotkey == switcherHotkeyOn_) return;
+    endSwitch(false);
+    UnregisterHotKey(hwnd_, kHotSwitch);
+    UnregisterHotKey(hwnd_, kHotSwitchBack);
+    switcherHotkeyOn_ = settings_.appSwitcherHotkey;
+    const auto spec = parseSwitcherHotkey(switcherHotkeyOn_);
+    if (!spec) {
+        log::info(L"Sélecteur d'apps : raccourci désactivé");
+        return;
+    }
+    // Sans MOD_NOREPEAT : Tab maintenu fait défiler la rangée, comme sur macOS.
+    if (!RegisterHotKey(hwnd_, kHotSwitch, spec->mods, spec->vk) ||
+        !RegisterHotKey(hwnd_, kHotSwitchBack, spec->mods | MOD_SHIFT, spec->vk)) {
+        log::warn(L"Sélecteur d'apps : raccourci %s déjà pris par une autre app (%lu) ; celui de Windows reste en place",
+                  switcherHotkeyOn_.c_str(), GetLastError());
+        UnregisterHotKey(hwnd_, kHotSwitch);
+        UnregisterHotKey(hwnd_, kHotSwitchBack);
+    } else {
+        log::info(L"Sélecteur d'apps : raccourci %s", switcherHotkeyOn_.c_str());
+    }
+}
+
+void DockApp::switcherKey(int id) {
+    if (id == kHotSwitch || id == kHotSwitchBack) {
+        const bool back = id == kHotSwitchBack;
+        if (switch_.active()) {   // appuis suivants : une case de plus (ou de moins)
+            switch_.step(back ? -1 : 1);
+            switcher_.select(switch_.selected());
+            return;
+        }
+        if (menuOpen_) return;   // une fenêtre modale est ouverte
+        std::vector<std::wstring> running;
+        for (const DockItem& it : model_.items())
+            if (it.kind == ItemKind::App && !model_.windowsOf(it.appId).empty()) running.push_back(it.appId);
+        mru_.touch(model_.appOfWindow(toId(GetForegroundWindow())));   // l'app au premier plan en tête
+        switchApps_ = mru_.order(running);
+        if (!switch_.begin(switchApps_.size(), back, nowSeconds())) return;
+        // Touche neutre : Alt relâché sans autre frappe ouvrirait le menu de l'app au premier plan.
+        INPUT in[2] = {};
+        in[0].type = in[1].type = INPUT_KEYBOARD;
+        in[0].ki.wVk = in[1].ki.wVk = 0xE8;
+        in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(2, in, sizeof(INPUT));
+        RegisterHotKey(hwnd_, kHotSwitchEsc, MOD_ALT, VK_ESCAPE);
+        RegisterHotKey(hwnd_, kHotSwitchLeft, MOD_ALT, VK_LEFT);
+        RegisterHotKey(hwnd_, kHotSwitchRight, MOD_ALT, VK_RIGHT);
+        RegisterHotKey(hwnd_, kHotSwitchQuit, MOD_ALT | MOD_NOREPEAT, 'Q');
+        RegisterHotKey(hwnd_, kHotSwitchHide, MOD_ALT | MOD_NOREPEAT, 'H');
+        SetTimer(hwnd_, kSwitchTimer, 15, nullptr);
+        return;
+    }
+    if (!switch_.active()) return;
+    const std::size_t sel = switch_.selected();
+    switch (id) {
+        case kHotSwitchEsc: endSwitch(false); break;
+        case kHotSwitchLeft:
+        case kHotSwitchRight:
+            switch_.step(id == kHotSwitchLeft ? -1 : 1);
+            switcher_.select(switch_.selected());
+            break;
+        case kHotSwitchQuit:   // comme « Quitter » du menu du Dock ; l'app quitte la rangée
+            for (HWND h : toHwnds(model_.windowsOf(switchApps_[sel]))) PostMessageW(h, WM_CLOSE, 0, 0);
+            switchApps_.erase(switchApps_.begin() + std::ptrdiff_t(sel));
+            switcher_.remove(sel);
+            if (switch_.removeSelected()) switcher_.select(switch_.selected());
+            else endSwitch(false);
+            break;
+        case kHotSwitchHide:   // comme « Masquer » du menu du Dock
+            model_.setHidden(switchApps_[sel], true);
+            minimizeAll(toHwnds(model_.windowsOf(switchApps_[sel])));
+            requestFrame();
+            break;
+        default: break;
+    }
+}
+
+void DockApp::switcherTick() {
+    switch (switch_.tick((GetAsyncKeyState(VK_MENU) & 0x8000) != 0, nowSeconds())) {
+        case SwitchSession::Tick::Finish: endSwitch(true); break;
+        case SwitchSession::Tick::ShowPanel: {
+            std::map<std::wstring, std::wstring> names;
+            for (const DockItem& it : model_.items())
+                if (it.kind == ItemKind::App) names[it.appId] = it.name;
+            std::vector<SwitcherWindow::Entry> entries;
+            for (const std::wstring& app : switchApps_) entries.push_back({names[app], controller_.appIcon(app, icons_)});
+            POINT pt{};
+            GetCursorPos(&pt);
+            pauseCapture();   // une seule duplication de l'écran par processus
+            switchPanel_ = switcher_.show(popupEnv(), MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), std::move(entries),
+                                          switch_.selected());
+            if (!switchPanel_) resumeCapture();   // sans panneau, la session continue au clavier
+            break;
+        }
+        case SwitchSession::Tick::Wait: break;
+    }
+}
+
+void DockApp::endSwitch(bool activate) {
+    KillTimer(hwnd_, kSwitchTimer);
+    for (int id : {kHotSwitchEsc, kHotSwitchLeft, kHotSwitchRight, kHotSwitchQuit, kHotSwitchHide}) UnregisterHotKey(hwnd_, id);
+    const bool was = switch_.active();
+    const std::size_t sel = switch_.selected();
+    switch_.end();
+    if (switchPanel_) {
+        switcher_.hide();
+        switchPanel_ = false;
+        resumeCapture();
+    }
+    if (activate && was && sel < switchApps_.size()) {
+        const std::wstring app = switchApps_[sel];
+        const std::vector<HWND> windows = toHwnds(model_.windowsOf(app));
+        std::vector<bool> iconic;
+        for (HWND h : windows) iconic.push_back(IsIconic(h) != FALSE);
+        const bool hidden = model_.isHidden(app);
+        const SwitchActivation a = switcherActivation(hidden, iconic);
+        if (hidden) model_.setHidden(app, false);
+        if (a.restoreFirst) {
+            restoreWindow(windows[a.windows.front()]);
+        } else if (!a.windows.empty()) {
+            std::vector<HWND> chosen;
+            for (std::size_t i : a.windows) chosen.push_back(windows[i]);
+            activateApp(chosen);
+        }
+    }
+    switchApps_.clear();
+    requestFrame();
+}
+
 // Agit sur une copie de l'élément : les fenêtres sont relues dans le modèle par appId (stable), jamais
 // par index (le Dock a pu changer entre-temps, par exemple pendant un menu).
 void DockApp::activateItem(const DockItem& item) {
@@ -1455,6 +1591,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kSwitchTimer) {
+                switcherTick();
+                return 0;
+            }
             if (wp == kStacksTimer) {
                 KillTimer(hwnd_, kStacksTimer);
                 stacksFirstEvent_ = -1;
@@ -1595,6 +1735,11 @@ int DockApp::runSnapshot(const Options& options) {
 }
 
 void DockApp::onHotKey(int id) {
+    if (id >= kHotSwitch && id <= kHotSwitchHide) {
+        switcherKey(id);
+        return;
+    }
+    if (switch_.active()) return;   // Alt maintenu : Alt+Espace n'ouvre pas Spotlight au milieu d'une session
     if (id == kHotMission) {
         openMissionControl();
         return;
@@ -1689,6 +1834,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     };
     ev.titleChanged = [this](HWND h, const std::wstring& t) { model_.windowTitle(toId(h), t); };
     ev.activated = [this](HWND h) {
+        mru_.touch(model_.appOfWindow(toId(h)));
         controller_.setAttention(model_.appOfWindow(toId(h)), false);
         checkFullscreen();
         noteForeground();
@@ -1718,6 +1864,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
+    switcher_.onClick = [this](std::size_t i) {   // clic sur une icône : cette app, tout de suite
+        switch_.select(i);
+        endSwitch(true);
+    };
+    registerSwitcherHotkey();
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);

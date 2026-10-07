@@ -76,3 +76,63 @@ TEST_CASE(switcher_snapshot_draws_panel) {
     CHECK(a.px != b.px);   // la sélection change le dessin
     CoUninitialize();
 }
+
+TEST_CASE(switcher_session_flow) {
+    md::SwitchSession s;
+    CHECK(!s.begin(0, false, 0.0));   // aucune app : rien ne démarre
+    CHECK(!s.active());
+    REQUIRE(s.begin(4, false, 10.0));
+    CHECK(s.active());
+    CHECK(s.selected() == 1);   // l'app précédente
+    s.step(1);
+    CHECK(s.selected() == 2);
+    s.step(-3);
+    CHECK(s.selected() == 3);   // en boucle
+    CHECK(s.tick(true, 10.1) == md::SwitchSession::Tick::Wait);
+    CHECK(s.tick(true, 10.15) == md::SwitchSession::Tick::ShowPanel);
+    CHECK(s.tick(true, 10.5) == md::SwitchSession::Tick::Wait);   // une seule fois
+    CHECK(s.tick(false, 10.6) == md::SwitchSession::Tick::Finish);
+    s.end();
+    CHECK(!s.active());
+    CHECK(s.tick(false, 11.0) == md::SwitchSession::Tick::Wait);   // finie : plus rien
+}
+
+TEST_CASE(switcher_session_back_and_quick_release) {
+    md::SwitchSession s;
+    REQUIRE(s.begin(5, true, 0.0));
+    CHECK(s.selected() == 4);   // Alt+Maj+Tab : la dernière
+    CHECK(s.tick(false, 0.05) == md::SwitchSession::Tick::Finish);   // relâché avant le panneau
+    REQUIRE(s.begin(1, false, 0.0));
+    CHECK(s.selected() == 0);   // seule app
+}
+
+TEST_CASE(switcher_session_remove_and_select) {
+    md::SwitchSession s;
+    REQUIRE(s.begin(3, false, 0.0));
+    s.select(2);
+    CHECK(s.selected() == 2);
+    s.select(7);   // hors rangée : ignoré
+    CHECK(s.selected() == 2);
+    CHECK(s.removeSelected());   // Q sur la dernière : la sélection recule
+    CHECK(s.count() == 2);
+    CHECK(s.selected() == 1);
+    s.select(0);
+    CHECK(s.removeSelected());
+    CHECK(s.count() == 1);
+    CHECK(s.selected() == 0);
+    CHECK(!s.removeSelected());   // plus aucune app : fin
+    CHECK(!s.active());
+}
+
+TEST_CASE(switcher_activation_choice) {
+    auto a = md::switcherActivation(false, {true, false, false});
+    CHECK(a.windows == (std::vector<std::size_t>{1, 2}));   // les non réduites
+    CHECK(!a.restoreFirst);
+    a = md::switcherActivation(false, {true, true});
+    CHECK(a.windows == std::vector<std::size_t>{0});   // toutes réduites : la première restaurée
+    CHECK(a.restoreFirst);
+    a = md::switcherActivation(true, {true, true});
+    CHECK(a.windows == (std::vector<std::size_t>{0, 1}));   // app masquée : toutes
+    CHECK(!a.restoreFirst);
+    CHECK(md::switcherActivation(false, {}).windows.empty());
+}

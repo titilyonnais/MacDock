@@ -52,6 +52,54 @@ int switcherHit(const SwitcherGeometry& g, std::size_t count, double x, double y
     return i < count ? int(i) : -1;
 }
 
+bool SwitchSession::begin(std::size_t count, bool back, double now) {
+    active_ = count > 0;
+    panel_ = false;
+    count_ = count;
+    selected_ = back && count ? count - 1 : switcherStart(count);
+    start_ = now;
+    return active_;
+}
+
+void SwitchSession::step(int delta) {
+    if (active_) selected_ = switcherStep(selected_, count_, delta);
+}
+
+void SwitchSession::select(std::size_t index) {
+    if (active_ && index < count_) selected_ = index;
+}
+
+bool SwitchSession::removeSelected() {
+    if (!active_) return false;
+    if (--count_ == 0) {
+        active_ = false;
+        return false;
+    }
+    if (selected_ >= count_) selected_ = count_ - 1;
+    return true;
+}
+
+SwitchSession::Tick SwitchSession::tick(bool altDown, double now) {
+    if (!active_) return Tick::Wait;
+    if (!altDown) return Tick::Finish;
+    if (!panel_ && now - start_ >= kPanelDelay - 1e-9) {
+        panel_ = true;
+        return Tick::ShowPanel;
+    }
+    return Tick::Wait;
+}
+
+SwitchActivation switcherActivation(bool hidden, const std::vector<bool>& iconic) {
+    SwitchActivation a;
+    for (std::size_t i = 0; i < iconic.size(); ++i)
+        if (hidden || !iconic[i]) a.windows.push_back(i);
+    if (a.windows.empty() && !iconic.empty()) {
+        a.windows.push_back(0);
+        a.restoreFirst = true;
+    }
+    return a;
+}
+
 std::optional<HotkeySpec> parseSwitcherHotkey(const std::wstring& text) {
     std::wstring t;
     for (wchar_t c : toLower(text))

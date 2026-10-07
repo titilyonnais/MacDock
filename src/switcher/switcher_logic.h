@@ -30,6 +30,34 @@ struct SwitcherGeometry {   // points, depuis le coin du panneau
 SwitcherGeometry switcherLayout(std::size_t count, double maxWidth);
 int switcherHit(const SwitcherGeometry& g, std::size_t count, double x, double y);   // -1 : aucune case
 
+// Un appui sur Alt : sélection dans la rangée, panneau après kPanelDelay, fin au relâchement.
+class SwitchSession {
+public:
+    static constexpr double kPanelDelay = 0.15;   // secondes : un Alt+Tab rapide ne montre rien
+    enum class Tick { Wait, ShowPanel, Finish };
+    bool begin(std::size_t count, bool back, double now);   // false (rien ne démarre) sans app
+    bool active() const { return active_; }
+    std::size_t selected() const { return selected_; }
+    std::size_t count() const { return count_; }
+    void step(int delta);
+    void select(std::size_t index);   // hors rangée : ignoré
+    bool removeSelected();            // app fermée (Q) ; false : plus aucune app, session finie
+    Tick tick(bool altDown, double now);
+    void end() { active_ = false; }
+
+private:
+    bool active_ = false, panel_ = false;
+    std::size_t count_ = 0, selected_ = 0;
+    double start_ = 0;
+};
+
+// Fenêtres à activer (indices) : app masquée → toutes ; sinon les non réduites ; sinon la première, restaurée.
+struct SwitchActivation {
+    std::vector<std::size_t> windows;
+    bool restoreFirst = false;
+};
+SwitchActivation switcherActivation(bool hidden, const std::vector<bool>& iconic);
+
 // « alt+tab » (casse ignorée) ; nullopt pour « off » ou une valeur inconnue.
 std::optional<HotkeySpec> parseSwitcherHotkey(const std::wstring& text);
 
