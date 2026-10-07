@@ -197,3 +197,17 @@ TEST_CASE(settings_switcher_hotkey) {
     s.appSwitcherHotkey = L"off";
     CHECK(md::settingsFromJson(md::settingsToJson(s)).appSwitcherHotkey == L"off");
 }
+
+TEST_CASE(settings_hot_corners) {
+    md::Settings d;
+    CHECK(d.hotCorners[int(md::Corner::BottomRight)] == md::HotCornerAction::Desktop);
+    CHECK(d.hotCorners[int(md::Corner::TopLeft)] == md::HotCornerAction::Off);
+    auto v = md::json::parse(R"({"hotCorners": {"topLeft": "missionControl", "bottomRight": "nope", "topRight": 3}})");
+    REQUIRE(v.has_value());
+    auto s = md::settingsFromJson(*v);
+    CHECK(s.hotCorners[int(md::Corner::TopLeft)] == md::HotCornerAction::MissionControl);
+    CHECK(s.hotCorners[int(md::Corner::BottomRight)] == md::HotCornerAction::Desktop);   // inconnu : défaut
+    CHECK(s.hotCorners[int(md::Corner::TopRight)] == md::HotCornerAction::Off);
+    auto back = md::settingsFromJson(md::settingsToJson(s));
+    CHECK(back.hotCorners == s.hotCorners);
+}

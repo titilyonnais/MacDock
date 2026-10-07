@@ -17,6 +17,8 @@ double readNumber(const json::Value& v, const char* key, double def) {
     return f ? f->asNumber(def) : def;
 }
 
+constexpr const char* kCornerKeys[4] = {"topLeft", "topRight", "bottomLeft", "bottomRight"};   // ordre de Corner
+
 std::wstring readString(const json::Value& v, const char* key) {
     auto* f = v.find(key);
     return f ? fromUtf8(f->asString("")) : std::wstring();
@@ -82,6 +84,9 @@ Settings settingsFromJson(const json::Value& v) {
         s.missionControlHotkey = mission;
     const std::wstring switcher = toLower(readString(v, "appSwitcherHotkey"));
     if (switcher == L"alt+tab" || switcher == L"off") s.appSwitcherHotkey = switcher;
+    if (auto* corners = v.find("hotCorners"); corners && corners->isObject())
+        for (int c = 0; c < 4; ++c)   // valeur inconnue ou mauvais type : le coin garde son défaut
+            if (auto a = parseHotCornerAction(readString(*corners, kCornerKeys[c]))) s.hotCorners[std::size_t(c)] = *a;
     s.pinnedInitialized = readBool(v, "pinnedInitialized", false);
     if (auto* pins = v.find("pinned")) {
         for (auto& p : pins->asArray()) {
@@ -131,6 +136,9 @@ json::Value settingsToJson(const Settings& s) {
     v.set("spotlightHotkey", toUtf8(s.spotlightHotkey));
     v.set("missionControlHotkey", toUtf8(s.missionControlHotkey));
     v.set("appSwitcherHotkey", toUtf8(s.appSwitcherHotkey));
+    json::Value corners = json::Object{};
+    for (int c = 0; c < 4; ++c) corners.set(kCornerKeys[c], toUtf8(hotCornerName(s.hotCorners[std::size_t(c)])));
+    v.set("hotCorners", corners);
     v.set("pinnedInitialized", s.pinnedInitialized);
     json::Value pins = json::Array{};
     for (auto& p : s.pinned) {
