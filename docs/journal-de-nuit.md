@@ -4,6 +4,13 @@ Travail en autonomie, de 00 h 38 à 8 h, à ta demande (« prends des initiative
 
 ## Ce qui est fait
 
+### Plan 5 — Piles complètes (branche `feat/plan-5-piles-completes`, relecture finale en cours à 8 h)
+
+- **Icône « Pile »** : dans le Dock, la pile Téléchargements montre ses 3 derniers fichiers empilés, ceux du dessous légèrement inclinés, comme sur macOS. Elle se met à jour en direct quand un fichier arrive ou disparaît. Clic droit › *Afficher comme* › *Dossier* pour revenir à l'icône du dossier.
+- **Présentation en liste** : clic droit › *Présenter le contenu comme* › *Liste*. La pile s'ouvre alors en menu de verre avec les icônes des fichiers ; les sous-dossiers s'ouvrent en sous-menus. La liste se limite à ce qui tient à l'écran.
+- Essais réels : rendu de l'icône composée vérifié sur image (`--snapshot`) ; dossier temporaire épinglé : l'aperçu passe de 0 à 1 fichier puis revient à 0 ; liste ouverte avec un sous-menu. Tes réglages ont été restaurés à chaque fois.
+- Pas encore fusionné dans `main` : j'attends la fin de la relecture et ses corrections.
+
 ### Plan 4 — Positions, écrans et piles (fusionné dans `main`)
 
 - **Dock à gauche ou à droite** (clic droit sur le séparateur › Position à l'écran), changé à chaud. La zone réservée suit le bord ; les menus, les infobulles et la grille des piles s'ouvrent à côté du Dock.
@@ -141,5 +148,10 @@ Chaque décision est notée avec son coût si elle est fausse. La liste complèt
 - `pending_` bloqué si la file de messages est pleine.
 - `--snapshot` réécrit tes fichiers de réglages.
 
-## Suite de la nuit
-Plan 5 — `docs/superpowers/plans/2026-10-07-macdock-plan-5-piles-completes.md` : icône de pile qui montre les derniers fichiers empilés (« Afficher comme : Pile / Dossier ») et présentation en liste.
+## Vérifications à faire toi-même — plan 5
+1. L'icône de Téléchargements dans le vrai Dock (lance `build\Debug\MacDock.exe` ou ta version installée).
+2. Un téléchargement en cours : l'icône suit sans scintiller.
+3. Pile en liste : survol d'un sous-dossier, clic sur un fichier.
+
+## Suite
+Le sous-projet 1 (le Dock) couvre maintenant toute la spec, sauf les badges et la barre de progression (le mod Windhawk ne les relaie pas, et il n'est pas installé). Le prochain grand morceau serait le sous-projet 2 : la barre de menus.

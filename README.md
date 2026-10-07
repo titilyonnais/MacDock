@@ -30,11 +30,11 @@ Un Dock façon **macOS Tahoe** pour Windows 11 : magnification, rebonds, infobul
 ## Utilisation
 
 - **Clic** sur une app fermée : elle se lance en rebondissant. Sur une app ouverte : elle passe au premier plan.
-- **Clic sur une pile** (Téléchargements…) : son contenu s'ouvre comme sur macOS, en **éventail** (icônes en arc au-dessus de la pile, nom à gauche) jusqu'à 9 éléments, en **grille** de verre au-delà (molette pour défiler). Un clic ouvre l'élément ; *Ouvrir dans l'Explorateur* ouvre le dossier ; Échap ou un clic à côté referme.
+- **Clic sur une pile** (Téléchargements…) : son contenu s'ouvre comme sur macOS, en **éventail** (icônes en arc au-dessus de la pile, nom à gauche) jusqu'à 9 éléments, en **grille** de verre au-delà (molette pour défiler), ou en **liste** (menu en verre, sous-dossiers en sous-menus) si tu la choisis. Un clic ouvre l'élément ; *Ouvrir dans l'Explorateur* ouvre le dossier ; Échap ou un clic à côté referme. Dans le Dock, l'icône d'une pile montre ses derniers fichiers empilés (ou l'icône du dossier, au choix), et se met à jour en direct.
 - **Clic droit** : menus en verre, comme sur macOS.
   - *App* : ses fenêtres ouvertes, *Options* (Garder dans le Dock, Ouvrir à la connexion — aussi pour les apps du Store, par un raccourci dans le dossier Démarrage —, Afficher dans l'Explorateur), Afficher toutes les fenêtres, Masquer, Quitter.
   - *Séparateur ou zone vide* : masquage automatique, agrandissement, position à l'écran (Gauche, En bas, Droite), Réglages du Dock.
-  - *Pile* : Trier par (Nom, Date d'ajout, Date de modification, Type), Présenter le contenu comme (Éventail, Grille, Automatiquement), Ouvrir dans l'Explorateur, Retirer du Dock.
+  - *Pile* : Trier par (Nom, Date d'ajout, Date de modification, Type), Afficher comme (Pile, Dossier), Présenter le contenu comme (Éventail, Grille, Liste, Automatiquement), Ouvrir dans l'Explorateur, Retirer du Dock.
   - *Corbeille* : Ouvrir, Vider la Corbeille. *Fenêtre réduite* : Restaurer, Fermer.
 - **Position** : en bas, à gauche ou à droite de l'écran (clic droit sur le séparateur), changée à chaud.
 - **Plusieurs écrans** : pousse le curseur contre le bord du Dock sur un autre écran (un court instant) et le Dock y passe ; il s'en souvient au prochain démarrage et revient sur l'écran principal si celui-ci est débranché.
@@ -54,7 +54,7 @@ Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 
 | Fichier | Contenu |
 |---|---|
-| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`, `sort` = `dateAdded`/`name`/`modified`/`kind`). |
+| `settings.json` | Position (`position` : `bottom`, `left`, `right`), écran (`screen`), taille des icônes (`tileSize`), agrandissement (`magnification`, `largeSize`), masquage automatique (`autohide`), apps récentes, mode « Tahoe strict » des icônes, police, verre Liquid Glass (`glass`), épingles (pour une pile : `view` = `auto`/`fan`/`grid`/`list`, `sort` = `dateAdded`/`name`/`modified`/`kind`, `display` = `stack`/`folder`). |
 | `dock-metrics.json` | Toutes les mesures visuelles et d'animation (marges, rayon, ressorts, rebonds…), bornées pour éviter les valeurs absurdes. |
 | `icons\<id>.png` | Icônes personnalisées (une par app, nommée d'après son identifiant). Comme sur macOS, prévois une toile de 1024 px avec la forme à 824 px au centre : l'image est utilisée telle quelle. |
 | `logs\` | Journaux. |
