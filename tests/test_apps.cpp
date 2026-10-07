@@ -8,6 +8,7 @@
 #include "minitest.h"
 #include "../src/apps/app_catalog.h"
 #include "../src/apps/apps_folder.h"
+#include "../src/apps/apps_window.h"
 #include "../src/apps/apps_layout.h"
 
 TEST_CASE(apps_listed_filters_docs_and_uninstallers) {
@@ -123,5 +124,17 @@ TEST_CASE(apps_read_real_folder) {   // lit le dossier Apps de Windows sans rien
     cat.refreshAsync();
     auto list = cat.get(10000);
     CHECK(!list.empty() && list.size() <= raw.size());
+    CoUninitialize();
+}
+
+TEST_CASE(apps_snapshot_draws_offscreen) {   // Direct2D sur une bitmap : aucune fenêtre
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::vector<md::AppEntry> apps;
+    for (int i = 0; i < 40; ++i) apps.push_back({L"App " + std::to_wstring(i), L"x" + std::to_wstring(i)});
+    auto im = md::appsSnapshot(apps, L"", 0, true, 1280, 800, false);
+    REQUIRE(im.w == 1280 && im.h == 800 && im.px.size() == 1280u * 800 * 4);
+    auto q = md::appsSnapshot(apps, L"App 3", 0, false, 1280, 800, false);
+    CHECK(q.px != im.px);
+    CHECK(q.px[3] == 255);   // opaque : fond d'écran flouté sous la vue
     CoUninitialize();
 }
