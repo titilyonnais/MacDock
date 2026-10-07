@@ -16,6 +16,9 @@ void openFolder(const std::wstring& path);
 void openStartMenu();
 std::wstring downloadsFolder();
 bool forceForeground(HWND hwnd);
+// Frappe qui débloque le verrou de premier plan : Alt enfoncé, une touche non attribuée, Alt relâché. Jamais Alt
+// seul : relâché seul, il ouvrirait la barre de menus de l'app au premier plan (fenêtre « figée » jusqu'au clic suivant).
+std::vector<INPUT> foregroundUnlockKeys();
 void revealInExplorer(const std::wstring& path);
 
 // « Ouvrir à la connexion » : valeur « MacDock: <nom> » de HKCU\…\CurrentVersion\Run.

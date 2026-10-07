@@ -183,6 +183,36 @@ std::optional<std::size_t> AppModel::pinnedIndexOf(const std::wstring& key) cons
     return std::nullopt;
 }
 
+AppClick AppModel::clickActionFor(const std::wstring& appId) const {
+    AppClick c;
+    const auto app = apps_.find(appId);
+    if (app == apps_.end() || app->second.windows.empty()) return c;
+    if (app->second.hidden) {
+        c.kind = AppClick::Kind::Unhide;
+        c.windows = app->second.windows;
+        return c;
+    }
+    WindowId latest = 0;
+    std::uint64_t latestSeq = 0;
+    for (WindowId id : app->second.windows) {
+        const auto w = windows_.find(id);
+        if (w == windows_.end()) continue;
+        if (!w->second.minimized) {
+            c.windows.push_back(id);
+        } else if (w->second.minimizedSeq >= latestSeq) {
+            latestSeq = w->second.minimizedSeq;
+            latest = id;
+        }
+    }
+    if (!c.windows.empty()) {
+        c.kind = AppClick::Kind::Front;
+    } else if (latest) {
+        c.kind = AppClick::Kind::Restore;
+        c.windows = {latest};
+    }
+    return c;
+}
+
 std::vector<WindowId> AppModel::windowsOf(const std::wstring& appId) const {
     auto a = apps_.find(appId);
     return a == apps_.end() ? std::vector<WindowId>{} : a->second.windows;

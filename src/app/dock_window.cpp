@@ -1019,8 +1019,10 @@ void DockApp::endSwitch(bool activate) {
 void DockApp::activateItem(const DockItem& item) {
     switch (item.kind) {
         case ItemKind::App:
-            if (auto windows = model_.windowsOf(item.appId); !windows.empty()) {
-                activateApp(toHwnds(windows));
+            if (const AppClick click = model_.clickActionFor(item.appId); click.kind == AppClick::Kind::Restore) {
+                restoreFromDock(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(click.windows.front())));   // génie
+            } else if (click.kind != AppClick::Kind::Launch) {
+                activateApp(toHwnds(click.windows));   // devant (ou tout réaffiché si l'app était masquée)
             } else {
                 std::wstring target = item.launch;
                 if (target.empty())

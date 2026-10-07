@@ -14,20 +14,12 @@
 #include <string>
 
 #include "../calib/png_io.h"
+#include "../config/config_store.h"
+#include "../core/crash_report.h"
 #include "../core/log.h"
 #include "../hud/hud_window.h"
 #include "menubar_window.h"
 #include "traffic_lights.h"
-
-namespace {
-
-LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
-    md::log::error(L"Plantage de la barre : exception 0x%08lX à l'adresse %p", info->ExceptionRecord->ExceptionCode,
-                   info->ExceptionRecord->ExceptionAddress);
-    return EXCEPTION_CONTINUE_SEARCH;   // le lanceur verra un code de sortie non nul et relancera
-}
-
-} // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
@@ -36,7 +28,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         return 0;
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    SetUnhandledExceptionFilter(crashFilter);
+    md::installCrashReport(md::appDataDir() + L"\\crash", L"barre");
 
     md::MenuBarApp::Options options;
     options.trace = args.find(L"--trace") != std::wstring::npos;

@@ -39,6 +39,15 @@ struct DockItem {
 // AUMID prioritaire ; sinon chemin de l'exécutable en minuscules.
 std::wstring makeAppId(const std::wstring& aumid, const std::wstring& exePath);
 
+// Clic sur l'icône d'une app, comme sur macOS (jamais de réduction) : la lancer ; la passer devant avec ses fenêtres
+// visibles (les réduites restent au Dock) ; toutes réduites : rouvrir la plus récemment réduite ; masquée : tout
+// réafficher.
+struct AppClick {
+    enum class Kind { Launch, Front, Restore, Unhide };
+    Kind kind = Kind::Launch;
+    std::vector<WindowId> windows;
+};
+
 class AppModel {
 public:
     void loadPinned(const std::vector<PinnedEntry>& pins);
@@ -68,6 +77,7 @@ public:
 
     std::vector<DockItem> items() const;
     std::vector<WindowId> windowsOf(const std::wstring& appId) const;
+    AppClick clickActionFor(const std::wstring& appId) const;
     std::optional<AppIdentity> identityOf(const std::wstring& appId) const;
     std::wstring titleOf(WindowId id) const;
     std::wstring appOfWindow(WindowId id) const;   // vide si inconnue
