@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/mission/mission_view.h"
 #include "../src/mission/mission_layout.h"
 
 namespace {
@@ -98,4 +99,29 @@ TEST_CASE(mission_hotkey_parse) {
     CHECK(f->mods == 0 && f->vk == VK_F3);
     CHECK(!md::parseMissionHotkey(L"off"));
     CHECK(!md::parseMissionHotkey(L"x"));
+}
+
+TEST_CASE(mission_snapshot_draws_windows) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::vector<md::MissionRect> wins{{100, 100, 800, 600}, {900, 200, 700, 500}, {300, 500, 600, 400}};
+    auto none = md::missionSnapshot({}, false, 1280, 800, -1);
+    auto some = md::missionSnapshot(wins, false, 1280, 800, -1);
+    auto hover = md::missionSnapshot(wins, false, 1280, 800, 0);
+    REQUIRE(some.w == 1280 && some.h == 800);
+    auto rects = md::missionLayout(wins, md::missionArea({0, 0, 1280, 800}, 1), md::kMissionGap,
+                                   md::kMissionGap + md::kMissionLabelRoom);
+    const md::MissionRect& r = rects[0];
+    const std::size_t c = (std::size_t(r.y + r.h / 2) * 1280 + std::size_t(r.x + r.w / 2)) * 4;
+    CHECK(some.px[c] != none.px[c]);
+    CHECK(hover.px != some.px);
+    CoUninitialize();
+}
+
+TEST_CASE(mission_layout_row_gap_leaves_room_for_title) {   // la pastille du titre tient entre deux lignes
+    std::vector<md::MissionRect> wins(6, md::MissionRect{0, 0, 1200, 800});
+    for (int i = 0; i < 6; ++i) wins[i].y = i * 10.0;
+    auto r = md::missionLayout(wins, {0, 0, 1920, 1000}, 24, 24 + md::kMissionLabelRoom);
+    for (std::size_t i = 0; i < r.size(); ++i)
+        for (std::size_t j = 0; j < r.size(); ++j)
+            if (r[j].y > r[i].y + r[i].h - 1e-6) CHECK(r[j].y - (r[i].y + r[i].h) >= 24 + md::kMissionLabelRoom - 1e-6);
 }

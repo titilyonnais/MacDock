@@ -12,7 +12,9 @@ MissionRect missionArea(const MissionRect& work, double scale) {
     return {work.x + side, work.y + top, std::max(0.0, work.w - 2 * side), std::max(0.0, work.h - top - bottom)};
 }
 
-std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, const MissionRect& area, double gap) {
+std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, const MissionRect& area, double gap,
+                                       double rowGap) {
+    if (rowGap < 0) rowGap = gap;
     const std::size_t n = windows.size();
     std::vector<MissionRect> out(n);
     if (!n) return out;
@@ -44,7 +46,7 @@ std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, 
             widthScale = std::min(widthScale, room > 0 ? room / w : 0.0);
             heights += h;
         }
-        const double roomH = area.h - gap * double(r - 1);
+        const double roomH = area.h - rowGap * double(r - 1);
         const double s = std::max(0.0, std::min({1.0, widthScale, roomH > 0 ? roomH / heights : 0.0}));
         if (s > bestScale + 1e-12) {
             bestScale = s;
@@ -53,7 +55,7 @@ std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, 
     }
 
     const double s = bestScale;
-    double total = gap * double(best.size() - 1);
+    double total = rowGap * double(best.size() - 1);
     std::vector<double> rowH(best.size(), 0);
     for (std::size_t r = 0; r < best.size(); ++r) {
         for (std::size_t i : best[r]) rowH[r] = std::max(rowH[r], win[i].h * s);
@@ -69,7 +71,7 @@ std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, 
             out[i] = {x, y + (rowH[r] - h) / 2, w, h};
             x += w + gap;
         }
-        y += rowH[r] + gap;
+        y += rowH[r] + rowGap;
     }
     return out;
 }
