@@ -78,6 +78,8 @@ private:
     SIZE paintedSize_{};
     ULONGLONG bounceStart_ = 0;
     int probeRetries_ = 0;         // sondes interrompues (app occupée) reprises au plus 3 fois
+    HWND refused_ = nullptr;       // cible visible mais sans barre de titre (plein écran) : sa barre peut revenir
+    ULONGLONG revealAt_ = 0;       // pastilles retenues jusqu'à cet instant (sortie du plein écran)
     // Pendant une sonde, SendMessageTimeout laisse passer les messages envoyés à notre fil (WinEvent, activation) :
     // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
     bool probing_ = false, attachPending_ = false, placePending_ = false;

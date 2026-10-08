@@ -199,7 +199,7 @@ void DockApp::syncAppBar() {
     reposition();
 }
 
-bool DockApp::detectFullscreen() const {
+HWND DockApp::detectFullscreen() const {
     // La plus haute fenêtre de l'écran du Dock, qu'elle ait le clavier ou non : une vidéo en plein écran le reste
     // quand on travaille sur un autre écran.
     return fullscreenWindowOn(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), monitor_);
@@ -212,11 +212,14 @@ bool DockApp::fullscreenAt(POINT screen) const {
         return true;
     const HMONITOR mon = MonitorFromPoint(screen, MONITOR_DEFAULTTONULL);
     MONITORINFO mi{sizeof mi};
-    return mon && GetMonitorInfoW(mon, &mi) && fullscreenWindowOn(mon, mi.rcMonitor);
+    return mon && GetMonitorInfoW(mon, &mi) && fullscreenWindowOn(mon, mi.rcMonitor) != nullptr;
 }
 
 void DockApp::checkFullscreen() {
-    bool fs = detectFullscreen();
+    const HWND window = detectFullscreen();
+    // Sa sortie du plein écran (taille, fermeture) est vue tout de suite, pas à la vérification suivante.
+    fullscreenWatch_.watch(window, [this] { checkFullscreen(); });
+    const bool fs = window != nullptr;
     if (fs == fullscreen_) return;
     fullscreen_ = fs;
     if (trace_) log::info(L"[trace] plein écran : %s", fs ? L"oui" : L"non");

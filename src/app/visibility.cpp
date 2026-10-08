@@ -14,6 +14,14 @@ bool Visibility::update(const VisibilityInputs& in, double now) {
         rawSince_ = now;
     }
     immediate_ = in.fullscreen;
+    // Sortie du plein écran : là tout de suite, comme sur Mac (la bande réservée ne reste pas vide le temps d'une
+    // glissade pendant que la fenêtre reprend sa taille).
+    const bool backFromFullscreen = wasFullscreen_ && !in.fullscreen && raw;
+    wasFullscreen_ = in.fullscreen;
+    if (backFromFullscreen) {
+        target_ = true;
+        p_ = 1;
+    }
     if (target_ != raw_) {
         double delay = immediate_ ? 0 : (raw_ ? t_.showDelay : t_.leaveDelay);
         if (now - rawSince_ >= delay) target_ = raw_;
@@ -56,9 +64,10 @@ bool fullscreenOnMonitor(const std::vector<ZWindow>& zOrder, const RECT& monitor
     return false;
 }
 
-bool fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect) {
-    if (!monitor) return false;
+HWND fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect) {
+    if (!monitor) return nullptr;
     std::vector<ZWindow> order;
+    std::vector<HWND> handles;
     const DWORD self = GetCurrentProcessId();
     for (HWND h = GetTopWindow(nullptr); h; h = GetWindow(h, GW_HWNDNEXT)) {
         if (!IsWindowVisible(h)) continue;
@@ -79,9 +88,56 @@ bool fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect) {
         z.caption = (style & WS_CAPTION) == WS_CAPTION;
         GetWindowRect(h, &z.rect);
         order.push_back(z);
+        handles.push_back(h);
         if (z.onMonitor && !z.topmost) break;   // la décision est prise à cette fenêtre
     }
-    return fullscreenOnMonitor(order, monitorRect);
+    if (!fullscreenOnMonitor(order, monitorRect)) return nullptr;
+    for (std::size_t i = 0; i < order.size(); ++i)   // la fenêtre qui couvre l'écran
+        if (order[i].onMonitor && isFullscreenWindow(order[i].rect, monitorRect, order[i].zoomed, order[i].caption))
+            return handles[i];
+    return nullptr;
+}
+
+namespace {
+std::vector<FullscreenWatch*>& watches() {   // fil de l'interface seulement
+    static std::vector<FullscreenWatch*> w;
+    return w;
+}
+} // namespace
+
+void FullscreenWatch::watch(HWND window, std::function<void()> changed) {
+    changed_ = std::move(changed);
+    if (window == window_) return;
+    stop();
+    if (!window) return;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    if (!pid) return;
+    const DWORD flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
+    hooks_[0] = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, nullptr, onEvent, pid, 0, flags);
+    hooks_[1] = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr, onEvent, pid, 0, flags);
+    window_ = window;
+    watches().push_back(this);
+}
+
+void FullscreenWatch::stop() {
+    for (HWINEVENTHOOK& h : hooks_) {
+        if (h) UnhookWinEvent(h);
+        h = nullptr;
+    }
+    window_ = nullptr;
+    auto& w = watches();
+    w.erase(std::remove(w.begin(), w.end(), this), w.end());
+}
+
+void CALLBACK FullscreenWatch::onEvent(HWINEVENTHOOK hook, DWORD, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD) {
+    if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
+    for (FullscreenWatch* w : std::vector<FullscreenWatch*>(watches()))   // copie : le rappel peut tout changer
+        if ((w->hooks_[0] == hook || w->hooks_[1] == hook) && hwnd == w->window_ && w->changed_) {
+            const auto changed = w->changed_;
+            changed();
+            return;
+        }
 }
 
 } // namespace md

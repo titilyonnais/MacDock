@@ -77,6 +77,7 @@ private:
         double lastSample = -1;
         Visibility visibility;
         bool fullscreen = false, visibilityTimer = false;
+        FullscreenWatch fullscreenWatch;   // la fenêtre en plein écran de cet écran : sa sortie est vue tout de suite
         int renderFailures = 0;
         std::size_t trayFirst = 0;   // icônes d'apps affichées : trayLaid_[trayFirst…] (les autres n'ont pas la place)
     };
@@ -150,7 +151,7 @@ private:
     HudContent volumeContent();         // volume et sortie actuels
     void onSample(Screen& s);
     void finishSample(Screen& s, std::optional<double> luminance);
-    bool detectFullscreen(const Screen& s) const;
+    HWND detectFullscreen(const Screen& s) const;   // fenêtre en plein écran sur cet écran, ou nullptr
     void checkFullscreen();
     std::size_t trayShown(const Screen& s) const;   // icônes d'apps de cette barre (cases 0… de la droite)
     void stepVisibility(Screen& s);
