@@ -9,7 +9,7 @@ namespace md {
 namespace {
 constexpr const wchar_t* kShellClasses[] = {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd", L"Progman", L"WorkerW"};
 // Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre (mesuré par des développeurs).
-constexpr double kDiameter = 14, kSpacing = 23, kFirst = 20, kTail = 8, kMinTitle = 20, kDefaultTitle = 28;   // points
+constexpr double kDiameter = 14, kSpacing = 23, kTail = 8;   // points (kTail : marge de part et d'autre du groupe)
 constexpr double kTopGap = 3;   // points laissés au bord du haut (redimensionnement)
 
 bool isButtonHit(LRESULT h) { return h == HTMINBUTTON || h == HTMAXBUTTON || h == HTCLOSE; }
@@ -60,28 +60,6 @@ RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwm, UINT
     return RECT{left, frame.top, right, bottom};
 }
 
-bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitProbe& hit) {
-    if (!hit) return false;
-    const double k = (dpi ? dpi : 96) / 96.0;
-    LONG titleH = titleBottom - frame.top;
-    if (titleH < std::lround(kMinTitle * k)) titleH = std::lround(kDefaultTitle * k);
-    const LONG cy = frame.top + titleH / 2, r = std::lround(kDiameter / 2 * k);
-    const LONG step = std::max(2L, LONG(std::lround(4 * k)));
-    const LONG end = frame.left + std::lround((kFirst + 2 * kSpacing + kDiameter / 2 + kTail) * k);
-    for (LONG y : {cy - r, cy, cy + r})
-        for (LONG x = frame.left + std::lround(4 * k); x < end; x += step) {
-            const LRESULT h = hit(POINT{x, y});
-            if (h != HTCAPTION && h != HTSYSMENU) return false;
-        }
-    return true;
-}
-
-LightsSpot chooseLightsSpot(bool leftFree, bool buttonsFound, bool alwaysLeft) {
-    if (leftFree) return LightsSpot::Left;
-    if (!buttonsFound) return LightsSpot::None;
-    return alwaysLeft ? LightsSpot::Left : LightsSpot::Over;
-}
-
 RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
     if (!zoomed || work.right <= work.left) return frame;
     RECT r{std::max(frame.left, work.left), std::max(frame.top, work.top), std::min(frame.right, work.right),
@@ -102,46 +80,10 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
         const LONG cx = mid + std::lround((i - 1) * kSpacing * k);
         l.circles[i] = RECT{cx - r, cy - r, cx + r, cy + r};
     }
-    l.fade = false;
     l.topGap = zoomed ? 0 : std::min(LONG(std::lround(kTopGap * k)), (buttons.bottom - buttons.top) / 4);
     l.patch = l.window;
     l.patch.top += l.topGap;
     return l;
-}
-
-LightsLayout buttonsCover(const RECT& buttons, UINT dpi, bool zoomed) {
-    LightsLayout l = lightsOverButtons(buttons, dpi, zoomed);
-    l.window = buttons;
-    l.patch = buttons;
-    l.patch.top += l.topGap;
-    l.lights = false;
-    return l;
-}
-
-LightsLayout lightsLayout(const RECT& frame, const RECT& client, UINT dpi) {
-    const double k = (dpi ? dpi : 96) / 96.0;
-    LightsLayout l;
-    LONG titleH = client.top - frame.top;
-    if (titleH < std::lround(kMinTitle * k)) titleH = std::lround(kDefaultTitle * k);
-    const LONG cy = frame.top + titleH / 2;
-    const LONG r = std::lround(kDiameter / 2 * k);
-    l.radius = double(r);
-    for (int i = 0; i < 3; ++i) {
-        const LONG cx = frame.left + std::lround((kFirst + kSpacing * i) * k);
-        l.circles[i] = RECT{cx - r, cy - r, cx + r, cy + r};
-    }
-    const LONG lastCx = (l.circles[2].left + l.circles[2].right) / 2;
-    l.window = RECT{frame.left + 4, frame.top, lastCx + std::lround((kDiameter / 2 + kTail) * k), frame.top + titleH};
-    l.window.right = std::min(l.window.right, frame.right);
-    l.window.bottom = std::min(l.window.bottom, frame.bottom);
-    l.patch = l.window;
-    return l;
-}
-
-LightsLayout lightsLayoutFor(const LightsWindowInfo& w, UINT dpi) {
-    RECT title = w.client;
-    if (w.captionBottom > w.frame.top && w.captionBottom < w.client.top) title.top = w.captionBottom;
-    return lightsLayout(w.frame, title, dpi);
 }
 
 LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]) {
@@ -215,16 +157,14 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
     static constexpr std::uint32_t kFill[3] = {0xE26E65, 0xF0BE5E, 0x68C05D}, kEdge[3] = {0xC4483F, 0xD29C38, 0x3E9C3A};
     const std::uint32_t grayFill = s.dark ? 0x4E4F52 : 0xDDDDDD, grayEdge = s.dark ? 0x3E3F42 : 0xC4C3C6;
     const double border = std::max(0.5 * scale, 0.75), stroke = 1.1 * scale / 2, arm = 2.9 * scale;
-    const double fade = kTail * scale;
     const Rgb patch = rgb(s.patchColor);
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
-            // Fond : couleur de la barre de titre (fondu sur la fin à droite pour des pastilles posées à gauche) ; le
-            // bord du haut reste transparent quand il faut pouvoir y redimensionner la fenêtre.
-            double pa = l.fade ? std::clamp((w - (x + 0.5)) / fade, 0.0, 1.0) : 1.0;
-            if (y < l.topGap || !l.opaque) pa = 0;
+            // Fond : couleur de la barre de titre, qui cache les boutons ; le bord du haut reste transparent quand il
+            // faut pouvoir y redimensionner la fenêtre.
+            const double pa = y < l.topGap ? 0.0 : 1.0;
             double a = pa, r = patch.r * pa, g = patch.g * pa, b = patch.b * pa;   // prémultiplié
-            for (int i = 0; i < 3 && l.lights; ++i) {
+            for (int i = 0; i < 3; ++i) {
                 const double cx = (l.circles[i].left + l.circles[i].right) / 2.0 - l.window.left;
                 const double cy = (l.circles[i].top + l.circles[i].bottom) / 2.0 - l.window.top;
                 if (std::abs(x + 0.5 - cx) > l.radius + 1 || std::abs(y + 0.5 - cy) > l.radius + 1) continue;
@@ -285,7 +225,7 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
 }
 
 std::vector<std::uint8_t> lightsSheet(UINT& w, UINT& h) {
-    const LightsLayout l = lightsLayout(RECT{0, 0, 600, 400}, RECT{16, 62, 584, 384}, 192);
+    const LightsLayout l = lightsOverButtons(RECT{0, 0, 276, 60}, 192, true);   // trois boutons de Windows à 200 %
     const int cw = int(l.window.right - l.window.left), ch = int(l.window.bottom - l.window.top), pad = 24;
     w = UINT(3 * (cw + 2 * pad));
     h = UINT(2 * (ch + 2 * pad));

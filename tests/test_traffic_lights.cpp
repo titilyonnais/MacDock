@@ -17,8 +17,8 @@ md::LightsWindowInfo classic() {
 } // namespace
 
 TEST_CASE(lights_want_classic_and_custom) {
-    // Toutes les fenêtres à barre de titre : la place des pastilles (à gauche, ou sur les boutons de Windows) est
-    // décidée ensuite, d'après ce que la fenêtre répond.
+    // Toutes les fenêtres à barre de titre : les pastilles prennent ensuite la place de leurs boutons, qu'ils soient
+    // de Windows ou dessinés par l'app.
     CHECK(md::wantsLights(classic(), md::LightsMode::Standard, 96));
     auto custom = classic();
     custom.client.top = 101;   // zone client dès le haut : barre de titre dessinée par l'app (Chromium, Electron…)
@@ -54,32 +54,35 @@ TEST_CASE(lights_refuse_special_windows) {
 }
 
 TEST_CASE(lights_layout_points) {
-    // Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre.
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    // Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre, centrées sur les trois boutons de
+    // Windows qu'elles remplacent.
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
     CHECK_NEAR(l.radius, 7.0, 1e-9);
-    CHECK_EQ((l.circles[0].left + l.circles[0].right) / 2, 120L);   // 20 pt du bord
-    CHECK_EQ((l.circles[1].left + l.circles[1].right) / 2, 143L);
-    CHECK_EQ((l.circles[2].left + l.circles[2].right) / 2, 166L);
-    CHECK_EQ((l.circles[0].top + l.circles[0].bottom) / 2, 115L);   // milieu de la barre de 31 px (arrondi)
-    CHECK_EQ(l.window.left, 104L);
-    CHECK_EQ(l.window.top, 100L);
-    CHECK_EQ(l.window.bottom, 131L);
-    CHECK_EQ(l.window.right, 181L);   // 8 pt après la dernière pastille
-    CHECK(l.lights);
-    auto big = md::lightsLayout(RECT{0, 0, 1600, 1200}, RECT{16, 62, 1584, 1184}, 192);
+    CHECK_EQ((l.circles[0].left + l.circles[0].right) / 2, 908L);
+    CHECK_EQ((l.circles[1].left + l.circles[1].right) / 2, 931L);
+    CHECK_EQ((l.circles[2].left + l.circles[2].right) / 2, 954L);
+    CHECK_EQ((l.circles[0].top + l.circles[0].bottom) / 2, 15L);
+    const auto big = md::lightsOverButtons(RECT{1724, 0, 2000, 60}, 192);
     CHECK_NEAR(big.radius, 14.0, 1e-9);
-    CHECK_EQ((big.circles[0].left + big.circles[0].right) / 2, 40L);
-    auto thin = md::lightsLayout(RECT{0, 0, 800, 600}, RECT{0, 0, 800, 600}, 96);   // mode « all » sans barre : 28 pt
-    CHECK_EQ(thin.window.bottom - thin.window.top, 28L);
+    CHECK_EQ((big.circles[2].left + big.circles[2].right) / 2 - (big.circles[0].left + big.circles[0].right) / 2, 92L);
+}
+
+TEST_CASE(lights_layout_on_a_lone_close_button) {
+    // Dialogue avec le seul bouton fermer (46 pt) : le calque s'élargit vers la gauche pour les trois pastilles
+    // (réduire et zoom grisés), sans dépasser le bord droit.
+    const auto l = md::lightsOverButtons(RECT{954, 0, 1000, 30}, 96);
+    CHECK_EQ(l.window.right, 1000L);
+    CHECK_EQ(l.window.left, 924L);   // 2 × 23 + 14 + 2 × 8 pt
+    CHECK(l.circles[0].left >= l.window.left && l.circles[2].right <= l.window.right);
 }
 
 TEST_CASE(lights_hit_and_command) {
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
-    CHECK_EQ(md::hitLight(l, POINT{120, 115}), 0);
-    CHECK_EQ(md::hitLight(l, POINT{151, 115}), 1);   // cercle élargi de 2 px
-    CHECK_EQ(md::hitLight(l, POINT{166, 115}), 2);
-    CHECK_EQ(md::hitLight(l, POINT{131, 115}), -1);  // entre deux pastilles
-    CHECK_EQ(md::hitLight(l, POINT{178, 128}), -1);
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
+    CHECK_EQ(md::hitLight(l, POINT{908, 15}), 0);
+    CHECK_EQ(md::hitLight(l, POINT{939, 15}), 1);   // cercle élargi de 2 px
+    CHECK_EQ(md::hitLight(l, POINT{954, 15}), 2);
+    CHECK_EQ(md::hitLight(l, POINT{919, 15}), -1);  // entre deux pastilles
+    CHECK_EQ(md::hitLight(l, POINT{990, 28}), -1);
     CHECK(md::lightCommand(0, false) == SC_CLOSE);
     CHECK(md::lightCommand(1, false) == SC_MINIMIZE);
     CHECK(md::lightCommand(2, false) == SC_MAXIMIZE);
@@ -103,7 +106,7 @@ TEST_CASE(lights_setting) {
 }
 
 TEST_CASE(lights_render_colors) {
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
     md::LightsState st;
     st.enabled[0] = st.enabled[1] = st.enabled[2] = true;
     st.patchColor = 0xF3F3F3;
@@ -112,24 +115,24 @@ TEST_CASE(lights_render_colors) {
     REQUIRE(px.size() == std::size_t(w * h * 4));
     auto at = [&](LONG x, LONG y) { return &px[(std::size_t(y - l.window.top) * w + (x - l.window.left)) * 4]; };
     // Verre Golden Gate : teintes désaturées, plus claires en haut (reflet) qu'au centre.
-    const std::uint8_t* red = at(120, 116);
+    const std::uint8_t* red = at(908, 16);
     CHECK(red[2] > 200 && red[1] < 130 && red[3] == 255);
-    const std::uint8_t* yellow = at(143, 116);
+    const std::uint8_t* yellow = at(931, 16);
     CHECK(yellow[2] > 200 && yellow[1] > 150 && yellow[0] < 110);
-    const std::uint8_t* green = at(166, 116);
+    const std::uint8_t* green = at(954, 16);
     CHECK(green[1] > 160 && green[2] < 130);
-    CHECK(at(120, 110)[1] > red[1]);   // reflet du haut
-    const std::uint8_t* patch = at(106, 103);   // fond : couleur de la barre de titre, opaque
+    CHECK(at(908, 10)[1] > red[1]);   // reflet du haut
+    const std::uint8_t* patch = at(866, 20);   // fond : couleur de la barre de titre, opaque, qui cache les boutons
     CHECK(patch[3] == 255 && patch[0] == 0xF3);
-    CHECK(at(l.window.right - 1, 103)[3] < at(l.window.right - 8, 103)[3]);   // fondu à droite
+    CHECK_EQ(int(at(866, 1)[3]), 0);   // bord du haut transparent : la fenêtre se redimensionne par là
     st.enabled[1] = false;
     auto gray = md::renderLights(l, st, 1.0);
-    const std::uint8_t* g = &gray[(std::size_t(116 - l.window.top) * w + (143 - l.window.left)) * 4];
+    const std::uint8_t* g = &gray[(std::size_t(16 - l.window.top) * w + (931 - l.window.left)) * 4];
     CHECK(std::abs(int(g[0]) - int(g[2])) < 8);   // gris
 }
 
 TEST_CASE(lights_hover_draws_symbols) {
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 192);
+    const auto l = md::lightsOverButtons(RECT{1724, 0, 2000, 60}, 192);
     md::LightsState st;
     st.enabled[0] = st.enabled[1] = st.enabled[2] = true;
     st.patchColor = 0xF3F3F3;
@@ -140,17 +143,6 @@ TEST_CASE(lights_hover_draws_symbols) {
     UINT w = 0, h = 0;
     auto sheet = md::lightsSheet(w, h);
     CHECK(w > 0 && h > 0 && sheet.size() == std::size_t(w) * h * 4);
-}
-
-TEST_CASE(lights_menu_bar_not_covered) {   // relecture C1 : barre de menus classique sous la barre de titre
-    auto w = classic();
-    w.client.top = 151;                    // 31 px de titre + 20 px de menus
-    w.captionBottom = 131;
-    auto l = md::lightsLayoutFor(w, 96);
-    CHECK_EQ(l.window.bottom, 131L);
-    CHECK_EQ((l.circles[0].top + l.circles[0].bottom) / 2, 115L);
-    w.captionBottom = 0;                   // inconnu : la zone client
-    CHECK_EQ(md::lightsLayoutFor(w, 96).window.bottom, 151L);
 }
 
 TEST_CASE(lights_refuse_elevated) {        // relecture C2 : messages refusés par UIPI
@@ -223,22 +215,11 @@ TEST_CASE(lights_dwm_bounds_clipped_to_visible_frame) {
     CHECK_EQ(b.right, 3839L);
 }
 
-TEST_CASE(lights_left_free_only_over_caption) {
-    // Place des pastilles libre seulement si la fenêtre y répond « légende » (ou icône système) sur toute leur
-    // hauteur : jamais sur des onglets ou des menus dessinés par l'app.
-    const RECT frame{0, 0, 1000, 700};
-    CHECK(md::leftCaptionFree(frame, 31, 96, classicHit));
-    CHECK(!md::leftCaptionFree(frame, 30, 96, chromiumHit));
-    auto menuBelow = [](POINT p) -> LRESULT { return p.y < 12 ? HTCAPTION : HTCLIENT; };
-    CHECK(!md::leftCaptionFree(frame, 31, 96, menuBelow));   // menus de l'app dans la barre (VS Code…)
-}
-
 TEST_CASE(lights_over_windows_buttons) {
-    // Pas de place à gauche : les pastilles prennent la place des boutons de Windows, qu'elles cachent.
+    // Les pastilles prennent la place des boutons de Windows, qu'elles cachent.
     const RECT buttons{862, 0, 1000, 30};
     const auto l = md::lightsOverButtons(buttons, 96);
     CHECK(EqualRect(&l.window, &buttons));
-    CHECK(l.lights);
     const LONG c0 = (l.circles[0].left + l.circles[0].right) / 2, c2 = (l.circles[2].left + l.circles[2].right) / 2;
     CHECK_EQ(c2 - c0, 46L);                                     // 23 pt d'écart
     CHECK(c0 - buttons.left >= 7 && buttons.right - c2 >= 7);   // dans la zone
@@ -256,31 +237,18 @@ TEST_CASE(lights_zoomed_cover_buttons_to_the_top) {
     // menu Snap) les vrais boutons de Windows juste au-dessus des pastilles.
     const RECT buttons{862, 0, 1000, 30};
     CHECK_EQ(md::lightsOverButtons(buttons, 96, true).topGap, 0L);
-    CHECK_EQ(md::buttonsCover(buttons, 96, true).topGap, 0L);
     CHECK(md::lightsOverButtons(buttons, 96).topGap > 0);
 }
 
-TEST_CASE(lights_cover_hides_buttons_without_lights) {
-    // Pastilles à gauche : un cache de la couleur de la barre de titre recouvre les boutons de Windows.
-    const RECT buttons{862, 0, 1000, 30};
-    auto c = md::buttonsCover(buttons, 96);
-    CHECK(!c.lights);
-    md::LightsState st;
-    st.patchColor = 0xF3F3F3;
-    auto px = md::renderLights(c, st, 1.0);
-    const std::uint8_t* mid = &px[(std::size_t(15) * 138 + 69) * 4];
-    CHECK(mid[3] == 255 && mid[0] == 0xF3);
-}
-
 TEST_CASE(lights_pressed_is_darker) {
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
     md::LightsState st;
     st.patchColor = 0xF3F3F3;
     const int w = l.window.right - l.window.left;
     auto normal = md::renderLights(l, st, 1.0);
     st.pressed = 0;
     auto pressed = md::renderLights(l, st, 1.0);
-    const std::size_t i = (std::size_t(116 - l.window.top) * w + (120 - l.window.left)) * 4;
+    const std::size_t i = (std::size_t(16 - l.window.top) * w + (908 - l.window.left)) * 4;
     CHECK(pressed[i + 2] + 20 < normal[i + 2]);   // rouge plus sombre sous le doigt
 }
 
@@ -294,35 +262,4 @@ TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
     CHECK_EQ(f.right, 3840L);
     const RECT normal = md::visibleFrame(RECT{100, 30, 900, 700}, work, false);   // fenêtre déplacée : telle quelle
     CHECK_EQ(normal.top, 30L);
-}
-
-TEST_CASE(lights_spot_always_left_by_default) {
-    // À ta demande : toujours à gauche (les boutons de Windows sont cachés à droite), même quand l'app dessine
-    // des onglets ou des menus à gauche. En « auto », sur les boutons de Windows si la gauche est occupée.
-    CHECK(md::chooseLightsSpot(true, true, true) == md::LightsSpot::Left);
-    CHECK(md::chooseLightsSpot(false, true, true) == md::LightsSpot::Left);
-    CHECK(md::chooseLightsSpot(false, true, false) == md::LightsSpot::Over);
-    CHECK(md::chooseLightsSpot(true, false, false) == md::LightsSpot::Left);
-    CHECK(md::chooseLightsSpot(false, false, true) == md::LightsSpot::None);   // aucun bouton : barre inconnue
-    md::MenuBarSettings s = md::menuBarSettingsFromJson(md::json::Value(md::json::Object{}));
-    CHECK(s.lightsAlwaysLeft);
-    s.lightsAlwaysLeft = false;
-    CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).lightsAlwaysLeft);
-}
-
-TEST_CASE(lights_forced_left_background_passes_clicks) {
-    // Gauche occupée (premier onglet, menu Fichier) : seul ce qui est pastille capte la souris ; ailleurs le calque
-    // est transparent (alpha nul), donc les clics atteignent l'app.
-    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
-    l.opaque = false;
-    md::LightsState st;
-    st.patchColor = 0x404040;
-    const auto px = md::renderLights(l, st, 1.0);
-    const int w = l.window.right - l.window.left;
-    CHECK_EQ(int(px[(std::size_t(2) * w + 2) * 4 + 3]), 0);   // coin : transparent
-    const int cx = (l.circles[0].left + l.circles[0].right) / 2 - l.window.left;
-    const int cy = (l.circles[0].top + l.circles[0].bottom) / 2 - l.window.top;
-    CHECK(int(px[(std::size_t(cy) * w + cx) * 4 + 3]) > 200);   // pastille : opaque
-    md::MenuBarSettings s = md::menuBarSettingsFromJson(*md::json::parse(R"({"trafficLightsSide":"right"})"));
-    CHECK(!s.lightsAlwaysLeft);   // toute valeur autre que « left » : comportement automatique
 }

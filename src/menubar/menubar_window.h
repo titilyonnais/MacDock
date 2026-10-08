@@ -101,6 +101,7 @@ private:
     void removeAppBar(Screen& s);
     void syncAppBar(Screen& s);
     void onForeground(HWND h);
+    void decideDesktopFocus();   // bureau au premier plan sans clic : app suivante, app gardée ou Explorateur
     static void readRealMenus(HWND top, HWND root, Active& a);
     void refreshRealMenu(int real);
     bool syncRealTitles();   // barre Win32 relue (titres) ; true si elle a changé
@@ -175,6 +176,8 @@ private:
 
     TrafficWindow lights_;   // feux tricolores de la fenêtre active
     HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
+    HWND desktopPrevious_ = nullptr;  // bureau au premier plan sans clic : la fenêtre active juste avant (décision différée)
+    bool desktopDecided_ = false;     // le bureau peut s'afficher comme Explorateur (clic dessus, ou décision prise)
     WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)
     WindowTracker tracker_;
     AppModel model_;

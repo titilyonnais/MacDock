@@ -22,4 +22,13 @@ ForegroundKind classifyForeground(std::wstring_view className, std::wstring_view
     return ForegroundKind::App;
 }
 
+DesktopFocus desktopFocus(const DesktopFocusContext& c) {
+    if (c.clickedDesktop) return DesktopFocus::ShowExplorer;
+    if (c.previousGone || c.previousMinimized) {
+        if (c.otherWindowVisible) return DesktopFocus::ActivateNext;
+        return c.previousMinimized ? DesktopFocus::KeepPrevious : DesktopFocus::ShowExplorer;
+    }
+    return DesktopFocus::ShowExplorer;
+}
+
 } // namespace md
