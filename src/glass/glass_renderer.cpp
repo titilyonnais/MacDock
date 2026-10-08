@@ -30,6 +30,9 @@ struct GlassCb {
     float tint, saturation, shadowBlur, shadowOffset;
     float scale, dark, targetSize[2];
     float maxMip, opacity, hairline, pad;
+    float count, merge, light[2];   // v2 : formes fusionnées, lumière
+    float rects[8][4];
+    float radii[8];
 };
 static_assert(sizeof(GlassCb) % 16 == 0);
 } // namespace
@@ -195,9 +198,52 @@ bool GlassRenderer::render(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* b
     ctx->PSSetConstantBuffers(1, 1, glassCb_.GetAddressOf());
     ID3D11ShaderResourceView* srvs[2] = {blurB_.srv.Get(), lutSrv_.Get()};
     ctx->PSSetShaderResources(0, 2, srvs);
-    for (const GlassShape& s : shapes) {
+    // Lumière des reflets (vers où elle va), normalisée ; nulle : d'en haut, le rendu calé sur macOS.
+    float lx = p.lightX, ly = p.lightY;
+    const float ll = std::sqrt(lx * lx + ly * ly);
+    if (ll < 1e-4f) {
+        lx = 0;
+        ly = 1;
+    } else {
+        lx /= ll;
+        ly /= ll;
+    }
+    // v2 : formes fusionnées (Liquid Glass) — un seul passage pour toutes, distance adoucie entre elles.
+    std::vector<GlassShape> merged;
+    if (p.merge > 0)
+        for (const GlassShape& s : shapes)
+            if (s.right > s.left && s.bottom > s.top && s.opacity > 0 && merged.size() < 8) merged.push_back(s);
+    const bool unite = merged.size() >= 2;
+    GlassShape bounds{};
+    if (unite) {
+        bounds = merged.front();
+        for (const GlassShape& s : merged) {
+            bounds.left = std::min(bounds.left, s.left);
+            bounds.top = std::min(bounds.top, s.top);
+            bounds.right = std::max(bounds.right, s.right);
+            bounds.bottom = std::max(bounds.bottom, s.bottom);
+            bounds.strength = std::max(bounds.strength, s.strength);
+            bounds.shadowOpacity = std::max(bounds.shadowOpacity, s.shadowOpacity);
+            bounds.opacity = std::max(bounds.opacity, s.opacity);
+        }
+    }
+    const std::span<const GlassShape> drawn = unite ? std::span<const GlassShape>(&bounds, 1) : shapes;
+    for (const GlassShape& s : drawn) {
         if (!(s.right > s.left) || !(s.bottom > s.top) || s.opacity <= 0) continue;
         GlassCb c{};
+        c.light[0] = lx;
+        c.light[1] = ly;
+        if (unite) {
+            c.count = float(merged.size());
+            c.merge = p.merge;
+            for (std::size_t k = 0; k < merged.size(); ++k) {
+                c.rects[k][0] = merged[k].left;
+                c.rects[k][1] = merged[k].top;
+                c.rects[k][2] = merged[k].right;
+                c.rects[k][3] = merged[k].bottom;
+                c.radii[k] = merged[k].radius;
+            }
+        }
         c.shapeRect[0] = s.left;
         c.shapeRect[1] = s.top;
         c.shapeRect[2] = s.right;
@@ -223,7 +269,7 @@ bool GlassRenderer::render(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* b
         c.opacity = s.opacity;
         c.hairline = p.hairline;
         setConstants(ctx, glassCb_.Get(), c);
-        float margin = s.shadowOpacity > 0 ? 3 * p.shadowBlurPx + p.shadowOffsetPx : 2;
+        float margin = (s.shadowOpacity > 0 ? 3 * p.shadowBlurPx + p.shadowOffsetPx : 2) + (unite ? p.merge : 0);
         drawQuad(ctx, std::max(0.0f, s.left - margin), std::max(0.0f, s.top - margin),
                  std::min(float(w), s.right + margin), std::min(float(h), s.bottom + margin), w, h);
     }

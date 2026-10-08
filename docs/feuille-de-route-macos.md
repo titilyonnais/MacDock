@@ -20,6 +20,8 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Sons système originaux** : capture, Corbeille vidée, « poof », « pop » du volume (plan 32).
 - **Touche ⌘** (option) : Alt de gauche joue ⌘, raccourcis du Finder dans l'Explorateur (plan 33).
 - **Centre de notifications** : date, calendrier du mois, lecture en cours, au clic sur l'horloge (plan 34).
+- **Menus, Spotlight et pastille visibles sur les captures** (plans 35 et 36).
+- **Moteur Liquid Glass v2** (formes qui fusionnent, lumière réglable) **et moteur d'animations** (ressorts SwiftUI, courbes Core Animation) (plan 37).
 
 ## À faire, par ordre d'effet
 1. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.

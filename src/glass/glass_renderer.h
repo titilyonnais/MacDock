@@ -23,6 +23,10 @@ struct GlassParams {
     float tint = 0.10f, saturation = 1.5f;
     float hairline = 0;             // fil sombre au bord (menus et panneaux)
     float shadowBlurPx = 36, shadowOffsetPx = 4;
+    // v2 : formes qui fusionnent en douceur quand elles se rapprochent (pixels ; 0 = chacune seule, au plus 8 formes),
+    // et direction de la lumière des reflets (vers où elle va ; (0, 1) = d'en haut, le rendu calé sur macOS).
+    float merge = 0;
+    float lightX = 0, lightY = 1;
     bool backdropIsScRgb = false;
     float sdrWhiteScale = 1;        // HDR : valeur scRGB du blanc SDR
 };

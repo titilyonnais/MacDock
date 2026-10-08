@@ -22,6 +22,12 @@ cbuffer Glass : register(b1) {
     float opacity;        // fondu de la forme (infobulle)
     float hairline;       // fil sombre au bord (menus et panneaux), 0 à 1
     float pad1;
+    // v2 : plusieurs formes qui fusionnent en douceur (Liquid Glass), et lumière des reflets.
+    float count;          // < 2 : forme seule (shapeRect, radius) ; 2 à 8 : formes rects/radii
+    float merge;          // portée de la fusion (pixels) ; 0 : formes séparées
+    float2 light;         // direction de la lumière (normalisée ; (0, 1) : d'en haut)
+    float4 rects[8];
+    float4 radii[2];
 };
 Texture2D blurTex : register(t0);
 Texture2D<float> cornerLut : register(t1);   // champ de distance d'un coin de rayon 1 sur [-2, 2]²
@@ -34,17 +40,39 @@ struct VSOut {
 
 static const float3 kLuma = float3(0.2126, 0.7152, 0.0722);
 
-float sdShape(float2 p) {
-    float2 size = shapeRect.zw - shapeRect.xy;
-    float2 lp = p - shapeRect.xy;
-    if (radius <= 1e-3) {
+// Distance signée à un rectangle à coins continus (négative dedans).
+float sdRect(float2 p, float4 rect, float r) {
+    float2 size = rect.zw - rect.xy;
+    float2 lp = p - rect.xy;
+    if (r <= 1e-3) {
         float2 d = abs(lp - size / 2) - size / 2;
         return length(max(d, 0)) + min(max(d.x, d.y), 0);
     }
-    float2 q = float2(min(lp.x, size.x - lp.x), min(lp.y, size.y - lp.y)) / radius;
-    if (all(q >= -2) && all(q <= 2)) return cornerLut.SampleLevel(lin, (q + 2) / 4, 0) * radius;
-    if (all(q >= 0)) return -min(q.x, q.y) * radius;
-    return length(max(-q, 0)) * radius;
+    float2 q = float2(min(lp.x, size.x - lp.x), min(lp.y, size.y - lp.y)) / r;
+    if (all(q >= -2) && all(q <= 2)) return cornerLut.SampleLevel(lin, (q + 2) / 4, 0) * r;
+    if (all(q >= 0)) return -min(q.x, q.y) * r;
+    return length(max(-q, 0)) * r;
+}
+
+// Minimum adouci : deux gouttes de verre proches se rejoignent par un pont arrondi (portée k).
+float smin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+float sdShape(float2 p) {
+    float d = 1e9;
+    if (count < 1.5) {
+        d = sdRect(p, shapeRect, radius);
+    } else {
+        const uint n = (uint)count;
+        [loop] for (uint i = 0; i < 8; ++i) {
+            if (i >= n) break;
+            const float di = sdRect(p, rects[i], radii[i >> 2][i & 3]);
+            d = i == 0 ? di : (merge > 0 ? smin(d, di, 2 * merge) : min(d, di));
+        }
+    }
+    return d;
 }
 
 float3 sampleBlur(float2 p) { return blurTex.SampleLevel(lin, p / targetSize, 0).rgb; }
@@ -94,7 +122,8 @@ float4 main(VSOut i) : SV_Target {
     float w = max(1.0, 0.5 * scale);
     float edge = saturate(1.25 - (-d) / w);
     col = lerp(col, 0.0.xxx, hairline * edge);
-    col = lerp(col, 1.0.xxx, saturate(specular * strength * (0.8 - 0.2 * n.y)) * edge);
+    // Reflet du liseré : plus vif face à la lumière (d'en haut par défaut : 1 en haut, 0,8 sur les côtés, 0,6 en bas).
+    col = lerp(col, 1.0.xxx, saturate(specular * strength * (0.8 + 0.2 * dot(n, -light))) * edge);
     col = saturate(col);
 
     float4 glass = float4(col * cov, cov);
