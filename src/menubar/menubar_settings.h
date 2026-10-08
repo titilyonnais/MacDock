@@ -24,6 +24,7 @@ struct MenuBarSettings {
     bool showNetwork = true;    // Wi-Fi (masqué sans carte Wi-Fi)
     bool showBattery = true;    // masqué sans batterie
     bool showSearch = true;
+    bool volumeFeedback = true;   // « pop » quand le volume change au clavier, comme sur macOS
     bool hud = true;            // pastille du volume et de la luminosité ; reprend les touches de volume
     bool showAppIcons = true;   // icônes des autres apps (relayées par le mod Windhawk)
     LightsMode trafficLights = LightsMode::Standard;   // pastilles fermer, réduire, zoom de la fenêtre active

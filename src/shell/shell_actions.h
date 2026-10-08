@@ -42,6 +42,7 @@ bool moveInto(const std::vector<std::wstring>& paths, const std::wstring& folder
 std::wstring quoteArguments(const std::vector<std::wstring>& paths);             // "a" "b"
 
 bool recycleBinHasItems();
-void emptyRecycleBin(HWND owner);   // avec la confirmation de l'Explorateur
+// Avec la confirmation de l'Explorateur ; quiet : sans le son de Windows (le nôtre le remplace). true : vidée.
+bool emptyRecycleBin(HWND owner, bool quiet = false);
 
 } // namespace md

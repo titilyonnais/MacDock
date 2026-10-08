@@ -515,6 +515,16 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - un raccourci refusé n'est pas retenté avant le prochain changement de réglage ;
   - `Ctrl+Alt+↓` prend « Ajouter un curseur en dessous » de VS Code, et `ctrl+down` la navigation d'Excel et de Word : choisis `off` si besoin.
 
+### Plan 32 — Sons système originaux
+
+- **Quatre sons, synthétisés par MacDock** (aucun son d'Apple) : brefs (0,6 s au plus), doux (moitié de la pleine échelle au plus), sans déclic au début ni à la fin. Ils sont identiques d'une fois à l'autre.
+  - **Capture d'écran** : un déclic d'appareil photo (miroir, puis obturateur).
+  - **Corbeille vidée depuis le Dock** : un froissement de papier, qui remplace le son de Windows.
+  - **Nuage « poof »** quand une icône quitte le Dock : un souffle.
+  - **Volume réglé au clavier** : un « pop » bref, au nouveau volume, comme sur macOS (pas pour la sourdine).
+- **Réglages** : `"sounds": false` dans `settings.json`, `"volumeFeedback": false` dans `menubar.json`.
+- **Vérifié** : format WAV, durée, volume plafonné et fondus, par les tests. **Pas entendu** : je suis à distance, et je n'ai pas vidé ta Corbeille pour l'essayer.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

@@ -73,6 +73,12 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
     - Un glisser ailleurs dépose le fichier dans une autre app (Explorateur, message, document).
   - Ajoute Ctrl (`⊞⌃⇧3`, `⊞⌃⇧4`) pour copier l'image dans le presse-papiers, sans fichier.
   - `"screenshots": false` dans `settings.json` rend ces raccourcis à Windows.
+- **Sons système**, tous originaux (synthétisés par MacDock, aucun son d'Apple) :
+  - un déclic d'appareil photo pour les captures ;
+  - un froissement quand la Corbeille est vidée depuis le Dock ;
+  - un souffle pour le nuage « poof » ;
+  - un « pop » bref quand tu changes le volume au clavier.
+  - `"sounds": false` (`settings.json`) et `"volumeFeedback": false` (`menubar.json`) les coupent.
 - **Coins actifs** : pousse le pointeur dans un coin de l'écran pour lancer une action, comme sur macOS. Aucun coin n'agit par défaut : choisis-les dans `settings.json` (`hotCorners`, par exemple `"hotCorners": {"bottomLeft": "missionControl"}`) parmi Mission Control, bureau (un second passage rétablit les fenêtres), Apps, Centre de notifications, verrouillage, veille de l'écran, économiseur. La veille de l'écran et l'économiseur attendent une seconde, le temps que ta main s'arrête. L'action part une fois à l'arrivée dans le coin ; il faut s'en éloigner un peu pour la relancer. Rien ne se passe pendant un glisser, quand l'écran du coin est en plein écran (jeu, vidéo, présentation), ou dans un coin collé à un autre écran.
 - **Clic sur une pile** (Téléchargements…) : son contenu s'ouvre comme sur macOS, en **éventail** (icônes en arc au-dessus de la pile, nom à gauche) jusqu'à 9 éléments, en **grille** de verre au-delà (molette pour défiler), ou en **liste** (menu en verre, sous-dossiers en sous-menus) si tu la choisis. Un clic ouvre l'élément ; *Ouvrir dans l'Explorateur* ouvre le dossier ; Échap ou un clic à côté referme. Dans le Dock, l'icône d'une pile montre ses derniers fichiers empilés (ou l'icône du dossier, au choix), et se met à jour en direct.
 - **Clic droit** : menus en verre, comme sur macOS.
