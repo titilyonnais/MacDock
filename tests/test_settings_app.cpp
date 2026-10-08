@@ -83,6 +83,9 @@ TEST_CASE(settings_panes_list_and_keys) {
     CHECK(!md::paneFromKey("nope").has_value());
     CHECK(md::paneInfo(md::PaneId::Dock).ready);
     CHECK(!md::paneInfo(md::PaneId::Mods).ready);   // plan 42
+    int total = 0;   // les groupes de la barre latérale couvrent toutes les sections
+    for (int n : md::sidebarGroups()) total += n;
+    CHECK_EQ(std::size_t(total), md::paneList().size());
 }
 
 TEST_CASE(settings_panes_rows_roundtrip) {
@@ -317,4 +320,50 @@ TEST_CASE(ui_draw_every_pane_tile) {
         }
     }
     CoUninitialize();
+}
+
+TEST_CASE(settings_commit_never_overwrites_an_invalid_file) {
+    // Relecture C1 : un settings.json invalide (virgule en trop, écrit à la main) ne doit pas devenir un fichier presque
+    // vide, sinon le Dock repart des défauts et réimporte ses épingles : tout serait perdu.
+    const std::wstring dir = tempDir(L"invalid");
+    const std::string broken = "{\"tileSize\": 64, \"pinned\": [],}";
+    HANDLE f = CreateFileW((dir + L"\\settings.json").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    DWORD written = 0;
+    WriteFile(f, broken.data(), DWORD(broken.size()), &written, nullptr);
+    CloseHandle(f);
+    md::ModelFiles status;
+    md::loadModel(dir, &status);
+    CHECK(status.dockInvalid);
+    CHECK(!md::commit(dir, [](md::SettingsModel& m) { m.dock.autohide = true; }));
+    // Le fichier n'a pas été remplacé (le .bak éventuel du chargement mis à part).
+    HANDLE r = CreateFileW((dir + L"\\settings.json").c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    char buf[256] = {};
+    DWORD read = 0;
+    ReadFile(r, buf, sizeof buf - 1, &read, nullptr);
+    CloseHandle(r);
+    CHECK(std::string(buf, read) == broken);
+    // La barre, elle, s'écrit normalement.
+    CHECK(md::commit(dir, [](md::SettingsModel& m) { m.bar.autohide = true; }));
+}
+
+TEST_CASE(settings_commit_removes_a_key_set_back_to_default) {
+    // Relecture I1 : « Écran principal » retire la clé screen ; sans cela le Dock reste sur l'écran 2.
+    const std::wstring dir = tempDir(L"erase");
+    md::saveJsonFileAtomic(dir + L"\\settings.json", *md::json::parse(R"({"version":2,"screen":"DISPLAY2","futureKey":1})"));
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.dock.screen.clear(); }));
+    const md::json::Value f = readFile(dir + L"\\settings.json");
+    CHECK(!f.find("screen"));
+    CHECK(f.find("futureKey"));   // les clés inconnues restent
+    CHECK(md::loadModel(dir).dock.screen.empty());
+}
+
+TEST_CASE(settings_commit_migrates_a_v1_file) {
+    // Relecture M1 : un fichier v1 (sans version) est migré avant la fusion ; sinon le Dock le migrerait encore à la
+    // lecture et ramènerait à 80 une taille agrandie de 128 choisie dans l'app.
+    const std::wstring dir = tempDir(L"v1");
+    md::saveJsonFileAtomic(dir + L"\\settings.json", *md::json::parse(R"({"largeSize":100,"tileSize":48})"));
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.dock.largeSize = 128; }));
+    const md::json::Value f = readFile(dir + L"\\settings.json");
+    CHECK(f.find("version") && f.find("version")->asNumber(0) == 2);
+    CHECK_NEAR(md::loadModel(dir).dock.largeSize, 128.0, 1e-9);
 }

@@ -59,6 +59,10 @@ private:
     void computeGeometry(ui::Painter& p, float w);
 
     void selectPane(PaneId pane);
+    void endPress();                // glisser ou appui terminé (curseur écrit une fois), capture rendue
+    void recreateGraphics();        // périphérique perdu (pilote mis à jour, TDR) : tout est refait
+    void reportWrite(bool ok);      // écriture ratée : le modèle reprend ce que disent les fichiers, et on le dit
+    void updateProblem();           // message si un fichier de réglages est invalide ou illisible
     void rebuildRows();             // lignes de la section, ressorts recalés sur le modèle
     void reloadModel();             // fichiers changés ailleurs
     void setValue(int index, double value, bool commitNow = true);
@@ -81,7 +85,7 @@ private:
     float widthPt() const;
     float heightPt() const;
     void onMouseDown(float x, float y);
-    void onMouseMove(float x, float y);
+    void onMouseMove(float x, float y, bool buttonDown);
     void onMouseUp(float x, float y);
     bool onKey(WPARAM key);
 
@@ -92,6 +96,9 @@ private:
     bool dark_ = false, active_ = true;
 
     SettingsModel model_;
+    ModelFiles files_;              // fichiers invalides ou illisibles : jamais réécrits
+    std::wstring problem_;          // affiché dans la zone de titre
+    bool reloadPending_ = false;    // fichiers changés pendant un glisser : relus à la fin
     PaneEnv env_;
     PaneId pane_ = PaneId::Dock;
     std::vector<GroupSpec> groups_;

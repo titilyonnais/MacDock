@@ -45,7 +45,7 @@ constexpr float switchWidth = 32, switchHeight = 18;
 constexpr float sliderWidth = 220, knob = 20, sliderTrack = 4;
 constexpr float popupHeight = 22, segmentHeight = 22, segmentPadding = 14;
 constexpr float menuItem = 22, menuPadding = 6, menuRadius = 10;
-constexpr float fontBody = 13, fontDetail = 11, fontTitle = 17, fontGroupTitle = 13;
+constexpr float fontBody = 13, fontDetail = 11, fontGroupTitle = 13;
 constexpr float bottomPadding = 24;
 }  // namespace metrics
 

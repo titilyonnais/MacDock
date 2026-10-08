@@ -33,6 +33,17 @@ Value& Value::set(std::string key, Value v) {
     return o.back().second;
 }
 
+bool Value::erase(std::string_view key) {
+    if (!isObject()) return false;
+    auto& o = std::get<Object>(v_);
+    for (auto it = o.begin(); it != o.end(); ++it)
+        if (it->first == key) {
+            o.erase(it);
+            return true;
+        }
+    return false;
+}
+
 Value& Value::push(Value v) {
     if (!isArray()) v_ = Array{};
     auto& a = std::get<Array>(v_);

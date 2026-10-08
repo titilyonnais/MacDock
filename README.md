@@ -207,6 +207,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacMenuBar.exe --lights-snapshot planche.png` : les feux tricolores (clair, sombre ; normal, survol, indisponible) dans une image, sans rien afficher.
 - `MacMenuBar.exe --hud-snapshot hud.png [--kind volume|brightness] [--level 0.5] [--muted] [--theme light|dark]` : la pastille du volume ou de la luminosité dans une image, sans rien afficher ni régler.
 - `MacMenuBar.exe --quit` : ferme la barre seule.
+- `MacDockSettings.exe --pane dock` : ouvre l'app Réglages sur une section (`general`, `dock`, `menubar`, `windows`, `desktop`, `keyboard`, `screenshots`, `sounds`, `font`, `mods`, `about`) ; `--data <dossier>` lui fait lire et écrire un autre dossier de réglages (essais).
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
 ## Note

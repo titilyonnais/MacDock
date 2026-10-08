@@ -1,6 +1,7 @@
 #include "settings_window.h"
 
 #include <dwmapi.h>
+#include <shellscalingapi.h>
 #include <wincodec.h>
 #include <windowsx.h>
 
@@ -22,7 +23,6 @@ constexpr UINT_PTR kAnimTimer = 1, kReloadTimer = 2, kCommitTimer = 3;
 constexpr ULONGLONG kCommitEveryMs = 120;            // curseur tiré : une écriture au plus toutes les 120 ms
 constexpr float kLightsX = 20, kLightsY = 20;        // premier centre des pastilles
 constexpr D2D1_RECT_F kSearch{10, 46, mt::sidebarWidth - 10, 46 + mt::searchHeight};
-const std::vector<int> kSidebarGroups{1, 4, 4, 2};   // Général | Dock… Bureau | Clavier… Police | Mods, À propos
 
 bool appsDark() {
     // MACDOCK_SETTINGS_THEME=light|dark (essais) : sinon le mode des applications de Windows.
@@ -58,9 +58,10 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     dir_ = dataDir;
     pane_ = pane;
     dark_ = appsDark();
-    model_ = loadModel(dir_);
+    model_ = loadModel(dir_, &files_);
+    updateProblem();
     buildEnv();
-    sidebarTops_ = ui::sidebarRowTops(kSidebarGroups);
+    sidebarTops_ = ui::sidebarRowTops(sidebarGroups());
     DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwrite_.GetAddressOf()));
     font_ = ui::interfaceFont(dwrite_.Get());
     icon_ = makeSettingsIcon(GetSystemMetrics(SM_CXICON) * 2);
@@ -83,10 +84,7 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     MONITORINFO mi{sizeof mi};
     GetMonitorInfoW(mon, &mi);
     UINT dpi = 96, dpiY = 96;
-    if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
-        using GetDpi = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
-        if (auto f = reinterpret_cast<GetDpi>(GetProcAddress(shcore, "GetDpiForMonitor"))) f(mon, 0, &dpi, &dpiY);
-    }
+    GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpi, &dpiY);
     scale_ = float(dpi) / 96.f;
     const int w = int(std::lround(mt::windowWidth * scale_)), h = int(std::lround(mt::defaultHeight * scale_));
     const RECT& wa = mi.rcWork;
@@ -220,11 +218,23 @@ void SettingsWindow::render() {
         }
     }
     const HRESULT hr = dc_->EndDraw();
-    swap_->Present(1, 0);
-    if (hr == D2DERR_RECREATE_TARGET) {
-        releaseTarget();
-        createTarget();
-    }
+    const HRESULT shown = swap_->Present(1, 0);
+    if (hr == D2DERR_RECREATE_TARGET || shown == DXGI_ERROR_DEVICE_REMOVED || shown == DXGI_ERROR_DEVICE_RESET) recreateGraphics();
+}
+
+void SettingsWindow::recreateGraphics() {
+    releaseTarget();
+    target_.Reset();
+    dc_.Reset();
+    d2dDevice_.Reset();
+    d2d_.Reset();
+    swap_.Reset();
+    visual_.Reset();
+    dcompTarget_.Reset();
+    dcomp_.Reset();
+    d3d_.Reset();
+    if (!initGraphics()) log::error(L"Réglages : graphismes impossibles à refaire");
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 // ---- Barre latérale ----
@@ -368,6 +378,9 @@ void SettingsWindow::drawContent(ui::Painter& p, float w, float h) {
     // Zone de titre : le nom de la section ; un trait dessous quand le contenu défile sous elle.
     p.text(info.title, D2D1::RectF(mt::sidebarWidth + mt::contentMargin, 0, w - mt::contentMargin, mt::titleBar - 6), 15, pal.text,
            DWRITE_FONT_WEIGHT_SEMI_BOLD);
+    if (!problem_.empty())
+        p.text(problem_, D2D1::RectF(mt::sidebarWidth + 120, 0, w - mt::contentMargin, mt::titleBar - 6), mt::fontDetail,
+               ui::rgb(dark_ ? 0xFF4245 : 0xFF383C), DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_TRAILING);
     if (scroll_ > 0.5f)
         p.rt()->DrawLine(D2D1::Point2F(mt::sidebarWidth, mt::titleBar), D2D1::Point2F(w, mt::titleBar), p.brush(pal.separator), 1);
     // Barre de défilement superposée, fine, qui s'efface.
@@ -412,11 +425,14 @@ void SettingsWindow::buildEnv() {
 }
 
 void SettingsWindow::selectPane(PaneId pane) {
+    endPress();
     pane_ = pane;
     scroll_ = 0;
     focus_ = -1;
+    hoverRow_ = -1;
     menu_.reset();
     rebuildRows();
+    geoms_.clear();   // refaites à la prochaine image : aucun indice de l'ancienne section
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -443,8 +459,52 @@ void SettingsWindow::rebuildRows() {
     }
 }
 
+void SettingsWindow::updateProblem() {
+    if (files_.dockInvalid || files_.barInvalid)
+        problem_ = files_.dockInvalid ? L"settings.json est invalide : il ne sera pas modifié"
+                                      : L"menubar.json est invalide : il ne sera pas modifié";
+    else
+        problem_.clear();
+}
+
+void SettingsWindow::reportWrite(bool ok) {
+    if (ok) {
+        updateProblem();
+        return;
+    }
+    model_ = loadModel(dir_, &files_);   // l'écran montre ce qui est vraiment enregistré
+    updateProblem();
+    if (problem_.empty()) problem_ = L"Écriture impossible dans le dossier des réglages";
+    for (std::size_t i = 0; i < rows_.size(); ++i)
+        if (spec(int(i)).kind == RowKind::Switch) springs_[i].setTarget(valueOf(int(i)));
+    animate();
+    log::warn(L"Réglages : %s", problem_.c_str());
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void SettingsWindow::endPress() {
+    if (hwnd_) KillTimer(hwnd_, kCommitTimer);
+    const int row = pressedRow_;
+    const bool dragging = draggingSlider_;
+    pressedRow_ = -1;
+    draggingSlider_ = false;
+    lightsPressed_ = -1;
+    pending_.reset();
+    if (dragging && row >= 0 && row < int(rows_.size())) {   // dernière valeur du curseur, écrite une fois
+        const RowSpec& s = spec(row);
+        const double v = valueOf(row);
+        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_));
+    }
+    if (hwnd_ && GetCapture() == hwnd_) ReleaseCapture();
+    if (reloadPending_) {
+        reloadPending_ = false;
+        reloadModel();
+    }
+}
+
 void SettingsWindow::reloadModel() {
-    model_ = loadModel(dir_);
+    model_ = loadModel(dir_, &files_);
+    updateProblem();
     for (std::size_t i = 0; i < rows_.size(); ++i)
         if (spec(int(i)).kind == RowKind::Switch) springs_[i].setTarget(valueOf(int(i)));
     animate();
@@ -478,8 +538,7 @@ void SettingsWindow::setValue(int index, double value, bool commitNow) {
     }
     if (commitNow) {
         pending_.reset();
-        if (!commit(dir_, [&](SettingsModel& m) { s.set(m, value); }, &model_))
-            log::warn(L"Réglages : écriture impossible dans %s", dir_.c_str());
+        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, value); }, &model_));
         lastCommit_ = GetTickCount64();
     } else {
         pending_ = value;
@@ -491,14 +550,14 @@ void SettingsWindow::setValue(int index, double value, bool commitNow) {
 
 void SettingsWindow::commitPending() {
     KillTimer(hwnd_, kCommitTimer);
-    if (!pending_ || pressedRow_ < 0) {
+    if (!pending_ || pressedRow_ < 0 || pressedRow_ >= int(rows_.size())) {
         pending_.reset();
         return;
     }
     const double v = *pending_;
     const RowSpec& s = spec(pressedRow_);
     pending_.reset();
-    commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_);
+    reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_));
     lastCommit_ = GetTickCount64();
 }
 
@@ -572,7 +631,7 @@ POINT SettingsWindow::toPoints(LPARAM lp) const {
 
 int SettingsWindow::controlAt(float x, float y) const {
     if (!paneInfo(pane_).ready || y < mt::titleBar) return -1;
-    for (std::size_t i = 0; i < geoms_.size(); ++i) {
+    for (std::size_t i = 0; i < geoms_.size() && i < rows_.size(); ++i) {
         const Geom& g = geoms_[i];
         if (spec(int(i)).kind == RowKind::Info) continue;
         D2D1_RECT_F hit = g.control;
@@ -649,12 +708,16 @@ void SettingsWindow::onMouseDown(float x, float y) {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
-void SettingsWindow::onMouseMove(float x, float y) {
+void SettingsWindow::onMouseMove(float x, float y, bool buttonDown) {
     if (!tracking_) {
         TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, hwnd_, 0};
         tracking_ = TrackMouseEvent(&t) != FALSE;
     }
-    if (draggingSlider_ && pressedRow_ >= 0) {
+    if (draggingSlider_ && (!buttonDown || pressedRow_ < 0 || pressedRow_ >= int(geoms_.size()))) {
+        endPress();   // bouton relâché sans que l'on ait vu WM_LBUTTONUP : le glisser s'arrête là
+        return;
+    }
+    if (draggingSlider_) {
         const RowSpec& s = spec(pressedRow_);
         const Geom& g = geoms_[std::size_t(pressedRow_)];
         const double v = ui::sliderValueAt(x, s.min, s.max, s.step, g.trackLeft, g.trackRight);
@@ -681,18 +744,26 @@ void SettingsWindow::onMouseMove(float x, float y) {
 }
 
 void SettingsWindow::onMouseUp(float x, float y) {
+    // L'état est lu avant ReleaseCapture : WM_CAPTURECHANGED (endPress) le remettrait à zéro.
+    const int pressed = pressedRow_;
+    const int light = lightsPressed_;
+    if (draggingSlider_) {   // curseur : la dernière valeur, écrite une fois
+        endPress();
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+    }
+    pressedRow_ = -1;
+    lightsPressed_ = -1;
     ReleaseCapture();
-    if (pressedRow_ == -2 && menu_) {   // menu : l'élément sous le doigt
+    if (pressed == -2 && menu_) {   // menu : l'élément sous le doigt
         const int item = inside(menu_->rect, x, y)
                              ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
                              : -1;
-        pressedRow_ = -1;
         if (item >= 0) chooseMenu(item);
         return;
     }
-    if (lightsPressed_ >= 0) {
-        const int l = lightsPressed_;
-        lightsPressed_ = -1;
+    if (light >= 0) {
+        const int l = light;
         if (lightAt(x, y) == l) {
             if (l == 0) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
             else ShowWindow(hwnd_, SW_MINIMIZE);
@@ -700,21 +771,8 @@ void SettingsWindow::onMouseUp(float x, float y) {
         InvalidateRect(hwnd_, nullptr, FALSE);
         return;
     }
-    const int i = pressedRow_;
-    pressedRow_ = -1;
-    if (draggingSlider_) {
-        draggingSlider_ = false;
-        pressedRow_ = i;
-        commitPending();
-        pressedRow_ = -1;
-        // Dernière valeur écrite telle quelle (le curseur peut s'être arrêté entre deux écritures).
-        if (i >= 0) {
-            const double v = valueOf(i);
-            commit(dir_, [&](SettingsModel& m) { spec(i).set(m, v); }, &model_);
-        }
-    } else if (i >= 0 && spec(i).kind == RowKind::Switch && controlAt(x, y) == i) {
-        setValue(i, valueOf(i) >= 0.5 ? 0 : 1);
-    }
+    if (pressed >= 0 && pressed < int(rows_.size()) && spec(pressed).kind == RowKind::Switch && controlAt(x, y) == pressed)
+        setValue(pressed, valueOf(pressed) >= 0.5 ? 0 : 1);
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -803,7 +861,7 @@ LRESULT CALLBACK SettingsWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
-    if (msg == paneMessage()) {   // seconde ouverture : la section demandée, au premier plan
+    if (msg == paneMessage()) {   // seconde ouverture : la section demandée (sinon celle affichée), au premier plan
         if (wp < paneList().size()) selectPane(paneList()[wp].id);
         if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
         SetForegroundWindow(hwnd_);
@@ -859,7 +917,10 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ERASEBKGND: return 1;
         case WM_ACTIVATE:
             active_ = LOWORD(wp) != WA_INACTIVE;
-            if (!active_) menu_.reset();
+            if (!active_) {
+                endPress();
+                menu_.reset();
+            }
             InvalidateRect(hwnd_, nullptr, FALSE);
             break;
         case WM_SETTINGCHANGE:
@@ -869,8 +930,11 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         case WM_DISPLAYCHANGE:
+            endPress();
+            menu_.reset();
             buildEnv();
             rebuildRows();
+            geoms_.clear();
             InvalidateRect(hwnd_, nullptr, FALSE);
             break;
         case WM_LBUTTONDOWN:
@@ -881,9 +945,17 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_MOUSEMOVE: {
             const POINT p = toPoints(lp);
-            onMouseMove(float(p.x), float(p.y));
+            onMouseMove(float(p.x), float(p.y), (wp & MK_LBUTTON) != 0);
             return 0;
         }
+        case WM_CAPTURECHANGED:   // Win, Alt+Tab, une invite UAC… : l'appui ou le glisser s'arrête
+            if (reinterpret_cast<HWND>(lp) != hwnd_) endPress();
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return 0;
+        case WM_CANCELMODE:
+            endPress();
+            menu_.reset();
+            break;
         case WM_LBUTTONUP: {
             const POINT p = toPoints(lp);
             onMouseUp(float(p.x), float(p.y));
@@ -922,7 +994,8 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 render();
             } else if (wp == kReloadTimer) {
                 KillTimer(hwnd_, kReloadTimer);
-                if (!draggingSlider_) reloadModel();
+                if (draggingSlider_) reloadPending_ = true;   // relus à la fin du glisser
+                else reloadModel();
             } else if (wp == kCommitTimer) {
                 commitPending();
             }

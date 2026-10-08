@@ -24,6 +24,9 @@ struct PaneInfo {
     bool ready;              // false : « Bientôt » (sections du plan 42)
 };
 const std::vector<PaneInfo>& paneList();   // ordre de la barre latérale
+// Groupes de la barre latérale (nombre de sections de chacun, dans l'ordre de paneList) : Général | Dock, Barre des
+// menus, Fenêtres, Mission Control | Clavier, Captures, Sons, Police | Mods, À propos.
+const std::vector<int>& sidebarGroups();
 const PaneInfo& paneInfo(PaneId id);
 std::optional<PaneId> paneFromKey(std::string_view key);
 

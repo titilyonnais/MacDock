@@ -178,6 +178,11 @@ const std::vector<PaneInfo>& paneList() {
     return panes;
 }
 
+const std::vector<int>& sidebarGroups() {
+    static const std::vector<int> groups{1, 4, 4, 2};
+    return groups;
+}
+
 const PaneInfo& paneInfo(PaneId id) {
     for (const auto& p : paneList())
         if (p.id == id) return p;
