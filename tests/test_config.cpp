@@ -221,3 +221,12 @@ TEST_CASE(settings_hot_corners) {
     auto back = md::settingsFromJson(md::settingsToJson(s));
     CHECK(back.hotCorners == s.hotCorners);
 }
+
+TEST_CASE(settings_app_expose_hotkey) {
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).appExposeHotkey == L"ctrl+alt+down");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appExposeHotkey\":\"Ctrl+Down\"}")).appExposeHotkey == L"ctrl+down");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appExposeHotkey\":\"bizarre\"}")).appExposeHotkey == L"ctrl+alt+down");
+    md::Settings s;
+    s.appExposeHotkey = L"off";
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).appExposeHotkey == L"off");
+}

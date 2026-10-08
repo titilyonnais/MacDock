@@ -93,6 +93,42 @@ double easeOut(double t) {
     return 1 - u * u * u;
 }
 
+MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap) {
+    MissionShelf out{{}, area, area.y + area.h};
+    if (minimized.empty() || area.w <= 0 || area.h <= 0) return out;
+    const double band = area.h * 0.18;            // bas de l'écran, comme les fenêtres réduites de macOS
+    const double rowH = std::max(1.0, band - gap);   // trait de séparation au-dessus de la rangée
+    std::vector<double> w(minimized.size()), h(minimized.size());
+    double total = gap * double(minimized.size() - 1);
+    for (std::size_t i = 0; i < minimized.size(); ++i) {
+        const double sw = std::max(1.0, minimized[i].w), sh = std::max(1.0, minimized[i].h);
+        const double k = std::min(1.0, rowH / sh);   // jamais agrandie
+        w[i] = sw * k;
+        h[i] = sh * k;
+        total += w[i];
+    }
+    const double fit = total > area.w ? (area.w - gap * double(minimized.size() - 1)) / (total - gap * double(minimized.size() - 1)) : 1.0;
+    double x = area.x + (area.w - std::min(total, area.w)) / 2;
+    const double bottom = area.y + area.h;
+    for (std::size_t i = 0; i < minimized.size(); ++i) {
+        const double rw = w[i] * fit, rh = h[i] * fit;
+        out.rects.push_back({x, bottom - rh, rw, rh});
+        x += rw + gap;
+    }
+    out.above = {area.x, area.y, area.w, area.h - band};
+    out.lineY = area.y + area.h - band + gap / 2;
+    return out;
+}
+
+std::optional<HotkeySpec> parseAppExposeHotkey(const std::wstring& text) {
+    std::wstring t;
+    for (wchar_t c : toLower(text))
+        if (c != L' ') t.push_back(c);
+    if (t == L"ctrl+alt+down") return HotkeySpec{MOD_CONTROL | MOD_ALT, VK_DOWN};
+    if (t == L"ctrl+down") return HotkeySpec{MOD_CONTROL, VK_DOWN};
+    return std::nullopt;
+}
+
 std::optional<HotkeySpec> parseMissionHotkey(const std::wstring& text) {
     std::wstring t;
     for (wchar_t c : toLower(text))

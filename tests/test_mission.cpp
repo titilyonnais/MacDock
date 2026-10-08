@@ -141,3 +141,36 @@ TEST_CASE(mission_wallpaper_kept_at_screen_size) {   // un fond 8K n'est pas gar
     DeleteFileW(path.c_str());
     CoUninitialize();
 }
+
+TEST_CASE(app_expose_shelf_of_minimized_windows) {
+    const md::MissionRect area{0, 0, 3000, 2000};
+    md::MissionShelf none = md::missionShelf({}, area, 20);
+    CHECK(none.rects.empty() && none.above.h == 2000);   // rien de réduit : toute la place aux fenêtres ouvertes
+    const std::vector<md::MissionRect> three(3, md::MissionRect{0, 0, 1600, 900});
+    md::MissionShelf s = md::missionShelf(three, area, 20);
+    CHECK(s.rects.size() == 3);
+    CHECK(s.above.h < 2000 && s.above.h > 1500);   // la rangée prend le bas de l'écran
+    for (std::size_t i = 0; i < s.rects.size(); ++i) {
+        CHECK(inside(s.rects[i], area));
+        CHECK(s.rects[i].y >= s.above.y + s.above.h - 1e-6);   // sous la zone des fenêtres ouvertes
+        CHECK(std::abs(s.rects[i].w / s.rects[i].h - 1600.0 / 900) < 0.01);   // proportions gardées
+        for (std::size_t j = i + 1; j < s.rects.size(); ++j) CHECK(!overlap(s.rects[i], s.rects[j]));
+    }
+    CHECK(std::abs((s.rects.front().x + s.rects.back().x + s.rects.back().w) / 2 - 1500) < 1);   // centrée
+    const std::vector<md::MissionRect> many(20, md::MissionRect{0, 0, 1600, 900});
+    s = md::missionShelf(many, area, 20);
+    for (std::size_t i = 0; i < s.rects.size(); ++i) {
+        CHECK(inside(s.rects[i], area));
+        if (i) CHECK(!overlap(s.rects[i - 1], s.rects[i]));
+    }
+    const std::vector<md::MissionRect> tiny(1, md::MissionRect{0, 0, 100, 60});
+    s = md::missionShelf(tiny, area, 20);
+    CHECK(s.rects[0].w <= 100 + 1e-6);   // jamais agrandie
+}
+
+TEST_CASE(app_expose_hotkey) {
+    CHECK(md::parseAppExposeHotkey(L"ctrl+alt+down").has_value());
+    CHECK(md::parseAppExposeHotkey(L"Ctrl+Down")->vk == VK_DOWN);
+    CHECK(!md::parseAppExposeHotkey(L"off").has_value());
+    CHECK(!md::parseAppExposeHotkey(L"bizarre").has_value());
+}
