@@ -646,6 +646,23 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Constat** : l'étiquette naissait d'une goutte de verre qui sortait du Dock (pont qui se résorbe) avec un fondu, ce qui rendait mal.
 - **Correction** : comme sur macOS, le nom apparaît d'un coup, net, à sa place ; seul un fondu bref subsiste quand il disparaît. La goutte (`glassEmerge`), qui n'avait pas d'autre usage, est retirée.
 
+### Correctifs du 8 octobre au soir — barre, pastilles
+
+- **Barre sur deux écrans** (ton choix : comme macOS) :
+  - la même app sur les deux écrans, atténuée sur celui où tu n'es pas : c'était déjà le cas ;
+  - le vrai défaut : quand l'app active se fermait, Windows donnait la main au bureau et la barre affichait « Explorateur ».
+- **Nouvelle règle** (`desktopFocus`, testée) :
+  - clic sur le bureau : Explorateur (le Finder) ;
+  - fenêtre fermée ou cachée : la dernière app utilisée qui a encore une fenêtre visible est réactivée ; sinon, Explorateur ;
+  - seule fenêtre réduite : l'app reste affichée, comme sur Mac.
+
+  La décision attend 150 ms que la fermeture se termine, et l'app d'avant reste affichée en attendant.
+- **Pastilles** (ton choix : à la place des boutons) :
+  - elles recouvrent exactement les boutons réduire / agrandir / fermer, de Windows ou dessinés par l'app, et ne cachent plus rien du contenu ;
+  - le mode « toujours à gauche » est retiré avec son calque de cache et son réglage `trafficLightsSide` ;
+  - vérifié sur Brave et Claude.
+- **Points blancs autour de l'heure** : c'est le fond d'écran étoilé vu à travers la barre translucide, comme sur macOS 26 ; ils sont aux mêmes endroits d'une capture à l'autre.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

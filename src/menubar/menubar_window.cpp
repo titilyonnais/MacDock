@@ -1,5 +1,6 @@
 #include "menubar_window.h"
 
+#include <dwmapi.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
 #include <shlobj.h>
@@ -16,6 +17,7 @@
 #include "../sound/sound_play.h"
 #include "../core/log.h"
 #include "../core/strings.h"
+#include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
 #include "bar_color.h"
 #include "bar_screens.h"
@@ -64,6 +66,8 @@ constexpr UINT_PTR kTrayPruneTimer = 0x5450;    // "TP" : icônes d'apps fermée
 constexpr UINT_PTR kHudTimer = 0x4855;          // "HU" : fondu de la pastille du volume et de la luminosité
 // "FG" : Windows n'annonce pas toujours le premier plan (fenêtre active fermée, activation par un autre processus).
 constexpr UINT_PTR kForegroundTimer = 0x4647;
+constexpr UINT_PTR kDesktopFocusTimer = 0x4446;   // "DF" : bureau au premier plan sans clic, décidé une fois la fermeture finie
+constexpr UINT kDesktopFocusDelayMs = 150;
 // Touches de volume reprises (ctl_) ; Maj+Alt : pas fin, comme Maj+Option sur macOS.
 constexpr int kHotVolUp = 1, kHotVolDown = 2, kHotMute = 3, kHotVolUpFine = 4, kHotVolDownFine = 5;
 
@@ -149,7 +153,6 @@ void MenuBarApp::checkSettingsFile() {
 
 void MenuBarApp::applySettings() {
     if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
-    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     lights_.attach(lights_.target(), settings_.trafficLights);
     if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
     for (auto& s : screens_) syncAppBar(*s);
@@ -372,8 +375,74 @@ std::vector<std::wstring> childClasses(HWND top) {
 }
 } // namespace
 
+namespace {
+bool isDesktopClass(const wchar_t* cls) { return wcscmp(cls, L"Progman") == 0 || wcscmp(cls, L"WorkerW") == 0; }
+
+// Clic sur le bureau : un bouton de la souris est enfoncé et le curseur est sur le bureau.
+bool clickedOnDesktop() {
+    const SHORT down = GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON) | GetAsyncKeyState(VK_MBUTTON);
+    if (!(down & 0x8000)) return false;
+    POINT pt{};
+    GetCursorPos(&pt);
+    HWND under = WindowFromPoint(pt);
+    HWND root = under ? GetAncestor(under, GA_ROOT) : nullptr;
+    wchar_t cls[64] = {};
+    if (root) GetClassNameW(root, cls, 64);
+    return isDesktopClass(cls);
+}
+
+// La fenêtre d'app visible la plus haute (ordre Z : la dernière utilisée), hors `except` : ni réduite, ni masquée
+// (autre bureau virtuel compris).
+HWND topAppWindow(HWND except) {
+    for (HWND h = GetTopWindow(nullptr); h; h = GetWindow(h, GW_HWNDNEXT)) {
+        if (h == except || !isDockEligibleWindow(h) || IsIconic(h)) continue;
+        DWORD cloaked = 0;
+        if (SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked) continue;
+        return h;
+    }
+    return nullptr;
+}
+} // namespace
+
+void MenuBarApp::decideDesktopFocus() {
+    KillTimer(ctl_, kDesktopFocusTimer);
+    const HWND previous = desktopPrevious_;
+    desktopPrevious_ = nullptr;
+    const HWND fg = GetForegroundWindow();
+    wchar_t cls[64] = {};
+    if (fg) GetClassNameW(fg, cls, 64);
+    if (!isDesktopClass(cls)) return;   // une fenêtre a pris la main entre-temps : déjà traitée
+    DesktopFocusContext c;
+    if (previous) {   // sans fenêtre d'avant (démarrage) : le bureau tel quel
+        DWORD pid = 0;
+        GetWindowThreadProcessId(previous, &pid);
+        DWORD cloaked = 0;
+        const bool hidden = !IsWindow(previous) || !IsWindowVisible(previous) || pid == GetCurrentProcessId() ||
+                            (SUCCEEDED(DwmGetWindowAttribute(previous, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) &&
+                             (cloaked & (DWM_CLOAKED_APP | DWM_CLOAKED_INHERITED)));
+        c.previousMinimized = !hidden && IsIconic(previous);
+        c.previousGone = hidden;
+    }
+    const HWND next = topAppWindow(previous);
+    c.otherWindowVisible = next != nullptr;
+    switch (desktopFocus(c)) {
+        case DesktopFocus::ActivateNext:
+            if (trace_) log::info(L"[trace] barre : bureau sans clic après %p, la main passe à %p", previous, next);
+            forceForeground(next);   // son premier plan arrive ensuite par le suivi des fenêtres
+            return;
+        case DesktopFocus::KeepPrevious:
+            if (trace_) log::info(L"[trace] barre : seule fenêtre réduite, « %s » reste active", active_.name.c_str());
+            return;
+        case DesktopFocus::ShowExplorer:
+            desktopDecided_ = true;
+            onForeground(fg);
+            return;
+    }
+}
+
 void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
+    const HWND previous = lastForeground_;
     lastForeground_ = h;
     const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
     lights_.attach(rootWindow, settings_.trafficLights);   // il décide
@@ -393,6 +462,21 @@ void MenuBarApp::onForeground(HWND h) {
     if (trace_) log::info(L"[trace] barre : premier plan %p (%s, %s) → %s", h, cls, fileName(exe).c_str(),
                           kind == ForegroundKind::Ignore ? L"ignoré" : kind == ForegroundKind::Explorer ? L"Explorateur" : L"app");
     if (kind == ForegroundKind::Ignore) return;
+    if (!(kind == ForegroundKind::Explorer && isDesktopClass(cls))) {
+        KillTimer(ctl_, kDesktopFocusTimer);
+        desktopPrevious_ = nullptr;
+        desktopDecided_ = false;
+    } else if (!desktopDecided_) {
+        if (clickedOnDesktop()) {
+            desktopDecided_ = true;   // clic sur le bureau : le Finder, comme sur Mac
+        } else {
+            // Windows donne la main au bureau quand la fenêtre active se ferme ou se réduit : décidé une fois la
+            // transition finie ; d'ici là, l'app d'avant reste affichée.
+            if (!desktopPrevious_ && previous) desktopPrevious_ = GetAncestor(previous, GA_ROOT) ? GetAncestor(previous, GA_ROOT) : previous;
+            SetTimer(ctl_, kDesktopFocusTimer, kDesktopFocusDelayMs, nullptr);
+            return;
+        }
+    }
     Active a;
     if (kind == ForegroundKind::Explorer) {
         a.name = L"Explorateur";
@@ -1471,6 +1555,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                         if (pid != GetCurrentProcessId()) onForeground(fg);
                     }
                     break;
+                case kDesktopFocusTimer: decideDesktopFocus(); break;
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:
                     checkFullscreen();
@@ -1607,7 +1692,6 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
     ChangeWindowMessageFilterEx(ctl_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
     lights_.create(instance);
-    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);

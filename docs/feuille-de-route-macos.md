@@ -9,7 +9,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 ## Fait
 - Dock, barre de menus, Spotlight (« Rechercher ou demander »), Mission Control, Launchpad, sélecteur d'apps, coins actifs, génie.
 - Verre Liquid Glass et fond d'écran recalés sur des captures de macOS 27 (plan 26).
-- Feux tricolores sur toutes les fenêtres, toujours à gauche (plans 25 et 27).
+- Feux tricolores sur toutes les fenêtres, à la place des boutons réduire / agrandir / fermer de Windows (plans 25 et 27, puis ta demande du 8 octobre).
 - Apparence macOS des fenêtres des autres apps : coins arrondis, plus de liseré, barre de titre grise (plan 26).
 - Menus de la barre lus dans chaque app ; raccourcis en symboles macOS (plan 27).
 - **Mod Windhawk « MacDock - macOS Look »** : SF Pro dans toutes les apps (plan 28). Il reste **à installer par toi** dans Windhawk.
@@ -25,10 +25,15 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **⊞⇧5 et enregistrement de l'écran** (plan 39).
 
 ## À faire, par ordre d'effet
-1. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
-2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
-3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+1. **App Réglages de MacDock** : une vraie app façon Réglages Système pour tout régler (Dock, barre, fenêtres, raccourcis, captures, sons, police…), belle et entièrement fonctionnelle, à la place des fichiers JSON.
+2. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
+   - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
+   - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
+   - la liste de fichiers et le volet de l'Explorateur (DirectUI).
+3. **Glitch des bords** de Brave en sortie de plein écran : à enregistrer image par image.
+4. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
+5. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
 
 ## Limites connues
-- Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.
+- Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.
 - Restyler l'intérieur des apps (boutons, listes) demande d'injecter du code : c'est le rôle des mods Windhawk, que tu installes toi-même. Windhawk tourne en administrateur et ne peut pas être piloté depuis MacDock.

@@ -22,20 +22,15 @@ struct LightsWindowInfo {
     bool elevated = false;    // processus d'intégrité plus élevée : nos messages seraient refusés (UIPI)
 };
 
-// Fenêtres à barre de titre (ni outil, ni shell, ni élevées…) ; leur place est décidée ensuite (leftCaptionFree,
-// captionButtons).
+// Fenêtres à barre de titre (ni outil, ni shell, ni élevées…) ; les pastilles prennent ensuite la place de leurs
+// boutons réduire / agrandir / fermer (captionButtons), qu'il y en ait de Windows ou dessinés par l'app.
 bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT dpi);
 
 struct LightsLayout {
-    RECT window{};       // le calque (pixels écran)
+    RECT window{};       // le calque (pixels écran), sur les boutons de la fenêtre
     RECT circles[3]{};   // fermer, réduire, zoom (pixels écran)
     double radius = 0;   // pixels
-    RECT patch{};        // fond de la couleur de la barre de titre
-    bool lights = true;  // false : simple cache (boutons de Windows recouverts)
-    bool fade = true;    // fondu du fond sur la fin à droite (pastilles posées à gauche)
-    // Fond peint ; faux quand la gauche est occupée (onglet, menu) : transparent, les clics hors pastilles atteignent
-    // l'app.
-    bool opaque = true;
+    RECT patch{};        // fond de la couleur de la barre de titre, qui cache les boutons
     LONG topGap = 0;     // rangées du haut laissées transparentes : le bord de la fenêtre reste redimensionnable
 };
 
@@ -45,24 +40,12 @@ using HitProbe = std::function<LRESULT(POINT)>;
 // DWMWA_CAPTION_BUTTON_BOUNDS (repère de window = GetWindowRect) ; vide (l'app les dessine : Chromium, Electron…),
 // la fenêtre est sondée depuis son bord droit.
 RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwmBounds, UINT dpi, const HitProbe& hit);
-// La place des pastilles à gauche ne contient que de la légende (ou l'icône système) sur toute leur hauteur :
-// pas d'onglets ni de menus de l'app dessous. titleBottom : bas de la barre de titre (pixels écran).
-bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitProbe& hit);
-// Place des pastilles : à gauche si la barre y est libre ; sinon à gauche quand même (alwaysLeft, réglage par
-// défaut), ou posées sur les boutons de Windows ; rien si aucun bouton n'a été trouvé et que la gauche est occupée.
-enum class LightsSpot { None, Left, Over };
-LightsSpot chooseLightsSpot(bool leftFree, bool buttonsFound, bool alwaysLeft);
 // Partie visible du cadre : une fenêtre agrandie peut déclarer un cadre qui déborde sous la barre de menus.
 RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
-// Pastilles posées à la place des boutons de Windows (pas de place à gauche), qu'elles recouvrent. Le haut reste
-// transparent pour redimensionner par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
+// Pastilles posées à la place des boutons de la fenêtre, qu'elles recouvrent : rien du contenu de l'app n'est caché,
+// dans toutes les apps (elles ont toutes ces boutons en haut à droite). Le haut reste transparent pour redimensionner
+// par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);
-// Cache des boutons de Windows (pastilles à gauche).
-LightsLayout buttonsCover(const RECT& buttons, UINT dpi, bool zoomed = false);
-LightsLayout lightsLayout(const RECT& frame, const RECT& client, UINT dpi);
-// Même chose, la barre de titre s'arrêtant à captionBottom quand il est connu (une barre de menus classique
-// sous le titre n'est pas couverte).
-LightsLayout lightsLayoutFor(const LightsWindowInfo& w, UINT dpi);
 
 // Souris sur le calque : appui sur une pastille disponible, déplacement de la fenêtre depuis le fond, zoom par
 // double-clic sur le fond ; un double-clic sur une pastille ne fait rien (pas de seconde commande).

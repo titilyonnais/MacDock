@@ -500,3 +500,27 @@ TEST_CASE(menubar_volume_feedback_on_by_default) {
     CHECK(md::menuBarSettingsFromJson(*md::json::parse("{}")).volumeFeedback);
     CHECK(!md::menuBarSettingsFromJson(*md::json::parse("{\"volumeFeedback\":false}")).volumeFeedback);
 }
+
+TEST_CASE(bar_desktop_focus_follows_macos) {
+    // Le premier plan passe au bureau. Comme macOS : un clic sur le bureau active le Finder (Explorateur) ; une app qui
+    // se ferme laisse la place à la dernière app utilisée qui a encore une fenêtre, jamais à l'Explorateur par défaut.
+    using F = md::DesktopFocus;
+    md::DesktopFocusContext c;
+    c.clickedDesktop = true;
+    c.otherWindowVisible = true;
+    CHECK(md::desktopFocus(c) == F::ShowExplorer);   // clic sur le bureau : le Finder, même s'il reste des fenêtres
+    c = {};
+    c.previousGone = true;
+    c.otherWindowVisible = true;
+    CHECK(md::desktopFocus(c) == F::ActivateNext);   // Claude fermé, Brave encore ouvert : Brave
+    c.otherWindowVisible = false;
+    CHECK(md::desktopFocus(c) == F::ShowExplorer);   // plus aucune fenêtre : le Finder
+    c = {};
+    c.previousMinimized = true;
+    c.otherWindowVisible = true;
+    CHECK(md::desktopFocus(c) == F::ActivateNext);   // réduite, d'autres fenêtres : la suivante, comme Windows
+    c.otherWindowVisible = false;
+    CHECK(md::desktopFocus(c) == F::KeepPrevious);   // seule fenêtre réduite : l'app reste active, comme sur Mac
+    c = {};
+    CHECK(md::desktopFocus(c) == F::ShowExplorer);   // le bureau pris autrement : on suit Windows
+}

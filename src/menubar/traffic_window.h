@@ -1,8 +1,7 @@
-// Feux tricolores à l'écran : un petit calque posé sur la barre de titre de la fenêtre active, juste au-dessus
-// d'elle dans l'ordre d'affichage, qui la suit quand elle bouge et lui envoie ses commandes système. Les boutons
-// réduire / agrandir / fermer de Windows (ou ceux que l'app dessine elle-même) sont repérés en sondant la fenêtre
-// (WM_NCHITTEST) : pastilles à gauche et un second calque qui les cache quand la gauche de la barre est libre,
-// sinon pastilles posées à leur place.
+// Feux tricolores à l'écran : un petit calque posé à la place des boutons réduire / agrandir / fermer de la fenêtre
+// active, juste au-dessus d'elle dans l'ordre d'affichage, qui la suit quand elle bouge et lui envoie ses commandes
+// système. Ces boutons (de Windows, ou dessinés par l'app : Chromium, Electron…) sont repérés par DWM ou en sondant
+// la fenêtre (WM_NCHITTEST) ; le calque les recouvre, rien du contenu de l'app n'est caché.
 #pragma once
 #include <windows.h>
 
@@ -29,23 +28,19 @@ public:
     void detach();
     void destroy();
     HWND target() const { return publicTarget_.load(); }
-    // Toujours à gauche (réglage par défaut) ou, si la gauche est prise, sur les boutons de Windows.
-    void setAlwaysLeft(bool on);
     // Capture d'écran du Dock (⊞⇧3, ⊞⇧4) : calques visibles aux captures le temps de la copie. Synchrone (le fil
     // répond en moins de 200 ms, sinon on n'attend plus).
     void setCaptureVisible(bool on);
 
 private:
-    enum class Spot { None, Left, Over };   // pas de pastilles, à gauche (+ cache), sur les boutons de Windows
+    enum class Spot { None, Over };   // pas de pastilles (aucun bouton trouvé), ou sur les boutons de la fenêtre
     struct Placement {
         HWND target = nullptr;
         SIZE size{};
         bool zoomed = false, valid = false;
         UINT dpi = 0;
         Spot spot = Spot::None;
-        RECT buttons{};          // boutons de Windows, relatifs au coin haut droit du cadre
-        LONG titleBottom = 0;    // bas de la barre de titre, relatif au haut du cadre
-        bool leftFree = true;    // gauche libre (sinon pastilles forcées à gauche : fond transparent)
+        RECT buttons{};          // boutons de la fenêtre, relatifs au coin haut droit du cadre
     };
 
     void run();
@@ -63,30 +58,29 @@ private:
     void sample(const RECT& frame, UINT dpi);
     void paint();
     void paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted, std::uint32_t patchColor);
-    void raise();                // juste au-dessus de la cible (le cache sous les pastilles)
+    void raise();                // juste au-dessus de la cible
     void unhook();
 
-    HWND hwnd_ = nullptr, cover_ = nullptr, target_ = nullptr;
+    HWND hwnd_ = nullptr, target_ = nullptr;
     HWINEVENTHOOK hook_ = nullptr;
     LightsMode mode_ = LightsMode::Standard;
-    LightsLayout layout_{}, coverLayout_{};
+    LightsLayout layout_{};
     LightsState state_{};
     Placement placement_{};
     Spot spot_ = Spot::None;
     double scale_ = 1;
-    bool shown_ = false, tracking_ = false, painted_ = false, coverPainted_ = false;
+    bool shown_ = false, tracking_ = false, painted_ = false;
     int pressed_ = -1;
     bool dragging_ = false;          // déplacement de la cible depuis le fond (notre propre boucle)
     POINT dragStart_{};
     RECT dragFrom_{};
     HWINEVENTHOOK moveHook_ = nullptr;
-    SIZE paintedSize_{}, coverSize_{};
+    SIZE paintedSize_{};
     ULONGLONG bounceStart_ = 0;
     int probeRetries_ = 0;         // sondes interrompues (app occupée) reprises au plus 3 fois
     // Pendant une sonde, SendMessageTimeout laisse passer les messages envoyés à notre fil (WinEvent, activation) :
     // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
     bool probing_ = false, attachPending_ = false, placePending_ = false;
-    bool alwaysLeft_ = true;
     bool captureVisible_ = false;    // capture d'écran en cours : calques visibles aux captures
     HANDLE captureDone_ = nullptr;   // signalé par le fil une fois l'affichage des calques changé
     bool quitting_ = false;
@@ -94,7 +88,6 @@ private:
     std::thread thread_;
     std::atomic<DWORD> threadId_{0};
     std::atomic<HWND> publicTarget_{nullptr};
-    std::uint32_t coverColor_ = 0;   // couleur juste à gauche des boutons cachés, à mi-hauteur (Mica : plus foncée en haut)
     HWND pendingTarget_ = nullptr;
     LightsMode pendingMode_ = LightsMode::Standard;
     static TrafficWindow* self_;
