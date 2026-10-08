@@ -246,6 +246,8 @@ struct Session {
     ScreenBackdrop screen;
     WindowBackdrop backdrop;
     GlassTarget glassTarget;
+    bool captureVisible = false;   // capture d'écran en cours : visible aux captures, verre gelé
+    ULONGLONG thawAt = 0;
 
     HWND hwnd = nullptr;
     RECT rc{};
@@ -566,7 +568,8 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_APPS_BACKDROP:
-            if (screen.take(env.device) && screen.copyTo(env.device, rc, backdrop)) render();
+            if (screen.take(env.device) && !captureVisible && GetTickCount64() >= thawAt && screen.copyTo(env.device, rc, backdrop))
+                render();   // pendant une capture d'écran, l'image contient l'écran Apps lui-même
             return 0;
         default: break;
     }
@@ -580,6 +583,17 @@ std::uint32_t placeholderColor(std::size_t i) {   // cases de couleur du rendu s
 
 } // namespace
 
+namespace {
+Session* g_apps = nullptr;   // écran Apps ouvert (fil du Dock)
+}
+
+void AppsWindow::setCaptureVisible(bool on) {
+    if (!g_apps || g_apps->captureVisible == on) return;
+    g_apps->captureVisible = on;
+    if (!on) g_apps->thawAt = GetTickCount64() + 150;
+    if (!diagnosticCapture() && g_apps->hwnd) SetWindowDisplayAffinity(g_apps->hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+}
+
 std::optional<std::wstring> AppsWindow::track(const MenuWindow::Env& env, const Request& request) {
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = appsProc;
@@ -591,6 +605,13 @@ std::optional<std::wstring> AppsWindow::track(const MenuWindow::Env& env, const 
     Session s;
     s.env = env;
     s.req = &request;
+    struct Registered {
+        Session* self;
+        explicit Registered(Session* p) : self(p) { g_apps = p; }
+        ~Registered() {
+            if (g_apps == self) g_apps = nullptr;
+        }
+    } registered(&s);
     if (request.apps.empty() || !s.init()) {
         log::warn(L"Apps : vue impossible (%s)", request.apps.empty() ? L"catalogue vide" : L"initialisation graphique");
         return std::nullopt;

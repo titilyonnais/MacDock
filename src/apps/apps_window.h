@@ -31,6 +31,9 @@ public:
     };
     // Nom d'analyse de l'app choisie ; chaîne vide : fermée sans choix ; nullopt : la vue n'a pas pu s'ouvrir.
     static std::optional<std::wstring> track(const MenuWindow::Env& env, const Request& request);
+    // Capture d'écran (⊞⇧3, ⊞⇧4) : l'écran Apps ouvert est visible aux captures le temps de la copie ; son verre ne
+    // suit plus l'écran pendant ce temps, puis reprend 150 ms après.
+    static void setCaptureVisible(bool on);
 };
 
 // Même dessin hors écran (Direct2D sur une bitmap, aucune fenêtre) : fond = fond d'écran Tahoe flouté.
