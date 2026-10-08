@@ -81,6 +81,10 @@ private:
     void armGenie(HWND window, POINT down);   // réduction annoncée pour cette fenêtre (bouton ou pastille jaune)
     // Animation de Windows coupée pour cette fenêtre, que le Dock va animer lui-même (réduction, restauration).
     void holdTransitions(HWND window);
+    // Réduction annoncée (barre de menus, ⊞↓) : retenue seulement si le génie l'animera (case dans le Dock) ; sinon
+    // Windows l'anime seul.
+    void announceMinimize(HWND window);
+    bool genieWouldAnimate(HWND window);
     void warmHovered(POINT client);           // case d'une fenêtre réduite survolée : capture préparée
     void setTransparent(bool transparent);
     void onClick(std::size_t index);

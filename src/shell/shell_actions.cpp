@@ -94,11 +94,11 @@ void restoreWindow(HWND hwnd) {
     forceForeground(hwnd);
 }
 
-void minimizeWindow(HWND hwnd) {
+void minimizeWindow(HWND hwnd, int command) {
     static const UINT msg = RegisterWindowMessageW(L"MacDockWillMinimize");
     if (HWND dock = FindWindowW(L"MacDockWindow", nullptr))   // synchrone : coupé avant que la réduction parte
         SendMessageTimeoutW(dock, msg, reinterpret_cast<WPARAM>(hwnd), 0, SMTO_ABORTIFHUNG, 100, nullptr);
-    ShowWindowAsync(hwnd, SW_MINIMIZE);   // asynchrone : une app figée ne bloque pas l'appelant
+    ShowWindowAsync(hwnd, command);   // asynchrone : une app figée ne bloque pas l'appelant
 }
 
 void minimizeAll(const std::vector<HWND>& windows) {

@@ -295,3 +295,11 @@ TEST_CASE(lights_inactive_window_gray_until_hover) {
     auto lit = md::renderLights(l, st, 1.0);
     CHECK(center(lit, 0)[2] > center(lit, 0)[1] + 60);   // fermer : rouge
 }
+
+TEST_CASE(lights_wait_for_restore_animation) {
+    // Fenêtre qui revient de la barre des tâches avec l'animation de Windows : les pastilles attendent qu'elle soit
+    // arrivée. Restaurée par le génie (animation de Windows coupée par le Dock), ou animations coupées : tout de suite.
+    CHECK(md::lightsRestoreWaitMs(true, false) >= 200);
+    CHECK_EQ(md::lightsRestoreWaitMs(true, true), 0u);
+    CHECK_EQ(md::lightsRestoreWaitMs(false, false), 0u);
+}

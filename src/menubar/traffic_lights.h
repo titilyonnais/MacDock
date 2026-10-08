@@ -50,6 +50,9 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = fals
 // Attente avant de remontrer les pastilles quand la fenêtre est agrandie ou rendue à sa taille (`animated` : animation
 // de Windows active), en millisecondes.
 unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated);
+// Même attente quand la fenêtre revient d'une réduction avec l'animation de Windows ; `heldByDock` : le Dock a coupé
+// cette animation (restauration par le génie), elle arrive tout de suite.
+unsigned lightsRestoreWaitMs(bool animated, bool heldByDock);
 
 // Souris sur le calque : appui sur une pastille disponible, déplacement de la fenêtre depuis le fond, zoom par
 // double-clic sur le fond ; un double-clic sur une pastille ne fait rien (pas de seconde commande).

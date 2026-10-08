@@ -18,7 +18,7 @@ void restoreWindow(HWND hwnd);
 bool openMacDockSettings(const std::wstring& pane);
 // Réduction demandée par MacDock : le Dock en est prévenu avant (MacDockWillMinimize), pour animer lui-même la
 // fenêtre sans que Windows joue aussi la sienne.
-void minimizeWindow(HWND hwnd);
+void minimizeWindow(HWND hwnd, int command = SW_MINIMIZE);
 void minimizeAll(const std::vector<HWND>& windows);
 void openRecycleBin();
 void openFolder(const std::wstring& path);

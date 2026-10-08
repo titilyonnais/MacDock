@@ -134,7 +134,7 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         case ActionKind::HideOthers: {
             OthersCollect col{&c.appWindows, {}};
             EnumWindows(collectOthers, reinterpret_cast<LPARAM>(&col));
-            for (HWND h : col.others) ShowWindowAsync(h, SW_SHOWMINNOACTIVE);
+            for (HWND h : col.others) minimizeWindow(h, SW_SHOWMINNOACTIVE);   // le Dock prévenu avant chacune
             if (c.hidden) c.hidden->insert(c.hidden->end(), col.others.begin(), col.others.end());
             return !col.others.empty();
         }

@@ -82,7 +82,9 @@ private:
     void restack();                     // chaque calque juste au-dessus de sa fenêtre
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     static void CALLBACK onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD);
-    void event(DWORD event, HWND hwnd);
+    // deferred : reporté (servi plus tard par la boucle) ; l'état de la fenêtre est alors relu plutôt que supposé.
+    void event(DWORD event, HWND hwnd, bool deferred = false);
+    void purgeHidden();               // calques de fenêtres fermées ou invisibles retirés (plafond atteint)
     LRESULT handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp);
     void place(Layer& l, bool resample, bool probe = false);   // relit la cible, décide, dessine, replace le calque
     Placement measure(const Layer& l, const LightsWindowInfo& info, UINT dpi, bool& complete);

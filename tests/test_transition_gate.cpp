@@ -72,3 +72,34 @@ TEST_CASE(transition_gate_release_all_on_exit) {
     CHECK(!dwm.disabled[kB]);
     CHECK(!g.any());
 }
+
+namespace {
+LRESULT CALLBACK plainProc(HWND h, UINT m, WPARAM w, LPARAM l) { return DefWindowProcW(h, m, w, l); }
+}
+
+TEST_CASE(transition_gate_marks_held_windows_for_crash_recovery) {
+    // Un Dock qui plante laisse ses fenêtres sans animations : la marque posée avec l'attribut permet au Dock suivant
+    // de les leur rendre, et seulement à elles.
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = plainProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"MacDockTestTransitions";
+    RegisterClassW(&wc);
+    HWND held = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr,
+                                wc.hInstance, nullptr);
+    HWND other = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr,
+                                 wc.hInstance, nullptr);
+    REQUIRE(held && other);
+    const md::TransitionApi api = md::realTransitionApi();
+    api.disable(held, true);
+    CHECK(md::transitionsMarked(held));
+    CHECK(!md::transitionsMarked(other));
+    // Seulement celles de ce processus : un vrai Dock qui tourne garde les siennes.
+    CHECK_EQ(md::releaseOrphanTransitions(GetCurrentProcessId()), 1);
+    CHECK(!md::transitionsMarked(held));
+    api.disable(held, true);
+    api.disable(held, false);   // rendue normalement : plus de marque
+    CHECK(!md::transitionsMarked(held));
+    DestroyWindow(held);
+    DestroyWindow(other);
+}

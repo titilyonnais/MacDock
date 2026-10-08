@@ -255,6 +255,8 @@ GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minim
     return run.active && !run.settling && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
 }
 
+bool genieTakesMinimize(bool held, bool windowsAnimates) { return held || !windowsAnimates; }
+
 bool genieMustRestoreFirst(const GenieRun& run) { return run.active && run.restoring && !run.settling; }
 
 } // namespace md

@@ -71,6 +71,8 @@ unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated) {
     return animated && wasZoomed != zoomed ? 300u : 0u;   // ~290 ms d'animation de DWM mesurées, aller comme retour
 }
 
+unsigned lightsRestoreWaitMs(bool animated, bool heldByDock) { return animated && !heldByDock ? 250u : 0u; }
+
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;

@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <map>
+#include <vector>
 
 namespace md {
 
@@ -14,7 +15,12 @@ struct TransitionApi {
     std::function<bool(HWND, bool)> disable;   // DWMWA_TRANSITIONS_FORCEDISABLED
     std::function<bool(HWND)> alive;           // IsWindow
 };
+// Vraie API : l'attribut, plus une marque sur la fenêtre (propriété) tant qu'il est coupé.
 TransitionApi realTransitionApi();
+bool transitionsMarked(HWND window);
+// Au démarrage du Dock : animations rendues aux fenêtres de premier niveau qu'un Dock précédent (planté, tué) a
+// laissées marquées. `onlyProcess` : seulement celles de ce processus (0 : toutes). Renvoie leur nombre.
+int releaseOrphanTransitions(DWORD onlyProcess = 0);
 
 class TransitionGate {
 public:
@@ -27,6 +33,7 @@ public:
     void releaseAll();   // arrêt du Dock
     bool held(HWND window) const { return held_.count(window) != 0; }
     bool any() const { return !held_.empty(); }
+    std::vector<HWND> windows() const;
 
 private:
     TransitionApi api_;

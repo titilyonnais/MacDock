@@ -422,3 +422,13 @@ TEST_CASE(genie_minimize_button_from_dwm_caption_bounds) {
     CHECK(!md::genieOnMinimizeButton(POINT{2259, 328}, window, bounds, false));   // pas de bouton réduire
     CHECK(!md::genieOnMinimizeButton(POINT{2259, 328}, window, RECT{1932, 0, 1932, 57}, true));   // boutons de l'app
 }
+
+TEST_CASE(genie_takes_only_minimizes_windows_does_not_animate) {
+    // Relecture de la branche fenêtres : Windows anime de nouveau les réductions. Le génie ne prend une réduction vue
+    // en direct que si l'animation de Windows a été coupée à temps (réduction annoncée, fenêtre retenue) ou si
+    // l'utilisateur a coupé les animations ; sinon deux animations se superposeraient (barre des tâches, ⊞M…).
+    CHECK(md::genieTakesMinimize(true, true));
+    CHECK(!md::genieTakesMinimize(false, true));
+    CHECK(md::genieTakesMinimize(false, false));
+    CHECK(md::genieTakesMinimize(true, false));
+}

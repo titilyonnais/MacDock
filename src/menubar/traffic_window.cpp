@@ -87,10 +87,15 @@ static bool higherIntegrity(DWORD pid) {
 
 // Pastille jaune enfoncée : le Dock prépare l'effet génie (capture de la fenêtre) pendant l'appui, comme il le fait pour
 // le bouton « réduire » de Windows, que les pastilles cachent ; sinon la capture partirait au relâchement, en retard.
+// L'animation de Windows est coupée d'abord, de façon synchrone (léger, borné à 50 ms) : un clic rapide ne la devance
+// pas ; la préparation du génie, plus lourde, est postée.
 static void announceMinimize(HWND target, POINT p) {
-    static const UINT msg = RegisterWindowMessageW(L"MacDockGenieArm");
-    if (HWND dock = FindWindowW(L"MacDockWindow", nullptr))
-        PostMessageW(dock, msg, reinterpret_cast<WPARAM>(target), MAKELPARAM(WORD(SHORT(p.x)), WORD(SHORT(p.y))));
+    static const UINT arm = RegisterWindowMessageW(L"MacDockGenieArm");
+    static const UINT will = RegisterWindowMessageW(L"MacDockWillMinimize");
+    if (HWND dock = FindWindowW(L"MacDockWindow", nullptr)) {
+        SendMessageTimeoutW(dock, will, reinterpret_cast<WPARAM>(target), 0, SMTO_ABORTIFHUNG, 50, nullptr);
+        PostMessageW(dock, arm, reinterpret_cast<WPARAM>(target), MAKELPARAM(WORD(SHORT(p.x)), WORD(SHORT(p.y))));
+    }
 }
 
 LightsWindowInfo readInfo(HWND h) {
@@ -153,8 +158,12 @@ void TrafficWindow::run() {
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
         if (!m.hwnd) {
             switch (m.message) {
-                case kMsgAttach: doAttach(reinterpret_cast<HWND>(m.wParam), LightsMode(m.lParam)); continue;
-                case kMsgEvent: event(DWORD(m.wParam), reinterpret_cast<HWND>(m.lParam)); continue;
+                case kMsgAttach:
+                    if (!quitting_) doAttach(reinterpret_cast<HWND>(m.wParam), LightsMode(m.lParam));
+                    continue;
+                case kMsgEvent:
+                    if (!quitting_) event(DWORD(m.wParam), reinterpret_cast<HWND>(m.lParam), true);
+                    continue;
                 case kMsgRestack:
                     restackPending_ = false;
                     restack();
@@ -267,9 +276,11 @@ TrafficWindow::Layer* TrafficWindow::layerOf(HWND target) {
 }
 
 TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
-    if (!target || mode_ == LightsMode::Off || !IsWindow(target)) return nullptr;
+    if (!target || quitting_ || mode_ == LightsMode::Off || !IsWindow(target)) return nullptr;
     if (Layer* l = layerOf(target)) return l;
-    if (layers_.size() >= kMaxLayers || GetAncestor(target, GA_ROOT) != target) return nullptr;
+    if (GetAncestor(target, GA_ROOT) != target) return nullptr;
+    if (layers_.size() >= kMaxLayers) purgeHidden();
+    if (layers_.size() >= kMaxLayers && target != active_) return nullptr;   // la fenêtre active passe toujours
     Busy busy(busy_);
     // Tri rapide avant de lire la fenêtre en entier (menus, bulles, fenêtres outils : nombreux et jamais éligibles).
     const LONG_PTR style = GetWindowLongPtrW(target, GWL_STYLE), ex = GetWindowLongPtrW(target, GWL_EXSTYLE);
@@ -287,6 +298,7 @@ TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
     auto layer = std::make_unique<Layer>();
     layer->target = target;
     GetWindowThreadProcessId(target, &layer->pid);
+    if (!layer->pid) return nullptr;   // disparue entre-temps (0 : un crochet sur tous les processus)
     layer->state.inactive = target != active_;
     if (!createLayer(*layer)) return nullptr;
     Layer* l = layer.get();
@@ -323,6 +335,13 @@ void TrafficWindow::remove(HWND target) {
     }
     unhookProcess(l.pid);
     layers_.erase(it);
+}
+
+void TrafficWindow::purgeHidden() {
+    std::vector<HWND> gone;
+    for (const auto& [h, l] : layers_)
+        if (h != active_ && (!IsWindow(h) || !IsWindowVisible(h))) gone.push_back(h);
+    for (HWND h : gone) remove(h);
 }
 
 void TrafficWindow::removeAll() {
@@ -367,14 +386,12 @@ void TrafficWindow::unhookGlobal() {
 void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD) {
     TrafficWindow* t = self_;
     if (!t || !hwnd) return;
-    if (event == EVENT_OBJECT_REORDER) {   // ordre d'affichage changé dans un processus suivi : calques replacés
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (!t->restackPending_ && t->processHooks_.count(pid)) {
+    if (event == EVENT_OBJECT_REORDER) {   // ordre des fenêtres du bureau changé (⎇⎋…) : calques replacés
+        if (hwnd == GetDesktopWindow() && !t->restackPending_ && !t->layers_.empty()) {
             t->restackPending_ = true;
             PostThreadMessageW(t->threadId_, kMsgRestack, 0, 0);
         }
-        return;
+        return;   // l'ordre des enfants d'une fenêtre ne nous concerne pas
     }
     if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
     switch (event) {   // tri : seules les fenêtres suivies, ou de premier niveau qui apparaissent
@@ -395,16 +412,32 @@ void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
     t->event(event, hwnd);
 }
 
-void TrafficWindow::event(DWORD ev, HWND hwnd) {
+void TrafficWindow::event(DWORD ev, HWND hwnd, bool deferred) {
     switch (ev) {
         case EVENT_OBJECT_DESTROY: remove(hwnd); break;
         case EVENT_OBJECT_HIDE:
         case EVENT_SYSTEM_MINIMIZESTART:
         case EVENT_OBJECT_CLOAKED:
-            if (Layer* l = layerOf(hwnd)) hide(*l);
+            // Reporté : la fenêtre a pu réapparaître depuis (son SHOW servi avant ce message) ; son état est relu.
+            if (Layer* l = layerOf(hwnd)) deferred ? place(*l, false) : hide(*l);
+            break;
+        case EVENT_SYSTEM_MINIMIZEEND:
+            if (Layer* l = layerOf(hwnd)) {
+                // Revenue avec l'animation de Windows (pas par le génie, qui la coupe et la marque) : les pastilles
+                // attendent qu'elle soit arrivée.
+                ANIMATIONINFO ai{sizeof ai};
+                const bool animated = SystemParametersInfoW(SPI_GETANIMATION, sizeof ai, &ai, 0) && ai.iMinAnimate;
+                if (const unsigned wait = lightsRestoreWaitMs(animated, GetPropW(hwnd, L"MacDockTransitionsHeld") != nullptr)) {
+                    hide(*l);
+                    l->revealAt = GetTickCount64() + wait;
+                    SetTimer(l->hwnd, kRevealTimer, wait, nullptr);
+                }
+                place(*l, true);
+            } else {
+                consider(hwnd);
+            }
             break;
         case EVENT_OBJECT_SHOW:
-        case EVENT_SYSTEM_MINIMIZEEND:
         case EVENT_OBJECT_UNCLOAKED:
             if (Layer* l = layerOf(hwnd)) place(*l, true);
             else consider(hwnd);
@@ -415,9 +448,8 @@ void TrafficWindow::event(DWORD ev, HWND hwnd) {
                 if (l->shown) SetTimer(l->hwnd, kSampleTimer, 200, nullptr);
             }
             break;
-        case EVENT_SYSTEM_FOREGROUND:   // passée devant : son calque la rejoint tout de suite (couleurs : attach)
-            if (Layer* l = layerOf(hwnd))
-                if (l->shown) raise(*l);
+        case EVENT_SYSTEM_FOREGROUND:   // passée devant (avec ses fenêtres possédées) : tous les calques recalés
+            restack();
             break;
         default: break;
     }
@@ -638,16 +670,23 @@ void TrafficWindow::paint(Layer& l) {
 void TrafficWindow::raise(Layer& l) {
     if (!l.hwnd || !l.target) return;
     // Ordre voulu : le calque, juste au-dessus de sa fenêtre (sous celles qui la recouvrent).
+    // Fenêtre « toujours au-dessus » : le calque l'est aussi, sinon il passerait sous elle.
+    const bool topmost = (GetWindowLongPtrW(l.target, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    const bool layerTopmost = (GetWindowLongPtrW(l.hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    constexpr UINT kKeep = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+    if (topmost != layerTopmost) SetWindowPos(l.hwnd, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, kKeep);
     const HWND above = GetWindow(l.target, GW_HWNDPREV);
     const bool inOrder = above == l.hwnd;
-    UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
-    HWND after = HWND_TOP;   // la fenêtre est la première : le haut des fenêtres ordinaires
+    UINT flags = kKeep | SWP_SHOWWINDOW;
+    // La fenêtre est la première de sa bande : le haut des fenêtres ordinaires, ou des fenêtres toujours au-dessus.
+    HWND after = topmost ? HWND_TOPMOST : HWND_TOP;
     if (inOrder) {
         flags |= SWP_NOZORDER;   // déjà juste au-dessus
     } else {
         HWND a = above;
         while (a && a == l.hwnd) a = GetWindow(a, GW_HWNDPREV);
-        if (a && !(GetWindowLongPtrW(a, GWL_EXSTYLE) & WS_EX_TOPMOST)) after = a;
+        const bool aTopmost = a && (GetWindowLongPtrW(a, GWL_EXSTYLE) & WS_EX_TOPMOST);
+        if (a && aTopmost == topmost) after = a;
     }
     SetWindowPos(l.hwnd, after, 0, 0, 0, 0, flags);
     l.shown = true;
