@@ -45,6 +45,7 @@ struct Settings {
     std::wstring spotlightHotkey = L"alt+space";   // Spotlight : alt+space, ctrl+space ou off
     std::wstring missionControlHotkey = L"ctrl+alt+up";   // Mission Control : ctrl+alt+up, ctrl+up, f3 ou off
     std::wstring appSwitcherHotkey = L"alt+tab";          // sélecteur d'apps : alt+tab ou off
+    bool screenshots = true;   // ⊞⇧3 et ⊞⇧4 : captures d'écran façon macOS (false : rendus à Windows)
     // Coins actifs, indexés par Corner (haut gauche, haut droit, bas gauche, bas droit) ; aucun par défaut (un coin
     // actif surprend : l'horloge et le logo sont tout près).
     std::array<HotCornerAction, 4> hotCorners{HotCornerAction::Off, HotCornerAction::Off, HotCornerAction::Off,

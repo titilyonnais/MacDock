@@ -179,6 +179,14 @@ TEST_CASE(settings_spotlight_hotkey_off_and_case) {
     CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"Ctrl+Space\"}")).spotlightHotkey == L"ctrl+space");
 }
 
+TEST_CASE(settings_screenshots_on_by_default) {
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).screenshots);
+    CHECK(!md::settingsFromJson(*md::json::parse("{\"screenshots\":false}")).screenshots);
+    md::Settings s;
+    s.screenshots = false;
+    CHECK(!md::settingsFromJson(md::settingsToJson(s)).screenshots);
+}
+
 TEST_CASE(settings_mission_hotkey) {
     CHECK(md::settingsFromJson(*md::json::parse("{}")).missionControlHotkey == L"ctrl+alt+up");
     CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"F3\"}")).missionControlHotkey == L"f3");
