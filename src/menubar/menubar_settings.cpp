@@ -33,6 +33,7 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
     s.hud = readBool(v, "hud", s.hud);
     s.showAppIcons = readBool(v, "showAppIcons", s.showAppIcons);
     s.macWindows = readBool(v, "macWindows", s.macWindows);
+    if (auto* side = v.find("trafficLightsSide")) s.lightsAlwaysLeft = side->asString("left") != "auto";
     if (auto* f = v.find("font")) s.font = fromUtf8(f->asString(""));
     if (auto* t = v.find("trafficLights")) {
         const std::string mode = t->asString("");
@@ -79,6 +80,7 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     v.set("hud", s.hud);
     v.set("showAppIcons", s.showAppIcons);
     v.set("macWindows", s.macWindows);
+    v.set("trafficLightsSide", s.lightsAlwaysLeft ? "left" : "auto");
     v.set("trafficLights", s.trafficLights == LightsMode::All ? "all" : s.trafficLights == LightsMode::Off ? "off" : "standard");
     const MenuBarMetrics& t = s.metrics;
     json::Value m;

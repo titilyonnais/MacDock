@@ -76,6 +76,12 @@ bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitPro
     return true;
 }
 
+LightsSpot chooseLightsSpot(bool leftFree, bool buttonsFound, bool alwaysLeft) {
+    if (leftFree) return LightsSpot::Left;
+    if (!buttonsFound) return LightsSpot::None;
+    return alwaysLeft ? LightsSpot::Left : LightsSpot::Over;
+}
+
 RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
     if (!zoomed || work.right <= work.left) return frame;
     RECT r{std::max(frame.left, work.left), std::max(frame.top, work.top), std::min(frame.right, work.right),

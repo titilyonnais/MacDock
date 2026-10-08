@@ -295,3 +295,17 @@ TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
     const RECT normal = md::visibleFrame(RECT{100, 30, 900, 700}, work, false);   // fenêtre déplacée : telle quelle
     CHECK_EQ(normal.top, 30L);
 }
+
+TEST_CASE(lights_spot_always_left_by_default) {
+    // À ta demande : toujours à gauche (les boutons de Windows sont cachés à droite), même quand l'app dessine
+    // des onglets ou des menus à gauche. En « auto », sur les boutons de Windows si la gauche est occupée.
+    CHECK(md::chooseLightsSpot(true, true, true) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, true, true) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, true, false) == md::LightsSpot::Over);
+    CHECK(md::chooseLightsSpot(true, false, false) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, false, true) == md::LightsSpot::None);   // aucun bouton : barre inconnue
+    md::MenuBarSettings s = md::menuBarSettingsFromJson(md::json::Value(md::json::Object{}));
+    CHECK(s.lightsAlwaysLeft);
+    s.lightsAlwaysLeft = false;
+    CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).lightsAlwaysLeft);
+}

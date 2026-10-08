@@ -144,6 +144,7 @@ void MenuBarApp::checkSettingsFile() {
 
 void MenuBarApp::applySettings() {
     if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
+    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     lights_.attach(lights_.target(), settings_.trafficLights);
     if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
     for (auto& s : screens_) syncAppBar(*s);
@@ -1540,6 +1541,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     }
     loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
     lights_.create(instance);
+    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);

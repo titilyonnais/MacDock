@@ -221,6 +221,21 @@ void TrafficWindow::sample(const RECT& frame, UINT dpi) {
         }
         ReleaseDC(nullptr, dc);
     }
+    // Cache des boutons de Windows : sa propre couleur, prise juste à sa gauche et à mi-hauteur.
+    if (coverLayout_.window.right > coverLayout_.window.left)
+        if (HDC dc = GetDC(nullptr)) {
+            std::vector<std::uint32_t> beside;
+            const LONG cy = (coverLayout_.window.top + coverLayout_.window.bottom) / 2;
+            for (int i = 0; i < 6; ++i) {
+                const COLORREF c = GetPixel(dc, coverLayout_.window.left - 4 - i * std::lround(3.0 * dpi / 96), cy);
+                if (c != CLR_INVALID) beside.push_back((GetRValue(c) << 16) | (GetGValue(c) << 8) | GetBValue(c));
+            }
+            ReleaseDC(nullptr, dc);
+            if (!beside.empty() && dominantColor(beside) != coverColor_) {
+                coverColor_ = dominantColor(beside);
+                coverPainted_ = false;
+            }
+        }
     if (samples.empty()) return;
     const std::uint32_t color = dominantColor(samples);
     if (color == state_.patchColor && painted_) return;
@@ -269,7 +284,11 @@ TrafficWindow::Placement TrafficWindow::measure(const LightsWindowInfo& info, UI
         titleBottom = b.bottom;
     const bool left = leftCaptionFree(info.frame, titleBottom, dpi, hit);
     complete = !late;
-    p.spot = left ? Spot::Left : found ? Spot::Over : Spot::None;
+    switch (chooseLightsSpot(left, found, alwaysLeft_)) {
+        case LightsSpot::Left: p.spot = Spot::Left; break;
+        case LightsSpot::Over: p.spot = Spot::Over; break;
+        case LightsSpot::None: p.spot = Spot::None; break;
+    }
     if (found) p.buttons = RECT{b.left - info.frame.right, b.top - info.frame.top, b.right - info.frame.right, b.bottom - info.frame.top};
     p.titleBottom = titleBottom - info.frame.top;
     return p;
@@ -369,7 +388,7 @@ void TrafficWindow::place(bool resample, bool probe) {
         UpdateLayeredWindow(hwnd_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);   // même image, déplacée
     }
     if (wantCover) {
-        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_);
+        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_, coverColor_);
         else {
             POINT pos{coverLayout_.window.left, coverLayout_.window.top};
             UpdateLayeredWindow(cover_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);
@@ -381,18 +400,20 @@ void TrafficWindow::place(bool resample, bool probe) {
 
 void TrafficWindow::paint() {
     paintedSize_ = {};
-    paintLayer(hwnd_, layout_, paintedSize_);
+    paintLayer(hwnd_, layout_, paintedSize_, state_.patchColor);
     painted_ = paintedSize_.cx > 0;
     if (cover_ && coverLayout_.window.right > coverLayout_.window.left && !coverPainted_) {
-        paintLayer(cover_, coverLayout_, coverSize_);
+        paintLayer(cover_, coverLayout_, coverSize_, coverColor_);
         coverPainted_ = true;
     }
 }
 
-void TrafficWindow::paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted) {
+void TrafficWindow::paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted, std::uint32_t patchColor) {
     const int w = int(layout.window.right - layout.window.left), h = int(layout.window.bottom - layout.window.top);
     if (!layer || w <= 0 || h <= 0) return;
-    const auto px = renderLights(layout, state_, scale_);
+    LightsState st = state_;
+    st.patchColor = patchColor;
+    const auto px = renderLights(layout, st, scale_);
     BITMAPINFO bi{};
     bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB};
     void* bits = nullptr;

@@ -24,6 +24,11 @@ public:
     void attach(HWND target, LightsMode mode);
     void detach();
     void destroy();
+    // Toujours à gauche (réglage par défaut) ou, si la gauche est prise, sur les boutons de Windows.
+    void setAlwaysLeft(bool on) {
+        if (on != alwaysLeft_) placement_.valid = false;
+        alwaysLeft_ = on;
+    }
     HWND target() const { return target_; }
 
 private:
@@ -46,7 +51,7 @@ private:
     void hide();
     void sample(const RECT& frame, UINT dpi);
     void paint();
-    void paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted);
+    void paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted, std::uint32_t patchColor);
     void raise();                // juste au-dessus de la cible (le cache sous les pastilles)
     void unhook();
 
@@ -70,6 +75,8 @@ private:
     // Pendant une sonde, SendMessageTimeout laisse passer les messages envoyés à notre fil (WinEvent, activation) :
     // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
     bool probing_ = false, attachPending_ = false, placePending_ = false;
+    bool alwaysLeft_ = true;
+    std::uint32_t coverColor_ = 0;   // couleur juste à gauche des boutons cachés, à mi-hauteur (Mica : plus foncée en haut)
     HWND pendingTarget_ = nullptr;
     LightsMode pendingMode_ = LightsMode::Standard;
     static TrafficWindow* self_;

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <string>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
@@ -187,7 +188,8 @@ bool HudWindow::Impl::ensureWindow() {
                            L"Volume", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, env.instance, nullptr);
     if (!hwnd) return false;
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(this));
-    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);   // sinon le verre se verrait lui-même
+    // Sinon le verre se verrait lui-même ; en diagnostic, visible aux enregistreurs (le verre peut alors se refléter).
+    if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     return true;
 }
 
