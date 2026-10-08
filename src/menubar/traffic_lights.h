@@ -69,6 +69,7 @@ struct LightsState {
     double bounce = 1;
     bool enabled[3] = {true, true, true};        // indisponible : gris, sans action
     bool dark = false;                           // thème de la barre de titre (gris des pastilles indisponibles)
+    bool inactive = false;                       // fenêtre inactive : grises, en couleur au survol (macOS)
     std::uint32_t patchColor = 0xF3F3F3;         // 0xRRGGBB, couleur de la barre de titre
 };
 // Image BGRA prémultipliée du calque (taille de l.window) ; scale = dpi / 96.

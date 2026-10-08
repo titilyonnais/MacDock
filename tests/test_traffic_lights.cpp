@@ -272,3 +272,26 @@ TEST_CASE(lights_wait_for_zoom_animation) {
     CHECK_EQ(md::lightsZoomWaitMs(true, true, true), 0u);
     CHECK_EQ(md::lightsZoomWaitMs(false, true, false), 0u);
 }
+
+TEST_CASE(lights_inactive_window_gray_until_hover) {
+    // Fenêtre inactive : les trois pastilles grises, comme sur macOS ; survolées, elles reprennent leurs couleurs.
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
+    md::LightsState st;
+    st.patchColor = 0xF3F3F3;
+    st.inactive = true;
+    const int w = l.window.right - l.window.left;
+    auto center = [&](const std::vector<std::uint8_t>& px, int light) {
+        const RECT& c = l.circles[light];
+        const int x = (c.left + c.right) / 2 - l.window.left, y = (c.top + c.bottom) / 2 + 2 - l.window.top;
+        return &px[(std::size_t(y) * w + x) * 4];
+    };
+    auto gray = md::renderLights(l, st, 1.0);
+    for (int i = 0; i < 3; ++i) {
+        const std::uint8_t* p = center(gray, i);
+        CHECK(std::abs(int(p[2]) - int(p[1])) < 8);   // ni rouge, ni jaune, ni vert
+        CHECK(std::abs(int(p[1]) - int(p[0])) < 8);
+    }
+    st.hover = true;
+    auto lit = md::renderLights(l, st, 1.0);
+    CHECK(center(lit, 0)[2] > center(lit, 0)[1] + 60);   // fermer : rouge
+}
