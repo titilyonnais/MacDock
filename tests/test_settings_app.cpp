@@ -61,3 +61,83 @@ TEST_CASE(settings_commit_creates_a_missing_file) {
     CHECK(m.bar.autohide);
     CHECK(!m.dock.autohide);   // défauts pour le Dock, sans fichier
 }
+
+#include "../src/settings/panes.h"
+
+namespace {
+const md::RowSpec* rowNamed(const std::vector<md::GroupSpec>& groups, const wchar_t* label) {
+    for (const auto& g : groups)
+        for (const auto& r : g.rows)
+            if (r.label == label) return &r;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE(settings_panes_list_and_keys) {
+    const auto& panes = md::paneList();
+    REQUIRE(panes.size() == 11);
+    CHECK(panes.front().id == md::PaneId::General);
+    CHECK(md::paneFromKey("dock") == md::PaneId::Dock);
+    CHECK(md::paneFromKey("menubar") == md::PaneId::MenuBar);
+    CHECK(md::paneFromKey("windows") == md::PaneId::Windows);
+    CHECK(!md::paneFromKey("nope").has_value());
+    CHECK(md::paneInfo(md::PaneId::Dock).ready);
+    CHECK(!md::paneInfo(md::PaneId::Mods).ready);   // plan 42
+}
+
+TEST_CASE(settings_panes_rows_roundtrip) {
+    // Chaque ligne lit ce qu'elle écrit, pour chaque valeur possible (interrupteurs, choix, segments, curseurs).
+    md::PaneEnv env;
+    env.screens = {L"Écran 1", L"Écran 2"};
+    env.screenIds = {L"DISPLAY1", L"DISPLAY2"};
+    for (md::PaneId id : {md::PaneId::Dock, md::PaneId::MenuBar, md::PaneId::Windows}) {
+        const auto groups = md::paneGroups(id, env);
+        CHECK(!groups.empty());
+        for (const auto& g : groups)
+            for (const auto& r : g.rows) {
+                if (r.kind == md::RowKind::Info) continue;
+                REQUIRE(r.get && r.set);
+                std::vector<double> values;
+                if (r.kind == md::RowKind::Switch) values = {1, 0};
+                else if (r.kind == md::RowKind::Slider) values = {r.max, r.min, (r.min + r.max) / 2};
+                else for (std::size_t i = 0; i < r.choices.size(); ++i) values.push_back(double(i));
+                for (double v : values) {
+                    md::SettingsModel m;
+                    if (r.kind == md::RowKind::Slider) m.dock.tileSize = 16;   // la taille agrandie peut descendre
+                    r.set(m, v);
+                    CHECK_NEAR(r.get(m), std::round(v / r.step) * r.step, 1e-9);
+                }
+            }
+    }
+}
+
+TEST_CASE(settings_panes_dock_specifics) {
+    md::PaneEnv env;
+    env.screens = {L"Écran 1", L"Écran 2"};
+    env.screenIds = {L"DISPLAY1", L"DISPLAY2"};
+    const auto dock = md::paneGroups(md::PaneId::Dock, env);
+    const md::RowSpec* large = rowNamed(dock, L"Taille agrandie");
+    REQUIRE(large && large->enabled);
+    md::SettingsModel m;
+    m.dock.magnification = false;
+    CHECK(!large->enabled(m));   // grisée sans agrandissement, comme sur Mac
+    m.dock.magnification = true;
+    CHECK(large->enabled(m));
+    // Agrandir la taille au-delà de la taille agrandie relève celle-ci (jamais plus petite que les icônes).
+    const md::RowSpec* size = rowNamed(dock, L"Taille");
+    REQUIRE(size);
+    m.dock.largeSize = 80;
+    size->set(m, 100);
+    CHECK(m.dock.largeSize >= 100);
+    // Écran du Dock : « Écran principal » puis les écrans branchés.
+    const md::RowSpec* screen = rowNamed(dock, L"Écran du Dock");
+    REQUIRE(screen && screen->choices.size() == 3);
+    screen->set(m, 2);
+    CHECK(m.dock.screen == L"DISPLAY2");
+    screen->set(m, 0);
+    CHECK(m.dock.screen.empty());
+    const md::RowSpec* position = rowNamed(dock, L"Position à l'écran");
+    REQUIRE(position && position->kind == md::RowKind::Segmented);
+    position->set(m, 0);
+    CHECK(m.dock.position == md::DockPosition::Left);
+}
