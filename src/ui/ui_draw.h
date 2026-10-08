@@ -1,4 +1,4 @@
-// Dessin des contrôles de l'app Réglages en Direct2D, façon macOS 27 : interrupteur, curseur, menu déroulant, contrôle
+// Dessin des contrôles de l'app Réglages en Direct2D, façon macOS 26 Tahoe : interrupteur, curseur, menu déroulant, contrôle
 // segmenté, groupes arrondis, menu ouvert, champ de recherche, pastilles de la fenêtre. Coordonnées en points : la cible
 // porte l'échelle (DPI). Aucune ressource Apple : tout est tracé ici.
 #pragma once

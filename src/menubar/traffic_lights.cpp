@@ -8,7 +8,7 @@ namespace md {
 
 namespace {
 constexpr const wchar_t* kShellClasses[] = {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd", L"Progman", L"WorkerW"};
-// Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre (mesuré par des développeurs).
+// Tahoe : pastilles de 14 pt, 23 pt de centre à centre (mesuré par des développeurs).
 constexpr double kDiameter = 14, kSpacing = 23, kTail = 8;   // points (kTail : marge de part et d'autre du groupe)
 constexpr double kTopGap = 3;   // points laissés au bord du haut (redimensionnement)
 
@@ -158,9 +158,9 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
     const int w = int(l.window.right - l.window.left), h = int(l.window.bottom - l.window.top);
     std::vector<std::uint8_t> out(std::size_t(std::max(w, 0)) * std::max(h, 0) * 4, 0);
     if (w <= 0 || h <= 0) return out;
-    // Golden Gate : verre façon Aqua, teintes d'avant 27 désaturées de ~12 %, liseré plus sombre, reflet elliptique
-    // en haut et lueur plus faible en bas (pas de valeurs publiées par Apple : estimations du rapport de recherche).
-    static constexpr std::uint32_t kFill[3] = {0xE26E65, 0xF0BE5E, 0x68C05D}, kEdge[3] = {0xC4483F, 0xD29C38, 0x3E9C3A};
+    // macOS 26 Tahoe : cercles plats aux teintes de Yosemite et un liseré un peu plus sombre (le verre façon Aqua
+    // n'arrive qu'avec macOS 27 Golden Gate).
+    static constexpr std::uint32_t kFill[3] = {0xFF5F57, 0xFEBC2E, 0x28C840}, kEdge[3] = {0xE0443E, 0xDEA123, 0x1AAB29};
     const std::uint32_t grayFill = s.dark ? 0x4E4F52 : 0xDDDDDD, grayEdge = s.dark ? 0x3E3F42 : 0xC4C3C6;
     const double border = std::max(0.5 * scale, 0.75), stroke = 1.1 * scale / 2, arm = 2.9 * scale;
     const Rgb patch = rgb(s.patchColor);
@@ -187,18 +187,10 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
                         const double d = std::hypot(px - cx, py - cy);
                         if (d > radius) continue;
                         ++outer;
-                        // Verre : liseré plus sombre, teinte un peu plus claire en haut, reflet en haut, lueur en bas.
-                        const double u = (px - cx) / radius, v = (py - cy) / radius;
+                        // Plat : le liseré, et la pastille plus sombre sous le doigt.
                         Rgb c = d > radius - border ? edge : fill;
-                        const double shade = (1.0 - 0.07 * v) * (down ? 0.78 : 1.0);
+                        const double shade = down ? 0.78 : 1.0;
                         c = {c.r * shade, c.g * shade, c.b * shade};
-                        if (colored) {
-                            const double hx = u / 0.62, hy = (v + 0.52) / 0.34, gx = u / 0.55, gy = (v - 0.64) / 0.22;
-                            double white = 0;
-                            if (hx * hx + hy * hy < 1) white += (down ? 0.25 : 0.5) * (1 - (hx * hx + hy * hy));
-                            if (gx * gx + gy * gy < 1) white += (down ? 0.08 : 0.2) * (1 - (gx * gx + gy * gy));
-                            c = {c.r + (255 - c.r) * white, c.g + (255 - c.g) * white, c.b + (255 - c.b) * white};
-                        }
                         sr += c.r;
                         sg += c.g;
                         sb += c.b;

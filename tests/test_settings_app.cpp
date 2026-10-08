@@ -291,9 +291,12 @@ TEST_CASE(ui_draw_segments_menu_and_lights) {
         // Menu : l'élément survolé (deuxième) sur l'accent, à gauche de son texte.
         CHECK(bluish(c.at(20, 60 + 6 + 22 + 11)));
         CHECK(!bluish(c.at(20, 60 + 6 + 11)));
-        // Pastilles de la fenêtre : rouge au premier centre.
+        // Pastilles de la fenêtre, plates comme dans macOS 26 Tahoe : rouge #FF5F57 au premier centre, sans reflet en haut.
         const BYTE* red = c.at(250, 30);
-        CHECK(red[2] > 180 && red[1] < 140);
+        CHECK(red[2] > 240 && red[1] > 75 && red[1] < 115);
+        CHECK(std::abs(int(c.at(250, 27)[1]) - int(red[1])) <= 12);
+        const BYTE* green = c.at(250 + 2 * int(md::ui::kLightSpacing), 30);
+        CHECK(green[1] > 185 && green[2] < 70);
     }
     CoUninitialize();
 }

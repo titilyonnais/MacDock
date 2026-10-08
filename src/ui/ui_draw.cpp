@@ -220,8 +220,8 @@ void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool f
 void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius) { p.strokeRound(inflate(r, 2), radius + 2, p.pal().focusRing, 3); }
 
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled) {
-    // Teintes des pastilles du projet (Golden Gate, voir traffic_lights.cpp) : remplissage et liseré.
-    static constexpr std::uint32_t kFill[3] = {0xE26E65, 0xF0BE5E, 0x68C05D}, kEdge[3] = {0xC4483F, 0xD29C38, 0x3E9C3A};
+    // Pastilles plates de macOS 26 Tahoe (comme traffic_lights.cpp) : remplissage et liseré.
+    static constexpr std::uint32_t kFill[3] = {0xFF5F57, 0xFEBC2E, 0x28C840}, kEdge[3] = {0xE0443E, 0xDEA123, 0x1AAB29};
     const bool dark = darkPalette(p.pal());
     for (int i = 0; i < 3; ++i) {
         const D2D1_POINT_2F c{first.x + i * kLightSpacing, first.y};
@@ -231,8 +231,6 @@ void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, 
         if (i == pressed && !gray) fill = mix(fill, rgb(0x000000), 0.22f);
         p.fillCircle(c, kLightRadius, edge);
         p.fillCircle(c, kLightRadius - 0.6f, fill);
-        if (!gray)   // reflet du haut
-            p.rt()->FillEllipse(D2D1::Ellipse(D2D1::Point2F(c.x, c.y - 3.2f), 4.2f, 2.3f), p.brush(rgb(0xFFFFFF, 0.28f)));
         if (hover && !gray) {   // ×, −, +
             ID2D1SolidColorBrush* ink = p.brush(rgb(0x000000, 0.55f));
             const float a = 3.2f;

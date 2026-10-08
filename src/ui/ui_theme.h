@@ -1,4 +1,4 @@
-// Palette et cotes de l'app Réglages, façon Réglages Système de macOS 27 (docs/recherches/2026-10-08-cotes-macos.md).
+// Palette et cotes de l'app Réglages, façon Réglages Système de macOS 26 Tahoe (docs/recherches/2026-10-08-cotes-macos.md).
 // Couleurs en flottants non prémultipliés (r, g, b, a de 0 à 1) ; cotes en points (DIP).
 #pragma once
 #include <cstdint>

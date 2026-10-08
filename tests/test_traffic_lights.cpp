@@ -114,14 +114,14 @@ TEST_CASE(lights_render_colors) {
     const int w = l.window.right - l.window.left, h = l.window.bottom - l.window.top;
     REQUIRE(px.size() == std::size_t(w * h * 4));
     auto at = [&](LONG x, LONG y) { return &px[(std::size_t(y - l.window.top) * w + (x - l.window.left)) * 4]; };
-    // Verre Golden Gate : teintes désaturées, plus claires en haut (reflet) qu'au centre.
-    const std::uint8_t* red = at(908, 16);
-    CHECK(red[2] > 200 && red[1] < 130 && red[3] == 255);
+    // macOS 26 Tahoe : cercles plats aux teintes de Yosemite (#FF5F57, #FEBC2E, #28C840), sans reflet ni lueur.
+    const std::uint8_t* red = at(908, 16);   // B, G, R, A
+    CHECK(red[2] > 240 && red[1] > 75 && red[1] < 115 && red[0] > 70 && red[0] < 105 && red[3] == 255);
     const std::uint8_t* yellow = at(931, 16);
-    CHECK(yellow[2] > 200 && yellow[1] > 150 && yellow[0] < 110);
+    CHECK(yellow[2] > 240 && yellow[1] > 170 && yellow[1] < 200 && yellow[0] < 70);
     const std::uint8_t* green = at(954, 16);
-    CHECK(green[1] > 160 && green[2] < 130);
-    CHECK(at(908, 10)[1] > red[1]);   // reflet du haut
+    CHECK(green[1] > 185 && green[2] < 70 && green[0] < 90);
+    CHECK(std::abs(int(at(908, 11)[1]) - int(red[1])) <= 12);   // plate : le haut comme le centre
     const std::uint8_t* patch = at(866, 20);   // fond : couleur de la barre de titre, opaque, qui cache les boutons
     CHECK(patch[3] == 255 && patch[0] == 0xF3);
     CHECK_EQ(int(at(866, 1)[3]), 0);   // bord du haut transparent : la fenêtre se redimensionne par là
