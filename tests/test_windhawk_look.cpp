@@ -1,7 +1,7 @@
 // Mod Windhawk « MacDock - macOS Look » : polices remplacées (logique) et crochets GDI / DirectWrite branchés sur
 // les vraies fonctions de Windows dans ce processus (sans Windhawk : ses fonctions sont simulées ci-dessous).
 #include <windows.h>
-#include <dwrite.h>
+#include <dwrite_3.h>
 
 #include <string>
 
@@ -126,4 +126,132 @@ TEST_CASE(look_xaml_variable_font_path_with_axes) {
     CHECK(familyOf(L"Segoe UI Variable Display", 40) == (g_displayAvailable ? L"SF Pro Display" : L"SF Pro Text"));
     CHECK(familyOf(L"Cascadia Code", 14) == L"Cascadia Code");   // le reste n'est jamais touché
     f6->Release();
+}
+
+namespace {
+// Texte à analyser pour IDWriteFontFallback::MapCharacters (une seule langue, gauche à droite).
+struct LookTextSource : IDWriteTextAnalysisSource {
+    const wchar_t* text;
+    UINT32 length;
+    explicit LookTextSource(const wchar_t* t) : text(t), length(UINT32(wcslen(t))) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IDWriteTextAnalysisSource)) {
+            *out = this;
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
+    ULONG STDMETHODCALLTYPE Release() override { return 1; }
+    HRESULT STDMETHODCALLTYPE GetTextAtPosition(UINT32 at, const WCHAR** t, UINT32* n) override {
+        *t = at < length ? text + at : nullptr;
+        *n = at < length ? length - at : 0;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetTextBeforePosition(UINT32 at, const WCHAR** t, UINT32* n) override {
+        *t = at > 0 && at <= length ? text : nullptr;
+        *n = at > 0 && at <= length ? at : 0;
+        return S_OK;
+    }
+    DWRITE_READING_DIRECTION STDMETHODCALLTYPE GetParagraphReadingDirection() override { return DWRITE_READING_DIRECTION_LEFT_TO_RIGHT; }
+    HRESULT STDMETHODCALLTYPE GetLocaleName(UINT32 at, UINT32* n, const WCHAR** locale) override {
+        *n = length - at;
+        *locale = L"fr-FR";
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetNumberSubstitution(UINT32 at, UINT32* n, IDWriteNumberSubstitution** s) override {
+        *n = length - at;
+        *s = nullptr;
+        return S_OK;
+    }
+};
+
+// Nom de famille Win32 (« SF Pro Text », « SF Pro Text Semibold »…) d'une police ou d'une face.
+template <class T>
+std::wstring win32Family(T* font) {
+    IDWriteLocalizedStrings* names = nullptr;
+    BOOL exists = FALSE;
+    wchar_t buf[128] = {};
+    if (font && SUCCEEDED(font->GetInformationalStrings(DWRITE_INFORMATIONAL_STRING_WIN32_FAMILY_NAMES, &names, &exists)) && exists)
+        names->GetString(0, buf, 128);
+    if (names) names->Release();
+    return buf;
+}
+
+bool startsWith(const std::wstring& s, const wchar_t* prefix) { return s.rfind(prefix, 0) == 0; }
+} // namespace
+
+TEST_CASE(look_xaml_matching_fonts_with_axes) {
+    // XAML choisit la police affichée par IDWriteFontCollection2::GetMatchingFonts(« Segoe UI Variable », axes) : ce
+    // chemin doit donner SF Pro, Display à partir de 20 pt de taille optique, et la graisse du nom (« Semibold »).
+    loadSettings();
+    if (!g_textAvailable) return;
+    IDWriteFactory6* f6 = nullptr;
+    REQUIRE(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory6), reinterpret_cast<IUnknown**>(&f6))));
+    IDWriteFontCollection2* typo = nullptr;
+    REQUIRE(SUCCEEDED(f6->GetSystemFontCollection(FALSE, DWRITE_FONT_FAMILY_MODEL_TYPOGRAPHIC, &typo)));
+    GetMatchingFonts_Original = reinterpret_cast<GetMatchingFonts_t>((*reinterpret_cast<void***>(typo))[10]);
+    struct Got {
+        std::wstring family;
+        int weight = 0;
+    };
+    auto firstMatch = [&](const wchar_t* name, float opsz, float wght) {
+        DWRITE_FONT_AXIS_VALUE axes[] = {{DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, opsz}, {DWRITE_FONT_AXIS_TAG_WEIGHT, wght},
+                                         {DWRITE_FONT_AXIS_TAG_ITALIC, 0}};
+        Got got;
+        IDWriteFontList2* list = nullptr;
+        if (SUCCEEDED(GetMatchingFonts_Hook(typo, name, axes, 3, &list)) && list) {
+            IDWriteFont* font = nullptr;
+            if (list->GetFontCount() > 0 && SUCCEEDED(list->GetFont(0, &font)) && font) {
+                got = {win32Family(font), int(font->GetWeight())};
+                font->Release();
+            }
+            list->Release();
+        }
+        return got;
+    };
+    CHECK(startsWith(firstMatch(L"Segoe UI Variable", 10.5f, 400).family, L"SF Pro Text"));
+    CHECK(startsWith(firstMatch(L"Segoe UI Variable Text", 10.5f, 400).family, L"SF Pro Text"));
+    CHECK(startsWith(firstMatch(L"Segoe UI", 21, 400).family, g_displayAvailable ? L"SF Pro Display" : L"SF Pro Text"));
+    CHECK_EQ(firstMatch(L"Segoe UI Semibold", 10.5f, 400).weight, 600);   // la graisse vient du nom
+    CHECK_EQ(firstMatch(L"Segoe UI Variable", 10.5f, 700).weight, 700);   // une épaisseur demandée est gardée
+    CHECK(firstMatch(L"Consolas", 10.5f, 400).family == L"Consolas");     // le reste n'est jamais touché
+    typo->Release();
+    f6->Release();
+}
+
+TEST_CASE(look_xaml_fallback_base_family) {
+    // XAML passe aussi la famille de base au repli de polices (IDWriteFontFallback1::MapCharacters) : les caractères
+    // latins doivent sortir en SF Pro, pas en Segoe UI Variable.
+    loadSettings();
+    if (!g_textAvailable) return;
+    IDWriteFactory2* f2 = nullptr;
+    REQUIRE(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory2), reinterpret_cast<IUnknown**>(&f2))));
+    IDWriteFontFallback* system = nullptr;
+    REQUIRE(SUCCEEDED(f2->GetSystemFontFallback(&system)));
+    IDWriteFontFallback1* fallback = nullptr;
+    REQUIRE(SUCCEEDED(system->QueryInterface(__uuidof(IDWriteFontFallback1), reinterpret_cast<void**>(&fallback))));
+    MapCharacters1_Original = reinterpret_cast<MapCharacters1_t>((*reinterpret_cast<void***>(fallback))[4]);
+    IDWriteFontCollection* collection = nullptr;   // sans collection, DirectWrite ignore la famille de base
+    REQUIRE(SUCCEEDED(f2->GetSystemFontCollection(&collection, FALSE)));
+    LookTextSource text(L"Caractères Grâce");
+    auto mapped = [&](const wchar_t* base) {
+        DWRITE_FONT_AXIS_VALUE axes[] = {{DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, 10.5f}, {DWRITE_FONT_AXIS_TAG_WEIGHT, 400}};
+        UINT32 length = 0;
+        FLOAT scale = 0;
+        IDWriteFontFace5* face = nullptr;
+        std::wstring got;
+        if (SUCCEEDED(MapCharacters1_Hook(fallback, &text, 0, text.length, collection, base, axes, 2, &length, &scale, &face)) && face) {
+            got = win32Family(face);
+            face->Release();
+        }
+        return got;
+    };
+    CHECK(startsWith(mapped(L"Segoe UI Variable Text"), L"SF Pro Text"));
+    CHECK(mapped(L"Consolas") == L"Consolas");
+    collection->Release();
+    fallback->Release();
+    system->Release();
+    f2->Release();
 }

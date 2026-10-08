@@ -2,7 +2,7 @@
 // @id              macdock-look
 // @name            MacDock - macOS Look
 // @description     The macOS system font (SF Pro) in every app, for MacDock
-// @version         1.1.0
+// @version         1.2.0
 // @author          MacDock
 // @include         *
 // @exclude         MacDock.exe
@@ -237,9 +237,32 @@ using CreateTextFormat_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFactory*, const WC
                                                        const WCHAR*, IDWriteTextFormat**);
 CreateTextFormat_t CreateTextFormat_Original;
 
-// IDWriteFactory6::CreateTextFormat, avec axes : le chemin de XAML (Bloc-notes, Explorateur, Paramètres) pour la police
-// variable Segoe UI Variable (épaisseur, taille optique). SF Pro n'est pas variable : l'épaisseur choisit la graisse,
-// la taille optique est sans effet.
+// Polices variables (Segoe UI Variable) demandées avec des axes : SF Pro n'est pas variable, l'épaisseur y choisit la
+// graisse et la taille optique est sans effet. Copie des axes (8 au plus) où la graisse du nom (« Segoe UI Semibold »)
+// remplace une épaisseur normale ou absente.
+UINT32 axesFor(const look::Mapping& m, const DWRITE_FONT_AXIS_VALUE* axes, UINT32 count, DWRITE_FONT_AXIS_VALUE (&out)[8]) {
+    UINT32 n = 0;
+    bool weight = false;
+    for (UINT32 i = 0; axes && i < count && n < 7; ++i) {
+        out[n] = axes[i];
+        if (out[n].axisTag == DWRITE_FONT_AXIS_TAG_WEIGHT) {
+            weight = true;
+            if (m.weight && out[n].value == float(DWRITE_FONT_WEIGHT_NORMAL)) out[n].value = float(m.weight);
+        }
+        ++n;
+    }
+    if (!weight && m.weight) out[n++] = {DWRITE_FONT_AXIS_TAG_WEIGHT, float(m.weight)};
+    return n;
+}
+
+// Taille optique demandée (points), 0 sans cet axe : elle choisit Display pour les grands textes.
+double opticalSize(const DWRITE_FONT_AXIS_VALUE* axes, UINT32 count) {
+    for (UINT32 i = 0; axes && i < count; ++i)
+        if (axes[i].axisTag == DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE) return axes[i].value;
+    return 0;
+}
+
+// IDWriteFactory6::CreateTextFormat, avec axes (police variable).
 using CreateTextFormat6_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFactory6*, const WCHAR*, IDWriteFontCollection*,
                                                         const DWRITE_FONT_AXIS_VALUE*, UINT32, FLOAT, const WCHAR*,
                                                         IDWriteTextFormat3**);
@@ -251,19 +274,67 @@ HRESULT STDMETHODCALLTYPE CreateTextFormat6_Hook(IDWriteFactory6* self, const WC
     if (g_directWrite) {
         const look::Mapping m = look::mappingFor(family);
         if (const wchar_t* to = replacementFor(look::roleForSize(m.role, size * 72.0 / 96.0))) {
-            // Graisse tirée du nom (« Segoe UI Semibold ») si les axes n'en donnent pas.
             DWRITE_FONT_AXIS_VALUE local[8];
-            UINT32 n = 0;
-            bool weight = false;
-            for (UINT32 i = 0; i < count && n < 7; ++i) {
-                local[n++] = axes[i];
-                weight = weight || axes[i].axisTag == DWRITE_FONT_AXIS_TAG_WEIGHT;
-            }
-            if (!weight && m.weight) local[n++] = {DWRITE_FONT_AXIS_TAG_WEIGHT, float(m.weight)};
+            const UINT32 n = axesFor(m, axes, count, local);
             return CreateTextFormat6_Original(self, to, collection, n ? local : nullptr, n, size, locale, out);
         }
     }
     return CreateTextFormat6_Original(self, family, collection, axes, count, size, locale, out);
+}
+
+// IDWriteFontCollection2::GetMatchingFonts : le chemin par lequel XAML (Bloc-notes, Explorateur, Paramètres) choisit la
+// police affichée, « Segoe UI Variable » et ses axes. La police d'origine si SF Pro n'est pas dans la collection.
+using GetMatchingFonts_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFontCollection2*, const WCHAR*, const DWRITE_FONT_AXIS_VALUE*,
+                                                       UINT32, IDWriteFontList2**);
+GetMatchingFonts_t GetMatchingFonts_Original;
+
+HRESULT STDMETHODCALLTYPE GetMatchingFonts_Hook(IDWriteFontCollection2* self, const WCHAR* family,
+                                                const DWRITE_FONT_AXIS_VALUE* axes, UINT32 count, IDWriteFontList2** out) {
+    if (g_directWrite && out) {
+        const look::Mapping m = look::mappingFor(family);
+        if (const wchar_t* to = replacementFor(look::roleForSize(m.role, opticalSize(axes, count)))) {
+            DWRITE_FONT_AXIS_VALUE local[8];
+            const UINT32 n = axesFor(m, axes, count, local);
+            IDWriteFontList2* list = nullptr;
+            if (SUCCEEDED(GetMatchingFonts_Original(self, to, n ? local : nullptr, n, &list)) && list) {
+                if (list->GetFontCount() > 0) {
+                    *out = list;
+                    return S_OK;
+                }
+                list->Release();
+            }
+        }
+    }
+    return GetMatchingFonts_Original(self, family, axes, count, out);
+}
+
+// IDWriteFontFallback1::MapCharacters : XAML y passe la famille de base de chaque passage de texte ; le repli vers une
+// autre police ne sert qu'aux caractères absents de SF Pro. La famille d'origine si SF Pro n'est pas dans la collection
+// (sans collection, DirectWrite ignore de toute façon la famille de base).
+using MapCharacters1_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFontFallback1*, IDWriteTextAnalysisSource*, UINT32, UINT32,
+                                                     IDWriteFontCollection*, const WCHAR*, const DWRITE_FONT_AXIS_VALUE*,
+                                                     UINT32, UINT32*, FLOAT*, IDWriteFontFace5**);
+MapCharacters1_t MapCharacters1_Original;
+
+HRESULT STDMETHODCALLTYPE MapCharacters1_Hook(IDWriteFontFallback1* self, IDWriteTextAnalysisSource* source, UINT32 position,
+                                              UINT32 length, IDWriteFontCollection* collection, const WCHAR* family,
+                                              const DWRITE_FONT_AXIS_VALUE* axes, UINT32 count, UINT32* mappedLength,
+                                              FLOAT* scale, IDWriteFontFace5** face) {
+    if (g_directWrite) {
+        const look::Mapping m = look::mappingFor(family);
+        if (const wchar_t* to = replacementFor(look::roleForSize(m.role, opticalSize(axes, count)))) {
+            UINT32 index = 0;
+            BOOL exists = FALSE;
+            if (collection) collection->FindFamilyName(to, &index, &exists);
+            if (exists) {
+                DWRITE_FONT_AXIS_VALUE local[8];
+                const UINT32 n = axesFor(m, axes, count, local);
+                return MapCharacters1_Original(self, source, position, length, collection, to, n ? local : nullptr, n,
+                                               mappedLength, scale, face);
+            }
+        }
+    }
+    return MapCharacters1_Original(self, source, position, length, collection, family, axes, count, mappedLength, scale, face);
 }
 
 HRESULT STDMETHODCALLTYPE CreateTextFormat_Hook(IDWriteFactory* self, const WCHAR* family, IDWriteFontCollection* collection,
@@ -331,8 +402,28 @@ BOOL Wh_ModInit() {
             void** collectionVtable = *reinterpret_cast<void***>(system);
             Wh_SetFunctionHook(collectionVtable[5], reinterpret_cast<void*>(FindFamilyName_Hook),
                                reinterpret_cast<void**>(&FindFamilyName_Original));   // IDWriteFontCollection::FindFamilyName
+            IDWriteFontCollection2* system2 = nullptr;
+            if (SUCCEEDED(system->QueryInterface(__uuidof(IDWriteFontCollection2), reinterpret_cast<void**>(&system2))) && system2) {
+                void** vtable2 = *reinterpret_cast<void***>(system2);
+                Wh_SetFunctionHook(vtable2[10], reinterpret_cast<void*>(GetMatchingFonts_Hook),
+                                   reinterpret_cast<void**>(&GetMatchingFonts_Original));   // IDWriteFontCollection2::GetMatchingFonts
+                system2->Release();
+            }
             system->Release();
         }
+        IDWriteFactory2* factory2 = nullptr;
+        IDWriteFontFallback* fallback = nullptr;
+        IDWriteFontFallback1* fallback1 = nullptr;
+        if (SUCCEEDED(factory->QueryInterface(__uuidof(IDWriteFactory2), reinterpret_cast<void**>(&factory2))) && factory2 &&
+            SUCCEEDED(factory2->GetSystemFontFallback(&fallback)) && fallback &&
+            SUCCEEDED(fallback->QueryInterface(__uuidof(IDWriteFontFallback1), reinterpret_cast<void**>(&fallback1))) && fallback1) {
+            void** fallbackVtable = *reinterpret_cast<void***>(fallback1);
+            Wh_SetFunctionHook(fallbackVtable[4], reinterpret_cast<void*>(MapCharacters1_Hook),
+                               reinterpret_cast<void**>(&MapCharacters1_Original));   // IDWriteFontFallback1::MapCharacters
+        }
+        if (fallback1) fallback1->Release();
+        if (fallback) fallback->Release();
+        if (factory2) factory2->Release();
         factory->Release();
     }
     return TRUE;
