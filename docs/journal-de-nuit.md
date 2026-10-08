@@ -394,6 +394,26 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - Raccourcis en accord (« Ctrl+K, Ctrl+C ») affichés comme Copier.
   - Plusieurs mineurs corrigés aussi : arrêt borné, glisser asynchrone, couleur du cache par défaut, apparence des fenêtres qui ne retire plus les couleurs propres à une app, repli de la lecture UIA.
 
+### Plan 28 — Mod de police macOS et Coup d'œil
+
+- **Mod Windhawk « MacDock - macOS Look »** (`windhawk/macdock-look.wh.cpp`) : la police de macOS dans toutes les apps.
+  - **Ce qu'il change** : Segoe UI, Segoe UI Variable, Tahoma et MS Shell Dlg deviennent SF Pro Text, et SF Pro Display à partir de 20 pt.
+  - **Où** : dans les apps classiques (GDI) comme modernes (DirectWrite : Explorateur, Bloc-notes, navigateurs, Electron).
+  - **Ce qu'il ne touche jamais** : les polices d'icônes. Il ne fait rien non plus si SF Pro n'est pas installée.
+  - **Jeux et anti-triche exclus** : Steam, Epic, Riot et Vanguard, EAC, BattlEye, EA, Ubisoft, tes simulateurs.
+  - **Vérifié** : il compile sans avertissement avec le compilateur de Windhawk. Ses crochets sont testés sur les vraies fonctions de Windows : « Segoe UI » donne bien SF Pro Text, et un titre de 24 pt prend SF Pro Display.
+  - **À faire de ton côté** : Windhawk tourne en administrateur, donc je ne peux pas l'installer. Ouvre Windhawk, puis *Créer un nouveau mod*, colle le fichier, puis *Compiler*. Les apps changent de police à leur prochain lancement.
+- **Coup d'œil** (Quick Look) : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné ouvre une fenêtre flottante aux coins arrondis.
+  - **La fenêtre** : × à gauche, nom au centre, « Ouvrir avec <app> » à droite.
+  - **Ce qu'elle montre** :
+    - une photo, une vidéo, un PDF ou un document, en grand ;
+    - un fichier texte, affiché ;
+    - sinon, une grande icône avec le type, la taille et la date.
+  - **Les touches** : Espace ou Échap ferme, Entrée ouvre. Les flèches et les clics changent la sélection, et l'aperçu suit.
+  - **Ce qui ne change pas** : Espace sans sélection reste à l'Explorateur, qui sélectionne l'élément actif. Il n'est jamais intercepté dans une zone de saisie (renommer, rechercher).
+  - **Essayé en vrai** sur le dossier des fonds d'écran de Windows et sur `C:\Windows` : images, `win.ini`, un exécutable.
+- **Feuille de route** des prochaines étapes : `docs/feuille-de-route-macos.md`.
+
 ## Mineurs reportés — plan 27
 - `target()` est lu de façon asynchrone : rarement, après un changement de réglage, les pastilles peuvent revenir sur l'ancienne fenêtre jusqu'au prochain changement d'app.
 - `GetTitleBarInfo` (dans `readInfo`) reste appelé sur le fil de la barre à chaque activation : une app figée peut le retarder.
