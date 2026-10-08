@@ -6,6 +6,7 @@
 
 #include "minitest.h"
 #include "../src/config/config_store.h"
+#include "../src/settings/actions.h"
 #include "../src/settings/backup.h"
 #include "../src/settings/mods.h"
 #include "../src/settings/settings_doc.h"
@@ -109,4 +110,55 @@ TEST_CASE(settings_mods_versions_and_status) {
     const std::wstring found = md::modSourcePath(root + L"/build/Release", L"macdock-look");
     CHECK(!found.empty() && GetFileAttributesW(found.c_str()) != INVALID_FILE_ATTRIBUTES);
     CHECK(md::modSourcePath(root + L"/build/Release", L"inconnu").empty());
+}
+
+TEST_CASE(settings_test_mode_keeps_startup_in_a_file) {
+    // Mode d'essai (--data) : le démarrage avec Windows est gardé dans un fichier du dossier d'essai, jamais dans le
+    // vrai registre.
+    const std::wstring dir = freshDir(L"startup-file");
+    const std::wstring file = dir + L"\\startup.txt";
+    DeleteFileW(file.c_str());
+    const md::SettingsIo io = md::fileStartupIo(file, L"C:\\MacDock\\MacDockLauncher.exe");
+    CHECK(!io.readStartup());
+    REQUIRE(io.writeStartup(std::wstring(L"\"C:\\MacDock\\MacDockLauncher.exe\"")));
+    REQUIRE(io.readStartup().has_value());
+    CHECK(*io.readStartup() == L"\"C:\\MacDock\\MacDockLauncher.exe\"");
+    REQUIRE(io.writeStartup(std::nullopt));
+    CHECK(!io.readStartup());
+    // Le modèle passe par lui comme par le registre.
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.startup = true; }, nullptr, &io));
+    CHECK(md::loadModel(dir, nullptr, &io).startup);
+}
+
+TEST_CASE(settings_actions_build_their_commands) {
+    const std::wstring exe = L"C:\\MacDock\\build\\Release";
+    md::ButtonContext ctx{exe, L"C:\\Users\\x\\AppData\\Roaming\\MacDock"};
+    const auto quit = md::actionCommands(md::PaneAction::Quit, ctx);
+    REQUIRE(quit.size() == 1);
+    CHECK(quit[0].file == exe + L"\\MacDock.exe");
+    CHECK(quit[0].params == L"--quit");
+    CHECK(quit[0].wait);
+    const auto restart = md::actionCommands(md::PaneAction::Restart, ctx);   // quitter, attendre, relancer
+    REQUIRE(restart.size() == 2);
+    CHECK(restart[0].params == L"--quit");
+    CHECK(restart[1].file == exe + L"\\MacDockLauncher.exe");
+    ctx.arg = L"macdock-look";
+    ctx.restartExplorer = true;
+    const auto install = md::actionCommands(md::PaneAction::InstallMod, ctx);
+    REQUIRE(install.size() == 1);
+    CHECK(install[0].file == L"powershell.exe");
+    CHECK(install[0].verb == L"runas");   // Windows demande l'autorisation administrateur
+    CHECK(install[0].wait);
+    CHECK(install[0].params.find(L"install-macdock-look.ps1") != std::wstring::npos);
+    CHECK(install[0].params.find(L"-Restart") != std::wstring::npos);
+    ctx.restartExplorer = false;
+    const auto uninstall = md::actionCommands(md::PaneAction::UninstallMod, ctx);
+    REQUIRE(uninstall.size() == 1);
+    CHECK(uninstall[0].params.find(L"-Uninstall") != std::wstring::npos);
+    CHECK(uninstall[0].params.find(L"-NoRestart") != std::wstring::npos);
+    const auto logs = md::actionCommands(md::PaneAction::ShowLogs, ctx);
+    REQUIRE(logs.size() == 1);
+    CHECK(logs[0].params.find(L"\\logs") != std::wstring::npos);
+    CHECK(md::actionCommands(md::PaneAction::Export, ctx).empty());   // fait dans la fenêtre (dialogue de fichier)
+    CHECK(md::actionCommands(md::PaneAction::InstallMod, md::ButtonContext{exe, L"", L"inconnu"}).empty());
 }

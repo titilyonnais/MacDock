@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 
 #include "../interact/hotkey.h"
 
@@ -354,6 +355,73 @@ std::vector<GroupSpec> aboutPane(const PaneEnv& env) {
 }
 
 }  // namespace
+
+std::wstring searchFold(std::wstring_view s) {
+    std::wstring out;
+    out.reserve(s.size());
+    for (wchar_t c : s) {
+        if (c < 0x80) c = wchar_t(std::towlower(c));   // les lettres accentuées : ci-dessous, majuscules comprises
+        switch (c) {
+            case L'à': case L'â': case L'ä': case L'á': case L'ã': case L'å':
+            case L'À': case L'Â': case L'Ä': case L'Á': case L'Ã': case L'Å': out += L'a'; break;
+            case L'ç': case L'Ç': out += L'c'; break;
+            case L'é': case L'è': case L'ê': case L'ë': case L'É': case L'È': case L'Ê': case L'Ë': out += L'e'; break;
+            case L'î': case L'ï': case L'í': case L'ì': case L'Î': case L'Ï': case L'Í': case L'Ì': out += L'i'; break;
+            case L'ô': case L'ö': case L'ó': case L'ò': case L'õ':
+            case L'Ô': case L'Ö': case L'Ó': case L'Ò': case L'Õ': out += L'o'; break;
+            case L'ù': case L'û': case L'ü': case L'ú': case L'Ù': case L'Û': case L'Ü': case L'Ú': out += L'u'; break;
+            case L'ÿ': case L'ý': case L'Ÿ': case L'Ý': out += L'y'; break;
+            case L'ñ': case L'Ñ': out += L'n'; break;
+            case L'œ': case L'Œ': out += L"oe"; break;
+            case L'æ': case L'Æ': out += L"ae"; break;
+            case L'’': out += L'\''; break;
+            default: out += c; break;
+        }
+    }
+    return out;
+}
+
+std::vector<PaneMatch> searchPanes(std::wstring_view query, const PaneEnv& env) {
+    std::vector<std::wstring> words;
+    std::wstring word;
+    for (wchar_t c : searchFold(query)) {
+        if (c == L' ' || c == L'\t') {
+            if (!word.empty()) words.push_back(std::move(word));
+            word.clear();
+        } else {
+            word += c;
+        }
+    }
+    if (!word.empty()) words.push_back(std::move(word));
+    std::vector<PaneMatch> out;
+    for (const PaneInfo& info : paneList()) {
+        PaneMatch m{info.id};
+        if (words.empty()) {
+            out.push_back(m);
+            continue;
+        }
+        const std::wstring title = searchFold(info.title);
+        std::vector<const std::wstring*> rest;   // mots que le titre n'a pas
+        for (const auto& w : words)
+            if (title.find(w) == std::wstring::npos) rest.push_back(&w);
+        m.title = rest.empty();
+        if (!m.title) {
+            int flat = 0;
+            for (const GroupSpec& g : paneGroups(info.id, env))
+                for (const RowSpec& r : g.rows) {
+                    std::wstring text = g.title + L' ' + r.label + L' ' + r.detail + L' ' + r.keywords;
+                    for (const auto& c : r.choices) text += L' ' + c;
+                    text = searchFold(text);
+                    bool all = true;
+                    for (const std::wstring* w : rest) all = all && text.find(*w) != std::wstring::npos;
+                    if (all) m.rows.push_back(flat);
+                    ++flat;
+                }
+        }
+        if (m.title || !m.rows.empty()) out.push_back(std::move(m));
+    }
+    return out;
+}
 
 std::wstring shortcutConflict(const SettingsModel& m, const std::wstring& name) {
     const std::pair<const wchar_t*, const std::wstring*> all[] = {{L"Spotlight", &m.dock.spotlightHotkey},

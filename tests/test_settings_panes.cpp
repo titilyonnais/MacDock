@@ -150,3 +150,27 @@ TEST_CASE(settings_fonts_and_mods) {
     env.windhawk = false;
     CHECK(!has(buttons(env), md::PaneAction::InstallMod));
 }
+
+TEST_CASE(settings_search_folds_case_and_accents) {
+    CHECK(md::searchFold(L"Général À propos Œil ÉCRAN") == L"general a propos oeil ecran");
+    CHECK(md::searchPanes(L"", fullEnv()).size() == md::paneList().size());   // vide : toutes les sections
+    CHECK(md::searchPanes(L"zzzz", fullEnv()).empty());
+    auto find = [](const std::vector<md::PaneMatch>& all, md::PaneId id) -> const md::PaneMatch* {
+        for (const auto& m : all)
+            if (m.pane == id) return &m;
+        return nullptr;
+    };
+    const auto ecran = md::searchPanes(L"ecran", fullEnv());   // « Captures d'écran », « Écran du Dock »
+    REQUIRE(find(ecran, md::PaneId::Screenshots) != nullptr);
+    CHECK(find(ecran, md::PaneId::Screenshots)->title);
+    REQUIRE(find(ecran, md::PaneId::Dock) != nullptr);
+    CHECK(!find(ecran, md::PaneId::Dock)->title);
+    CHECK(!find(ecran, md::PaneId::Dock)->rows.empty());   // la ligne trouvée, à souligner
+    const auto keys = md::searchPanes(L"RACCOURCI", fullEnv());   // mots-clés des champs de raccourci
+    CHECK(find(keys, md::PaneId::Keyboard) != nullptr);
+    CHECK(find(keys, md::PaneId::Desktop) != nullptr);
+    const auto corners = md::searchPanes(L"coins actifs", fullEnv());   // tous les mots, titre de groupe compris
+    REQUIRE(find(corners, md::PaneId::Desktop) != nullptr);
+    CHECK(find(corners, md::PaneId::Desktop)->rows.size() == 4);
+    CHECK(md::searchPanes(L"loupe", fullEnv()).front().pane == md::PaneId::Dock);   // mot-clé de l'agrandissement
+}

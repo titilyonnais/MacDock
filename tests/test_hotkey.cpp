@@ -70,3 +70,20 @@ TEST_CASE(hotkey_dock_parsers_accept_new_and_old_values) {
     CHECK(!md::parseSpotlightHotkey(L"off"));
     CHECK(!md::parseMissionHotkey(L"win+l"));   // réservé
 }
+
+TEST_CASE(hotkey_recorder_reads_one_key) {
+    // Enregistreur de l'app Réglages : chaque touche appuyée, avec les modificateurs tenus à ce moment.
+    CHECK(md::recordHotkey(VK_LCONTROL, MOD_CONTROL).kind == md::RecordKind::Wait);   // modificateur seul : on attend
+    CHECK(md::recordHotkey(VK_RWIN, MOD_WIN).kind == md::RecordKind::Wait);
+    CHECK(md::recordHotkey(VK_ESCAPE, 0).kind == md::RecordKind::Cancel);
+    CHECK(md::recordHotkey(VK_BACK, 0).kind == md::RecordKind::Clear);               // « Aucun »
+    CHECK(md::recordHotkey(VK_DELETE, 0).kind == md::RecordKind::Clear);
+    const md::HotkeyRecord k = md::recordHotkey('K', MOD_CONTROL | MOD_ALT);
+    REQUIRE(k.kind == md::RecordKind::Accept);
+    CHECK(md::hotkeyText(k.spec) == L"ctrl+alt+k");
+    CHECK(md::recordHotkey('K', 0).kind == md::RecordKind::Wait);                     // il faut un modificateur
+    CHECK(md::recordHotkey(VK_F5, 0).kind == md::RecordKind::Accept);                 // sauf pour une touche F
+    CHECK(md::recordHotkey('L', MOD_WIN).kind == md::RecordKind::Reserved);           // Windows la garde
+    CHECK(md::recordHotkey(VK_OEM_1, MOD_CONTROL).kind == md::RecordKind::Wait);      // touche sans nom : ignorée
+    CHECK(md::recordHotkey(VK_SPACE, MOD_CONTROL | MOD_ALT).kind == md::RecordKind::Accept);
+}

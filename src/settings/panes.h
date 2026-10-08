@@ -83,6 +83,18 @@ struct GroupSpec {
 
 std::vector<GroupSpec> paneGroups(PaneId id, const PaneEnv& env);
 
+// Recherche : minuscules sans accents (« Écran » → « ecran », « Œil » → « oeil »).
+std::wstring searchFold(std::wstring_view s);
+// Section trouvée : par son titre (`title`), ou par des lignes (indices à plat, à souligner) dont le texte (groupe,
+// libellé, détail, mots-clés, choix) contient les mots que le titre n'a pas.
+struct PaneMatch {
+    PaneId pane;
+    bool title = false;
+    std::vector<int> rows;
+};
+// Tous les mots de `query` doivent être trouvés ; vide : toutes les sections. Dans l'ordre de la barre latérale.
+std::vector<PaneMatch> searchPanes(std::wstring_view query, const PaneEnv& env);
+
 // Une autre fonction (Spotlight, Mission Control, Fenêtres de l'app) utilise-t-elle le même raccourci que `name` ?
 // Son nom, ou vide.
 std::wstring shortcutConflict(const SettingsModel& m, const std::wstring& name);

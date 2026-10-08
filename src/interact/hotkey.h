@@ -26,4 +26,15 @@ std::wstring hotkeyLabel(const HotkeySpec& s);   // « ⌃⌥↑ », dans l'ordr
 // Deux réglages désignent-ils la même combinaison (casse, espaces et ordre ignorés) ? Jamais pour « off ».
 bool hotkeyConflict(std::wstring_view a, std::wstring_view b);
 
+// Enregistreur de raccourci (app Réglages) : une touche appuyée, avec les modificateurs tenus (MOD_…).
+//  - Wait : modificateur seul, touche sans nom, ou touche ordinaire sans modificateur (on continue d'écouter) ;
+//  - Accept : `spec` est le nouveau raccourci ; Reserved : Windows garde cette combinaison ;
+//  - Clear : Retour arrière ou Suppr, « Aucun » ; Cancel : Échap.
+enum class RecordKind { Wait, Accept, Reserved, Clear, Cancel };
+struct HotkeyRecord {
+    RecordKind kind = RecordKind::Wait;
+    HotkeySpec spec;
+};
+HotkeyRecord recordHotkey(UINT vk, UINT mods);
+
 }  // namespace md

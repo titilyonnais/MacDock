@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "../config/config_store.h"
+#include "../core/strings.h"
 
 namespace md {
 
@@ -95,6 +96,24 @@ SettingsIo registryIo(const std::wstring& launcherPath) {
         else RegDeleteValueW(key, L"MacDock");
         RegCloseKey(key);
         return r == ERROR_SUCCESS;
+    };
+    return io;
+}
+
+SettingsIo fileStartupIo(const std::wstring& file, const std::wstring& launcherPath) {
+    SettingsIo io;
+    io.launcherPath = launcherPath;
+    io.readStartup = [file]() -> std::optional<std::wstring> {   // {"run": "<valeur de la clé Run>"}
+        const LoadResult r = loadJsonFile(file);
+        const json::Value* run = r.value.find("run");
+        if (!run || !run->isString()) return std::nullopt;
+        return fromUtf8(run->asString(""));
+    };
+    io.writeStartup = [file](const std::optional<std::wstring>& v) {
+        if (!v) return DeleteFileW(file.c_str()) != FALSE || GetLastError() == ERROR_FILE_NOT_FOUND;
+        json::Value doc(json::Object{});
+        doc.set("run", json::Value(toUtf8(*v)));
+        return saveJsonFileAtomic(file, doc);
     };
     return io;
 }

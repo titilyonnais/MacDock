@@ -25,6 +25,8 @@ struct SettingsIo {
     std::function<bool(const std::optional<std::wstring>&)> writeStartup;   // nullopt : retirée
 };
 SettingsIo registryIo(const std::wstring& launcherPath);   // le vrai registre (HKCU)
+// Mode d'essai (--data) : la même valeur gardée dans un fichier, jamais dans le vrai registre.
+SettingsIo fileStartupIo(const std::wstring& file, const std::wstring& launcherPath);
 
 // Fusion par différence : `file` reçoit les clés de `after` dont la valeur (sérialisée) diffère de `before`, et perd
 // celles que `after` n'a plus (« Écran principal » retire screen) ; ses autres clés (inconnues de nous, épingles du

@@ -76,6 +76,25 @@ std::optional<HotkeySpec> parseHotkey(std::wstring_view text, bool allowReserved
     return s;
 }
 
+HotkeyRecord recordHotkey(UINT vk, UINT mods) {
+    switch (vk) {
+        case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+        case VK_MENU: case VK_LMENU: case VK_RMENU:
+        case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+        case VK_LWIN: case VK_RWIN:
+            return {};
+        default: break;
+    }
+    if (!mods && vk == VK_ESCAPE) return {RecordKind::Cancel, {}};
+    if (!mods && (vk == VK_BACK || vk == VK_DELETE)) return {RecordKind::Clear, {}};
+    const HotkeySpec s{mods, vk};
+    // Seulement les touches que les réglages savent écrire (et relire à l'identique).
+    const auto back = parseHotkey(hotkeyText(s), true);
+    if (!back || !(*back == s)) return {};
+    if (hotkeyReserved(s)) return {RecordKind::Reserved, s};
+    return {RecordKind::Accept, s};
+}
+
 bool hotkeyReserved(const HotkeySpec& s) {
     const HotkeySpec reserved[] = {{MOD_WIN, 'L'},
                                    {MOD_CONTROL | MOD_ALT, VK_DELETE},
