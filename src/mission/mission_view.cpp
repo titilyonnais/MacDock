@@ -123,6 +123,7 @@ struct Thumb {
     std::size_t screen = 0;
     MissionRect from, to;   // pixels de la vue de son écran
     bool alive = true;
+    bool minimized = false;   // Exposé d'une app : rangée du bas
 };
 
 struct Screen {
@@ -136,6 +137,7 @@ struct Screen {
     Com<ID2D1Bitmap1> wall;
     D2D1_RECT_F wallSrc{};
     int hover = -1;   // indice dans Session::thumbs
+    double shelfLine = -1;   // trait au-dessus des fenêtres réduites (pixels de la vue) ; -1 : aucun
     UINT w() const { return UINT(rc.right - rc.left); }
     UINT h() const { return UINT(rc.bottom - rc.top); }
 };
@@ -237,18 +239,25 @@ bool Session::addScreen(HMONITOR mon) {
 void Session::place() {
     for (std::size_t k = 0; k < screens.size(); ++k) {
         const Screen& s = screens[k];
-        std::vector<std::size_t> mine;
-        std::vector<MissionRect> wins;
-        for (std::size_t i = 0; i < thumbs.size(); ++i)
-            if (thumbs[i].screen == k) {
-                mine.push_back(i);
-                wins.push_back(thumbs[i].from);
-            }
+        std::vector<std::size_t> mine, shelfOf;
+        std::vector<MissionRect> wins, shelfWins;
+        for (std::size_t i = 0; i < thumbs.size(); ++i) {
+            if (thumbs[i].screen != k) continue;
+            (thumbs[i].minimized ? shelfOf : mine).push_back(i);
+            (thumbs[i].minimized ? shelfWins : wins).push_back(thumbs[i].from);
+        }
         const MissionRect work{double(s.work.left - s.rc.left), double(s.work.top - s.rc.top),
                                double(s.work.right - s.work.left), double(s.work.bottom - s.work.top)};
-        const auto rects = missionLayout(wins, missionArea(work, s.sc), kMissionGap * s.sc,
-                                         (kMissionGap + kMissionLabelRoom) * s.sc);
+        // Fenêtres réduites en rangée au bas de l'écran, sous un trait ; les ouvertes se rangent au-dessus.
+        const MissionShelf shelf = missionShelf(shelfWins, missionArea(work, s.sc), kMissionGap * s.sc);
+        screens[k].shelfLine = shelfOf.empty() ? -1 : shelf.lineY;
+        const auto rects = missionLayout(wins, shelf.above, kMissionGap * s.sc, (kMissionGap + kMissionLabelRoom) * s.sc);
         for (std::size_t j = 0; j < mine.size(); ++j) thumbs[mine[j]].to = rects[j];
+        for (std::size_t j = 0; j < shelfOf.size(); ++j) {   // elles montent du bas de l'écran
+            Thumb& th = thumbs[shelfOf[j]];
+            th.to = shelf.rects[j];
+            th.from = {th.to.x, double(s.h()) + 8 * s.sc, th.to.w, th.to.h};
+        }
     }
 }
 
@@ -299,6 +308,14 @@ void Session::render(Screen& s) {
     Com<ID2D1SolidColorBrush> veil;
     d->CreateSolidColorBrush(rgba(0, 0, 0, kVeil * float(easeOut(q))), &veil);
     if (veil) d->FillRectangle(all, veil.Get());
+    if (s.shelfLine >= 0) {   // trait de séparation des fenêtres réduites
+        Com<ID2D1SolidColorBrush> line;
+        d->CreateSolidColorBrush(rgba(1, 1, 1, 0.28f * float(easeOut(q))), &line);
+        const MissionRect a = missionArea({0, 0, double(s.w()), double(s.h())}, s.sc);
+        if (line)
+            d->FillRectangle(D2D1::RectF(float(a.x), float(s.shelfLine), float(a.x + a.w), float(s.shelfLine) + std::max(1.f, s.sc)),
+                             line.Get());
+    }
     if (s.hover >= 0 && dir > 0 && q >= 1) {
         const Thumb& th = thumbs[std::size_t(s.hover)];
         drawHover(d.Get(), dwrite.Get(), th.to, th.title, s.sc);
@@ -462,6 +479,27 @@ std::optional<HWND> MissionView::track(const MenuWindow::Env& env, const Request
         th.from = {double(r.left - s.screens[k].rc.left), double(r.top - s.screens[k].rc.top), double(r.right - r.left),
                    double(r.bottom - r.top)};
         if (FAILED(DwmRegisterThumbnail(s.screens[k].hwnd, w.hwnd, &th.id))) continue;
+        s.thumbs.push_back(std::move(th));
+    }
+    // Exposé d'une app : ses fenêtres réduites, sur l'écran du curseur, à leur taille normale (pas l'icône de -32000).
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const HMONITOR cursorMon = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    std::size_t shelfScreen = 0;
+    while (shelfScreen < s.screens.size() && s.screens[shelfScreen].mon != cursorMon) ++shelfScreen;
+    if (shelfScreen == s.screens.size()) shelfScreen = 0;
+    for (const auto& w : request.minimized) {
+        if (!IsWindow(w.hwnd) || !IsIconic(w.hwnd)) continue;
+        WINDOWPLACEMENT wp{sizeof wp};
+        GetWindowPlacement(w.hwnd, &wp);
+        Thumb th;
+        th.src = w.hwnd;
+        th.title = w.title;
+        th.screen = shelfScreen;
+        th.minimized = true;
+        th.from = {0, 0, double(std::max<LONG>(1, wp.rcNormalPosition.right - wp.rcNormalPosition.left)),
+                   double(std::max<LONG>(1, wp.rcNormalPosition.bottom - wp.rcNormalPosition.top))};
+        if (FAILED(DwmRegisterThumbnail(s.screens[shelfScreen].hwnd, w.hwnd, &th.id))) continue;
         s.thumbs.push_back(std::move(th));
     }
     s.place();

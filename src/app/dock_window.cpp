@@ -95,7 +95,7 @@ std::vector<MonitorInfo> enumMonitors() {
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4, kHotMission = 5;
 // Sélecteur d'apps : Alt+Tab, Alt+Maj+Tab, puis le temps d'une session Alt+Échap, Alt+←, Alt+→, Alt+Q, Alt+H.
 constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchLeft = 9, kHotSwitchRight = 10,
-              kHotSwitchQuit = 11, kHotSwitchHide = 12;
+              kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotAppExpose = 14;
 constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
 
 double nowSeconds() {
@@ -179,6 +179,7 @@ void DockApp::applySettings() {
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
         registerMissionHotkey();
+        registerAppExposeHotkey();
         registerSwitcherHotkey();
     }
     requestFrame();
@@ -1040,6 +1041,53 @@ void DockApp::openMissionControl() {
     requestFrame();
 }
 
+// Exposé d'une app : ses fenêtres ouvertes rangées, les réduites en rangée en bas ; un second appui ferme.
+void DockApp::openAppExpose(const std::wstring& appId) {
+    endSwitch(false);
+    if (MissionView::isOpen()) {
+        MissionView::closeOpen();
+        return;
+    }
+    if (menuOpen_ || appId.empty()) return;
+    MissionView::Request r;
+    Microsoft::WRL::ComPtr<IVirtualDesktopManager> desktops;
+    CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&desktops));
+    for (WindowId id : model_.windowsOf(appId)) {
+        const HWND h = toHwnds({id}).front();
+        if (!IsWindow(h)) continue;
+        BOOL here = TRUE;
+        if (desktops && SUCCEEDED(desktops->IsWindowOnCurrentVirtualDesktop(h, &here)) && !here) continue;
+        if (IsIconic(h)) {
+            r.minimized.push_back({h, model_.titleOf(id)});
+            continue;
+        }
+        DWORD cloaked = 0;
+        if (!IsWindowVisible(h) || (SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked)) continue;
+        r.windows.push_back({h, model_.titleOf(id)});
+    }
+    if (trace_) log::info(L"[trace] exposé %s : %zu ouverte(s), %zu réduite(s)", appId.c_str(), r.windows.size(), r.minimized.size());
+    if (r.windows.empty() && r.minimized.empty()) return;
+    MenuWindow::Env env = popupEnv();
+    controller_.setCursor(std::nullopt);
+    requestFrame();
+    menuOpen_ = true;
+    const std::optional<HWND> chosen = MissionView::track(env, r);
+    menuOpen_ = false;
+    if (chosen) activateApp({*chosen});   // une fenêtre réduite est restaurée
+    requestFrame();
+}
+
+void DockApp::registerAppExposeHotkey() {
+    if (settings_.appExposeHotkey == appExposeHotkeyOn_) return;
+    UnregisterHotKey(hwnd_, kHotAppExpose);
+    appExposeHotkeyOn_ = settings_.appExposeHotkey;
+    const auto spec = parseAppExposeHotkey(appExposeHotkeyOn_);
+    if (!spec) log::info(L"Exposé d'une app : raccourci désactivé");
+    else if (!RegisterHotKey(hwnd_, kHotAppExpose, spec->mods | MOD_NOREPEAT, spec->vk))
+        log::warn(L"Exposé d'une app : raccourci %s déjà pris par une autre app (%lu)", appExposeHotkeyOn_.c_str(), GetLastError());
+    else log::info(L"Exposé d'une app : raccourci %s", appExposeHotkeyOn_.c_str());
+}
+
 void DockApp::registerMissionHotkey() {
     if (settings_.missionControlHotkey == missionHotkeyOn_) return;
     UnregisterHotKey(hwnd_, kHotMission);
@@ -1471,8 +1519,10 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
     }
     switch (cmd) {
         case kCmdOpen:
-        case kCmdShowAll:
             activateItem(item);
+            break;
+        case kCmdShowAll:   // Exposé de l'app, comme sur macOS
+            openAppExpose(item.appId);
             break;
         case kCmdKeep:
             if (model_.pinnedIndexOf(item.key)) {
@@ -2354,6 +2404,10 @@ void DockApp::onHotKey(int id) {
         openMissionControl();
         return;
     }
+    if (id == kHotAppExpose) {   // l'app au premier plan
+        openAppExpose(model_.appOfWindow(toId(GetAncestor(GetForegroundWindow(), GA_ROOTOWNER))));
+        return;
+    }
     if (id == kHotSpotlight) {
         openSpotlight();
         return;
@@ -2486,6 +2540,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
+    registerAppExposeHotkey();
     switcher_.onClick = [this](std::size_t i) {   // clic sur une icône : cette app, tout de suite
         switch_.select(i);
         endSwitch(true);

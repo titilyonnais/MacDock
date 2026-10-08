@@ -83,7 +83,9 @@ private:
     void openSpotlight();                                      // Spotlight ; ferme celui qui est ouvert
     void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
     void openMissionControl();                                 // Mission Control ; ferme celui qui est ouvert
-    void registerMissionHotkey();                              // raccourci du réglage missionControlHotkey
+    void registerMissionHotkey();
+    void registerAppExposeHotkey();
+    void openAppExpose(const std::wstring& appId);   // les fenêtres d'une seule app (réduites en rangée en bas)                              // raccourci du réglage missionControlHotkey
     void registerSwitcherHotkey();                             // Alt+Tab et Alt+Maj+Tab (réglage appSwitcherHotkey)
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
@@ -167,6 +169,7 @@ private:
     UINT spotlightMsg_ = 0;              // « MacDockSpotlight » : loupe de la barre de menus
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
     std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
+    std::wstring appExposeHotkeyOn_;     // raccourci enregistré (vide : aucun)
     std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
     std::wstring switcherHotkeyOn_;      // raccourci enregistré (vide : aucun)
     AppMru mru_;                         // apps de la plus récemment activée à la plus ancienne

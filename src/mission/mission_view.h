@@ -21,7 +21,8 @@ public:
         std::wstring title;
     };
     struct Request {
-        std::vector<Window> windows;   // fenêtres visibles, non réduites, du bureau courant
+        std::vector<Window> windows;     // fenêtres visibles, non réduites, du bureau courant
+        std::vector<Window> minimized;   // Exposé d'une app : ses fenêtres réduites, en rangée au bas de l'écran du curseur
     };
     // Fenêtre choisie ; nullopt : fermée sans choix, ou ouverture impossible.
     static std::optional<HWND> track(const MenuWindow::Env& env, const Request& request);
