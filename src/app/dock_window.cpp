@@ -474,6 +474,7 @@ void DockApp::revealForCapture(bool dock, bool lights) {
             revealLights_ = SendMessageTimeoutW(bar, shotRevealMsg_, 1, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 400, &r) && r == 1;
         }
     MenuWindow::setCaptureVisible(true);   // menu du Dock ouvert (capture lancée pendant sa boucle)
+    SpotlightWindow::setCaptureVisible(true);
     // L'affichage change à la prochaine composition : deux images de DWM avant la copie.
     DwmFlush();
     DwmFlush();
@@ -481,6 +482,7 @@ void DockApp::revealForCapture(bool dock, bool lights) {
 
 void DockApp::concealAfterCapture() {
     MenuWindow::setCaptureVisible(false);
+    SpotlightWindow::setCaptureVisible(false);
     if (revealDock_) {
         SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
         if (shotPausedCapture_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);

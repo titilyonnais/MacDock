@@ -23,6 +23,8 @@ public:
     void setOpacity(float opacity);   // fondu (0..1)
     void hide();
     bool visible() const;
+    // Capture d'écran : visible aux captures le temps de la copie, verre gelé jusqu'à 150 ms après.
+    void setCaptureVisible(bool on);
 
 private:
     struct Impl;

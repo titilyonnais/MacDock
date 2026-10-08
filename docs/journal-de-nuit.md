@@ -555,6 +555,11 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Comment** : pendant la copie (environ 20 ms), le menu devient visible aux captures. Son verre cesse de suivre l'écran pendant ce temps, sinon il se verrait lui-même, et reprend 150 ms après.
 - **Non vérifié en vrai** : mon environnement d'essai ne peut pas envoyer de message aux fenêtres de MacDock. En diagnostic, les menus sont déjà toujours visibles, ce qui ne prouve rien. À essayer de ton côté : ouvre le Centre de contrôle, puis ⊞⇧3.
 
+### Plan 36 — Spotlight et la pastille du volume sur les captures
+
+- Même principe que pour les menus : visibles aux captures le temps de la copie, verre gelé jusqu'à 150 ms après. Spotlight (Dock) et la pastille du volume et de la luminosité (barre) apparaissent maintenant sur ⊞⇧3 et ⊞⇧4.
+- **Non vérifié en vrai**, pour la même raison qu'au plan 35.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

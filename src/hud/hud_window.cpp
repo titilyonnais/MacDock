@@ -114,6 +114,8 @@ struct HudWindow::Impl {
     ScreenBackdrop screen;
     WindowBackdrop backdrop;
     GlassTarget glassTarget;
+    bool captureVisible = false;   // capture d'écran en cours : visible aux captures, verre gelé
+    ULONGLONG thawAt = 0;
 
     HWND hwnd = nullptr;
     RECT rc{};
@@ -168,7 +170,8 @@ LRESULT CALLBACK HudWindow::Impl::proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // l'app au premier plan garde le clavier
         case WM_NCHITTEST: return HTTRANSPARENT;       // les clics vont à la barre dessous (même fil)
         case WM_HUD_BACKDROP:
-            if (self->shown && self->screen.take(self->env.device) && self->screen.copyTo(self->env.device, self->rc, self->backdrop))
+            if (self->shown && self->screen.take(self->env.device) && !self->captureVisible && GetTickCount64() >= self->thawAt &&
+                self->screen.copyTo(self->env.device, self->rc, self->backdrop))
                 self->render();
             return 0;
         default: break;
@@ -315,6 +318,13 @@ void HudWindow::hide() {
 }
 
 bool HudWindow::visible() const { return impl_->shown; }
+
+void HudWindow::setCaptureVisible(bool on) {
+    if (impl_->captureVisible == on) return;
+    impl_->captureVisible = on;
+    if (!on) impl_->thawAt = GetTickCount64() + 150;
+    if (!diagnosticCapture() && impl_->hwnd) SetWindowDisplayAffinity(impl_->hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+}
 
 BgraImage hudSnapshot(const HudContent& content, bool dark, int width, int height) {
     BgraImage out{width, height, std::vector<std::uint8_t>(std::size_t(std::max(width, 0)) * std::max(height, 0) * 4, 0)};
