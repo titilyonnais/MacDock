@@ -622,6 +622,18 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - l'installateur lit la version dans la source du mod, et propose de redémarrer l'Explorateur, qui garde sinon ses polices jusqu'à la prochaine session.
 - **À faire de ton côté** : relancer le raccourci d'installation, répondre O pour redémarrer l'Explorateur, puis rouvrir les apps.
 
+### Correctif — le mod de police et les apps XAML, pour de bon (version 1.2.0)
+
+- **Constat** : la version 1.1.0 était bien chargée partout, mais une petite app XAML de test, capturée hors écran, s'affichait toujours en Segoe UI, exactement comme sans le mod.
+- **Mesure** : chaque appel aux tables virtuelles de DirectWrite a été compté pendant l'affichage XAML. XAML choisit la police par `IDWriteFontCollection2::GetMatchingFonts(« Segoe UI Variable », axes)` et passe la famille de base au repli par `IDWriteFontFallback1::MapCharacters`. Ces deux méthodes n'étaient pas accrochées ; la 1.1.0 visait `CreateTextFormat` avec axes, que XAML n'utilise pas pour ça.
+- **Correction** :
+  - ces deux méthodes sont accrochées, avec des tests sur les vraies fonctions ;
+  - la taille optique choisit Display à partir de 20 pt ;
+  - la graisse du nom (« Segoe UI Semibold ») remplace l'épaisseur normale ;
+  - sans SF Pro dans la collection, la police d'origine est gardée.
+- **Vérifié** : la même app XAML, avec le code du mod, s'affiche en SF Pro ; le mod compile avec le compilateur de Windhawk.
+- **À faire de ton côté** : relancer le raccourci d'installation, répondre O, puis rouvrir les apps.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
