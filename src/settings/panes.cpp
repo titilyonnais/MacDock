@@ -411,6 +411,7 @@ std::vector<PaneMatch> searchPanes(std::wstring_view query, const PaneEnv& env) 
                 for (const RowSpec& r : g.rows) {
                     std::wstring text = g.title + L' ' + r.label + L' ' + r.detail + L' ' + r.keywords;
                     for (const auto& c : r.choices) text += L' ' + c;
+                    for (const auto& b : r.buttons) text += L' ' + b.label;   // « exporter », « relancer »…
                     text = searchFold(text);
                     bool all = true;
                     for (const std::wstring* w : rest) all = all && text.find(*w) != std::wstring::npos;

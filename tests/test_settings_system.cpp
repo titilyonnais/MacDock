@@ -1,6 +1,7 @@
 // App Réglages : démarrage avec Windows, sauvegarde (exporter, importer, défauts) et état des mods Windhawk.
 #include <windows.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 
@@ -8,6 +9,7 @@
 #include "../src/config/config_store.h"
 #include "../src/settings/actions.h"
 #include "../src/settings/backup.h"
+#include "../src/settings/instance.h"
 #include "../src/settings/mods.h"
 #include "../src/settings/settings_doc.h"
 
@@ -54,14 +56,29 @@ TEST_CASE(settings_startup_reads_and_writes_the_run_value) {
     CHECK(run.value == std::optional<std::wstring>(L"\"ailleurs.exe\""));
 }
 
+TEST_CASE(settings_startup_only_counts_our_launcher) {
+    // Relecture du plan 42 : une valeur « MacDock » qui lance un ancien dossier s'affichait « activée », et la
+    // réactiver ne réécrivait pas le chemin.
+    const std::wstring dir = freshDir(L"startup-stale");
+    FakeRun run;
+    const md::SettingsIo io = run.io(L"C:/MacDock/MacDockLauncher.exe");
+    run.value = L"\"C:/Ancien/MacDockLauncher.exe\"";
+    CHECK(!md::loadModel(dir, nullptr, &io).startup);
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.startup = true; }, nullptr, &io));
+    CHECK(run.value == std::optional<std::wstring>(L"\"C:/MacDock/MacDockLauncher.exe\""));
+    run.value = L"c:/macdock/macdocklauncher.exe";   // sans guillemets, autre casse : c'est bien le nôtre
+    CHECK(md::loadModel(dir, nullptr, &io).startup);
+}
+
 TEST_CASE(settings_backup_export_import_roundtrip) {
     const std::wstring dir = freshDir(L"export"), other = freshDir(L"import");
     md::saveJsonFileAtomic(dir + L"/settings.json", *md::json::parse(
         R"({"version":2,"tileSize":64,"pinned":[{"kind":"app","appId":"a","launch":"C:/a.exe","name":"A"}],"pinnedInitialized":true})"));
     md::saveJsonFileAtomic(dir + L"/menubar.json", *md::json::parse(R"({"autohide":true})"));
-    const md::json::Value backup = md::exportSettings(dir);
-    CHECK(md::isSettingsBackup(backup));
-    CHECK(md::importSettings(other, backup) == md::ImportResult::Ok);
+    const auto backup = md::exportSettings(dir);
+    REQUIRE(backup.has_value());
+    CHECK(md::isSettingsBackup(*backup));
+    CHECK(md::importSettings(other, *backup) == md::ImportResult::Ok);
     const md::SettingsModel m = md::loadModel(other);
     CHECK_NEAR(m.dock.tileSize, 64.0, 1e-9);
     CHECK(m.bar.autohide);
@@ -69,6 +86,41 @@ TEST_CASE(settings_backup_export_import_roundtrip) {
     // Autre document : refusé, rien n'est écrit.
     CHECK(md::importSettings(freshDir(L"refused"), *md::json::parse(R"({"hello":1})")) == md::ImportResult::NotABackup);
     CHECK(md::importSettings(other, *md::json::parse(R"({"macdockBackup":1,"settings":[1,2]})")) == md::ImportResult::Invalid);
+}
+
+TEST_CASE(settings_backup_refuses_broken_files_without_side_effects) {
+    // Relecture du plan 42 : un settings.json invalide s'exportait en « settings »: {} (réimporté, il effaçait tout) ;
+    // un fichier absent n'est pas exporté du tout.
+    const std::wstring dir = freshDir(L"export-broken");
+    md::saveJsonFileAtomic(dir + L"/menubar.json", *md::json::parse(R"({"autohide":true})"));
+    const auto onlyBar = md::exportSettings(dir);
+    REQUIRE(onlyBar.has_value());
+    CHECK(onlyBar->find("settings") == nullptr);
+    CHECK(onlyBar->find("menubar") != nullptr);
+    {
+        FILE* f = nullptr;
+        _wfopen_s(&f, (dir + L"/settings.json").c_str(), L"wb");
+        REQUIRE(f != nullptr);
+        fputs("{ pas du json", f);
+        fclose(f);
+    }
+    CHECK(!md::exportSettings(dir).has_value());
+    // Lire une sauvegarde à importer ne laisse rien à côté d'elle (pas de .bak dans le dossier de l'utilisateur).
+    const std::wstring junk = dir + L"/autre.json";
+    {
+        FILE* f = nullptr;
+        _wfopen_s(&f, junk.c_str(), L"wb");
+        REQUIRE(f != nullptr);
+        fputs("[1, 2", f);
+        fclose(f);
+    }
+    DeleteFileW((junk + L".bak").c_str());
+    CHECK(!md::readSettingsBackup(junk).has_value());
+    CHECK(GetFileAttributesW((junk + L".bak").c_str()) == INVALID_FILE_ATTRIBUTES);
+    // Épingles vers le réseau (\serveur\…) : comptées, pour prévenir avant l'importation.
+    const md::json::Value net = *md::json::parse(
+        R"({"macdockBackup":1,"settings":{"pinned":[{"kind":"app","launch":"\\\\srv\\x.exe"},{"kind":"app","launch":"C:/a.exe"}]}})");
+    CHECK_EQ(md::networkPins(net), 1);
 }
 
 TEST_CASE(settings_reset_keeps_pinned_apps) {
@@ -91,6 +143,13 @@ TEST_CASE(settings_mods_versions_and_status) {
     CHECK(md::compareVersions(L"1.2.0", L"1.10.0") < 0);
     CHECK(md::compareVersions(L"1.2", L"1.2.0") == 0);
     CHECK(md::compareVersions(L"2.0.0", L"1.9.9") > 0);
+    // Relecture du plan 42 : un suffixe (« -beta ») ou une espace bouclaient sans fin. Une préversion passe avant la
+    // version elle-même ; les espaces autour sont ignorées.
+    CHECK(md::compareVersions(L"1.4.0-beta", L"1.4.0") < 0);
+    CHECK(md::compareVersions(L"1.4.0", L"1.4.0-beta") > 0);
+    CHECK(md::compareVersions(L"1.3.0 ", L"1.3.0") == 0);
+    CHECK(md::compareVersions(L"v2", L"1.0") != 2);   // pas de chiffre au début : préversion de 0, sans boucler
+    CHECK(md::compareVersions(L"1.2.x", L"1.2.0") < 0);
     using S = md::ModStatus;
     md::InstalledMod mod{L"1.1.0", false};
     CHECK(md::modStatus(false, std::nullopt, L"1.2.0") == S::WindhawkMissing);
@@ -142,6 +201,7 @@ TEST_CASE(settings_actions_build_their_commands) {
     CHECK(quit[0].file == exe + L"\\MacDock.exe");
     CHECK(quit[0].params == L"--quit");
     CHECK(quit[0].wait);
+    CHECK(quit[0].waitStopped);   // relecture : --quit rend la main avant que MacDock soit arrêté
     const auto restart = md::actionCommands(md::PaneAction::Restart, ctx);   // quitter, attendre, relancer
     REQUIRE(restart.size() == 2);
     CHECK(restart[0].params == L"--quit");
@@ -149,13 +209,23 @@ TEST_CASE(settings_actions_build_their_commands) {
     ctx.arg = L"macdock-look";
     ctx.restartExplorer = true;
     const auto install = md::actionCommands(md::PaneAction::InstallMod, ctx);
-    REQUIRE(install.size() == 1);
-    CHECK(install[0].file == L"powershell.exe");
+    REQUIRE(!install.empty());
+    CHECK(install[0].file == L"powershell.exe");   // sans dossier système connu : le nom seul
     CHECK(install[0].verb == L"runas");   // Windows demande l'autorisation administrateur
     CHECK(install[0].wait);
     CHECK(install[0].params.find(L"install-macdock-look.ps1") != std::wstring::npos);
-    CHECK(install[0].params.find(L"-Restart") != std::wstring::npos);
+    // L'Explorateur est redémarré par l'app, dans la session de l'utilisateur et sans droits élevés, une fois
+    // l'installateur fini : jamais par le PowerShell administrateur (relecture du plan 42).
+    CHECK(install[0].params.find(L"-NoRestart") != std::wstring::npos);
+    REQUIRE(install.size() == 2);
+    CHECK(install[1].restartExplorer);
+    ctx.systemDir = L"C:\\Windows\\System32";
+    ctx.windowsDir = L"C:\\Windows";
+    CHECK(md::actionCommands(md::PaneAction::InstallMod, ctx)[0].file == L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    CHECK(md::actionCommands(md::PaneAction::ShowFolder, ctx)[0].file == L"C:\\Windows\\explorer.exe");
     ctx.restartExplorer = false;
+    ctx.systemDir.clear();
+    ctx.windowsDir.clear();
     const auto uninstall = md::actionCommands(md::PaneAction::UninstallMod, ctx);
     REQUIRE(uninstall.size() == 1);
     CHECK(uninstall[0].params.find(L"-Uninstall") != std::wstring::npos);
@@ -165,4 +235,15 @@ TEST_CASE(settings_actions_build_their_commands) {
     CHECK(logs[0].params.find(L"\\logs") != std::wstring::npos);
     CHECK(md::actionCommands(md::PaneAction::Export, ctx).empty());   // fait dans la fenêtre (dialogue de fichier)
     CHECK(md::actionCommands(md::PaneAction::InstallMod, md::ButtonContext{exe, L"", L"inconnu"}).empty());
+    const auto& mutexes = md::macdockMutexes();   // ce qui doit avoir disparu avant de relancer
+    CHECK(std::find(mutexes.begin(), mutexes.end(), L"Local\\MacDockLauncher") != mutexes.end());
+    CHECK(std::find(mutexes.begin(), mutexes.end(), L"Local\\MacMenuBar") != mutexes.end());
+}
+
+TEST_CASE(settings_test_instance_never_talks_to_the_real_one) {
+    const md::InstanceNames real = md::settingsInstance(false), test = md::settingsInstance(true);
+    CHECK(!real.mutex.empty());                    // la vraie app : une seule instance
+    CHECK(test.mutex.empty());                     // un essai : ni mutex ni transmission
+    CHECK(real.windowClass != test.windowClass);   // une seconde ouverture ne trouve jamais l'autre
+    CHECK(real.windowClass == L"MacDockSettingsWindow");
 }

@@ -86,7 +86,7 @@ std::vector<GroupSpec> paneGroups(PaneId id, const PaneEnv& env);
 // Recherche : minuscules sans accents (« Écran » → « ecran », « Œil » → « oeil »).
 std::wstring searchFold(std::wstring_view s);
 // Section trouvée : par son titre (`title`), ou par des lignes (indices à plat, à souligner) dont le texte (groupe,
-// libellé, détail, mots-clés, choix) contient les mots que le titre n'a pas.
+// libellé, détail, mots-clés, choix, boutons) contient les mots que le titre n'a pas.
 struct PaneMatch {
     PaneId pane;
     bool title = false;

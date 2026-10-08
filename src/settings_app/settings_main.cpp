@@ -9,6 +9,7 @@
 #include "../config/config_store.h"
 #include "../core/log.h"
 #include "../core/strings.h"
+#include "../settings/instance.h"
 #include "settings_window.h"
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
@@ -33,11 +34,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     for (std::size_t i = 0; paneGiven && i < md::paneList().size(); ++i)
         if (md::paneList()[i].id == pane) paneIndex = i;
 
-    HANDLE single = CreateMutexW(nullptr, TRUE, L"MacDockSettings.Instance");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) {   // déjà ouverte : elle passe devant, sur la bonne section
+    // Essai (--data) : ni instance unique ni transmission ; il ne pilote jamais la vraie app, ni l'inverse.
+    const bool testMode = !dataDir.empty();
+    const md::InstanceNames names = md::settingsInstance(testMode);
+    HANDLE single = names.mutex.empty() ? nullptr : CreateMutexW(nullptr, TRUE, names.mutex.c_str());
+    if (single && GetLastError() == ERROR_ALREADY_EXISTS) {   // déjà ouverte : elle passe devant, sur la bonne section
         HWND other = nullptr;
         for (int i = 0; i < 30 && !other; ++i) {   // la première instance peut être en train de créer sa fenêtre
-            other = FindWindowW(md::SettingsWindow::kClass, nullptr);
+            other = FindWindowW(names.windowClass.c_str(), nullptr);
             if (!other) Sleep(100);
         }
         if (other) {
@@ -56,7 +60,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     int code = 1;
     {
         md::SettingsWindow window;
-        if (window.create(instance, dir, pane, !dataDir.empty())) code = window.run();
+        if (window.create(instance, dir, pane, testMode)) code = window.run();
         else md::log::error(L"Réglages : fenêtre impossible (%lu)", GetLastError());
     }
     CoUninitialize();

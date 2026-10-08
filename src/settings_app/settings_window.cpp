@@ -2,6 +2,8 @@
 
 #include <dwmapi.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
+#include <wtsapi32.h>
 #include <shellscalingapi.h>
 #include <shobjidl.h>
 #include <wincodec.h>
@@ -18,6 +20,7 @@
 #include "../core/version.h"
 #include "../interact/hotkey.h"
 #include "../settings/backup.h"
+#include "../settings/instance.h"
 #include "../settings/mods.h"
 #include "../settings/pane_icons.h"
 
@@ -30,7 +33,8 @@ namespace {
 constexpr UINT_PTR kAnimTimer = 1, kReloadTimer = 2, kCommitTimer = 3, kEnvTimer = 4;
 // kMsgRecordKey : touche lue par le crochet de l'enregistreur (wParam vk, lParam MOD_…) ; kMsgActionDone : fil d'une
 // action fini (wParam : relire l'environnement, lParam : réussie).
-constexpr UINT kMsgRecordKey = WM_APP + 10, kMsgActionDone = WM_APP + 11;
+constexpr UINT kMsgRecordKey = WM_APP + 10, kMsgActionDone = WM_APP + 11, kMsgUnhook = WM_APP + 12;
+constexpr UINT_PTR kUnhookTimer = 5;   // touches gardées jamais relâchées (bureau sécurisé…) : le crochet part quand même
 constexpr ULONGLONG kCommitEveryMs = 120;            // curseur tiré : une écriture au plus toutes les 120 ms
 constexpr float kLightsX = 20, kLightsY = 20;        // premier centre des pastilles
 constexpr D2D1_RECT_F kSearch{10, 46, mt::sidebarWidth - 10, 46 + mt::searchHeight};
@@ -76,6 +80,56 @@ struct HeldMods {
     }
 };
 HeldMods g_held;
+KeyGate g_gate;   // quelles touches le crochet garde (relâches comprises), voir hotkey.h
+
+bool modifierKey(DWORD vk) {
+    switch (vk) {
+        case VK_LCONTROL: case VK_RCONTROL: case VK_LMENU: case VK_RMENU:
+        case VK_LSHIFT: case VK_RSHIFT: case VK_LWIN: case VK_RWIN: return true;
+        default: return false;
+    }
+}
+
+// MacDock (lanceur, Dock, barre) a-t-il encore une fenêtre ou une instance unique ?
+bool macdockAlive() {
+    for (const std::wstring& w : macdockWindows())
+        if (FindWindowW(w.c_str(), nullptr)) return true;
+    for (const std::wstring& m : macdockMutexes())
+        if (HANDLE h = OpenMutexW(SYNCHRONIZE, FALSE, m.c_str())) {
+            CloseHandle(h);
+            return true;
+        }
+    return false;
+}
+
+// Explorateur de cette session seulement, arrêté sans droits élevés ; Windows le relance de lui-même, sinon nous.
+void restartExplorer(const std::wstring& windowsDir) {
+    DWORD session = 0;
+    ProcessIdToSessionId(GetCurrentProcessId(), &session);
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W pe{sizeof pe};
+        for (BOOL more = Process32FirstW(snap, &pe); more; more = Process32NextW(snap, &pe)) {
+            DWORD s = 0;
+            if (_wcsicmp(pe.szExeFile, L"explorer.exe") || !ProcessIdToSessionId(pe.th32ProcessID, &s) || s != session) continue;
+            if (HANDLE p = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID)) {
+                TerminateProcess(p, 1);
+                CloseHandle(p);
+            }
+        }
+        CloseHandle(snap);
+    }
+    for (int i = 0; i < 20; ++i) {   // Winlogon relance le bureau en une à deux secondes
+        Sleep(250);
+        if (FindWindowW(L"Shell_TrayWnd", nullptr)) return;
+    }
+    SHELLEXECUTEINFOW sei{sizeof sei};
+    const std::wstring exe = windowsDir + L"\\explorer.exe";
+    sei.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    sei.lpFile = exe.c_str();
+    sei.nShow = SW_SHOWDEFAULT;
+    ShellExecuteExW(&sei);
+}
 
 D2D1_RECT_F searchClear() { return D2D1::RectF(kSearch.right - 24, kSearch.top, kSearch.right, kSearch.bottom); }
 }  // namespace
@@ -88,6 +142,7 @@ UINT SettingsWindow::paneMessage() {
 }
 
 SettingsWindow::~SettingsWindow() {
+    if (worker_.joinable()) worker_.join();
     if (change_ != INVALID_HANDLE_VALUE) FindCloseChangeNotification(change_);
     if (icon_) DestroyIcon(icon_);
     if (smallIcon_) DestroyIcon(smallIcon_);
@@ -122,7 +177,8 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hIcon = icon_;
     wc.hIconSm = smallIcon_;
-    wc.lpszClassName = kClass;
+    const std::wstring windowClass = settingsInstance(testMode_).windowClass;   // l'essai a la sienne
+    wc.lpszClassName = windowClass.c_str();
     RegisterClassExW(&wc);
 
     // Sur l'écran du curseur, au tiers haut, à son échelle.
@@ -137,7 +193,7 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     const int w = int(std::lround(mt::windowWidth * scale_)), h = int(std::lround(mt::defaultHeight * scale_));
     const RECT& wa = mi.rcWork;
     const int x = wa.left + (wa.right - wa.left - w) / 2, y = wa.top + std::max(0L, (wa.bottom - wa.top - h) / 3);
-    hwnd_ = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, kClass, L"Réglages MacDock",
+    hwnd_ = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, windowClass.c_str(), testMode_ ? L"Réglages MacDock (essai)" : L"Réglages MacDock",
                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX, x, y, w, h, nullptr,
                             nullptr, instance, this);
     if (!hwnd_) return false;
@@ -154,6 +210,7 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     ShowWindow(hwnd_, SW_SHOW);
     SetForegroundWindow(hwnd_);
     change_ = FindFirstChangeNotificationW(dir_.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_FILE_NAME);
+    WTSRegisterSessionNotification(hwnd_, NOTIFY_FOR_THIS_SESSION);   // verrouillage : l'écoute d'un raccourci s'arrête
     return true;
 }
 
@@ -168,7 +225,10 @@ int SettingsWindow::run() {
             continue;
         }
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) return int(msg.wParam);
+            if (msg.message == WM_QUIT) {
+                if (worker_.joinable()) worker_.join();   // « Relancer » ou un installateur va jusqu'au bout
+                return int(msg.wParam);
+            }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
@@ -969,8 +1029,20 @@ void SettingsWindow::onMouseUp(float x, float y) {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
-bool SettingsWindow::onKey(WPARAM key) {
+bool SettingsWindow::onKey(WPARAM key, bool repeat) {
     const bool shift = GetKeyState(VK_SHIFT) < 0, ctrl = GetKeyState(VK_CONTROL) < 0;
+    // Entrée ou Espace tenue : une seule action (relecture du plan 42 : la répétition validait la feuille ouverte par
+    // le premier appui) ; les flèches gardent leur répétition.
+    if (repeat && (key == VK_RETURN || key == VK_SPACE)) return true;
+    if (recording_ >= 0 && !repeat) {   // sans crochet (essai, ou crochet refusé) : la touche arrive ici, Ctrl+W compris
+        UINT mods = 0;
+        if (GetKeyState(VK_CONTROL) < 0) mods |= MOD_CONTROL;
+        if (GetKeyState(VK_MENU) < 0) mods |= MOD_ALT;
+        if (GetKeyState(VK_SHIFT) < 0) mods |= MOD_SHIFT;
+        if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) mods |= MOD_WIN;
+        onRecordKey(UINT(key), mods);
+        return true;
+    }
     if (ctrl && key == 'W') {
         PostMessageW(hwnd_, WM_CLOSE, 0, 0);
         return true;
@@ -980,16 +1052,8 @@ bool SettingsWindow::onKey(WPARAM key) {
         else if (key == VK_RETURN || key == VK_SPACE) closeSheet(sheet_->spec.primary);
         return true;
     }
-    if (recording_ >= 0) {   // sans crochet (message posté par un essai) : la touche arrive ici
-        UINT mods = 0;
-        if (GetKeyState(VK_CONTROL) < 0) mods |= MOD_CONTROL;
-        if (GetKeyState(VK_MENU) < 0) mods |= MOD_ALT;
-        if (GetKeyState(VK_SHIFT) < 0) mods |= MOD_SHIFT;
-        if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) mods |= MOD_WIN;
-        onRecordKey(UINT(key), mods);
-        return true;
-    }
     if (ctrl && key == 'F') {
+        menu_.reset();   // la frappe va à la recherche : plus de menu ouvert qui garderait les flèches
         searchFocused_ = true;
         InvalidateRect(hwnd_, nullptr, FALSE);
         return true;
@@ -1112,9 +1176,13 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         onRecordKey(UINT(wp), UINT(lp));
         return 0;
     }
+    if (msg == kMsgUnhook) {
+        if (recording_ < 0) releaseRecordHook(false);
+        return 0;
+    }
     if (msg == kMsgActionDone) {
         busy_ = false;
-        if (!lp) showMessage(L"L'action n'a pas abouti", L"Windows ne l'a pas lancée, ou l'autorisation administrateur a été refusée.");
+        if (!lp) showMessage(L"L'action n'a pas abouti", L"Windows ne l'a pas lancée, ou elle a échoué (le journal en dit plus).");
         if (wp) {   // MacDock lancé, arrêté, mod installé… : état relu, et encore un peu plus tard (démarrage du Dock)
             buildEnv();
             rebuildRows();
@@ -1199,6 +1267,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             menu_.reset();
             buildEnv();
             rebuildRows();
+            refreshSidebar();   // les noms d'écrans sont cherchés
             geoms_.clear();
             InvalidateRect(hwnd_, nullptr, FALSE);
             break;
@@ -1238,8 +1307,17 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             scrollBy(-float(GET_WHEEL_DELTA_WPARAM(wp)) / WHEEL_DELTA * 48);
             return 0;
         case WM_KEYDOWN:
-            if (onKey(wp)) return 0;
+            if (onKey(wp, (lp & (1 << 30)) != 0)) return 0;   // bit 30 : touche déjà enfoncée (répétition)
             break;
+        case WM_SYSKEYDOWN:   // Alt+… : seulement pour l'écoute d'un raccourci (sans crochet, essais)
+            if (recording_ >= 0 && onKey(wp, (lp & (1 << 30)) != 0)) return 0;
+            break;
+        case WM_WTSSESSION_CHANGE:
+            if (wp == WTS_SESSION_LOCK) {   // les relâches se font sur le bureau sécurisé, invisibles au crochet
+                stopRecording();
+                releaseRecordHook(true);
+            }
+            return 0;
         case WM_CHAR:
             if (searchFocused_ && !sheet_) {
                 const wchar_t c = wchar_t(wp);
@@ -1275,6 +1353,9 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 else reloadModel();
             } else if (wp == kCommitTimer) {
                 commitPending();
+            } else if (wp == kUnhookTimer) {   // relâches jamais vues : le crochet part quand même
+                KillTimer(hwnd_, kUnhookTimer);
+                if (recording_ < 0) releaseRecordHook(true);
             } else if (wp == kEnvTimer) {
                 KillTimer(hwnd_, kEnvTimer);
                 if (pressedRow_ < 0 && !draggingSlider_) {
@@ -1289,6 +1370,8 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_CLOSE: DestroyWindow(hwnd_); return 0;
         case WM_DESTROY:
             stopRecording();
+            releaseRecordHook(true);
+            WTSUnRegisterSessionNotification(hwnd_);
             PostQuitMessage(0);
             return 0;
         default: break;
@@ -1327,8 +1410,10 @@ int SettingsWindow::buttonAt(int row, float x, float y) const {
 }
 
 void SettingsWindow::runAction(ButtonSpec button) {
-    if (busy_) return;   // un installateur ou un redémarrage tourne déjà
     ButtonContext ctx{exeDir_, dir_, button.arg};
+    wchar_t sys[MAX_PATH] = {}, win[MAX_PATH] = {};   // PowerShell et l'Explorateur par leur chemin complet
+    if (GetSystemDirectoryW(sys, MAX_PATH)) ctx.systemDir = sys;
+    if (GetWindowsDirectoryW(win, MAX_PATH)) ctx.windowsDir = win;
     std::wstring modTitle = button.arg;
     for (const ModInfo& m : macdockMods())
         if (m.id == button.arg) modTitle = m.title;
@@ -1342,8 +1427,15 @@ void SettingsWindow::runAction(ButtonSpec button) {
                        {L"Annuler", L"Rétablir"}, 1},
                       0, [this](int choice) {
                           if (choice != 1) return;
-                          if (resetSettings(dir_)) reloadModel();
-                          else showMessage(L"Réglages non rétablis", L"Écriture impossible dans le dossier des réglages.");
+                          if (resetSettings(dir_)) {
+                              reloadModel();
+                              return;
+                          }
+                          reloadModel();
+                          showMessage(L"Réglages non rétablis", files_.dockInvalid
+                                                                    ? L"settings.json est invalide : ses apps épinglées ne se lisent "
+                                                                      L"pas, il n'a pas été touché."
+                                                                    : L"Écriture impossible dans le dossier des réglages.");
                       });
             return;
         case PaneAction::InstallMod:
@@ -1373,37 +1465,61 @@ void SettingsWindow::runAction(ButtonSpec button) {
 
 void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refreshEnv) {
     if (commands.empty()) return;
+    if (busy_) {   // un installateur ou un redémarrage tourne déjà
+        showMessage(L"Un instant", L"Une action de MacDock est encore en cours.");
+        return;
+    }
     if (testMode_) {   // essai : rien ne touche au vrai système
-        for (const auto& c : commands) log::info(L"[essai] action non lancée : %s %s (%s)", c.file.c_str(), c.params.c_str(), c.verb.c_str());
+        for (const auto& c : commands)
+            log::info(L"[essai] action non lancée : %s %s (%s)%s", c.file.c_str(), c.params.c_str(), c.verb.c_str(),
+                      c.restartExplorer ? L" — redémarrage de l'Explorateur" : L"");
         PostMessageW(hwnd_, kMsgActionDone, refreshEnv ? 1 : 0, 1);
         return;
     }
     busy_ = true;
+    if (worker_.joinable()) worker_.join();   // le précédent a fini (busy_ était faux)
     const HWND hwnd = hwnd_;
-    std::thread([commands = std::move(commands), refreshEnv, hwnd] {
+    wchar_t win[MAX_PATH] = {};
+    GetWindowsDirectoryW(win, MAX_PATH);
+    worker_ = std::thread([commands = std::move(commands), refreshEnv, hwnd, windowsDir = std::wstring(win)] {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        bool ok = true;
+        LPARAM result = 1;   // 1 : réussie ; 0 : échec à signaler ; 2 : annulée par l'utilisateur (rien à dire)
         for (const auto& c : commands) {
+            if (c.restartExplorer) {
+                restartExplorer(windowsDir);
+                continue;
+            }
             SHELLEXECUTEINFOW sei{sizeof sei};
-            sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
+            sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
             sei.hwnd = hwnd;
             sei.lpVerb = c.verb.c_str();
             sei.lpFile = c.file.c_str();
             sei.lpParameters = c.params.empty() ? nullptr : c.params.c_str();
-            sei.nShow = c.file == L"powershell.exe" ? SW_SHOWNORMAL : SW_SHOWDEFAULT;
+            sei.nShow = c.verb == L"runas" ? SW_SHOWNORMAL : SW_SHOWDEFAULT;   // l'installateur montre sa console
             if (!ShellExecuteExW(&sei)) {   // autorisation refusée, fichier introuvable : la suite n'a plus de sens
-                log::warn(L"Réglages : %s %s refusé (%lu)", c.file.c_str(), c.params.c_str(), GetLastError());
-                ok = false;
+                const DWORD error = GetLastError();
+                log::warn(L"Réglages : %s %s refusé (%lu)", c.file.c_str(), c.params.c_str(), error);
+                result = error == ERROR_CANCELLED ? 2 : 0;
                 break;
             }
             if (sei.hProcess) {
-                if (c.wait) WaitForSingleObject(sei.hProcess, 180000);   // l'installateur compile : jusqu'à 3 min
+                if (c.wait) {
+                    DWORD code = 0;
+                    if (WaitForSingleObject(sei.hProcess, 180000) == WAIT_OBJECT_0 && GetExitCodeProcess(sei.hProcess, &code) &&
+                        code != 0) {   // l'installateur a échoué (compilation, Windhawk absent…)
+                        log::warn(L"Réglages : %s a fini avec le code %lu", c.file.c_str(), code);
+                        result = 0;
+                    }
+                }
                 CloseHandle(sei.hProcess);
             }
+            if (result == 0) break;
+            if (c.waitStopped)   // --quit rend la main tout de suite : on attend la vraie fin (10 s au plus)
+                for (int i = 0; i < 100 && macdockAlive(); ++i) Sleep(100);
         }
         CoUninitialize();
-        PostMessageW(hwnd, kMsgActionDone, refreshEnv ? 1 : 0, ok ? 1 : 0);
-    }).detach();
+        PostMessageW(hwnd, kMsgActionDone, refreshEnv ? 1 : 0, result);
+    });
 }
 
 std::optional<std::wstring> SettingsWindow::fileDialog(bool save) {
@@ -1430,9 +1546,15 @@ std::optional<std::wstring> SettingsWindow::fileDialog(bool save) {
 }
 
 void SettingsWindow::exportTo() {
+    const auto backup = exportSettings(dir_);
+    if (!backup) {
+        showMessage(L"Exportation impossible", L"Un fichier de réglages est invalide ou illisible : la sauvegarde serait vide. "
+                                               L"Corrige-le ou rétablis les réglages par défaut.");
+        return;
+    }
     const auto path = fileDialog(true);
     if (!path) return;
-    if (!saveJsonFileAtomic(*path, exportSettings(dir_)))
+    if (!saveJsonFileAtomic(*path, *backup))
         showMessage(L"Exportation impossible", L"Le fichier n'a pas pu être écrit à cet endroit.");
     else
         log::info(L"Réglages exportés : %s", path->c_str());
@@ -1441,26 +1563,40 @@ void SettingsWindow::exportTo() {
 void SettingsWindow::importFrom() {
     const auto path = fileDialog(false);
     if (!path) return;
-    const LoadResult file = loadJsonFile(*path);
-    if (file.unreadable || file.wasInvalid) {
+    const auto file = readSettingsBackup(*path);   // rien n'est écrit à côté du fichier choisi
+    if (!file) {
         showMessage(L"Importation impossible", L"Ce fichier ne peut pas être lu.");
         return;
     }
-    switch (importSettings(dir_, file.value)) {
-        case ImportResult::Ok:
-            log::info(L"Réglages importés : %s", path->c_str());
-            reloadModel();
-            break;
-        case ImportResult::NotABackup:
-            showMessage(L"Importation impossible", L"Ce fichier n'est pas une sauvegarde des réglages de MacDock.");
-            break;
-        case ImportResult::Invalid:
-            showMessage(L"Importation impossible", L"La sauvegarde est abîmée : rien n'a été changé.");
-            break;
-        case ImportResult::WriteFailed:
-            showMessage(L"Importation impossible", L"Écriture impossible dans le dossier des réglages.");
-            break;
+    if (!isSettingsBackup(*file)) {
+        showMessage(L"Importation impossible", L"Ce fichier n'est pas une sauvegarde des réglages de MacDock.");
+        return;
     }
+    // Confirmation : tout est remplacé, épingles comprises ; une épingle réseau serait contactée par le Dock.
+    std::wstring message = L"Les réglages du Dock et de la barre des menus, apps épinglées comprises, seront remplacés par ceux de "
+                           L"la sauvegarde.";
+    if (const int net = networkPins(*file))
+        message += L" Attention : " + std::to_wstring(net) + (net > 1 ? L" épingles pointent" : L" épingle pointe") +
+                   L" vers un ordinateur du réseau, que le Dock contactera.";
+    openSheet({L"Importer ces réglages ?", message, {L"Annuler", L"Importer"}, 1}, 0,
+              [this, backup = *file, from = *path](int choice) {
+                  if (choice != 1) return;
+                  switch (importSettings(dir_, backup)) {
+                      case ImportResult::Ok:
+                          log::info(L"Réglages importés : %s", from.c_str());
+                          reloadModel();
+                          break;
+                      case ImportResult::NotABackup:
+                          showMessage(L"Importation impossible", L"Ce fichier n'est pas une sauvegarde des réglages de MacDock.");
+                          break;
+                      case ImportResult::Invalid:
+                          showMessage(L"Importation impossible", L"La sauvegarde est abîmée : rien n'a été changé.");
+                          break;
+                      case ImportResult::WriteFailed:
+                          showMessage(L"Importation impossible", L"Écriture impossible dans le dossier des réglages.");
+                          break;
+                  }
+              });
 }
 
 void SettingsWindow::openSheet(ui::SheetSpec spec, int cancel, std::function<void(int)> done) {
@@ -1501,30 +1637,52 @@ void SettingsWindow::startRecording(int row) {
     recording_ = row;
     recordNote_.clear();
     focus_ = row;
+    // Modificateurs déjà tenus (Ctrl+clic, Maj+Entrée) : comptés, mais leurs relâches restent au système (g_gate).
     g_held = {};
+    for (DWORD vk : {VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LSHIFT, VK_RSHIFT, VK_LWIN, VK_RWIN})
+        g_held.track(vk, GetAsyncKeyState(int(vk)) < 0);
+    g_gate.listen(true);
     recordTarget_ = this;
+    KillTimer(hwnd_, kUnhookTimer);
     // Crochet clavier le temps de l'écoute : les combinaisons avec ⊞ (que Windows prendrait) arrivent ici.
-    recordHook_ = SetWindowsHookExW(WH_KEYBOARD_LL, recordHook, instance_, 0);
+    if (!recordHook_) recordHook_ = SetWindowsHookExW(WH_KEYBOARD_LL, recordHook, instance_, 0);
     if (!recordHook_) log::warn(L"Réglages : crochet clavier impossible (%lu), touches lues par la fenêtre", GetLastError());
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void SettingsWindow::stopRecording() {
-    if (recordHook_) UnhookWindowsHookEx(recordHook_);
-    recordHook_ = nullptr;
+    g_gate.listen(false);
     if (recording_ >= 0 && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     recording_ = -1;
     recordNote_.clear();
+    releaseRecordHook(false);
+}
+
+void SettingsWindow::releaseRecordHook(bool force) {
+    if (!recordHook_) return;
+    if (!force && g_gate.pending()) {   // des touches gardées attendent leur relâche : le crochet les avalera encore
+        if (hwnd_) SetTimer(hwnd_, kUnhookTimer, 2000, nullptr);
+        return;
+    }
+    UnhookWindowsHookEx(recordHook_);
+    recordHook_ = nullptr;
+    g_gate.reset();
+    if (hwnd_) KillTimer(hwnd_, kUnhookTimer);
     if (recordTarget_ == this) recordTarget_ = nullptr;
 }
 
 LRESULT CALLBACK SettingsWindow::recordHook(int code, WPARAM wp, LPARAM lp) {
     SettingsWindow* self = recordTarget_;
-    if (code == HC_ACTION && self && self->recording_ >= 0) {
+    if (code == HC_ACTION && self) {
         const auto* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp);
         const bool down = wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN;
-        if (!g_held.track(k->vkCode, down) && down) PostMessageW(self->hwnd_, kMsgRecordKey, k->vkCode, g_held.mods());
-        return 1;   // gardée pour l'enregistreur : rien d'autre ne réagit pendant l'écoute
+        g_held.track(k->vkCode, down);   // toutes, gardées ou non : l'état des modificateurs reste juste
+        if (g_gate.swallow(k->vkCode, down)) {
+            if (self->recording_ >= 0 && down && !modifierKey(k->vkCode))
+                PostMessageW(self->hwnd_, kMsgRecordKey, k->vkCode, g_held.mods());
+            if (self->recording_ < 0 && !g_gate.pending()) PostMessageW(self->hwnd_, kMsgUnhook, 0, 0);   // dernière relâche
+            return 1;   // gardée : rien d'autre ne la voit
+        }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -1537,17 +1695,34 @@ void SettingsWindow::onRecordKey(UINT vk, UINT mods) {
         case RecordKind::Wait: return;
         case RecordKind::Cancel: stopRecording(); return;
         case RecordKind::Reserved:
-            recordNote_ = L"Windows garde ce raccourci : choisis-en un autre";
+            recordNote_ = L"Windows ou MacDock garde ce raccourci : choisis-en un autre";
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        case RecordKind::Common:
+            recordNote_ = L"Les apps s'en servent (Ctrl+C, Maj+→…) : ajoute ⌥ ou ⊞";
             InvalidateRect(hwnd_, nullptr, FALSE);
             return;
         case RecordKind::Clear:
             stopRecording();
             commitShortcut(row, L"off");
             return;
-        case RecordKind::Accept:
+        case RecordKind::Accept: {
+            const std::wstring text = hotkeyText(r.spec);
+            const RowSpec& s = spec(row);
+            // Une autre app (ou MacDock pour une autre fonction) l'a déjà : RegisterHotKey échouerait sans rien dire.
+            if (!(s.text && hotkeyConflict(s.text(model_), text))) {
+                constexpr int kProbe = 0x4D44;
+                if (!RegisterHotKey(nullptr, kProbe, r.spec.mods | MOD_NOREPEAT, r.spec.vk)) {
+                    recordNote_ = L"Déjà pris par Windows ou une autre app : choisis-en un autre";
+                    InvalidateRect(hwnd_, nullptr, FALSE);
+                    return;
+                }
+                UnregisterHotKey(nullptr, kProbe);
+            }
             stopRecording();
-            commitShortcut(row, hotkeyText(r.spec));
+            commitShortcut(row, text);
             return;
+        }
     }
 }
 

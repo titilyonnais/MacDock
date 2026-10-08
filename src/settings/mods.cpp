@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -26,20 +27,32 @@ std::optional<std::wstring> sourceVersion(std::string_view source) {
     return v;
 }
 
-int compareVersions(std::wstring_view a, std::wstring_view b) {
-    auto next = [](std::wstring_view& s) {
+namespace {
+// Champs numériques (« 1.10.0 »), puis le reste : vrai si un suffixe autre que des espaces suit (préversion, « -beta »).
+bool versionFields(std::wstring_view s, std::vector<int>& fields) {
+    std::size_t i = 0;
+    while (i < s.size() && (s[i] == L' ' || s[i] == L'\t')) ++i;
+    while (i < s.size() && s[i] >= L'0' && s[i] <= L'9') {
         int n = 0;
-        while (!s.empty() && s.front() >= L'0' && s.front() <= L'9') {
-            n = n * 10 + (s.front() - L'0');
-            s.remove_prefix(1);
-        }
-        if (!s.empty() && s.front() == L'.') s.remove_prefix(1);
-        return n;
-    };
-    while (!a.empty() || !b.empty()) {
-        const int x = next(a), y = next(b);
-        if (x != y) return x < y ? -1 : 1;
+        while (i < s.size() && s[i] >= L'0' && s[i] <= L'9') n = std::min(n * 10 + (s[i++] - L'0'), 100000000);
+        fields.push_back(n);
+        if (i + 1 < s.size() && s[i] == L'.' && s[i + 1] >= L'0' && s[i + 1] <= L'9') ++i;
+        else break;
     }
+    for (; i < s.size(); ++i)
+        if (s[i] != L' ' && s[i] != L'\t') return true;
+    return false;
+}
+}  // namespace
+
+int compareVersions(std::wstring_view a, std::wstring_view b) {
+    std::vector<int> x, y;
+    const bool preA = versionFields(a, x), preB = versionFields(b, y);
+    for (std::size_t i = 0; i < std::max(x.size(), y.size()); ++i) {   // champs manquants = 0
+        const int u = i < x.size() ? x[i] : 0, v = i < y.size() ? y[i] : 0;
+        if (u != v) return u < v ? -1 : 1;
+    }
+    if (preA != preB) return preA ? -1 : 1;   // une préversion passe avant la version elle-même
     return 0;
 }
 

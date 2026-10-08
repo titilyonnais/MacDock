@@ -14,6 +14,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../anim/spring.h"
@@ -26,7 +27,6 @@ namespace md {
 
 class SettingsWindow {
 public:
-    static constexpr wchar_t kClass[] = L"MacDockSettingsWindow";
     static UINT paneMessage();   // « MacDockSettingsPane » : wParam = indice de la section (seconde ouverture)
 
     ~SettingsWindow();
@@ -102,7 +102,7 @@ private:
     void onMouseDown(float x, float y);
     void onMouseMove(float x, float y, bool buttonDown);
     void onMouseUp(float x, float y);
-    bool onKey(WPARAM key);
+    bool onKey(WPARAM key, bool repeat = false);
 
     // Recherche.
     void setQuery(std::wstring query);
@@ -120,6 +120,7 @@ private:
     // Enregistreur de raccourci.
     void startRecording(int row);
     void stopRecording();
+    void releaseRecordHook(bool force);   // le crochet part quand plus aucune touche gardée n'attend sa relâche
     void onRecordKey(UINT vk, UINT mods);
     void commitShortcut(int row, const std::wstring& text);
     static LRESULT CALLBACK recordHook(int code, WPARAM wp, LPARAM lp);
@@ -172,6 +173,7 @@ private:
     HHOOK recordHook_ = nullptr;
     int pressedButton_ = -1, focusButton_ = 0;
     bool busy_ = false;                   // une action tourne (installateur…)
+    std::thread worker_;                  // son fil : attendu avant la fin du processus (« Relancer » doit aboutir)
 
     Microsoft::WRL::ComPtr<ID3D11Device> d3d_;
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_;

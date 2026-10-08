@@ -92,7 +92,19 @@ HotkeyRecord recordHotkey(UINT vk, UINT mods) {
     const auto back = parseHotkey(hotkeyText(s), true);
     if (!back || !(*back == s)) return {};
     if (hotkeyReserved(s)) return {RecordKind::Reserved, s};
+    if (mods && !(mods & (MOD_ALT | MOD_WIN))) return {RecordKind::Common, s};   // Ctrl+C, Maj+→… : aux apps
     return {RecordKind::Accept, s};
+}
+
+bool KeyGate::swallow(UINT vk, bool down) {
+    const std::size_t k = vk & 0xFF;
+    if (down) {
+        if (listening_) swallowed_.set(k);
+        return swallowed_.test(k);   // répétitions d'une touche gardée comprises
+    }
+    if (!swallowed_.test(k)) return false;
+    swallowed_.reset(k);
+    return true;
 }
 
 bool hotkeyReserved(const HotkeySpec& s) {
@@ -101,7 +113,11 @@ bool hotkeyReserved(const HotkeySpec& s) {
                                    {MOD_ALT, VK_TAB},
                                    {MOD_ALT, VK_F4},
                                    {MOD_CONTROL | MOD_SHIFT, VK_ESCAPE},
-                                   {MOD_WIN, VK_SPACE}};   // disposition du clavier
+                                   {MOD_WIN, VK_SPACE},    // disposition du clavier
+                                   // MacDock lui-même : calque de diagnostic, opacité du Dock (dock_window.cpp)
+                                   {MOD_CONTROL | MOD_ALT | MOD_SHIFT, 'O'},
+                                   {MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_UP},
+                                   {MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_DOWN}};
     for (const auto& r : reserved)
         if (r == s) return true;
     return false;

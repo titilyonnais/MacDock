@@ -61,7 +61,7 @@ $Targets = @{
                       'src\menubar\clock_format.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'dwmapi.lib',
                       'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'gdi32.lib', 'advapi32.lib',
-                      'shcore.lib', 'version.lib', 'dxguid.lib') }
+                      'shcore.lib', 'version.lib', 'dxguid.lib', 'wtsapi32.lib') }
 }
 
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.

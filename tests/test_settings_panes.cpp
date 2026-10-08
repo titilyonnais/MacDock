@@ -189,3 +189,12 @@ TEST_CASE(settings_sidebar_keeps_only_found_panes) {
     CHECK((some.groups == std::vector<int>{1, 1, 1}));
     CHECK(md::sidebarView({}).panes.empty());
 }
+
+TEST_CASE(settings_search_finds_button_labels) {
+    // Relecture du plan 42 : « exporter », « relancer » ou « installer » ne trouvaient rien.
+    const auto found = md::searchPanes(L"exporter", fullEnv());
+    REQUIRE(!found.empty());
+    CHECK(found.front().pane == md::PaneId::General);
+    CHECK(!found.front().rows.empty());
+    CHECK(!md::searchPanes(L"relancer", fullEnv()).empty());
+}
