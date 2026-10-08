@@ -2,11 +2,13 @@
 #pragma once
 #include <windows.h>
 
+#include <vector>
+
 namespace md {
 
 struct VisibilityInputs {
     bool autohide = false;
-    bool fullscreen = false;     // la fenêtre au premier plan couvre l'écran du Dock
+    bool fullscreen = false;     // la plus haute fenêtre de l'écran du Dock le couvre (fullscreenOnMonitor)
     bool cursorAtEdge = false;   // curseur au bord inférieur de l'écran
     bool cursorInDock = false;
     bool menuOpen = false;
@@ -44,5 +46,20 @@ bool coversMonitor(const RECT& window, const RECT& monitor);
 // Plein écran : couvre l'écran sans être une fenêtre maximisée à barre de titre (qui couvre tout l'écran
 // quand la barre Windows est masquée et que le Dock ne réserve rien).
 bool isFullscreenWindow(const RECT& window, const RECT& monitor, bool zoomed, bool hasCaption);
+
+// Fenêtre de premier niveau, dans l'ordre d'affichage (du haut vers le bas), pour la détection du plein écran.
+struct ZWindow {
+    RECT rect{};
+    bool onMonitor = false;   // sur l'écran examiné
+    bool eligible = true;     // fenêtre ordinaire : visible, ni réduite, ni masquée, ni outil, ni transparente aux clics
+    bool topmost = false;     // toujours au-dessus
+    bool zoomed = false, caption = false;
+};
+// Plein écran sur un écran : sa plus haute fenêtre ordinaire le couvre, qu'elle ait le clavier ou non (une vidéo en
+// plein écran le reste quand on travaille sur l'autre écran, comme sur Mac). Les fenêtres toujours au-dessus qui ne
+// le couvrent pas (vignette, pense-bête) sont passées.
+bool fullscreenOnMonitor(const std::vector<ZWindow>& zOrder, const RECT& monitor);
+// Même chose sur les vraies fenêtres (hors celles de ce processus et du shell).
+bool fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect);
 
 } // namespace md

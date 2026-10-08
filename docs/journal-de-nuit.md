@@ -663,6 +663,16 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - vérifié sur Brave et Claude.
 - **Points blancs autour de l'heure** : c'est le fond d'écran étoilé vu à travers la barre translucide, comme sur macOS 26 ; ils sont aux mêmes endroits d'une capture à l'autre.
 
+### Correctif — plein écran d'un écran pendant qu'on travaille sur l'autre
+
+- **Constat** (enregistreur image par image) : avec une vidéo en plein écran sur l'écran principal, un clic sur Claude
+  dans le second écran faisait redescendre la barre (et le Dock) par-dessus la vidéo.
+- **Cause** : la barre et le Dock ne regardaient que la fenêtre au premier plan.
+- **Correction** : chaque écran regarde sa plus haute fenêtre ordinaire, qu'elle ait le clavier ou non
+  (`fullscreenOnMonitor`, testée). Les calques toujours au-dessus et transparents aux clics (superpositions AMD,
+  NVIDIA, Discord), les vignettes et les fenêtres outils sont ignorés.
+- **Vérifié en réel** : vidéo en plein écran, travail sur l'autre écran, la barre de l'écran principal reste cachée.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
