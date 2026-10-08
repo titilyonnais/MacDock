@@ -605,6 +605,11 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - pas de son ;
   - les modes « une fenêtre » et « enregistrer une zone » passent par le viseur de ⊞⇧4 et n'ont pas été essayés en vrai.
 
+### Plan 40 — L'écran Apps sur les captures
+
+- Même principe que pour Spotlight : visible aux captures le temps de la copie, verre gelé jusqu'à 150 ms après.
+- Essayé en diagnostic : l'écran Apps ouvert, puis ⊞⇧3. La capture le contient, MacDock continue de tourner, et la capture est partie à la Corbeille.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
