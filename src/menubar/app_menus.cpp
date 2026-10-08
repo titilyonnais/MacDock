@@ -68,6 +68,7 @@ void logoMenu(Builder& b, const BarContext& c) {
     b.add(m, L"À propos de ce PC", {ActionKind::OpenUri, L"ms-settings:about"});
     Builder::separator(m);
     b.add(m, L"Réglages système…", {ActionKind::OpenUri, L"ms-settings:"});
+    b.add(m, L"Réglages MacDock…", {ActionKind::OpenSettings, L""});
     b.add(m, L"Microsoft Store…", {ActionKind::OpenUri, L"ms-windows-store:"});
     Builder::separator(m);
     m.model.items.push_back(recentMenu(b, c));

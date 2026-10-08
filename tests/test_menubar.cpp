@@ -281,6 +281,10 @@ TEST_CASE(menus_logo_has_system_actions) {
     auto about = actionOf(b, findItem(logo, L"À propos de ce PC"));
     CHECK(about.kind == md::ActionKind::OpenUri);
     CHECK(about.arg == L"ms-settings:about");
+    // Les Réglages de MacDock (l'app), juste après ceux de Windows.
+    auto settings = actionOf(b, findItem(logo, L"Réglages MacDock…"));
+    CHECK(settings.kind == md::ActionKind::OpenSettings);
+    CHECK(settings.arg.empty());   // la section par défaut de l'app
 }
 
 TEST_CASE(menus_app_named_and_bold) {

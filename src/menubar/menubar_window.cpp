@@ -1149,6 +1149,7 @@ void MenuBarApp::onPress(Screen& s, POINT client, bool doubleClick) {
 }
 
 void MenuBarApp::openSettingsFile() {
+    if (openMacDockSettings(L"menubar")) return;   // sinon (app absente) : le fichier dans le Bloc-notes
     ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr, SW_SHOWNORMAL);
 }
 

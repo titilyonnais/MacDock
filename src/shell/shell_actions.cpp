@@ -70,6 +70,25 @@ void activateApp(const std::vector<HWND>& windows) {
     forceForeground(ordered.front());
 }
 
+bool openMacDockSettings(const std::wstring& pane) {
+    // MacDockSettings.exe est livré à côté de MacDock.exe et de MacMenuBar.exe.
+    wchar_t self[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    std::wstring exe = self;
+    exe = exe.substr(0, exe.find_last_of(L'\\') + 1) + L"MacDockSettings.exe";
+    if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+    const std::wstring params = pane.empty() ? std::wstring() : L"--pane " + pane;
+    SHELLEXECUTEINFOW sei{sizeof sei};
+    sei.fMask = SEE_MASK_FLAG_NO_UI;
+    sei.lpFile = exe.c_str();
+    sei.lpParameters = params.empty() ? nullptr : params.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+    AllowSetForegroundWindow(ASFW_ANY);   // l'app passe devant (ou celle déjà ouverte)
+    if (ShellExecuteExW(&sei)) return true;
+    log::warn(L"Réglages MacDock impossibles à ouvrir (%lu)", GetLastError());
+    return false;
+}
+
 void restoreWindow(HWND hwnd) {
     if (IsIconic(hwnd)) ShowWindowAsync(hwnd, SW_RESTORE);
     forceForeground(hwnd);

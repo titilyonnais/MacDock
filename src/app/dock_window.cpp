@@ -1642,6 +1642,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             applySettings();   // déplace le Dock (reposition) si le bord a changé
             break;
         case kCmdSettings: {
+            if (openMacDockSettings(L"dock")) break;   // sinon (app absente) : le fichier dans le Bloc-notes
             std::wstring path = L"\"" + dataDir_ + L"\\settings.json\"";
             ShellExecuteW(nullptr, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
             break;

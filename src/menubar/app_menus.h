@@ -29,6 +29,7 @@ enum class ActionKind {
     UiaInvoke,        // vrai menu UI Automation : entrée au chemin path (titre, entrée…), nommée arg, de window
     LaunchApp,        // arg : cible de relance d'une app récente (exe, .lnk, shell:AppsFolder\AUMID)
     ClearRecent,      // Éléments récents : Effacer le menu (exécutée par la barre, qui garde la liste)
+    OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
 };
 
 enum class MenuSource { Generic, Win32, Uia };

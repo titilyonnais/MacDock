@@ -13,6 +13,9 @@ bool launch(const std::wstring& target);            // exe, .lnk, dossier, shell
 void launchAsync(std::wstring target, bool (*launcher)(const std::wstring&) = launch);
 void activateApp(const std::vector<HWND>& windows); // restaure les réduites, met tout au premier plan
 void restoreWindow(HWND hwnd);
+// App Réglages de MacDock (MacDockSettings.exe, à côté de l'exécutable courant), sur la section `pane` (--pane) ou celle
+// par défaut ; false si l'app manque (l'appelant ouvre alors le fichier JSON).
+bool openMacDockSettings(const std::wstring& pane);
 void minimizeAll(const std::vector<HWND>& windows);
 void openRecycleBin();
 void openFolder(const std::wstring& path);
