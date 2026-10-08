@@ -368,6 +368,25 @@ Méthode : captures publiées par 9to5Mac (le Dock aux trois réglages de Liquid
   - une fenêtre qui passe en plein écran est rendue à Windows.
   - 6 mineurs ont aussi été corrigés : réglage lu au démarrage, purge des fenêtres fermées, HWND réutilisés, coût réduit, pastille fermer, matériau des piles.
 
+### Plan 27 — Essais en conditions réelles sur ton PC (à distance, avec ton accord)
+
+J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec de vrais mouvements de souris. J'ai seulement utilisé un Bloc-notes et un Explorateur ouverts pour l'occasion, refermés ensuite ; le texte de test a été abandonné.
+- **Ce qui marche en vrai** :
+  - les menus de la barre lisent les vraies commandes du Bloc-notes, et « Tout sélectionner » sélectionne bien ;
+  - les pastilles jaune (le génie), verte (agrandir) et rouge (fermer) font leur travail ;
+  - un clic sur une miniature du Dock restaure la fenêtre ;
+  - le survol fait apparaître ×, − et +.
+- **Corrigé** :
+  - **Pastilles absentes sur une app qui démarre** : la nouvelle sonde des boutons était annulée par erreur.
+  - **Pastilles sous la barre de menus sur une fenêtre agrandie** : certaines apps déclarent un cadre qui commence sous la barre.
+  - **Barre de titre gris-bleu** : la couleur claire était posée sur un Bloc-notes sombre. Le mode clair ou sombre est maintenant lu par fenêtre, et les barres en Mica sont laissées telles quelles.
+  - **Barre restée sur une app fermée** : Windows n'annonce pas toujours le nouveau premier plan. La barre vérifie maintenant toutes les demi-secondes.
+- **Raccourcis** affichés comme sur macOS : ⌃Z, ⌃⇧Z, ⌦, ↩. ⌃ reste la touche Ctrl du PC.
+- **Pastilles toujours à gauche** (ta demande), avec les boutons de Windows cachés à droite par un aplat de la couleur mesurée juste à côté. Le réglage `trafficLightsSide: "auto"` rétablit l'ancien comportement : à droite quand la gauche est occupée.
+  - Limite : dans les apps qui dessinent des onglets tout en haut à gauche (Bloc-notes, Explorateur, navigateurs), les pastilles cachent le début du premier onglet. Seule une modification de l'app elle-même pourrait libérer cette place.
+- **Intégration comme fenêtre enfant** (essayée puis abandonnée) : poser les pastilles comme fenêtres enfants de l'app supprimait tout retard au déplacement, mais Windows 11 ne les affiche pas dans les fenêtres WinUI aux coins arrondis. En calque flottant, le décalage n'est pas visible sur des captures prises en plein glissement.
+- Les pastilles tournent maintenant sur leur propre fil : une app figée ne fige plus la barre de menus.
+
 ## Mineurs reportés — plan 26
 - Après un plantage de la barre de menus, les fenêtres déjà traitées gardent leur apparence macOS jusqu'à leur fermeture (le relancement les reprend de toute façon).
 - Le fond procédural s'étire avec le format de l'écran (écrans verticaux ou ultra-larges).
