@@ -76,6 +76,19 @@ bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitPro
     return true;
 }
 
+LightsSpot chooseLightsSpot(bool leftFree, bool buttonsFound, bool alwaysLeft) {
+    if (leftFree) return LightsSpot::Left;
+    if (!buttonsFound) return LightsSpot::None;
+    return alwaysLeft ? LightsSpot::Left : LightsSpot::Over;
+}
+
+RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
+    if (!zoomed || work.right <= work.left) return frame;
+    RECT r{std::max(frame.left, work.left), std::max(frame.top, work.top), std::min(frame.right, work.right),
+           std::min(frame.bottom, work.bottom)};
+    return r.right > r.left && r.bottom > r.top ? r : frame;
+}
+
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;
@@ -209,7 +222,7 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
             // Fond : couleur de la barre de titre (fondu sur la fin à droite pour des pastilles posées à gauche) ; le
             // bord du haut reste transparent quand il faut pouvoir y redimensionner la fenêtre.
             double pa = l.fade ? std::clamp((w - (x + 0.5)) / fade, 0.0, 1.0) : 1.0;
-            if (y < l.topGap) pa = 0;
+            if (y < l.topGap || !l.opaque) pa = 0;
             double a = pa, r = patch.r * pa, g = patch.g * pa, b = patch.b * pa;   // prémultiplié
             for (int i = 0; i < 3 && l.lights; ++i) {
                 const double cx = (l.circles[i].left + l.circles[i].right) / 2.0 - l.window.left;

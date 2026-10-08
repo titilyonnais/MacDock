@@ -67,3 +67,14 @@ TEST_CASE(window_look_respects_app_corner_choice) {
     CHECK(!md::shouldRoundCorners(1));   // DWMWCP_DONOTROUND
     CHECK(!md::shouldRoundCorners(3));   // DWMWCP_ROUNDSMALL
 }
+
+TEST_CASE(window_look_leaves_system_backdrop_captions) {
+    // Bloc-notes de Windows 11 : barre en Mica (DWMWA_SYSTEMBACKDROP_TYPE = 4) ; une couleur de légende la rendrait
+    // gris-bleu. Coins et liseré seulement.
+    const auto mica = md::macWindowLook(notepad(), false, 96, 4);
+    REQUIRE(mica.has_value());
+    CHECK(mica->round);
+    CHECK(!mica->caption);
+    CHECK(md::macWindowLook(notepad(), false, 96, 1)->caption);   // DWMSBT_NONE : barre classique
+    CHECK(md::macWindowLook(notepad(), false, 96, 0)->caption);   // auto (Win32 classique)
+}

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
+#include <vector>
 
 namespace md {
 
@@ -58,6 +60,65 @@ bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, 
     copy.width = m.width;
     m = std::move(copy);
     return true;
+}
+
+namespace {
+std::wstring lowered(std::wstring_view s) {   // Unicode (« ÉCHAP » → « échap »), espaces retirés
+    std::wstring l;
+    for (wchar_t c : s)
+        if (c != L' ') l += c;
+    if (!l.empty())
+        CharLowerBuffW(l.data(), DWORD(l.size()));
+    return l;
+}
+} // namespace
+
+std::wstring macShortcutLabel(std::wstring_view shortcut) {
+    if (shortcut.empty()) return {};
+    // Accord (« Ctrl+K, Ctrl+C ») : laissé tel quel plutôt que réduit à sa dernière touche.
+    if (shortcut.find(L", ") != std::wstring_view::npos) return std::wstring(shortcut);
+    // Morceaux séparés par « + » ; un « + » final (« Ctrl++ ») est la touche plus elle-même.
+    std::vector<std::wstring> parts;
+    std::wstring cur;
+    for (std::size_t i = 0; i < shortcut.size(); ++i) {
+        if (shortcut[i] == L' ') continue;
+        if (shortcut[i] == L'+' && !cur.empty()) {
+            parts.push_back(cur);
+            cur.clear();
+        } else {
+            cur += shortcut[i];
+        }
+    }
+    if (!cur.empty()) parts.push_back(cur);
+    bool ctrl = false, alt = false, shift = false, cmd = false, win = false;
+    std::wstring key;
+    for (const auto& part : parts) {
+        const std::wstring p = lowered(part);
+        if (p == L"ctrl" || p == L"ctl" || p == L"control" || p == L"contrôle") ctrl = true;
+        else if (p == L"alt" || p == L"option") alt = true;
+        else if (p == L"maj" || p == L"shift") shift = true;
+        else if (p == L"cmd" || p == L"commande") cmd = true;
+        else if (p == L"win" || p == L"windows") win = true;
+        else key = part;
+    }
+    static const std::pair<const wchar_t*, const wchar_t*> kKeys[] = {
+        {L"suppr", L"⌦"}, {L"del", L"⌦"}, {L"delete", L"⌦"}, {L"retourarrière", L"⌫"}, {L"backspace", L"⌫"},
+        {L"entrée", L"↩"}, {L"enter", L"↩"}, {L"retour", L"↩"}, {L"échap", L"⎋"}, {L"esc", L"⎋"}, {L"tab", L"⇥"},
+        {L"origine", L"↖"}, {L"home", L"↖"}, {L"fin", L"↘"}, {L"end", L"↘"}, {L"pg.préc", L"⇞"}, {L"pgup", L"⇞"},
+        {L"pg.suiv", L"⇟"}, {L"pgdn", L"⇟"}, {L"haut", L"↑"}, {L"bas", L"↓"}, {L"gauche", L"←"}, {L"droite", L"→"},
+        {L"plus", L"+"}, {L"moins", L"−"}, {L"espace", L"Espace"}, {L"space", L"Espace"}};
+    const std::wstring lk = lowered(key);
+    std::wstring shown = key;
+    for (const auto& [name, glyph] : kKeys)
+        if (lk == name) shown = glyph;
+    if (shown == key && key.size() == 1) shown = std::wstring(1, wchar_t(std::towupper(key[0])));
+    std::wstring out;
+    if (win) out += L"⊞";
+    if (ctrl) out += L"⌃";
+    if (alt) out += L"⌥";
+    if (shift) out += L"⇧";
+    if (cmd) out += L"⌘";
+    return out + shown;
 }
 
 MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax) {

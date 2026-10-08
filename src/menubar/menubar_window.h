@@ -169,6 +169,7 @@ private:
     RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
     TrafficWindow lights_;   // feux tricolores de la fenêtre active
+    HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
     WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)
     WindowTracker tracker_;
     AppModel model_;

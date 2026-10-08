@@ -19,6 +19,7 @@
 #include <set>
 #include <thread>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
@@ -300,7 +301,8 @@ bool Session::createWindow() {
                            rc.left, rc.top, int(width()), int(height()), nullptr, nullptr, env.instance, nullptr);
     if (!hwnd) return false;
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(this));
-    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);   // sinon le verre se verrait lui-même
+    // Sinon le verre se verrait lui-même ; en diagnostic, visible aux enregistreurs (le verre peut alors se refléter).
+    if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     if (FAILED(dcomp->CreateTargetForHwnd(hwnd, TRUE, &target)) || FAILED(dcomp->CreateVisual(&visual)) ||
         FAILED(dcomp->CreateSurface(width(), height(), DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED,
                                     &surface)))

@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
 #include "../glass/backdrop_capture.h"
@@ -291,7 +292,8 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->hwnd = CreateWindowExW(ex, kClass, L"", WS_POPUP, left, top, w, h, nullptr, nullptr, env.instance, nullptr);
     if (!p->hwnd) return nullptr;
     SetWindowLongPtrW(p->hwnd, GWLP_USERDATA, LONG_PTR(this));
-    SetWindowDisplayAffinity(p->hwnd, WDA_EXCLUDEFROMCAPTURE);   // sinon le verre se verrait lui-même
+    // Sinon le verre se verrait lui-même ; en diagnostic, visible aux enregistreurs (le verre peut alors se refléter).
+    if (!diagnosticCapture()) SetWindowDisplayAffinity(p->hwnd, WDA_EXCLUDEFROMCAPTURE);
 
     if (FAILED(dcomp->CreateTargetForHwnd(p->hwnd, TRUE, &p->target)) || FAILED(dcomp->CreateVisual(&p->visual)) ||
         FAILED(dcomp->CreateSurface(UINT(w), UINT(h), DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED,
@@ -350,9 +352,9 @@ void Session::measureTexts(Panel& p, float& maxText, float& maxShortcut) {
             t->GetMetrics(&tm);
             maxText = std::max(maxText, tm.width);
         }
-        if (plain && !it.separator() && !it.shortcut.empty() &&
-            SUCCEEDED(dwrite->CreateTextLayout(it.shortcut.c_str(), UINT32(it.shortcut.size()), format.Get(), 4000, 200,
-                                               &k))) {
+        const std::wstring keys = macShortcutLabel(it.shortcut);   // « ⌃⇧Z » plutôt que « Ctrl+Maj+Z »
+        if (plain && !it.separator() && !keys.empty() &&
+            SUCCEEDED(dwrite->CreateTextLayout(keys.c_str(), UINT32(keys.size()), format.Get(), 4000, 200, &k))) {
             DWRITE_TEXT_METRICS km{};
             k->GetMetrics(&km);
             maxShortcut = std::max(maxShortcut, km.width);

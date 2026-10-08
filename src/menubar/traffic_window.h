@@ -6,7 +6,9 @@
 #pragma once
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 #include "traffic_lights.h"
@@ -16,15 +18,19 @@ namespace md {
 UINT effectiveDpi(HWND h);            // DPI réel de l'écran de la fenêtre
 LightsWindowInfo readInfo(HWND h);    // style, cadre, zone client, processus… d'une fenêtre de premier niveau
 
+// Les pastilles vivent sur leur propre fil : la sonde des boutons (jusqu'à 60 ms d'attente d'une app occupée) ne fige
+// jamais la barre de menus. Les méthodes publiques postent à ce fil.
 class TrafficWindow {
 public:
     ~TrafficWindow() { destroy(); }
-    bool create(HINSTANCE instance);
+    bool create(HINSTANCE instance);   // lance le fil et ses calques
     // Fenêtre active (nullptr : aucune). Décide (wantsLights), sinon masque le calque.
     void attach(HWND target, LightsMode mode);
     void detach();
     void destroy();
-    HWND target() const { return target_; }
+    HWND target() const { return publicTarget_.load(); }
+    // Toujours à gauche (réglage par défaut) ou, si la gauche est prise, sur les boutons de Windows.
+    void setAlwaysLeft(bool on);
 
 private:
     enum class Spot { None, Left, Over };   // pas de pastilles, à gauche (+ cache), sur les boutons de Windows
@@ -36,8 +42,15 @@ private:
         Spot spot = Spot::None;
         RECT buttons{};          // boutons de Windows, relatifs au coin haut droit du cadre
         LONG titleBottom = 0;    // bas de la barre de titre, relatif au haut du cadre
+        bool leftFree = true;    // gauche libre (sinon pastilles forcées à gauche : fond transparent)
     };
 
+    void run();
+    bool ensureLayers();               // crée les calques manquants
+    void destroyLayers();
+    void doAttach(HWND target, LightsMode mode);
+    void doDetach();
+    void moveLayer(HWND layer, const RECT& screenRect);
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     static void CALLBACK onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD);
     LRESULT handle(HWND from, UINT msg, WPARAM wp, LPARAM lp);
@@ -46,7 +59,7 @@ private:
     void hide();
     void sample(const RECT& frame, UINT dpi);
     void paint();
-    void paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted);
+    void paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted, std::uint32_t patchColor);
     void raise();                // juste au-dessus de la cible (le cache sous les pastilles)
     void unhook();
 
@@ -70,6 +83,13 @@ private:
     // Pendant une sonde, SendMessageTimeout laisse passer les messages envoyés à notre fil (WinEvent, activation) :
     // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
     bool probing_ = false, attachPending_ = false, placePending_ = false;
+    bool alwaysLeft_ = true;
+    bool quitting_ = false;
+    HINSTANCE instance_ = nullptr;
+    std::thread thread_;
+    std::atomic<DWORD> threadId_{0};
+    std::atomic<HWND> publicTarget_{nullptr};
+    std::uint32_t coverColor_ = 0;   // couleur juste à gauche des boutons cachés, à mi-hauteur (Mica : plus foncée en haut)
     HWND pendingTarget_ = nullptr;
     LightsMode pendingMode_ = LightsMode::Standard;
     static TrafficWindow* self_;

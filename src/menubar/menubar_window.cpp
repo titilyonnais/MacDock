@@ -59,6 +59,8 @@ constexpr UINT_PTR kVisibilityTimer = 0x5649;   // "VI"
 constexpr UINT_PTR kTrayLayoutTimer = 0x544C;   // "TL" : rafale de messages du mod regroupée
 constexpr UINT_PTR kTrayPruneTimer = 0x5450;    // "TP" : icônes d'apps fermées
 constexpr UINT_PTR kHudTimer = 0x4855;          // "HU" : fondu de la pastille du volume et de la luminosité
+// "FG" : Windows n'annonce pas toujours le premier plan (fenêtre active fermée, activation par un autre processus).
+constexpr UINT_PTR kForegroundTimer = 0x4647;
 // Touches de volume reprises (ctl_) ; Maj+Alt : pas fin, comme Maj+Option sur macOS.
 constexpr int kHotVolUp = 1, kHotVolDown = 2, kHotMute = 3, kHotVolUpFine = 4, kHotVolDownFine = 5;
 
@@ -144,6 +146,7 @@ void MenuBarApp::checkSettingsFile() {
 
 void MenuBarApp::applySettings() {
     if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
+    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     lights_.attach(lights_.target(), settings_.trafficLights);
     if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
     for (auto& s : screens_) syncAppBar(*s);
@@ -368,6 +371,7 @@ std::vector<std::wstring> childClasses(HWND top) {
 
 void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
+    lastForeground_ = h;
     const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
     lights_.attach(rootWindow, settings_.trafficLights);   // il décide
     if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
@@ -1408,6 +1412,13 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     break;
                 case kConfigTimer: checkSettingsFile(); break;
+                case kForegroundTimer:   // premier plan changé sans annonce : rattrapé
+                    if (HWND fg = GetForegroundWindow(); fg && fg != lastForeground_) {
+                        DWORD pid = 0;   // nos menus déroulants prennent le premier plan : jamais traités ici
+                        GetWindowThreadProcessId(fg, &pid);
+                        if (pid != GetCurrentProcessId()) onForeground(fg);
+                    }
+                    break;
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:
                     checkFullscreen();
@@ -1540,6 +1551,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     }
     loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
     lights_.create(instance);
+    lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);
@@ -1585,6 +1597,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     SetTimer(ctl_, kResampleTimer, 60000, nullptr);
     SetTimer(ctl_, kConfigTimer, 2000, nullptr);
     SetTimer(ctl_, kFullscreenTimer, 1000, nullptr);
+    SetTimer(ctl_, kForegroundTimer, 500, nullptr);
     checkFullscreen();
     stepVisibilityAll();
 

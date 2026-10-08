@@ -283,3 +283,46 @@ TEST_CASE(lights_pressed_is_darker) {
     const std::size_t i = (std::size_t(116 - l.window.top) * w + (120 - l.window.left)) * 4;
     CHECK(pressed[i + 2] + 20 < normal[i + 2]);   // rouge plus sombre sous le doigt
 }
+
+TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
+    // Bloc-notes agrandi (mesuré) : cadre déclaré dès y = 35, sous la barre de menus (zone de travail dès 48). Les
+    // pastilles et la couleur de leur fond se prennent dans la partie visible.
+    const RECT work{0, 48, 3840, 2022};
+    const RECT f = md::visibleFrame(RECT{-13, 35, 3853, 2035}, work, true);
+    CHECK_EQ(f.top, 48L);
+    CHECK_EQ(f.left, 0L);
+    CHECK_EQ(f.right, 3840L);
+    const RECT normal = md::visibleFrame(RECT{100, 30, 900, 700}, work, false);   // fenêtre déplacée : telle quelle
+    CHECK_EQ(normal.top, 30L);
+}
+
+TEST_CASE(lights_spot_always_left_by_default) {
+    // À ta demande : toujours à gauche (les boutons de Windows sont cachés à droite), même quand l'app dessine
+    // des onglets ou des menus à gauche. En « auto », sur les boutons de Windows si la gauche est occupée.
+    CHECK(md::chooseLightsSpot(true, true, true) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, true, true) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, true, false) == md::LightsSpot::Over);
+    CHECK(md::chooseLightsSpot(true, false, false) == md::LightsSpot::Left);
+    CHECK(md::chooseLightsSpot(false, false, true) == md::LightsSpot::None);   // aucun bouton : barre inconnue
+    md::MenuBarSettings s = md::menuBarSettingsFromJson(md::json::Value(md::json::Object{}));
+    CHECK(s.lightsAlwaysLeft);
+    s.lightsAlwaysLeft = false;
+    CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).lightsAlwaysLeft);
+}
+
+TEST_CASE(lights_forced_left_background_passes_clicks) {
+    // Gauche occupée (premier onglet, menu Fichier) : seul ce qui est pastille capte la souris ; ailleurs le calque
+    // est transparent (alpha nul), donc les clics atteignent l'app.
+    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    l.opaque = false;
+    md::LightsState st;
+    st.patchColor = 0x404040;
+    const auto px = md::renderLights(l, st, 1.0);
+    const int w = l.window.right - l.window.left;
+    CHECK_EQ(int(px[(std::size_t(2) * w + 2) * 4 + 3]), 0);   // coin : transparent
+    const int cx = (l.circles[0].left + l.circles[0].right) / 2 - l.window.left;
+    const int cy = (l.circles[0].top + l.circles[0].bottom) / 2 - l.window.top;
+    CHECK(int(px[(std::size_t(cy) * w + cx) * 4 + 3]) > 200);   // pastille : opaque
+    md::MenuBarSettings s = md::menuBarSettingsFromJson(*md::json::parse(R"({"trafficLightsSide":"right"})"));
+    CHECK(!s.lightsAlwaysLeft);   // toute valeur autre que « left » : comportement automatique
+}

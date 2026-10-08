@@ -10,7 +10,7 @@ namespace md {
 
 namespace {
 // Attributs de Windows 11 (SDK 22000+) ; repris ici pour ne pas dépendre de la version des en-têtes.
-constexpr DWORD kCorner = 33, kBorderColor = 34, kCaptionColor = 35, kTextColor = 36;
+constexpr DWORD kDarkMode = 20, kCorner = 33, kBorderColor = 34, kCaptionColor = 35, kTextColor = 36, kBackdrop = 38;
 constexpr DWORD kRound = 2;
 constexpr COLORREF kColorNone = 0xFFFFFFFE, kColorDefault = 0xFFFFFFFF;
 
@@ -32,8 +32,10 @@ void WindowStyler::restore(const Touched& t) {
     if (!IsWindow(t.h) || processOf(t.h) != t.pid) return;   // fenêtre disparue, ou HWND repris par une autre
     if (t.rounded) set(t.h, kCorner, t.corner);
     set(t.h, kBorderColor, kColorDefault);
-    set(t.h, kCaptionColor, kColorDefault);
-    set(t.h, kTextColor, kColorDefault);
+    if (t.captioned) {
+        set(t.h, kCaptionColor, kColorDefault);
+        set(t.h, kTextColor, kColorDefault);
+    }
 }
 
 void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT dpi) {
@@ -46,7 +48,11 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
         touched_.erase(it);
         it = touched_.end();
     }
-    const auto look = macWindowLook(info, dark, dpi);
+    // Mode clair ou sombre de la fenêtre elle-même (une app peut être sombre dans un Windows clair), et son fond.
+    DWORD own = 0, backdrop = 0;
+    if (SUCCEEDED(DwmGetWindowAttribute(h, kDarkMode, &own, sizeof own))) dark = own != 0;
+    if (FAILED(DwmGetWindowAttribute(h, kBackdrop, &backdrop, sizeof backdrop))) backdrop = 0;
+    const auto look = macWindowLook(info, dark, dpi, int(backdrop));
     if (!look) {   // plus éligible (passée en plein écran sans bordure…) : rendue à Windows
         if (it != touched_.end()) {
             restore(*it);
@@ -54,10 +60,11 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
         }
         return;
     }
-    if (it != touched_.end() && it->dark == dark) return;
+    if (it != touched_.end() && it->dark == dark && it->backdrop == backdrop) return;
     Touched t = it != touched_.end() ? *it : key;
     t.dark = dark;
     t.pid = pid;
+    t.backdrop = backdrop;
     if (it == touched_.end()) {   // première fois : on lit le choix de l'app avant de toucher aux coins
         DWORD corner = 0;
         if (FAILED(DwmGetWindowAttribute(h, kCorner, &corner, sizeof corner))) corner = 0;
@@ -70,6 +77,11 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
     if (look->caption) {
         ok &= set(h, kCaptionColor, look->captionColor);
         ok &= set(h, kTextColor, look->textColor);
+        t.captioned = true;
+    } else if (t.captioned) {   // barre laissée à l'app (Mica arrivé depuis) : notre couleur seulement est retirée
+        set(h, kCaptionColor, kColorDefault);
+        set(h, kTextColor, kColorDefault);
+        t.captioned = false;
     }
     if (it != touched_.end()) touched_.erase(it);
     touched_.insert(t);

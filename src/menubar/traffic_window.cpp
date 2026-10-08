@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <future>
 #include <optional>
 
 #include "../core/diag.h"
@@ -22,6 +23,10 @@ constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois 
 constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
 constexpr double kBounceMs = 240;
 constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
+// Messages postés au fil des pastilles (sans fenêtre : les calques peuvent être recréés).
+constexpr UINT kMsgAttach = WM_APP + 1, kMsgDetach = WM_APP + 2, kMsgLeft = WM_APP + 3, kMsgQuit = WM_APP + 4,
+               kMsgRecreate = WM_APP + 5;
+
 
 } // namespace
 
@@ -82,37 +87,115 @@ LightsWindowInfo readInfo(HWND h) {
 }
 
 bool TrafficWindow::create(HINSTANCE instance) {
-    if (hwnd_) return true;
+    if (thread_.joinable()) return true;
     self_ = this;
-    WNDCLASSEXW wc{sizeof wc};
-    wc.style = CS_DBLCLKS;
-    wc.lpfnWndProc = proc;
-    wc.hInstance = instance;
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.lpszClassName = kLightsClass;
-    RegisterClassExW(&wc);
-    hwnd_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kLightsClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr,
-                            nullptr, instance, nullptr);
-    if (!hwnd_) {
-        log::warn(L"Feux tricolores : fenêtre impossible (%lu)", GetLastError());
-        return false;
+    instance_ = instance;
+    quitting_ = false;
+    std::promise<bool> started;
+    std::future<bool> result = started.get_future();
+    thread_ = std::thread([this, &started] {
+        threadId_ = GetCurrentThreadId();
+        const bool created = ensureLayers();   // copie locale : la promesse n'existe plus après set_value
+        started.set_value(created);
+        if (created) run();
+    });
+    const bool ok = result.get();   // sans limite : le fil répond toujours (comme UiaWorker)
+    if (!ok) {
+        thread_.join();
+        threadId_ = 0;
     }
-    // La mesure de la couleur ne voit pas les calques (sauf en diagnostic : visibles aux enregistreurs d'écran ; la
-    // mesure se fait à côté d'eux de toute façon).
-    const DWORD affinity = diagnosticCapture() ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE;
-    SetWindowDisplayAffinity(hwnd_, affinity);
-    cover_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kLightsClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr,
-                             nullptr, instance, nullptr);
-    if (cover_) SetWindowDisplayAffinity(cover_, affinity);
-    return true;
+    return ok;
+}
+
+void TrafficWindow::run() {
+    MSG m;
+    while (GetMessageW(&m, nullptr, 0, 0) > 0) {
+        if (!m.hwnd) {
+            switch (m.message) {
+                case kMsgAttach: doAttach(reinterpret_cast<HWND>(m.wParam), LightsMode(m.lParam)); continue;
+                case kMsgDetach: doDetach(); continue;
+                case kMsgLeft:
+                    if ((m.wParam != 0) != alwaysLeft_) placement_.valid = false;
+                    alwaysLeft_ = m.wParam != 0;
+                    continue;
+                case kMsgRecreate:
+                    if (ensureLayers() && target_) place(true);
+                    continue;
+                case kMsgQuit:
+                    quitting_ = true;
+                    doDetach();
+                    destroyLayers();
+                    PostQuitMessage(0);
+                    continue;
+                default: break;
+            }
+        }
+        TranslateMessage(&m);
+        DispatchMessageW(&m);
+    }
+}
+
+void TrafficWindow::attach(HWND target, LightsMode mode) {
+    if (threadId_ && !PostThreadMessageW(threadId_, kMsgAttach, reinterpret_cast<WPARAM>(target), LPARAM(mode)))
+        log::warn(L"Feux tricolores : message perdu (%lu)", GetLastError());
+}
+
+void TrafficWindow::detach() {
+    if (threadId_) PostThreadMessageW(threadId_, kMsgDetach, 0, 0);
+}
+
+void TrafficWindow::setAlwaysLeft(bool on) {
+    if (threadId_) PostThreadMessageW(threadId_, kMsgLeft, on ? 1 : 0, 0);
 }
 
 void TrafficWindow::destroy() {
-    detach();
+    if (thread_.joinable()) {
+        PostThreadMessageW(threadId_, kMsgQuit, 0, 0);
+        // Borné : un glisser en cours vers une app figée ne doit pas bloquer la fermeture de la barre.
+        if (WaitForSingleObject(thread_.native_handle(), 3000) == WAIT_OBJECT_0) thread_.join();
+        else thread_.detach();
+    }
+    threadId_ = 0;
+    if (self_ == this) self_ = nullptr;
+}
+
+bool TrafficWindow::ensureLayers() {
+    if (hwnd_ && cover_ && IsWindow(hwnd_) && IsWindow(cover_)) return true;   // chemin courant : rien à faire
+    WNDCLASSEXW wc{sizeof wc};
+    wc.style = CS_DBLCLKS;
+    wc.lpfnWndProc = proc;
+    wc.hInstance = instance_;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.lpszClassName = kLightsClass;
+    RegisterClassExW(&wc);   // déjà inscrite : sans effet
+    // La mesure de la couleur ne voit pas les calques (sauf en diagnostic : visibles aux enregistreurs d'écran ; la
+    // mesure se fait à côté d'eux de toute façon).
+    const DWORD affinity = diagnosticCapture() ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE;
+    for (HWND* layer : {&hwnd_, &cover_}) {
+        if (*layer && IsWindow(*layer)) continue;
+        *layer = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kLightsClass, L"", WS_POPUP, 0, 0, 1, 1,
+                                 nullptr, nullptr, instance_, nullptr);
+        if (!*layer) {
+            log::warn(L"Feux tricolores : fenêtre impossible (%lu)", GetLastError());
+            return false;
+        }
+        SetWindowDisplayAffinity(*layer, affinity);
+        painted_ = coverPainted_ = false;
+        paintedSize_ = coverSize_ = {};
+    }
+    return true;
+}
+
+void TrafficWindow::destroyLayers() {
     if (cover_) DestroyWindow(cover_);
     if (hwnd_) DestroyWindow(hwnd_);
     hwnd_ = cover_ = nullptr;
-    if (self_ == this) self_ = nullptr;
+}
+
+void TrafficWindow::moveLayer(HWND layer, const RECT& r) {
+    if (!layer) return;
+    POINT pos{r.left, r.top};
+    UpdateLayeredWindow(layer, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);   // même image, déplacée
 }
 
 void TrafficWindow::unhook() {
@@ -121,7 +204,7 @@ void TrafficWindow::unhook() {
     hook_ = moveHook_ = nullptr;
 }
 
-void TrafficWindow::detach() {
+void TrafficWindow::doDetach() {
     unhook();
     target_ = nullptr;
     pressed_ = -1;
@@ -130,21 +213,22 @@ void TrafficWindow::detach() {
     state_.pressed = state_.bouncing = -1;
     placement_ = {};
     probeRetries_ = 0;
+    if (hwnd_) KillTimer(hwnd_, kProbeTimer);
     hide();
+    publicTarget_ = nullptr;
 }
 
 void TrafficWindow::hide() {
     if (hwnd_ && shown_) ShowWindow(hwnd_, SW_HIDE);
     if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
     shown_ = false;
-    if (hwnd_) {
-        KillTimer(hwnd_, kSampleTimer);
-        KillTimer(hwnd_, kProbeTimer);
-    }
+    // La nouvelle sonde reste programmée : une fenêtre masquée faute de mesure complète (app qui démarre) doit
+    // recevoir ses pastilles à la reprise. Seul detach() l'annule.
+    if (hwnd_) KillTimer(hwnd_, kSampleTimer);
 }
 
-void TrafficWindow::attach(HWND target, LightsMode mode) {
-    if (!hwnd_) return;
+void TrafficWindow::doAttach(HWND target, LightsMode mode) {
+    if (!ensureLayers()) return;
     if (probing_) {
         attachPending_ = true;
         pendingTarget_ = target;
@@ -154,9 +238,10 @@ void TrafficWindow::attach(HWND target, LightsMode mode) {
     }
     mode_ = mode;
     if (target != target_ || !hook_) {   // nouvelle cible, ou cible sans pastilles réévaluée (réglage changé)
-        detach();
+        doDetach();
         if (!target || !IsWindow(target)) return;
         target_ = target;
+        publicTarget_ = target;
         painted_ = false;
         LightsWindowInfo info = readInfo(target);
         // Encore réduite quand elle devient active (restauration depuis le Dock) : suivie quand même, ses pastilles
@@ -194,7 +279,7 @@ void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
     }
     if (hwnd != t->target_ || idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
     switch (event) {
-        case EVENT_OBJECT_DESTROY: t->detach(); break;
+        case EVENT_OBJECT_DESTROY: t->doDetach(); break;
         case EVENT_OBJECT_HIDE: t->hide(); break;
         case EVENT_OBJECT_SHOW:
         case EVENT_OBJECT_LOCATIONCHANGE:
@@ -221,6 +306,21 @@ void TrafficWindow::sample(const RECT& frame, UINT dpi) {
         }
         ReleaseDC(nullptr, dc);
     }
+    // Cache des boutons de Windows : sa propre couleur, prise juste à sa gauche et à mi-hauteur.
+    if (coverLayout_.window.right > coverLayout_.window.left)
+        if (HDC dc = GetDC(nullptr)) {
+            std::vector<std::uint32_t> beside;
+            const LONG cy = (coverLayout_.window.top + coverLayout_.window.bottom) / 2;
+            for (int i = 0; i < 6; ++i) {
+                const COLORREF c = GetPixel(dc, coverLayout_.window.left - 4 - i * std::lround(3.0 * dpi / 96), cy);
+                if (c != CLR_INVALID) beside.push_back((GetRValue(c) << 16) | (GetGValue(c) << 8) | GetBValue(c));
+            }
+            ReleaseDC(nullptr, dc);
+            if (!beside.empty() && dominantColor(beside) != coverColor_) {
+                coverColor_ = dominantColor(beside);
+                coverPainted_ = false;
+            }
+        }
     if (samples.empty()) return;
     const std::uint32_t color = dominantColor(samples);
     if (color == state_.patchColor && painted_) return;
@@ -269,19 +369,28 @@ TrafficWindow::Placement TrafficWindow::measure(const LightsWindowInfo& info, UI
         titleBottom = b.bottom;
     const bool left = leftCaptionFree(info.frame, titleBottom, dpi, hit);
     complete = !late;
-    p.spot = left ? Spot::Left : found ? Spot::Over : Spot::None;
+    p.leftFree = left;
+    switch (chooseLightsSpot(left, found, alwaysLeft_)) {
+        case LightsSpot::Left: p.spot = Spot::Left; break;
+        case LightsSpot::Over: p.spot = Spot::Over; break;
+        case LightsSpot::None: p.spot = Spot::None; break;
+    }
     if (found) p.buttons = RECT{b.left - info.frame.right, b.top - info.frame.top, b.right - info.frame.right, b.bottom - info.frame.top};
     p.titleBottom = titleBottom - info.frame.top;
     return p;
 }
 
 void TrafficWindow::place(bool resample, bool probe) {
-    if (!hwnd_ || !target_) return;
+    if (!target_) return;
     if (!IsWindow(target_)) {
-        detach();
+        doDetach();
         return;
     }
-    const LightsWindowInfo info = readInfo(target_);
+    if (!ensureLayers()) return;
+    LightsWindowInfo info = readInfo(target_);
+    MONITORINFO mon{sizeof mon};
+    if (GetMonitorInfoW(MonitorFromWindow(target_, MONITOR_DEFAULTTONEAREST), &mon))
+        info.frame = visibleFrame(info.frame, mon.rcWork, info.zoomed);   // agrandie : pas sous la barre de menus
     const UINT dpi = effectiveDpi(target_);
     if (!IsWindowVisible(target_) || !wantsLights(info, mode_, dpi)) {
         if (diagnosticCapture()) log::info(L"[diag] pastilles %p : refusée (style %08lx)", target_, info.style);
@@ -328,6 +437,7 @@ void TrafficWindow::place(bool resample, bool probe) {
         RECT title = info.client;
         title.top = f.top + placement_.titleBottom;
         l = lightsLayout(f, title, dpi);
+        l.opaque = placement_.leftFree;   // gauche occupée : rien ne cache ni ne bloque l'app hors des pastilles
     } else if (spot_ == Spot::Over && hasButtons) {
         l = lightsOverButtons(buttons, dpi, info.zoomed);
     } else {
@@ -336,7 +446,7 @@ void TrafficWindow::place(bool resample, bool probe) {
     }
     const bool resized = l.window.right - l.window.left != layout_.window.right - layout_.window.left ||
                          l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top ||
-                         l.topGap != layout_.topGap || l.fade != layout_.fade;
+                         l.topGap != layout_.topGap || l.fade != layout_.fade || l.opaque != layout_.opaque;
     layout_ = l;
     const bool wantCover = cover_ && spot_ == Spot::Left && hasButtons;
     if (wantCover) {
@@ -361,16 +471,10 @@ void TrafficWindow::place(bool resample, bool probe) {
     if (resample || !painted_) sample(info.frame, dpi);
     if (resized) painted_ = false;
     if (!painted_) paint();
-    else {
-        POINT pos{layout_.window.left, layout_.window.top};
-        UpdateLayeredWindow(hwnd_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);   // même image, déplacée
-    }
+    else moveLayer(hwnd_, layout_.window);
     if (wantCover) {
-        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_);
-        else {
-            POINT pos{coverLayout_.window.left, coverLayout_.window.top};
-            UpdateLayeredWindow(cover_, nullptr, &pos, nullptr, nullptr, nullptr, 0, nullptr, 0);
-        }
+        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_, coverColor_ ? coverColor_ : state_.patchColor);
+        else moveLayer(cover_, coverLayout_.window);
         coverPainted_ = true;
     }
     raise();
@@ -378,18 +482,20 @@ void TrafficWindow::place(bool resample, bool probe) {
 
 void TrafficWindow::paint() {
     paintedSize_ = {};
-    paintLayer(hwnd_, layout_, paintedSize_);
+    paintLayer(hwnd_, layout_, paintedSize_, state_.patchColor);
     painted_ = paintedSize_.cx > 0;
     if (cover_ && coverLayout_.window.right > coverLayout_.window.left && !coverPainted_) {
-        paintLayer(cover_, coverLayout_, coverSize_);
+        paintLayer(cover_, coverLayout_, coverSize_, coverColor_ ? coverColor_ : state_.patchColor);
         coverPainted_ = true;
     }
 }
 
-void TrafficWindow::paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted) {
+void TrafficWindow::paintLayer(HWND layer, const LightsLayout& layout, SIZE& painted, std::uint32_t patchColor) {
     const int w = int(layout.window.right - layout.window.left), h = int(layout.window.bottom - layout.window.top);
     if (!layer || w <= 0 || h <= 0) return;
-    const auto px = renderLights(layout, state_, scale_);
+    LightsState st = state_;
+    st.patchColor = patchColor;
+    const auto px = renderLights(layout, st, scale_);
     BITMAPINFO bi{};
     bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB};
     void* bits = nullptr;
@@ -447,12 +553,21 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
                p.y <= layout_.circles[0].bottom + 2;
     };
     switch (msg) {
-        case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // la fenêtre de l'app reste active
+        case WM_MOUSEACTIVATE: return MA_NOACTIVATE;
+        case WM_NCDESTROY:   // détruit sans nous (ne devrait pas arriver) : recréé sur ce fil
+            if (!quitting_) {
+                if (from == hwnd_) hwnd_ = nullptr;
+                if (from == cover_) cover_ = nullptr;
+                shown_ = false;
+                tracking_ = false;
+                PostThreadMessageW(GetCurrentThreadId(), kMsgRecreate, 0, 0);
+            }
+            break;   // la fenêtre de l'app reste active
         case WM_MOUSEMOVE: {
             if (dragging_ && target_) {
                 const POINT p = screenPoint();
                 SetWindowPos(target_, nullptr, dragFrom_.left + p.x - dragStart_.x, dragFrom_.top + p.y - dragStart_.y, 0, 0,
-                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
                 return 0;
             }
             if (cover) return 0;
@@ -543,10 +658,10 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
                 KillTimer(hwnd_, kDeferTimer);
                 if (attachPending_) {
                     attachPending_ = placePending_ = false;
-                    attach(pendingTarget_, pendingMode_);
+                    doAttach(pendingTarget_, pendingMode_);
                 } else if (placePending_) {
                     placePending_ = false;
-                    if (target_ && !IsWindow(target_)) detach();
+                    if (target_ && !IsWindow(target_)) doDetach();
                     else place(false);
                 }
             } else if (wp == kSampleTimer) {

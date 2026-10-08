@@ -33,6 +33,9 @@ struct LightsLayout {
     RECT patch{};        // fond de la couleur de la barre de titre
     bool lights = true;  // false : simple cache (boutons de Windows recouverts)
     bool fade = true;    // fondu du fond sur la fin à droite (pastilles posées à gauche)
+    // Fond peint ; faux quand la gauche est occupée (onglet, menu) : transparent, les clics hors pastilles atteignent
+    // l'app.
+    bool opaque = true;
     LONG topGap = 0;     // rangées du haut laissées transparentes : le bord de la fenêtre reste redimensionnable
 };
 
@@ -45,6 +48,12 @@ RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwmBounds
 // La place des pastilles à gauche ne contient que de la légende (ou l'icône système) sur toute leur hauteur :
 // pas d'onglets ni de menus de l'app dessous. titleBottom : bas de la barre de titre (pixels écran).
 bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitProbe& hit);
+// Place des pastilles : à gauche si la barre y est libre ; sinon à gauche quand même (alwaysLeft, réglage par
+// défaut), ou posées sur les boutons de Windows ; rien si aucun bouton n'a été trouvé et que la gauche est occupée.
+enum class LightsSpot { None, Left, Over };
+LightsSpot chooseLightsSpot(bool leftFree, bool buttonsFound, bool alwaysLeft);
+// Partie visible du cadre : une fenêtre agrandie peut déclarer un cadre qui déborde sous la barre de menus.
+RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
 // Pastilles posées à la place des boutons de Windows (pas de place à gauche), qu'elles recouvrent. Le haut reste
 // transparent pour redimensionner par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);
