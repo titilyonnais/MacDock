@@ -3,7 +3,9 @@
 #include <windows.h>
 #include <dwrite_3.h>
 
+#include <cstdint>
 #include <string>
+#include <tuple>
 
 #include "minitest.h"
 
@@ -254,4 +256,55 @@ TEST_CASE(look_xaml_fallback_base_family) {
     fallback->Release();
     system->Release();
     f2->Release();
+}
+
+TEST_CASE(look_font_aliases_remember_recent_fonts) {
+    look::FontAliases a;
+    wchar_t face[LF_FACESIZE] = {};
+    const void* one = reinterpret_cast<void*>(1);
+    a.remember(one, L"Segoe UI");
+    REQUIRE(a.find(one, face));
+    CHECK(std::wstring(face) == L"Segoe UI");
+    CHECK(!a.find(reinterpret_cast<void*>(2), face));
+    a.remember(one, L"MS Shell Dlg 2");   // poignée réutilisée par GDI : le nom le plus récent
+    REQUIRE(a.find(one, face));
+    CHECK(std::wstring(face) == L"MS Shell Dlg 2");
+    for (int i = 0; i < look::FontAliases::kSize; ++i) a.remember(reinterpret_cast<void*>(std::uintptr_t(100 + i)), L"X");
+    CHECK(!a.find(one, face));   // oubliée derrière les plus récentes
+}
+
+// Boîtes de dialogue (Exécuter, Ouvrir…) : user32 vérifie avec GetTextFaceAliasW que la police obtenue porte le nom
+// de son modèle (« Segoe UI », « MS Shell Dlg 2 ») ; sinon il prend la police bitmap « System » (mesuré). Le mod répond
+// le nom demandé pour les polices qu'il a remplacées.
+TEST_CASE(look_dialog_font_check_sees_requested_name) {
+    loadSettings();
+    if (!g_textAvailable) return;   // SF Pro absente : rien n'est remplacé
+    HMODULE gdi = LoadLibraryW(L"gdi32full.dll");
+    REQUIRE(gdi != nullptr);
+    CreateFontIndirectExW_Original = reinterpret_cast<CreateFontIndirectExW_t>(GetProcAddress(gdi, "CreateFontIndirectExW"));
+    GetTextFaceAliasW_Original = reinterpret_cast<GetTextFaceAliasW_t>(GetProcAddress(LoadLibraryW(L"gdi32.dll"), "GetTextFaceAliasW"));
+    REQUIRE(CreateFontIndirectExW_Original != nullptr);
+    REQUIRE(GetTextFaceAliasW_Original != nullptr);
+    auto aliasOf = [](const wchar_t* requested) {
+        ENUMLOGFONTEXDVW e{};
+        e.elfEnumLogfontEx.elfLogFont.lfHeight = -16;
+        e.elfEnumLogfontEx.elfLogFont.lfCharSet = DEFAULT_CHARSET;
+        wcsncpy_s(e.elfEnumLogfontEx.elfLogFont.lfFaceName, requested, _TRUNCATE);
+        HFONT f = CreateFontIndirectExW_Hook(&e);
+        HDC dc = CreateCompatibleDC(nullptr);
+        HGDIOBJ old = SelectObject(dc, f);
+        wchar_t got[LF_FACESIZE] = {}, real[LF_FACESIZE] = {};
+        const int n = GetTextFaceAliasW_Hook(dc, LF_FACESIZE, got);
+        GetTextFaceW(dc, LF_FACESIZE, real);
+        SelectObject(dc, old);
+        DeleteDC(dc);
+        DeleteObject(f);
+        return std::make_tuple(n, std::wstring(got), std::wstring(real));
+    };
+    const auto [n, alias, real] = aliasOf(L"Segoe UI");
+    CHECK(alias == L"Segoe UI");
+    CHECK_EQ(n, 9);                     // caractères copiés, zéro final compris (comme Windows)
+    CHECK(real == L"SF Pro Text");      // la police dessinée reste bien SF Pro
+    CHECK(std::get<1>(aliasOf(L"MS Shell Dlg 2")) == L"MS Shell Dlg 2");
+    CHECK(std::get<1>(aliasOf(L"Consolas")) == L"Consolas");   // pas remplacée : la réponse de Windows
 }
