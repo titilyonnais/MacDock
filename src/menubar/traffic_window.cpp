@@ -65,6 +65,14 @@ static bool higherIntegrity(DWORD pid) {
     return mine && *theirs > *mine;
 }
 
+// Pastille jaune enfoncée : le Dock prépare l'effet génie (capture de la fenêtre) pendant l'appui, comme il le fait pour
+// le bouton « réduire » de Windows, que les pastilles cachent ; sinon la capture partirait au relâchement, en retard.
+static void announceMinimize(HWND target, POINT p) {
+    static const UINT msg = RegisterWindowMessageW(L"MacDockGenieArm");
+    if (HWND dock = FindWindowW(L"MacDockWindow", nullptr))
+        PostMessageW(dock, msg, reinterpret_cast<WPARAM>(target), MAKELPARAM(WORD(SHORT(p.x)), WORD(SHORT(p.y))));
+}
+
 LightsWindowInfo readInfo(HWND h) {
     LightsWindowInfo w;
     w.style = LONG(GetWindowLongPtrW(h, GWL_STYLE));
@@ -558,6 +566,7 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
                     state_.bouncing = -1;
                     SetCapture(hwnd_);
                     paint();
+                    if (hit == 1 && target_) announceMinimize(target_, p);   // le génie se prépare avant le relâchement
                     break;
                 case LightsMouse::Drag:   // le fond appartient à la barre de titre : on déplace la fenêtre nous-mêmes
                     if (target_ && !IsZoomed(target_) && GetWindowRect(target_, &dragFrom_)) {

@@ -1371,6 +1371,19 @@ bool visibleBounds(HWND h, RECT& r) {
 }
 } // namespace
 
+// Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente. Appelé pour le bouton
+// « réduire » de Windows (crochet souris) et pour la pastille jaune de la barre (message MacDockGenieArm), qui cache
+// ce bouton.
+void DockApp::armGenie(HWND w, POINT pt) {
+    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows) return;
+    if (!w || !IsWindow(w) || IsIconic(w) || genie_.active()) return;
+    RECT visible{}, dock{};
+    if (!visibleBounds(w, visible) || !GetWindowRect(hwnd_, &dock)) return;
+    KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
+    genie_.arm(instance_, w, visible, dock, pt);
+    if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+}
+
 void DockApp::onButton(bool down, POINT pt) {
     if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows) return;
     HWND w = GetAncestor(WindowFromPoint(pt), GA_ROOT);
@@ -1405,10 +1418,7 @@ void DockApp::onButton(bool down, POINT pt) {
             log::info(L"[trace] appui sur les boutons de %p en %ld,%ld : réduire %s (zone DWM %ld..%ld, test %d)",
                       static_cast<void*>(w), pt.x, pt.y, onMin ? L"oui" : L"non", buttons.left, buttons.right, int(hit));
         if (!onMin) return;
-        // Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente.
-        KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
-        genie_.arm(instance_, w, visible, dock, pt);
-        if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+        armGenie(w, pt);
         return;
     }
     if (trace_) {
@@ -2164,6 +2174,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         openSpotlight();
         return 0;
     }
+    if (msg == genieArmMsg_ && genieArmMsg_) {   // pastille jaune enfoncée : la réduction arrive au relâchement
+        armGenie(reinterpret_cast<HWND>(wp), POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
+        return 0;
+    }
     if (msg == taskbarCreated_ && taskbarCreated_) {
         log::info(L"Explorateur redémarré : réenregistrement");
         removeAppBar();
@@ -2675,6 +2689,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(hwnd_, spotlightMsg_, MSGFLT_ALLOW, nullptr);
     registerSpotlightHotkey();
     missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
+    genieArmMsg_ = RegisterWindowMessageW(L"MacDockGenieArm");
+    ChangeWindowMessageFilterEx(hwnd_, genieArmMsg_, MSGFLT_ALLOW, nullptr);
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();

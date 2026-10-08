@@ -77,6 +77,7 @@ private:
     void onMouse(POINT screen);
     void syncPointer();
     void onButton(bool down, POINT screen);   // bouton gauche n'importe où (crochet) : réduction annoncée
+    void armGenie(HWND window, POINT down);   // réduction annoncée pour cette fenêtre (bouton ou pastille jaune)
     void warmHovered(POINT client);           // case d'une fenêtre réduite survolée : capture préparée
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
@@ -175,6 +176,7 @@ private:
     UINT taskbarCreated_ = 0;
     UINT spotlightMsg_ = 0;              // « MacDockSpotlight » : loupe de la barre de menus
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
+    UINT genieArmMsg_ = 0;               // « MacDockGenieArm » : appui sur la pastille jaune (wParam fenêtre, lParam point)
     std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
     std::wstring appExposeHotkeyOn_;     // raccourci enregistré (vide : aucun)
     std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
