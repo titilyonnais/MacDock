@@ -389,6 +389,13 @@ void TrafficWindow::place(bool resample, bool probe) {
     }
     const RECT& f = info.frame;
     const SIZE size{f.right - f.left, f.bottom - f.top};
+    // Agrandie ou rendue à sa taille sous nos yeux : DWM anime le cadre, les pastilles reviennent à la fin.
+    unsigned zoomWait = 0;
+    if (shown_ && placement_.valid && placement_.target == target_) {
+        ANIMATIONINFO ai{sizeof ai};
+        const bool animated = SystemParametersInfoW(SPI_GETANIMATION, sizeof ai, &ai, 0) && ai.iMinAnimate;
+        zoomWait = lightsZoomWaitMs(placement_.zoomed, info.zoomed, animated);
+    }
     if (probe || !placement_.valid || placement_.target != target_ || placement_.zoomed != info.zoomed ||
         placement_.dpi != dpi) {
         bool complete = true;
@@ -429,6 +436,11 @@ void TrafficWindow::place(bool resample, bool probe) {
         refused_ = nullptr;
         revealAt_ = GetTickCount64() + kRevealMs;
         SetTimer(hwnd_, kRevealTimer, UINT(kRevealMs), nullptr);
+    }
+    if (zoomWait) {
+        hide();
+        revealAt_ = GetTickCount64() + zoomWait;
+        SetTimer(hwnd_, kRevealTimer, zoomWait, nullptr);
     }
     if (GetTickCount64() < revealAt_) return;   // montrées par kRevealTimer
     const LightsLayout l = lightsOverButtons(buttons, dpi, info.zoomed);

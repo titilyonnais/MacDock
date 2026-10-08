@@ -72,6 +72,7 @@ constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la 
 constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
 constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
 constexpr UINT_PTR kArmTimer = 0x414D;       // "AM" : réduction annoncée qui ne vient pas
+constexpr UINT_PTR kTransitionTimer = 0x5447;   // "TG" : animations de Windows rendues aux fenêtres libérées
 constexpr UINT_PTR kWarmTimer = 0x574D;      // "WM" : case survolée assez longtemps : capture préparée
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
@@ -1379,9 +1380,17 @@ void DockApp::armGenie(HWND w, POINT pt) {
     if (!w || !IsWindow(w) || IsIconic(w) || genie_.active()) return;
     RECT visible{}, dock{};
     if (!visibleBounds(w, visible) || !GetWindowRect(hwnd_, &dock)) return;
+    holdTransitions(w);   // avant le relâchement : posé après, DWM jouerait sa propre réduction sous le génie
     KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
     genie_.arm(instance_, w, visible, dock, pt);
     if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+}
+
+void DockApp::holdTransitions(HWND w) {
+    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !w) return;
+    if (trace_ && !transitions_.held(w)) log::info(L"[trace] animations de Windows coupées pour %p", static_cast<void*>(w));
+    transitions_.hold(w, nowSeconds() + 1.5);
+    SetTimer(hwnd_, kTransitionTimer, 400, nullptr);
 }
 
 void DockApp::onButton(bool down, POINT pt) {
@@ -1489,6 +1498,7 @@ bool DockApp::startGenie(HWND window, bool restore) {
     if (auto it = lastSeen_.find(toId(window)); it != lastSeen_.end()) seen = it->second;
     const RECT from = genieStartRect(seen, wp, mi.rcWork, mi.rcMonitor, tool, SIZE{});
     const bool slow = GetAsyncKeyState(VK_SHIFT) < 0;   // Maj : ralenti, comme sur macOS
+    holdTransitions(window);   // restauration : la fenêtre revient sans l'animation de Windows en plus du génie
     if (!genie_.start(instance_, window, from, *cell, settings_.position, settings_.minimizeEffect, restore, nowSeconds(), slow))
         return false;
     if (trace_) log::info(L"[trace] génie %s %p", restore ? L"restauration" : L"réduction", static_cast<void*>(window));
@@ -2039,6 +2049,12 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 case CommandAction::Kind::Pass: break;
             }
         }
+        // ⊞↓ sur une fenêtre ni agrandie ni réduite : Windows va la réduire, le génie l'animera seul.
+        if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
+            !(GetAsyncKeyState(VK_SHIFT) & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+            const HWND fg = GetAncestor(GetForegroundWindow(), GA_ROOT);
+            if (fg && IsWindowVisible(fg) && !IsZoomed(fg) && !IsIconic(fg)) self_->holdTransitions(fg);
+        }
         // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
         static bool escTaken = false;   // Échap a fermé le viseur : avalée jusqu'à son relâchement
         if (vk == VK_ESCAPE && escTaken && !self_->shotSession_) {
@@ -2172,6 +2188,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == spotlightMsg_ && spotlightMsg_) {
         openSpotlight();
+        return 0;
+    }
+    if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
+        HWND w = reinterpret_cast<HWND>(wp);
+        if (w && IsWindow(w) && !IsIconic(w)) holdTransitions(w);
         return 0;
     }
     if (msg == genieArmMsg_ && genieArmMsg_) {   // pastille jaune enfoncée : la réduction arrive au relâchement
@@ -2411,6 +2432,13 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kFullscreenTimer) {
                 checkFullscreen();
                 noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
+                return 0;
+            }
+            if (wp == kTransitionTimer) {   // réduite, ou animée par le génie : retenue ; sinon animations rendues
+                transitions_.release(nowSeconds(), [this](HWND h) {
+                    return IsIconic(h) || genie_.armed() == h || (genie_.active() && genie_.source() == h);
+                });
+                if (!transitions_.any()) KillTimer(hwnd_, kTransitionTimer);
                 return 0;
             }
             if (wp == kArmTimer) {   // annoncée, mais pas réduite (app qui refuse, ou cache dans la zone de notification)
@@ -2691,6 +2719,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
     genieArmMsg_ = RegisterWindowMessageW(L"MacDockGenieArm");
     ChangeWindowMessageFilterEx(hwnd_, genieArmMsg_, MSGFLT_ALLOW, nullptr);
+    willMinimizeMsg_ = RegisterWindowMessageW(L"MacDockWillMinimize");
+    ChangeWindowMessageFilterEx(hwnd_, willMinimizeMsg_, MSGFLT_ALLOW, nullptr);
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
@@ -2811,7 +2841,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacDock s'arrête");
     genie_.cancel();
-    minAnimate_.restore();   // l'animation de Windows revient
+    transitions_.releaseAll();   // fenêtres réduites par le génie : animations de Windows rendues
+    minAnimate_.restore();
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
     for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
     thumbnails_.clear();

@@ -47,6 +47,9 @@ RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
 // dans toutes les apps (elles ont toutes ces boutons en haut à droite). Le haut reste transparent pour redimensionner
 // par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);
+// Attente avant de remontrer les pastilles quand la fenêtre est agrandie ou rendue à sa taille (`animated` : animation
+// de Windows active), en millisecondes.
+unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated);
 
 // Souris sur le calque : appui sur une pastille disponible, déplacement de la fenêtre depuis le fond, zoom par
 // double-clic sur le fond ; un double-clic sur une pastille ne fait rien (pas de seconde commande).

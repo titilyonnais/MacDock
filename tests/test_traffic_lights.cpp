@@ -263,3 +263,12 @@ TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
     const RECT normal = md::visibleFrame(RECT{100, 30, 900, 700}, work, false);   // fenêtre déplacée : telle quelle
     CHECK_EQ(normal.top, 30L);
 }
+
+TEST_CASE(lights_wait_for_zoom_animation) {
+    // Agrandie ou rendue à sa taille : DWM anime le cadre (~290 ms mesurées), les pastilles attendent la fin au lieu de
+    // sauter devant l'animation. Sans animation de Windows (choix de l'utilisateur), ou sans changement : tout de suite.
+    CHECK(md::lightsZoomWaitMs(false, true, true) >= 280);
+    CHECK(md::lightsZoomWaitMs(true, false, true) >= 280);
+    CHECK_EQ(md::lightsZoomWaitMs(true, true, true), 0u);
+    CHECK_EQ(md::lightsZoomWaitMs(false, true, false), 0u);
+}

@@ -31,17 +31,12 @@ bool MinAnimateGuard::original() const {
     return v.value_or(true);
 }
 
-void MinAnimateGuard::apply(MinimizeEffect e) {
-    const bool want = e == MinimizeEffect::Windows ? original() : false;
+void MinAnimateGuard::apply(MinimizeEffect) {
+    const bool want = original();
     const auto now = api_.get ? api_.get() : std::nullopt;
-    if (now != want && api_.set) api_.set(want);
-    suppressed_ = !want && original();
+    if (now && *now != want && api_.set) api_.set(want);
 }
 
-void MinAnimateGuard::restore() {
-    if (!suppressed_) return;
-    if (api_.set) api_.set(original());
-    suppressed_ = false;
-}
+void MinAnimateGuard::restore() {}
 
 } // namespace md

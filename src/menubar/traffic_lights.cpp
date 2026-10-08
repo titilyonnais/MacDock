@@ -67,6 +67,10 @@ RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
     return r.right > r.left && r.bottom > r.top ? r : frame;
 }
 
+unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated) {
+    return animated && wasZoomed != zoomed ? 300u : 0u;   // ~290 ms d'animation de DWM mesurées, aller comme retour
+}
+
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;

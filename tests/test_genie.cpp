@@ -175,34 +175,33 @@ TEST_CASE(genie_sheet_size) {   // MACDOCK_DUMP=dossier : planches pour un contr
     if (write) CoUninitialize();
 }
 
-TEST_CASE(min_animate_guard_never_takes_own_zero) {
-    bool live = false;   // un Dock précédent a déjà coupé l'animation
+// L'animation de Windows reste celle de l'utilisateur, quel que soit l'effet : le Dock coupe seulement celle de la
+// fenêtre qu'il réduit (TransitionGate). Un 0 laissé par un Dock d'avant (qui la coupait partout) est réparé.
+TEST_CASE(min_animate_guard_repairs_zero_left_by_old_dock) {
+    bool live = false;
     int sets = 0;
     md::MinAnimateApi api{[&] { return std::optional<bool>(live); }, [&](bool on) { live = on; ++sets; return true; },
                           [] { return std::optional<bool>(true); }};   // préférence de l'utilisateur : animée
     md::MinAnimateGuard g(api);
     g.apply(md::MinimizeEffect::Genie);
-    CHECK(!live);
-    CHECK(g.suppressed());
+    CHECK(live);
+    CHECK_EQ(sets, 1);
     g.restore();
-    CHECK(live);   // revient à la préférence, pas au 0 trouvé
+    CHECK(live);
 }
 
-TEST_CASE(min_animate_guard_switches) {
+TEST_CASE(min_animate_guard_keeps_user_choice) {
     bool live = true;
     int sets = 0;
     md::MinAnimateApi api{[&] { return std::optional<bool>(live); }, [&](bool on) { live = on; ++sets; return true; },
                           [] { return std::optional<bool>(); }};   // registre illisible : défaut 1
     md::MinAnimateGuard g(api);
-    g.apply(md::MinimizeEffect::Scale);
-    CHECK(!live);
-    g.apply(md::MinimizeEffect::Scale);   // déjà coupée : aucun nouvel appel
-    CHECK_EQ(sets, 1);
-    g.apply(md::MinimizeEffect::Windows);
-    CHECK(live);
-    CHECK(!g.suppressed());
-    g.restore();   // rien à rendre
-    CHECK_EQ(sets, 2);
+    for (auto e : {md::MinimizeEffect::Genie, md::MinimizeEffect::Scale, md::MinimizeEffect::Windows}) {
+        g.apply(e);
+        CHECK(live);   // agrandir, restaurer, ouvrir : toujours animés
+    }
+    g.restore();
+    CHECK_EQ(sets, 0);
 }
 
 TEST_CASE(min_animate_guard_user_without_animation) {

@@ -38,6 +38,7 @@
 #include "dock_controller.h"
 #include "genie_window.h"
 #include "min_animate.h"
+#include "transition_gate.h"
 #include "monitor_choice.h"
 #include "thumbnails.h"
 #include "visibility.h"
@@ -78,6 +79,8 @@ private:
     void syncPointer();
     void onButton(bool down, POINT screen);   // bouton gauche n'importe où (crochet) : réduction annoncée
     void armGenie(HWND window, POINT down);   // réduction annoncée pour cette fenêtre (bouton ou pastille jaune)
+    // Animation de Windows coupée pour cette fenêtre, que le Dock va animer lui-même (réduction, restauration).
+    void holdTransitions(HWND window);
     void warmHovered(POINT client);           // case d'une fenêtre réduite survolée : capture préparée
     void setTransparent(bool transparent);
     void onClick(std::size_t index);
@@ -177,6 +180,7 @@ private:
     UINT spotlightMsg_ = 0;              // « MacDockSpotlight » : loupe de la barre de menus
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
     UINT genieArmMsg_ = 0;               // « MacDockGenieArm » : appui sur la pastille jaune (wParam fenêtre, lParam point)
+    UINT willMinimizeMsg_ = 0;           // « MacDockWillMinimize » : réduction par la barre de menus (wParam fenêtre)
     std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
     std::wstring appExposeHotkeyOn_;     // raccourci enregistré (vide : aucun)
     std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
@@ -242,6 +246,7 @@ private:
     Thumbnails thumbnails_;
     GenieWindow genie_;
     MinAnimateGuard minAnimate_{realMinAnimateApi()};
+    TransitionGate transitions_{realTransitionApi()};
     AppCatalog apps_;
     std::shared_ptr<AppsIconCache> appsIcons_ = std::make_shared<AppsIconCache>();     // apps de l'écran Apps, relues après chaque ouverture
     ThemeJob themeJob_;   // thème macOS appliqué ou rétabli hors du fil de l'interface

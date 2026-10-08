@@ -109,7 +109,7 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             return PostMessageW(target, WM_CLOSE, 0, 0) != FALSE;
         case ActionKind::Minimize:
             if (!liveWindow(target)) return false;
-            ShowWindowAsync(target, SW_MINIMIZE);   // asynchrone : une app figée ne bloque pas la barre
+            minimizeWindow(target);
             return true;
         case ActionKind::Zoom:
             if (!liveWindow(target)) return false;
