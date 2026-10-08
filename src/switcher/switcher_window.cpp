@@ -226,23 +226,13 @@ void SwitcherWindow::Impl::render() {
     bool glassDrawn = false;
     if (env.glass && glassReady && backdrop.valid && glassTarget.ensure(env.device, dc.Get(), width(), height())) {
         const Metrics& mt = env.metrics;   // mêmes réglages que les menus
-        GlassParams gp;
-        gp.scale = sc;
-        gp.dark = env.dark;
-        gp.blurSigmaPx = float(mt.glassBlur) * 2.2f * sc;
-        gp.bevelPx = float(mt.glassBevel) * 0.6f * sc;
-        gp.refraction = float(mt.glassRefraction) * 0.5f;
-        gp.chromatic = float(mt.glassChromatic) * 0.5f;
-        gp.fresnel = float(mt.glassFresnel);
-        gp.specular = float(mt.glassSpecular);
-        gp.tint = std::min(1.0f, float(env.dark ? mt.glassTintDark : mt.glassTintLight) * 2.4f);
-        gp.saturation = float(mt.glassSaturation);
+        GlassParams gp = popupGlassParams(mt, env.dark, sc, PopupMaterial::Panel);   // matériau Golden Gate
         gp.shadowBlurPx = std::min(float(mt.shadowBlur), kShadow * 0.7f) * sc;
         gp.shadowOffsetPx = 3 * sc;
         gp.backdropIsScRgb = backdrop.scRgb;
         gp.sdrWhiteScale = backdrop.white;
         GlassShape shape{panel.left, panel.top, panel.right, panel.bottom, radius, 0.6f,
-                         float(mt.shadowOpacity * (env.dark ? 2.0 : 1.4)), 1};
+                         popupShadowOpacity(env.dark), 1};
         Com<ID3D11DeviceContext> ctx;
         env.device->GetImmediateContext(&ctx);
         glassDrawn = glass.render(ctx.Get(), backdrop.srv.Get(), width(), height(), glassTarget.rtv.Get(), {&shape, 1}, gp);

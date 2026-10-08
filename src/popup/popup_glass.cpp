@@ -4,9 +4,31 @@
 
 #include <algorithm>
 
+#include "../config/metrics.h"
+
 namespace md {
 
 using Microsoft::WRL::ComPtr;
+
+float popupShadowOpacity(bool dark) { return dark ? 0.45f : 0.30f; }
+
+GlassParams popupGlassParams(const Metrics& m, bool dark, float scale, PopupMaterial kind) {
+    const bool menu = kind == PopupMaterial::Menu;
+    GlassParams gp;
+    gp.scale = scale;
+    gp.dark = dark;
+    gp.blurSigmaPx = float(m.glassBlur) * (menu ? 3.0f : 2.4f) * scale;   // plus dépoli que le Dock
+    gp.bevelPx = 3 * scale;
+    gp.refraction = float(m.glassRefraction) * 0.4f;
+    gp.chromatic = 0;
+    gp.fresnel = menu ? 0.0f : float(m.glassFresnel);
+    // Menu Édition mesuré : quasi blanc, bordé d'un fil gris foncé ; en sombre, gris très foncé et fil clair.
+    gp.tint = menu ? (dark ? 0.78f : 0.86f) : (dark ? 0.55f : 0.50f);
+    gp.saturation = float(m.glassSaturation);
+    gp.hairline = dark ? 0.45f : (menu ? 0.32f : 0.18f);
+    gp.specular = dark ? 0.22f : (menu ? 0.0f : float(m.glassSpecular) * 0.6f);
+    return gp;
+}
 
 void ScreenBackdrop::start(HWND notify, UINT notifyMsg, HMONITOR mon, const RECT& monitorRect) {
     rc_ = monitorRect;

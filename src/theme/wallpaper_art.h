@@ -1,4 +1,4 @@
-// Fond d'écran abstrait façon Golden Gate, dessiné par le code : plis courbes or, argent, indigo et lavande.
+// Fond d'écran abstrait façon Golden Gate, dessiné par le code : grandes feuilles en S aux plis nets.
 #pragma once
 #include "../core/bgra_image.h"
 

@@ -1,7 +1,10 @@
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 #include "minitest.h"
 #include "render_fixtures.h"
+#include "../src/popup/popup_glass.h"
 
 using namespace fixtures;
 
@@ -136,6 +139,7 @@ TEST_CASE(render_glass_hdr_backdrop_not_blown_out) {
 }
 
 TEST_CASE(render_glass_shadow_outside_only) {
+    // Golden Gate (captures 9to5Mac, réglage par défaut) : l'ombre du Dock se devine à peine.
     ComScope com;
     md::DockRenderer r;
     REQUIRE(r.initOffscreen());
@@ -145,5 +149,60 @@ TEST_CASE(render_glass_shadow_outside_only) {
     REQUIRE(!img.empty());
     int below = img[(size_t(f.bgBottom) + 4) * kW * 4 + size_t(kW / 2) * 4 + 1];
     CHECK(below < 230);   // ombre sous le Dock
-    CHECK(below > 150);   // douce
+    CHECK(below > 205);   // à peine
+}
+
+TEST_CASE(render_glass_rim_is_hairline_not_glow) {
+    // Mesuré sur le Dock réel (2x) : un liseré clair d'un seul pixel, puis le verre presque aussitôt ; pas de halo
+    // de plusieurs points le long du bord.
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    md::Metrics m;
+    auto f = sampleFrame(false, 2);
+    auto img = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 120, 120, 120));
+    REQUIRE(!img.empty());
+    const int x = int(f.icons[3].cx) + 6;   // à côté du séparateur, sans icône
+    auto g = [&](int y) { return int(img[(size_t(y) * kW + x) * 4 + 1]); };
+    const int top = int(std::ceil(f.bgTop)), inner = g(int((f.bgTop + f.bgBottom) / 2));
+    const int rim = std::max({g(top), g(top + 1), g(top + 2)});
+    CHECK(rim - inner >= 30);         // le liseré se voit
+    CHECK(g(top + 5) - inner <= 14);  // 2,5 pt sous le bord : déjà le verre
+    CHECK(g(top + 10) - inner <= 7);
+}
+
+TEST_CASE(render_glass_keeps_wallpaper_colors) {
+    // Réglage par défaut : le fond reste reconnaissable, plutôt plus saturé, sous un voile léger (+10 % environ).
+    ComScope com;
+    md::DockRenderer r;
+    REQUIRE(r.initOffscreen());
+    md::Metrics m;
+    auto f = sampleFrame(false, 2);
+    auto img = r.renderToBgra(f, m, L"", kW, kH, flatWallpaper(kW, kH, 200, 150, 110));   // b, g, r
+    REQUIRE(!img.empty());
+    const std::uint8_t* p = &img[(size_t((f.bgTop + f.bgBottom) / 2) * kW + size_t(f.icons[3].cx) + 6) * 4];
+    CHECK(int(p[0]) - int(p[2]) >= 85);   // écart bleu-rouge du fond (90) conservé
+    CHECK(int(p[1]) >= 150);
+    CHECK(int(p[1]) <= 185);              // voile léger
+}
+
+TEST_CASE(popup_glass_menus_nearly_opaque_with_hairline) {
+    // Menu Édition réel (2x) : fond quasi blanc, fil gris foncé d'un pixel au bord, pas de liseré clair.
+    md::Metrics m;
+    const auto light = md::popupGlassParams(m, false, 2, md::PopupMaterial::Menu);
+    CHECK(light.tint >= 0.8f);
+    CHECK(light.hairline >= 0.25f);
+    CHECK(light.specular <= 0.05f);
+    CHECK_NEAR(light.scale, 2, 1e-6);
+    const auto dark = md::popupGlassParams(m, true, 2, md::PopupMaterial::Menu);
+    CHECK(dark.specular > 0.1f);   // en sombre, un fil clair détache le menu
+    const auto panel = md::popupGlassParams(m, false, 2, md::PopupMaterial::Panel);
+    CHECK(panel.tint > 0.35f);
+    CHECK(panel.tint < light.tint);   // Spotlight, HUD : plus de verre que les menus
+}
+
+TEST_CASE(popup_shadow_independent_of_dock) {
+    // Le Dock n'a presque pas d'ombre, mais les menus en gardent une nette (capture du menu Édition).
+    CHECK(md::popupShadowOpacity(false) >= 0.25f);
+    CHECK(md::popupShadowOpacity(true) > md::popupShadowOpacity(false));
 }

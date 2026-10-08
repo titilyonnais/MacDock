@@ -1,5 +1,6 @@
-// Verre Liquid Glass d'une forme à coins continus : réfraction du biseau, aberration chromatique,
-// teinte adaptative, Fresnel, liseré spéculaire et ombre portée. Sortie en alpha prémultiplié.
+// Verre Liquid Glass d'une forme à coins continus, calé sur des captures de macOS 27 Golden Gate (réglage moyen) :
+// fond flouté et plus saturé sous un voile léger, lentille étroite le long du bord, liseré clair d'un seul pixel
+// (plus vif en haut qu'en bas), fil sombre pour les menus, ombre portée. Sortie en alpha prémultiplié.
 cbuffer Glass : register(b1) {
     float4 shapeRect;     // gauche, haut, droite, bas (pixels de la cible)
     float radius;         // rayon limité (limitedCornerRadius), pixels
@@ -19,7 +20,8 @@ cbuffer Glass : register(b1) {
     float2 targetSize;    // étendue en pixels de la cible couverte par le flou (multiple de 4)
     float maxMip;         // dernier niveau de mip du flou
     float opacity;        // fondu de la forme (infobulle)
-    float2 pad;
+    float hairline;       // fil sombre au bord (menus et panneaux), 0 à 1
+    float pad1;
 };
 Texture2D blurTex : register(t0);
 Texture2D<float> cornerLut : register(t1);   // champ de distance d'un coin de rayon 1 sur [-2, 2]²
@@ -63,7 +65,7 @@ float4 main(VSOut i) : SV_Target {
                       sdShape(p + float2(0, 1)) - sdShape(p - float2(0, 1)));
     float2 n = length(g) > 1e-4 ? normalize(g) : float2(0, -1);
 
-    // Biseau : déplacement vers le centre, plus fort près du bord ; aberration chromatique sur le biseau.
+    // Lentille du bord : sur une bande étroite (bevel), le fond est lu un peu vers le centre ; aberration chromatique.
     float t = saturate(-d / max(bevel, 0.5));
     float k = 1 - t;
     float disp = refraction * strength * bevel * k * k;
@@ -75,28 +77,24 @@ float4 main(VSOut i) : SV_Target {
     float lum = dot(col, kLuma);
     col = max(lerp(lum.xxx, col, saturation), 0);
 
-    // Teinte adaptative selon la luminance moyenne derrière la forme.
-    float2 size = shapeRect.zw - shapeRect.xy;
-    float lvl = clamp(log2(max(max(size.x, size.y) / 4, 1)), 0, maxMip);
-    float L = dot(blurTex.SampleLevel(lin, ((shapeRect.xy + shapeRect.zw) / 2) / targetSize, lvl).rgb, kLuma);
-    if (dark > 0.5) col = lerp(col, 0.08.xxx, tint * (0.6 + 0.4 * L));
-    else col = lerp(col, 1.0.xxx, tint * (0.6 + 0.4 * (1 - L)));
+    // Voile : vers le blanc en clair, vers le noir en sombre ; le fond reste reconnaissable.
+    col = lerp(col, dark > 0.5 ? 0.0.xxx : 1.0.xxx, tint);
 
     // Garde-fou de contraste : le verre reste lisible sur un fond extrême.
-    float lo = dark > 0.5 ? 0.06 : 0.38, hi = dark > 0.5 ? 0.42 : 0.92;
+    float lo = dark > 0.5 ? 0.05 : 0.38, hi = dark > 0.5 ? 0.40 : 0.94;
     float l2 = dot(col, kLuma);
     if (l2 > hi) col *= hi / l2;
     else if (l2 < lo) col = lerp(col, 1.0.xxx, (lo - l2) / max(1 - l2, 1e-3));
 
-    // Golden Gate : fin bord sombre tout au bord, qui détache le verre du fond ; le liseré clair juste à l'intérieur.
-    float edge = exp(-(-d) / (0.6 * scale));
-    col = lerp(col, 0.0.xxx, (dark > 0.5 ? 0.30 : 0.16) * strength * edge);
+    // Bande intérieure à peine plus claire, le long de la lentille.
+    col += fresnel * strength * k * k;
 
-    // Fresnel et liseré spéculaire (lumière venant d'en haut à gauche, reflet plus faible en bas à droite).
-    col += fresnel * strength * k * k * k;
-    float rim = exp(-abs(-d - 1.1 * scale) / (0.75 * scale));
-    float2 light = normalize(float2(-1, -1));
-    col += specular * strength * rim * (0.35 + 0.65 * saturate(dot(n, light)) + 0.26 * saturate(dot(n, -light)));
+    // Liseré : un fil d'un pixel (0,5 pt en 2x) tout au bord, plus vif en haut (1) que sur les côtés (0,8) et en
+    // bas (0,6), comme mesuré ; le fil sombre des menus se pose au même endroit.
+    float w = max(1.0, 0.5 * scale);
+    float edge = saturate(1.25 - (-d) / w);
+    col = lerp(col, 0.0.xxx, hairline * edge);
+    col = lerp(col, 1.0.xxx, saturate(specular * strength * (0.8 - 0.2 * n.y)) * edge);
     col = saturate(col);
 
     float4 glass = float4(col * cov, cov);

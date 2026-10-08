@@ -1,3 +1,4 @@
+#include "popup_glass.h"
 #include "menu_window.h"
 
 #include <d2d1_3.h>
@@ -396,7 +397,7 @@ void Session::drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& pane
         }
         if (it.checked && symbolFormat)
             d->DrawTextW(L"✓", 1, symbolFormat.Get(), D2D1::RectF(x0 + 5 * sc, top, x0 + 20 * sc, top + rowH), ink);
-        const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+        const float textX = x0 + float(p.layout.textLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
         if (it.icon) {
             if (p.icons.size() < p.model->items.size()) p.icons.resize(p.model->items.size());
             if (!p.icons[i]) {
@@ -535,23 +536,13 @@ void Session::render(Panel& p) {
         }
         if (p.glassTex) {
             const Metrics& m = env.metrics;
-            GlassParams gp;
-            gp.scale = sc;
-            gp.dark = dark;
-            gp.blurSigmaPx = float(m.glassBlur) * 2.2f * sc;   // menus : verre plus dépoli que le Dock
-            gp.bevelPx = float(m.glassBevel) * 0.6f * sc;
-            gp.refraction = float(m.glassRefraction) * 0.5f;
-            gp.chromatic = float(m.glassChromatic) * 0.5f;
-            gp.fresnel = float(m.glassFresnel);
-            gp.specular = float(m.glassSpecular);
-            gp.tint = std::min(1.0f, float(dark ? m.glassTintDark : m.glassTintLight) * 2.4f);
-            gp.saturation = float(m.glassSaturation);
+            GlassParams gp = popupGlassParams(m, dark, sc, PopupMaterial::Menu);   // matériau Golden Gate
             gp.shadowBlurPx = float(m.shadowBlur) * sc;
             gp.shadowOffsetPx = 3 * sc;
             gp.backdropIsScRgb = p.scRgb;
             gp.sdrWhiteScale = p.white;
             GlassShape shape{panel.left, panel.top, panel.right, panel.bottom, radius, 0.6f,
-                             float(m.shadowOpacity * (dark ? 2.0 : 1.4)), opacity};
+                             popupShadowOpacity(dark), opacity};
             Com<ID3D11DeviceContext> ctx;
             env.device->GetImmediateContext(&ctx);
             glassDrawn = glass.render(ctx.Get(), p.backdropSrv.Get(), W, H, p.glassRtv.Get(), {&shape, 1}, gp);
@@ -631,7 +622,7 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
             break;
         }
         case MenuRow::Toggle: {
-            const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+            const float textX = x0 + float(p.layout.textLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
             if (i < p.texts.size() && p.texts[i]) {
                 DWRITE_TEXT_METRICS tm{};
                 p.texts[i]->GetMetrics(&tm);

@@ -139,19 +139,34 @@ TEST_CASE(theme_wallpaper) {
 }
 
 TEST_CASE(theme_wallpaper_golden_gate_warm_left_cool_right) {
-    // Golden Gate : plis or sablé et champagne en bas à gauche, gris puis indigo et lavande en haut à droite.
+    // Fond Golden Gate réel : bruns dorés en haut à gauche, bleu-gris en bas à droite ; en sombre, tout en indigo.
+    auto mean = [](const md::BgraImage& wall, int x0, int y0, int x1, int y1, int c) {
+        double sum = 0;
+        for (int y = y0; y < y1; ++y)
+            for (int x = x0; x < x1; ++x) sum += wall.px[(std::size_t(y) * wall.w + x) * 4 + c];
+        return sum / ((x1 - x0) * (y1 - y0));
+    };
+    const auto light = md::macWallpaper(320, 200, false), dark = md::macWallpaper(320, 200, true);
+    CHECK(mean(light, 0, 10, 60, 60, 2) > mean(light, 0, 10, 60, 60, 0) + 15);      // haut gauche : chaud
+    CHECK(mean(light, 260, 160, 320, 200, 0) > mean(light, 260, 160, 320, 200, 2));  // bas droite : froid
+    CHECK(mean(dark, 0, 0, 320, 200, 0) > mean(dark, 0, 0, 320, 200, 2));           // sombre : indigo
+}
+
+TEST_CASE(theme_wallpaper_golden_gate_sharp_creases) {
+    // Les feuilles se recouvrent : une crête claire, puis l'ombre de la feuille suivante en quelques pixels.
     for (bool dark : {false, true}) {
-        const auto wall = md::macWallpaper(320, 180, dark);
-        auto mean = [&](int x0, int y0, int x1, int y1, int c) {
-            double sum = 0;
-            for (int y = y0; y < y1; ++y)
-                for (int x = x0; x < x1; ++x) sum += wall.px[(std::size_t(y) * 320 + x) * 4 + c];
-            return sum / ((x1 - x0) * (y1 - y0));
+        const auto wall = md::macWallpaper(1600, 1000, dark);
+        auto lum = [&](int x, int y) {
+            const std::uint8_t* p = &wall.px[(std::size_t(y) * 1600 + x) * 4];
+            return 0.11 * p[0] + 0.59 * p[1] + 0.3 * p[2];
         };
-        const double warmR = mean(0, 140, 60, 180, 2), warmB = mean(0, 140, 60, 180, 0);
-        const double coolR = mean(260, 0, 320, 40, 2), coolB = mean(260, 0, 320, 40, 0);
-        CHECK(warmR > warmB);   // bas gauche : or
-        CHECK(coolB > coolR);   // haut droit : indigo
+        int creases = 0;
+        for (int x = 0; x + 4 < 1600; ++x)
+            if (lum(x, 480) - lum(x + 4, 480) > (dark ? 40 : 80)) {
+                ++creases;
+                x += 20;
+            }
+        CHECK(creases >= 3);
     }
 }
 

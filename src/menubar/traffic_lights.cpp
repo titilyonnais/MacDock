@@ -17,7 +17,9 @@ bool isButtonHit(LRESULT h) { return h == HTMINBUTTON || h == HTMAXBUTTON || h =
 
 bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT) {
     if (mode == LightsMode::Off || w.iconic || w.ownProcess || w.elevated) return false;
-    if ((w.style & WS_CAPTION) != WS_CAPTION || !(w.style & WS_SYSMENU) || (w.style & WS_CHILD)) return false;
+    // Menu système, ou au moins un bouton réduire ou agrandir (Electron sans cadre n'a pas de menu système).
+    if ((w.style & WS_CAPTION) != WS_CAPTION || (w.style & WS_CHILD)) return false;
+    if (!(w.style & (WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX))) return false;
     if (w.exStyle & WS_EX_TOOLWINDOW) return false;
     for (const wchar_t* c : kShellClasses)
         if (w.className == c) return false;

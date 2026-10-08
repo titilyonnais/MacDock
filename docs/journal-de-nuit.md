@@ -342,6 +342,38 @@ Cible : macOS 27 « Golden Gate » (sorti le 14 septembre 2026). La recherche (s
   - Une activation arrivant au milieu d'une sonde était traitée en pleine sonde ; elle est maintenant reportée juste après.
   - 7 mineurs ont aussi été corrigés : sonde interrompue, DPI dans le cache, glissement, rechargement des curseurs, fils du fond d'écran, verre de la barre de menus, libellés Firefox et Spotify.
 
+### Plan 26 — Réalisme : verre, fond d'écran, menus et fenêtres calés sur de vraies captures de macOS 27
+
+Méthode : captures publiées par 9to5Mac (le Dock aux trois réglages de Liquid Glass), Macworld (fonds d'écran clair et sombre, menu Édition) et MacRumors. Je les ai mesurées pixel par pixel dans le navigateur, sans rien télécharger. Aucune image Apple n'est utilisée dans MacDock : seules des mesures et des couleurs relevées.
+
+- **Liquid Glass** : ton reproche (« on dirait qu'il a éclairé toutes les bordures ») était juste. Mon verre portait un halo de 9 pt et un liseré de 6 px tout autour.
+  - **Le vrai Dock** (réglage par défaut) n'a qu'un **fil clair d'un pixel**, plus vif en haut qu'en bas. Le fond reste bien visible : flouté, un peu plus saturé, sous un voile léger d'environ +10 %. L'ombre est presque nulle.
+  - **Le nouveau shader** suit ces mesures. Les tests vérifient le profil : fil d'un pixel, pas de halo à 2,5 pt du bord, couleurs du fond conservées.
+  - Les **menus** ont désormais leur propre matériau, mesuré sur le vrai menu Édition : presque opaques, avec un **fil gris foncé** d'un pixel au bord et une ombre large et douce. Spotlight, la pastille du volume et le sélecteur d'apps sont un peu plus vitrés.
+  - La géométrie du Dock (hauteur, marges, profil des coins) correspondait déjà au vrai, à 0,02 près.
+  - Ton `dock-metrics.json` est migré en v4, et seules les valeurs restées aux défauts changent.
+- **Fond d'écran** : le vrai n'est pas fait d'arcs concentriques, mais de **cinq grandes feuilles en S** qui se recouvrent. J'ai relevé la trajectoire de chaque pli et les couleurs : bruns dorés, crème, lilas, bleu-gris en clair ; indigo presque noir aux plis lavande en sombre. Le nouveau fond reproduit ces feuilles, avec l'ombre de chacune sur la suivante et un pli net.
+- **Menus** : dans un menu sans coche, le texte commence à environ 15 pt du bord, comme sur le menu Édition réel (24 pt avant).
+- **Feux tricolores sur l'app Claude** : ses fenêtres Electron n'ont pas de menu système et étaient donc écartées. Elles sont maintenant acceptées dès qu'elles ont un bouton réduire ou agrandir.
+- **Fenêtres des autres apps** (nouveau réglage `macWindows`, activé par défaut), par les attributs DWM, sans injection :
+  - coins arrondis et plus de liseré de couleur d'accentuation autour des fenêtres ;
+  - barre de titre gris clair (gris très foncé en sombre) quand Windows la dessine ;
+  - tout est rendu à l'identique à la fermeture de la barre de menus.
+- **Barre de menus grisée sur ton écran principal** : c'est voulu. L'app active est sur l'autre écran, et macOS atténue aussi la barre d'un écran inactif.
+- **Relecture finale (Opus)** : 0 critique, 5 importants corrigés :
+  - les barres de titre suivent maintenant le thème des apps, et non celui de la barre des tâches ;
+  - des coins carrés ou petits choisis par une app sont gardés, puis rendus à l'identique ;
+  - les menus retrouvent une ombre nette, devenue indépendante de celle du Dock ;
+  - la migration ne peut plus écraser une valeur choisie par l'utilisateur dans une version antérieure ;
+  - une fenêtre qui passe en plein écran est rendue à Windows.
+  - 6 mineurs ont aussi été corrigés : réglage lu au démarrage, purge des fenêtres fermées, HWND réutilisés, coût réduit, pastille fermer, matériau des piles.
+
+## Mineurs reportés — plan 26
+- Après un plantage de la barre de menus, les fenêtres déjà traitées gardent leur apparence macOS jusqu'à leur fermeture (le relancement les reprend de toute façon).
+- Le fond procédural s'étire avec le format de l'écran (écrans verticaux ou ultra-larges).
+- Les réglages de verre du Dock (`glassTint…`, `glassBevel`) n'agissent plus sur les menus et panneaux, qui ont leur propre matériau.
+- Si une entrée devient cochée dans un menu déjà ouvert sans coche, la coche chevaucherait le texte (aucun menu actuel ne le fait).
+
 ## Mineurs reportés — plan 25
 - Après « Fond d'écran Golden Gate seul », la coche se met sur « Appliquer (curseurs et fond d'écran) », alors que les curseurs n'ont pas changé.
 - `leftCaptionFree` ne sonde que trois rangées, alors que le calque de gauche couvre toute la hauteur de la barre de titre (28 pt par défaut quand la barre est dessinée par l'app). Pour un dialogue à un seul bouton, la zone élargie n'est pas sondée.

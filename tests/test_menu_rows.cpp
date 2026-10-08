@@ -167,3 +167,34 @@ TEST_CASE(menu_rows_snapshot_offscreen) {
     }
     CoUninitialize();
 }
+
+TEST_CASE(menu_dump_edit_for_eyes) {   // MACDOCK_DUMP=dossier : menu Édition, à comparer à une capture de macOS 27
+    wchar_t dump[MAX_PATH] = {};
+    if (!GetEnvironmentVariableW(L"MACDOCK_DUMP", dump, MAX_PATH)) return;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    auto item = [](int id, const wchar_t* text, const wchar_t* shortcut = L"", bool enabled = true) {
+        md::MenuItem it;
+        it.id = id;
+        it.text = text;
+        it.shortcut = shortcut;
+        it.enabled = enabled;
+        return it;
+    };
+    md::MenuModel m;
+    m.items = {item(1, L"Annuler", L"Ctrl+Z", false), item(2, L"Rétablir", L"Ctrl+Maj+Z", false), {},
+               item(3, L"Couper", L"Ctrl+X"), item(4, L"Copier", L"Ctrl+C"), item(5, L"Coller", L"Ctrl+V"),
+               item(6, L"Supprimer"), item(7, L"Tout sélectionner", L"Ctrl+A"), {}};
+    md::MenuItem find = item(8, L"Rechercher");
+    find.submenu = {item(9, L"Rechercher…", L"Ctrl+F")};
+    m.items.push_back(find);
+    md::MenuWindow::Env env;
+    env.scale = 2;
+    for (bool dark : {false, true}) {
+        env.dark = dark;
+        std::vector<std::uint8_t> px;
+        UINT w = 0, h = 0;
+        CHECK(md::MenuWindow::snapshot(env, m, px, w, h));
+        CHECK(md::writePng(std::wstring(dump) + (dark ? L"\\menu-edit-dark.png" : L"\\menu-edit-light.png"), px.data(), w, h));
+    }
+    CoUninitialize();
+}

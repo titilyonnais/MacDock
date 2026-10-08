@@ -39,18 +39,18 @@ namespace md {
     X(bgOpacityLight, 0.32, 0, 1)                  \
     X(bgOpacityDark, 0.26, 0, 1)                   \
     X(borderOpacity, 0.55, 0, 1)                   \
-    X(shadowOpacity, 0.22, 0, 1)                   \
+    X(shadowOpacity, 0.07, 0, 1)                   \
     X(shadowBlur, 18, 0, 200)                      \
     X(iconJailInset, 0.16, 0, 0.4)                 \
     X(glassBlur, 10, 0, 60)                        \
-    X(glassBevel, 9, 0, 40)                        \
+    X(glassBevel, 4, 0, 40)                        \
     X(glassRefraction, 0.6, -2, 2)                 \
-    X(glassChromatic, 0.10, 0, 1)                  \
-    X(glassFresnel, 0.18, 0, 1)                    \
-    X(glassSpecular, 0.70, 0, 1)                   \
-    X(glassTintLight, 0.30, 0, 1)                  \
-    X(glassTintDark, 0.38, 0, 1)                   \
-    X(glassSaturation, 1.15, 0, 3)                 \
+    X(glassChromatic, 0.05, 0, 1)                  \
+    X(glassFresnel, 0.04, 0, 1)                    \
+    X(glassSpecular, 0.75, 0, 1)                   \
+    X(glassTintLight, 0.10, 0, 1)                  \
+    X(glassTintDark, 0.22, 0, 1)                   \
+    X(glassSaturation, 1.50, 0, 3)                 \
     X(dragThreshold, 4, 1, 50)                     \
     X(dragRemoveDistance, 50, 5, 400)              \
     X(dragStiffness, 400, 1, 5000)                 \
@@ -68,7 +68,7 @@ struct Metrics {
 #undef MD_DECLARE
 };
 
-constexpr int kMetricsVersion = 3;
+constexpr int kMetricsVersion = 4;
 
 Metrics metricsFromJson(const json::Value& v);
 json::Value metricsToJson(const Metrics& m);   // écrit "version": kMetricsVersion

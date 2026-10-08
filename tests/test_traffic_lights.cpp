@@ -25,14 +25,19 @@ TEST_CASE(lights_want_classic_and_custom) {
     CHECK(md::wantsLights(custom, md::LightsMode::Standard, 96));
     CHECK(md::wantsLights(custom, md::LightsMode::All, 96));
     CHECK(!md::wantsLights(classic(), md::LightsMode::Off, 96));
+    // Electron sans cadre (app Claude) : 15C70000, barre de titre et boutons, mais pas de menu système.
+    auto electron = custom;
+    electron.style = WS_VISIBLE | WS_CLIPSIBLINGS | WS_MAXIMIZE | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+    electron.className = L"Chrome_WidgetWin_1";
+    CHECK(md::wantsLights(electron, md::LightsMode::Standard, 96));
 }
 
 TEST_CASE(lights_refuse_special_windows) {
     auto tool = classic();
     tool.exStyle = WS_EX_TOOLWINDOW;
     CHECK(!md::wantsLights(tool, md::LightsMode::All, 96));
-    auto noSys = classic();
-    noSys.style &= ~WS_SYSMENU;
+    auto noSys = classic();   // ni menu système, ni bouton réduire ou agrandir : rien à quoi donner des pastilles
+    noSys.style &= ~(WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
     CHECK(!md::wantsLights(noSys, md::LightsMode::All, 96));
     auto noCaption = classic();
     noCaption.style = WS_POPUP | WS_BORDER;

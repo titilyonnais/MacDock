@@ -23,6 +23,8 @@ constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
 constexpr double kBounceMs = 240;
 constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
 
+} // namespace
+
 // DPI réel de l'écran de la fenêtre (une app non consciente du DPI répond 96 à GetDpiForWindow).
 UINT effectiveDpi(HWND h) {
     UINT x = 96, y = 96;
@@ -31,7 +33,7 @@ UINT effectiveDpi(HWND h) {
 }
 
 // Processus d'intégrité plus élevée que la nôtre (ou illisible) : UIPI refuserait nos messages.
-bool higherIntegrity(DWORD pid) {
+static bool higherIntegrity(DWORD pid) {
     auto level = [](HANDLE process) -> std::optional<DWORD> {
         HANDLE token = nullptr;
         if (!OpenProcessToken(process, TOKEN_QUERY, &token)) return std::nullopt;
@@ -78,7 +80,6 @@ LightsWindowInfo readInfo(HWND h) {
     if (GetTitleBarInfo(h, &tb) && tb.rcTitleBar.bottom > tb.rcTitleBar.top) w.captionBottom = tb.rcTitleBar.bottom;
     return w;
 }
-} // namespace
 
 bool TrafficWindow::create(HINSTANCE instance) {
     if (hwnd_) return true;
@@ -349,7 +350,9 @@ void TrafficWindow::place(bool resample, bool probe) {
         if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
     }
     scale_ = dpi / 96.0;
-    const bool enabled[3] = {!(info.classStyle & CS_NOCLOSE), (info.style & WS_MINIMIZEBOX) != 0, (info.style & WS_MAXIMIZEBOX) != 0};
+    // Fermer : menu système, ou bouton fermer trouvé par la sonde (Electron sans menu système).
+    const bool closable = !(info.classStyle & CS_NOCLOSE) && ((info.style & WS_SYSMENU) || hasButtons);
+    const bool enabled[3] = {closable, (info.style & WS_MINIMIZEBOX) != 0, (info.style & WS_MAXIMIZEBOX) != 0};
     for (int i = 0; i < 3; ++i)
         if (state_.enabled[i] != enabled[i]) {
             state_.enabled[i] = enabled[i];
