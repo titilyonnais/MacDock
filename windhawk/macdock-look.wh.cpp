@@ -45,6 +45,23 @@
 // @exclude         cs2.exe
 // @exclude         VALORANT*.exe
 // @exclude         vgc.exe
+// @exclude         *\Roblox\*
+// @exclude         *\HoYoPlay\*
+// @exclude         *\Battlestate Games\*
+// @exclude         *\Overwatch\*
+// @exclude         *\World of Warcraft\*
+// @exclude         *\Diablo*
+// @exclude         *\FACEIT\*
+// @exclude         *\osu!\*
+// @exclude         WINWORD.EXE
+// @exclude         EXCEL.EXE
+// @exclude         POWERPNT.EXE
+// @exclude         ONENOTE.EXE
+// @exclude         MSACCESS.EXE
+// @exclude         OUTLOOK.EXE
+// @exclude         soffice.bin
+// @exclude         Acrobat.exe
+// @exclude         AcroRd32.exe
 // @architecture    x86-64
 // @compilerOptions -lgdi32 -ldwrite -luser32
 // ==/WindhawkMod==
@@ -62,7 +79,10 @@ MS Shell Dlg) are replaced by **SF Pro Text**, and by **SF Pro Display** for lar
   Chromium and Electron apps).
 - Icon fonts (Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Emoji, Segoe UI Symbol) are never touched.
 - Nothing changes if the macOS font is not installed.
-- Games and anti-cheat software are excluded: injecting code into them can get an account banned.
+- Games and anti-cheat software are excluded, and so are Office and PDF apps (documents keep their fonts).
+- **Anti-cheat**: an exclusion here only keeps this mod out; Windhawk itself is still loaded. Add every online game you
+  play to Windhawk's global list (Settings > Advanced > Process exclusion list): injecting code into a protected game
+  can get an account banned.
 
 SF Pro is Apple's font: install it yourself (it is not included).
 */
@@ -117,14 +137,21 @@ inline Mapping mappingFor(const wchar_t* face) {
         {L"Segoe UI Black", Role::Text, 900},
         {L"Segoe UI Variable Text Semibold", Role::Text, 600},
         {L"Segoe UI Variable Display Semibold", Role::Display, 600},
-        {L"Tahoma", Role::Text, 0},
+        // Pas Tahoma ni Microsoft Sans Serif : elles servent aussi dans les documents.
         {L"MS Shell Dlg", Role::Text, 0},
         {L"MS Shell Dlg 2", Role::Text, 0},
-        {L"Microsoft Sans Serif", Role::Text, 0},
     };
     for (const Entry& e : kEntries)
         if (_wcsicmp(face, e.name) == 0) return {e.role, e.weight};
     return {};
+}
+
+// Points d'une hauteur GDI (pixels du contexte DPI de l'appelant) : négative, hauteur des caractères ; positive,
+// hauteur de cellule (un cinquième de plus environ).
+inline double pointsForHeight(long height, unsigned dpi) {
+    if (!height || !dpi) return 0;
+    const double px = height < 0 ? -double(height) : height * 0.8;
+    return px * 72.0 / dpi;
 }
 
 // Rôle d'après la taille du texte (points ; 0 = inconnue) : Display à partir de 20 pt, comme macOS.
@@ -160,8 +187,10 @@ HFONT WINAPI CreateFontIndirectExW_Hook(const ENUMLOGFONTEXDVW* font) {
     if (g_gdi && font) {
         const LOGFONTW& lf = font->elfEnumLogfontEx.elfLogFont;
         const look::Mapping m = look::mappingFor(lf.lfFaceName);
-        // Hauteur en pixels écran (négative : hauteur des caractères) ; points à 96 ppp pour le choix Text/Display.
-        const double points = lf.lfHeight ? (lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight) * 72.0 / 96.0 : 0;
+        // Hauteur en pixels du contexte DPI du fil appelant (192 à 200 % dans une app qui gère le DPI).
+        UINT dpi = GetDpiFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+        if (!dpi) dpi = GetDpiForSystem();
+        const double points = look::pointsForHeight(lf.lfHeight, dpi);
         if (const wchar_t* to = replacementFor(look::roleForSize(m.role, points))) {
             ENUMLOGFONTEXDVW copy = *font;
             LOGFONTW& out = copy.elfEnumLogfontEx.elfLogFont;
@@ -245,15 +274,15 @@ BOOL Wh_ModInit() {
         return TRUE;
     }
     // GDI : l'implémentation (gdi32full), par où passent CreateFontIndirectW, CreateFontW et les polices du système.
-    HMODULE gdi = LoadLibraryW(L"gdi32full.dll");
-    if (!gdi) gdi = LoadLibraryW(L"gdi32.dll");
+    HMODULE gdi = LoadLibraryExW(L"gdi32full.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!gdi) gdi = LoadLibraryExW(L"gdi32.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (void* target = gdi ? reinterpret_cast<void*>(GetProcAddress(gdi, "CreateFontIndirectExW")) : nullptr)
         Wh_SetFunctionHook(target, reinterpret_cast<void*>(CreateFontIndirectExW_Hook),
                            reinterpret_cast<void**>(&CreateFontIndirectExW_Original));
     // DirectWrite : les méthodes de la fabrique partagée et de la collection système (une seule implémentation pour
     // toutes les instances du processus).
     using DWriteCreateFactory_t = HRESULT(WINAPI*)(DWRITE_FACTORY_TYPE, REFIID, IUnknown**);
-    HMODULE dwrite = LoadLibraryW(L"dwrite.dll");
+    HMODULE dwrite = LoadLibraryExW(L"dwrite.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);   // jamais celle du dossier de l'app
     auto create = dwrite ? reinterpret_cast<DWriteCreateFactory_t>(GetProcAddress(dwrite, "DWriteCreateFactory")) : nullptr;
     IDWriteFactory* factory = nullptr;
     if (create && SUCCEEDED(create(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),

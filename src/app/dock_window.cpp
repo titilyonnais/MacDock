@@ -1707,7 +1707,8 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 const QuickLookKey a = quickLookKey(VK_SPACE, down, mods, injected, c);   // même contexte que l'ouverture
                 if (a != QuickLookKey::Pass) {
                     if (down && !repeat) PostMessageW(self_->hwnd_, WM_APP_QUICKLOOK_KEY, WPARAM(vk), 0);
-                    return 1;
+                    // Entrée ferme l'aperçu et reste à l'Explorateur (il ouvre la sélection comme d'habitude).
+                    if (vk != VK_RETURN) return 1;
                 }
             } else if (vk == VK_SPACE) {
                 switch (quickLookKey(vk, down, mods, injected, c)) {
@@ -1883,10 +1884,15 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_APP_QUICKLOOK: {   // sélection lue ici (COM, fil de l'interface en STA), puis l'aperçu
             const HWND owner = reinterpret_cast<HWND>(wp);
-            auto paths = shellSelection(owner);
-            if (trace_) log::info(L"[trace] coup d'œil : %zu élément(s) sélectionné(s)", paths.size());
-            if (!paths.empty()) {
-                quickLook_.show(instance_, std::move(paths), 0, owner);
+            std::wstring first;
+            if (!quickLookBusy_) {
+                quickLookBusy_ = true;
+                if (quickLookWatch_.attach(owner)) first = quickLookWatch_.first();
+                quickLookBusy_ = false;
+            }
+            if (trace_) log::info(L"[trace] coup d'œil : %s", first.empty() ? L"aucune sélection" : first.c_str());
+            if (!first.empty()) {
+                quickLook_.show(instance_, {first}, 0, owner);
                 SetTimer(hwnd_, kQuickLookTimer, 250, nullptr);
             } else {   // rien de sélectionné : Espace rendu à l'Explorateur (il sélectionne l'élément qui a le focus)
                 INPUT in[2]{};
@@ -1900,9 +1906,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
-        case WM_APP_QUICKLOOK_KEY:
-            if (wp == VK_RETURN) quickLook_.openFile();
-            else quickLook_.close();
+        case WM_APP_QUICKLOOK_KEY:   // Espace, Échap, ou Entrée (passée aussi à l'Explorateur) : fermeture
+            quickLook_.close();
+            quickLookWatch_.reset();
             return 0;
         case WM_APP_SWITCHKEY:
             if (switch_.active() || int(wp) == kHotSwitch || int(wp) == kHotSwitchBack) switcherKey(int(wp));
@@ -1944,10 +1950,20 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (!quickLook_.isOpen() || !IsWindow(owner) || GetForegroundWindow() != owner) {
                     KillTimer(hwnd_, kQuickLookTimer);
                     quickLook_.close();
+                    quickLookWatch_.reset();
                     return 0;
                 }
-                auto paths = shellSelection(owner);
-                if (!paths.empty() && paths != quickLook_.paths()) quickLook_.show(instance_, std::move(paths), 0, owner);
+                if (quickLookBusy_) return 0;   // lecture précédente encore en cours (Explorateur lent)
+                quickLookBusy_ = true;
+                const std::wstring first = quickLookWatch_.first();
+                quickLookBusy_ = false;
+                if (first.empty()) {   // plus rien de sélectionné : l'aperçu se ferme
+                    KillTimer(hwnd_, kQuickLookTimer);
+                    quickLook_.close();
+                    quickLookWatch_.reset();
+                } else if (quickLook_.paths().empty() || first != quickLook_.paths().front()) {
+                    quickLook_.show(instance_, {first}, 0, owner);
+                }
                 return 0;
             }
             if (wp == kCornerTimer) {

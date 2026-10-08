@@ -33,7 +33,8 @@ TEST_CASE(quicklook_space_in_file_views_only) {
 }
 
 TEST_CASE(quicklook_text_files_and_decoding) {
-    CHECK(md::quickLookIsText(L"C:\a\notes.TXT"));
+    CHECK(md::quickLookIsText(L"C:\\a\\notes.TXT"));
+    CHECK(!md::quickLookIsText(L"C:\\v1.2\\LISEZMOI"));   // point dans le nom du dossier : pas une extension
     CHECK(md::quickLookIsText(L"main.cpp"));
     CHECK(md::quickLookIsText(L"config.json"));
     CHECK(!md::quickLookIsText(L"photo.jpg"));
@@ -59,8 +60,22 @@ TEST_CASE(quicklook_window_fits_content_and_screen) {
 
 TEST_CASE(quicklook_labels) {
     CHECK(md::quickLookSize(0) == L"Zéro octet");
+    CHECK(md::quickLookSize(1) == L"1 octet");
     CHECK(md::quickLookSize(512) == L"512 octets");
+    CHECK(md::quickLookSize(999700) == L"1 Mo");     // jamais « 1000 Ko »
+    CHECK(md::quickLookSize(2000000) == L"2 Mo");    // pas de « ,0 », comme le Finder
     CHECK(md::quickLookSize(1536) == L"2 Ko");
     CHECK(md::quickLookSize(1258291) == L"1,3 Mo");
     CHECK(md::quickLookSize(5368709120ULL) == L"5,4 Go");
+}
+
+TEST_CASE(quicklook_text_cut_inside_utf8_sequence) {
+    // Lecture limitée : si la coupe tombe au milieu d'un « é », le reste ne doit pas être relu en ANSI.
+    const std::string text = "abc\xC3\xA9";   // « abcé » en UTF-8
+    std::vector<std::uint8_t> cut(text.begin(), text.end() - 1);   // « abc » + premier octet de « é »
+    md::quickLookTrimUtf8(cut);
+    CHECK(md::quickLookDecode(cut) == L"abc");
+    std::vector<std::uint8_t> whole(text.begin(), text.end());
+    md::quickLookTrimUtf8(whole);   // séquence complète : rien n'est retiré
+    CHECK(md::quickLookDecode(whole) == L"abcé");
 }

@@ -20,6 +20,7 @@
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
 #include "../popup/stack_window.h"
+#include "../quicklook/quicklook_shell.h"
 #include "../quicklook/quicklook_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
@@ -160,6 +161,8 @@ private:
     std::vector<std::wstring> switchApps_;   // rangée de la session (appId)
     SwitcherWindow switcher_;
     QuickLookWindow quickLook_;   // Coup d'œil : Espace dans l'Explorateur ou sur le bureau
+    ShellSelectionWatch quickLookWatch_;   // sélection de la fenêtre de l'aperçu (vue gardée, premier élément lu)
+    bool quickLookBusy_ = false;          // lecture COM en cours (la boucle modale COM peut relancer le minuteur)
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     HotCornerTracker corners_;
     HotCornerAction pendingCorner_ = HotCornerAction::Off;   // action différée (veille de l'écran, économiseur)

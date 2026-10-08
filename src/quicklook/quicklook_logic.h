@@ -23,6 +23,8 @@ QuickLookKey quickLookKey(unsigned vk, bool down, bool modifiers, bool injected,
 
 bool quickLookIsText(const std::wstring& path);                     // d'après l'extension
 std::wstring quickLookDecode(const std::vector<std::uint8_t>& bytes);   // UTF-8 (BOM ou non), UTF-16 LE/BE, sinon ANSI
+// Lecture coupée à une limite : retire une séquence UTF-8 incomplète à la fin (sinon tout serait relu en ANSI).
+void quickLookTrimUtf8(std::vector<std::uint8_t>& bytes);
 
 // Taille de la fenêtre (points) pour un contenu donné : proportions gardées, au plus 70 % de l'écran, petite image
 // agrandie au plus 2×, largeur minimale ; titleBar ajoutée en hauteur.

@@ -34,6 +34,45 @@ std::vector<std::wstring> selectionOf(IShellBrowser* browser) {
     return out;
 }
 
+ComPtr<IShellBrowser> browserOf(IDispatch* disp);
+
+// Navigateur Shell (onglet visible) de la fenêtre au premier plan, ou du bureau.
+ComPtr<IShellBrowser> browserFor(HWND foreground);
+
+} // namespace
+
+struct ShellSelectionWatch::Impl {
+    ComPtr<IShellBrowser> browser;
+};
+
+bool ShellSelectionWatch::attach(HWND owner) {
+    impl_ = std::make_shared<Impl>();
+    impl_->browser = browserFor(owner);
+    return impl_->browser != nullptr;
+}
+
+std::wstring ShellSelectionWatch::first() {
+    if (!impl_ || !impl_->browser) return {};
+    ComPtr<IShellView> view;
+    ComPtr<IFolderView2> folder;
+    int index = -1;
+    ComPtr<IShellItem> item;
+    PWSTR path = nullptr;
+    std::wstring out;
+    // Vue active à chaque lecture (l'onglet peut changer de dossier) ; premier élément sélectionné seulement.
+    if (SUCCEEDED(impl_->browser->QueryActiveShellView(&view)) && SUCCEEDED(view.As(&folder)) &&
+        folder->GetSelectedItem(-1, &index) == S_OK && index >= 0 &&
+        SUCCEEDED(folder->GetItem(index, IID_PPV_ARGS(&item))) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
+        out = path;
+        CoTaskMemFree(path);
+    }
+    return out;
+}
+
+void ShellSelectionWatch::reset() { impl_.reset(); }
+
+namespace {
+
 ComPtr<IShellBrowser> browserOf(IDispatch* disp) {
     ComPtr<IServiceProvider> sp;
     ComPtr<IShellBrowser> browser;
@@ -50,12 +89,10 @@ bool viewVisible(IShellBrowser* browser) {
            IsWindowVisible(h);
 }
 
-} // namespace
-
-std::vector<std::wstring> shellSelection(HWND foreground) {
+ComPtr<IShellBrowser> browserFor(HWND foreground) {
     ComPtr<IShellWindows> windows;
     if (!foreground || FAILED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&windows))))
-        return {};
+        return nullptr;
     wchar_t cls[64] = {};
     GetClassNameW(foreground, cls, 64);
     if (_wcsicmp(cls, L"Progman") == 0 || _wcsicmp(cls, L"WorkerW") == 0) {   // bureau
@@ -65,8 +102,8 @@ std::vector<std::wstring> shellSelection(HWND foreground) {
         long hwnd = 0;
         ComPtr<IDispatch> disp;
         if (SUCCEEDED(windows->FindWindowSW(&loc, &empty, SWC_DESKTOP, &hwnd, SWFO_NEEDDISPATCH, &disp)) && disp)
-            return selectionOf(browserOf(disp.Get()).Get());
-        return {};
+            return browserOf(disp.Get());
+        return nullptr;
     }
     long count = 0;
     windows->get_Count(&count);
@@ -81,9 +118,13 @@ std::vector<std::wstring> shellSelection(HWND foreground) {
             reinterpret_cast<HWND>(h) != foreground)
             continue;
         ComPtr<IShellBrowser> browser = browserOf(disp.Get());
-        if (viewVisible(browser.Get())) return selectionOf(browser.Get());
+        if (viewVisible(browser.Get())) return browser;
     }
-    return {};
+    return nullptr;
 }
+
+} // namespace
+
+std::vector<std::wstring> shellSelection(HWND foreground) { return selectionOf(browserFor(foreground).Get()); }
 
 } // namespace md

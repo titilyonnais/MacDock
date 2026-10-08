@@ -24,7 +24,9 @@ TEST_CASE(look_replaces_windows_ui_fonts_only) {
     CHECK(look::mappingFor(L"segoe ui").role == look::Role::Text);   // sans casse
     CHECK(look::mappingFor(L"Segoe UI Variable Display").role == look::Role::Display);
     CHECK(look::mappingFor(L"MS Shell Dlg 2").role == look::Role::Text);
-    CHECK(look::mappingFor(L"Tahoma").role == look::Role::Text);
+    // Tahoma et Microsoft Sans Serif servent aussi dans les documents (Word, PDF) : laissées.
+    CHECK(look::mappingFor(L"Tahoma").role == look::Role::None);
+    CHECK(look::mappingFor(L"Microsoft Sans Serif").role == look::Role::None);
     CHECK_EQ(look::mappingFor(L"Segoe UI Semibold").weight, 600);
     // Polices d'icônes et emoji : jamais.
     CHECK(look::mappingFor(L"Segoe Fluent Icons").role == look::Role::None);
@@ -33,6 +35,14 @@ TEST_CASE(look_replaces_windows_ui_fonts_only) {
     CHECK(look::mappingFor(L"Segoe UI Symbol").role == look::Role::None);
     CHECK(look::mappingFor(L"Consolas").role == look::Role::None);
     CHECK(look::mappingFor(nullptr).role == look::Role::None);
+}
+
+TEST_CASE(look_gdi_points_follow_dpi) {
+    // Hauteur GDI en pixels du contexte DPI de l'appelant : 10 pt font 27 px à 200 %, pas 20 pt.
+    CHECK(look::pointsForHeight(-27, 192) < 11);
+    CHECK(look::pointsForHeight(-27, 96) > 19);
+    CHECK(look::pointsForHeight(0, 96) == 0);
+    CHECK(look::pointsForHeight(40, 96) < 30);   // positive : hauteur de cellule, un peu plus que les caractères
 }
 
 TEST_CASE(look_display_font_for_large_text) {

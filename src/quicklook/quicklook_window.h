@@ -8,9 +8,13 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace md {
@@ -41,6 +45,7 @@ private:
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
     bool ensureWindow();
     void startLoad();
+    void workerLoop();   // un seul fil de chargement : la dernière demande seulement
     void place();
     void render();
     int hitButton(POINT client) const;   // 0 aucun, 1 fermer, 2 ouvrir
@@ -60,6 +65,17 @@ private:
     Microsoft::WRL::ComPtr<IDWriteFactory> dwrite_;
     Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> rt_;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap_;
+    struct Request {
+        std::wstring path;
+        std::uint64_t generation = 0;
+        float scale = 1;
+        HWND target = nullptr;
+    };
+    std::thread worker_;
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    std::optional<Request> pending_;
+    bool stop_ = false;
 };
 
 } // namespace md

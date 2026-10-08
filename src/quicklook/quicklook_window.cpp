@@ -66,7 +66,10 @@ bool pixelsOf(HBITMAP bmp, std::vector<std::uint8_t>& out, SIZE& size) {
     HDC dc = GetDC(nullptr);
     const int lines = GetDIBits(dc, bmp, 0, UINT(bm.bmHeight), out.data(), &bi, DIB_RGB_COLORS);
     ReleaseDC(nullptr, dc);
-    if (lines != bm.bmHeight) return false;
+    if (lines != bm.bmHeight) {
+        out.clear();
+        return false;
+    }
     bool anyAlpha = false;
     for (std::size_t i = 3; i < out.size(); i += 4) anyAlpha = anyAlpha || out[i] != 0;
     if (!anyAlpha)
@@ -86,7 +89,8 @@ std::wstring dateLabel(const FILETIME& ft) {
 }
 
 // Préparé hors du fil de l'interface : la miniature d'une vidéo ou d'une grande photo peut prendre du temps.
-std::unique_ptr<QuickLookWindow::Content> loadContent(const std::wstring& path, float scale) {
+template <class Cancelled>
+std::unique_ptr<QuickLookWindow::Content> loadContent(const std::wstring& path, float scale, Cancelled cancelled) {
     auto c = std::make_unique<QuickLookWindow::Content>();
     c->name = fileNameOf(path);
     WIN32_FILE_ATTRIBUTE_DATA fa{};
@@ -113,11 +117,13 @@ std::unique_ptr<QuickLookWindow::Content> loadContent(const std::wstring& path, 
         std::vector<std::uint8_t> bytes(kTextLimit);
         in.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
         bytes.resize(std::size_t(in.gcount()));
+        if (bytes.size() == kTextLimit) quickLookTrimUtf8(bytes);   // coupé : pas au milieu d'un caractère
         c->text = quickLookDecode(bytes);
         c->kind = QuickLookWindow::Content::Kind::Text;
         return c;
     }
     ComPtr<IShellItemImageFactory> factory;
+    if (cancelled()) return c;   // sélection changée entre-temps : pas d'extraction de miniature pour rien
     if (SUCCEEDED(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&factory)))) {
         HBITMAP bmp = nullptr;
         // Vraie image d'abord (photo, vidéo, PDF, document) ; à défaut, la grande icône du type de fichier.
@@ -152,6 +158,12 @@ std::wstring firstFont(IDWriteFactory* dw, std::initializer_list<const wchar_t*>
 } // namespace
 
 QuickLookWindow::~QuickLookWindow() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_ = true;
+    }
+    wake_.notify_one();
+    if (worker_.joinable()) worker_.join();   // avant la fenêtre : le fil y poste ses résultats
     if (hwnd_) DestroyWindow(hwnd_);
 }
 
@@ -196,17 +208,31 @@ void QuickLookWindow::show(HINSTANCE instance, std::vector<std::wstring> paths, 
 }
 
 void QuickLookWindow::startLoad() {
-    const std::uint64_t gen = ++generation_;
-    const std::wstring path = paths_[index_];
-    const HWND target = hwnd_;
-    const float scale = scale_;
-    std::thread([path, gen, target, scale] {
-        const HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        auto c = loadContent(path, scale);
-        c->generation = gen;
-        if (PostMessageW(target, WM_APP_LOADED, 0, reinterpret_cast<LPARAM>(c.get()))) c.release();
-        if (SUCCEEDED(co)) CoUninitialize();
-    }).detach();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_ = Request{paths_[index_], ++generation_, scale_, hwnd_};   // remplace une demande pas encore prise
+    }
+    wake_.notify_one();
+    if (!worker_.joinable()) worker_ = std::thread(&QuickLookWindow::workerLoop, this);
+}
+
+void QuickLookWindow::workerLoop() {
+    const HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (;;) {
+        Request req;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [&] { return stop_ || pending_.has_value(); });
+            if (stop_) break;
+            req = std::move(*pending_);
+            pending_.reset();
+        }
+        if (req.generation != generation_.load()) continue;   // déjà dépassée
+        auto c = loadContent(req.path, req.scale, [&] { return req.generation != generation_.load(); });
+        c->generation = req.generation;
+        if (PostMessageW(req.target, WM_APP_LOADED, 0, reinterpret_cast<LPARAM>(c.get()))) c.release();
+    }
+    if (SUCCEEDED(co)) CoUninitialize();
 }
 
 void QuickLookWindow::close() {
@@ -219,8 +245,10 @@ void QuickLookWindow::close() {
 }
 
 void QuickLookWindow::openFile() {
-    if (!paths_.empty() && index_ < paths_.size())
-        ShellExecuteW(nullptr, L"open", paths_[index_].c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (!paths_.empty() && index_ < paths_.size()) {
+        AllowSetForegroundWindow(ASFW_ANY);   // l'app ouverte passe devant (le clic nous en donne le droit)
+        ShellExecuteW(nullptr, nullptr, paths_[index_].c_str(), nullptr, nullptr, SW_SHOWNORMAL);   // verbe par défaut
+    }
     close();
 }
 
@@ -235,6 +263,11 @@ void QuickLookWindow::place() {
         contentPt = SIZE{LONG(content_->size.cx / scale_), LONG(content_->size.cy / scale_)};
     else if (content_->kind == Content::Kind::Text)
         contentPt = SIZE{700, 560};
+    // Jamais plus grand que l'écran (1080p à 200 % : 960 × 540 points), barre d'outils comprise.
+    if (content_->kind != Content::Kind::Image) {
+        contentPt.cx = std::min<LONG>(contentPt.cx, LONG(screenPt.cx * 0.9));
+        contentPt.cy = std::min<LONG>(contentPt.cy, LONG(screenPt.cy * 0.9) - LONG(kToolbar));
+    }
     SIZE pt = content_->kind == Content::Kind::Image ? quickLookWindowSize(contentPt, screenPt, int(kToolbar))
                                                      : SIZE{contentPt.cx, contentPt.cy + LONG(kToolbar)};
     const int w = int(std::lround(pt.cx * scale_)), h = int(std::lround(pt.cy * scale_));

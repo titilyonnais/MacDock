@@ -64,6 +64,19 @@ std::wstring quickLookDecode(const std::vector<std::uint8_t>& b) {
     return out;
 }
 
+void quickLookTrimUtf8(std::vector<std::uint8_t>& b) {
+    // Remonte jusqu'au début de la dernière séquence (au plus 3 octets de suite) ; la garde si elle est complète.
+    std::size_t i = b.size(), cont = 0;
+    while (i > 0 && cont < 3 && (b[i - 1] & 0xC0) == 0x80) {
+        --i;
+        ++cont;
+    }
+    if (i == 0) return;
+    const std::uint8_t lead = b[i - 1];
+    const std::size_t need = lead >= 0xF0 ? 3 : lead >= 0xE0 ? 2 : lead >= 0xC0 ? 1 : 0;
+    if (lead >= 0xC0 && cont < need) b.resize(i - 1);   // séquence incomplète : retirée
+}
+
 SIZE quickLookWindowSize(SIZE content, SIZE screen, int titleBar) {
     const double maxW = screen.cx * 0.7, maxH = screen.cy * 0.7 - titleBar;
     double w = std::max<LONG>(content.cx, 1), h = std::max<LONG>(content.cy, 1);
@@ -76,20 +89,20 @@ SIZE quickLookWindowSize(SIZE content, SIZE screen, int titleBar) {
 
 std::wstring quickLookSize(std::uint64_t bytes) {
     if (bytes == 0) return L"Zéro octet";
+    if (bytes == 1) return L"1 octet";
     if (bytes < 1000) return std::to_wstring(bytes) + L" octets";
     static const wchar_t* kUnits[] = {L"Ko", L"Mo", L"Go", L"To"};
-    double v = double(bytes);
-    int u = -1;
-    while (v >= 1000 && u < 3) {
+    double v = double(bytes) / 1000;
+    int u = 0;
+    // Unité choisie après l'arrondi affiché : jamais « 1000 Ko » ni « 1000,0 Mo ».
+    while (u < 3 && (u == 0 ? std::llround(v) : std::llround(v * 10) / 10.0) >= 1000) {
         v /= 1000;
         ++u;
     }
     if (u == 0) return std::to_wstring(std::llround(v)) + L" Ko";   // Ko arrondis à l'unité, comme le Finder
-    wchar_t buf[32];
-    swprintf_s(buf, L"%.1f %s", v, kUnits[u]);
-    for (wchar_t* c = buf; *c; ++c)
-        if (*c == L'.') *c = L',';
-    return buf;
+    const long long tenths = std::llround(v * 10);
+    if (tenths % 10 == 0) return std::to_wstring(tenths / 10) + L" " + kUnits[u];   // « 2 Mo », pas « 2,0 Mo »
+    return std::to_wstring(tenths / 10) + L"," + std::to_wstring(tenths % 10) + L" " + kUnits[u];
 }
 
 } // namespace md

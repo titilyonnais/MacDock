@@ -397,10 +397,12 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 ### Plan 28 — Mod de police macOS et Coup d'œil
 
 - **Mod Windhawk « MacDock - macOS Look »** (`windhawk/macdock-look.wh.cpp`) : la police de macOS dans toutes les apps.
-  - **Ce qu'il change** : Segoe UI, Segoe UI Variable, Tahoma et MS Shell Dlg deviennent SF Pro Text, et SF Pro Display à partir de 20 pt.
+  - **Ce qu'il change** : Segoe UI, Segoe UI Variable et MS Shell Dlg deviennent SF Pro Text, et SF Pro Display à partir de 20 pt (taille comptée en points réels, quelle que soit l'échelle de l'écran).
   - **Où** : dans les apps classiques (GDI) comme modernes (DirectWrite : Explorateur, Bloc-notes, navigateurs, Electron).
   - **Ce qu'il ne touche jamais** : les polices d'icônes. Il ne fait rien non plus si SF Pro n'est pas installée.
-  - **Jeux et anti-triche exclus** : Steam, Epic, Riot et Vanguard, EAC, BattlEye, EA, Ubisoft, tes simulateurs.
+  - **Jeux et anti-triche exclus** : Steam, Epic, Riot et Vanguard, EAC, BattlEye, EA, Ubisoft, Roblox, HoYoPlay, Tarkov, Blizzard, FACEIT, osu!, tes simulateurs.
+  - **Documents jamais touchés** : Word, Excel, PowerPoint, OneNote, Access, LibreOffice et Acrobat sont exclus, pour que tes fichiers et tes PDF gardent leurs polices.
+  - **Important pour les jeux en ligne** : l'exclusion d'un mod ne suffit pas contre un anti-triche. Ajoute aussi tes jeux dans Windhawk, *Paramètres > Avancé > Process exclusion list* (le README l'explique).
   - **Vérifié** : il compile sans avertissement avec le compilateur de Windhawk. Ses crochets sont testés sur les vraies fonctions de Windows : « Segoe UI » donne bien SF Pro Text, et un titre de 24 pt prend SF Pro Display.
   - **À faire de ton côté** : Windhawk tourne en administrateur, donc je ne peux pas l'installer. Ouvre Windhawk, puis *Créer un nouveau mod*, colle le fichier, puis *Compiler*. Les apps changent de police à leur prochain lancement.
 - **Coup d'œil** (Quick Look) : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné ouvre une fenêtre flottante aux coins arrondis.
@@ -409,10 +411,30 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
     - une photo, une vidéo, un PDF ou un document, en grand ;
     - un fichier texte, affiché ;
     - sinon, une grande icône avec le type, la taille et la date.
-  - **Les touches** : Espace ou Échap ferme, Entrée ouvre. Les flèches et les clics changent la sélection, et l'aperçu suit.
+  - **Les touches** : Espace ou Échap ferme. Entrée ferme l'aperçu et laisse l'Explorateur ouvrir la sélection, comme d'habitude. Les flèches et les clics changent la sélection, et l'aperçu suit ; s'il n'y a plus rien de sélectionné, il se ferme.
   - **Ce qui ne change pas** : Espace sans sélection reste à l'Explorateur, qui sélectionne l'élément actif. Il n'est jamais intercepté dans une zone de saisie (renommer, rechercher).
   - **Essayé en vrai** sur le dossier des fonds d'écran de Windows et sur `C:\Windows` : images, `win.ini`, un exécutable.
 - **Feuille de route** des prochaines étapes : `docs/feuille-de-route-macos.md`.
+- **Relecture finale** (Opus) : aucun critique, six importants, tous corrigés et vérifiés.
+  - Seuil Text/Display du mod compté en points réels (il passait en Display dès 10 pt à 200 %).
+  - Tahoma et MS Sans Serif retirés ; suite Office, LibreOffice et Acrobat exclus.
+  - Liste d'exclusion élargie et conseil de la liste globale de Windhawk.
+  - Coup d'œil : la vue de l'Explorateur est gardée à l'ouverture, puis seul le premier élément sélectionné est relu (Ctrl+A dans 10 000 fichiers ne fige plus le Dock), avec un garde contre la réentrance.
+  - Un seul fil de chargement qui ne traite que la dernière demande, au lieu d'un fil par flèche.
+  - Entrée rendue à l'Explorateur : essayé en vrai, l'image s'ouvre dans Photos, au premier plan.
+  - Corrigés au passage : texte coupé au milieu d'un caractère, tailles (« 1 octet », « 2 Mo »), fenêtre d'aperçu bornée à l'écran, `dwrite.dll` chargée depuis System32.
+
+## Mineurs reportés — plan 28
+- Coût du mod par processus : environ 2 ms et 1 Mo de mémoire de travail, même dans les outils en ligne de commande.
+- Réglages du mod lus sans verrou : un changement de réglage peut, le temps d'une création de police, donner un nom à moitié écrit.
+- Si SF Pro est installée après le lancement d'une app, le mod n'agit qu'au prochain lancement de cette app.
+- Copie de `ENUMLOGFONTEXDVW` complète même quand l'appelant passe un vecteur d'axes court (GDI passe toujours une structure complète).
+- Une police recréée à partir d'une autre déjà remplacée garde son choix Text ou Display ; `FindFamilyName` donne toujours Text.
+- Repli des écritures asiatiques en GDI : pas d'entrée SystemLink pour SF Pro Text (glyphes coréens un peu plus petits).
+- SF Pro Text déclare une largeur moyenne de caractère deux fois trop grande : les mises en page fondées sur `tmAveCharWidth` s'élargissent.
+- Non couverts : processus 32 bits, `IDWriteFactory6::CreateTextFormat` avec axes, DWriteCore (Windows App SDK).
+- Coup d'œil : deux Espace très rapides rouvrent ; Espace dans une autre fenêtre de l'Explorateur ferme au lieu d'ouvrir ; Espace pendant la recherche par frappe ouvre l'aperçu ; la fenêtre se recentre à chaque changement ; le clavier visuel et les remappages ne le déclenchent pas.
+- Pas de `WM_DPICHANGED` dans la fenêtre d'aperçu (changement d'écran pendant l'aperçu).
 
 ## Mineurs reportés — plan 27
 - `target()` est lu de façon asynchrone : rarement, après un changement de réglage, les pastilles peuvent revenir sur l'ancienne fenêtre jusqu'au prochain changement d'app.
