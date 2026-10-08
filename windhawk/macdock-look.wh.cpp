@@ -2,7 +2,7 @@
 // @id              macdock-look
 // @name            MacDock - macOS Look
 // @description     The macOS system font (SF Pro) in every app, for MacDock
-// @version         1.2.0
+// @version         1.3.0
 // @author          MacDock
 // @include         *
 // @exclude         MacDock.exe
@@ -76,7 +76,8 @@ Every app draws its interface with the macOS system font: the Windows UI fonts (
 MS Shell Dlg) are replaced by **SF Pro Text**, and by **SF Pro Display** for large titles, as on macOS.
 
 - Works for classic Win32 apps and dialogs (GDI) and for modern apps (DirectWrite: File Explorer, Notepad, WinUI,
-  Chromium and Electron apps).
+  Chromium and Electron apps). Dialogs that ask for Segoe UI or MS Shell Dlg 2 (Run, Open, Save As) keep SF Pro
+  instead of falling back to the old System font.
 - Icon fonts (Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Emoji, Segoe UI Symbol) are never touched.
 - Nothing changes if the macOS font is not installed.
 - Games and anti-cheat software are excluded, and so are Office and PDF apps (documents keep their fonts).
@@ -160,6 +161,39 @@ inline Role roleForSize(Role role, double points) {
     return role;
 }
 
+// Polices GDI remplacées, avec le nom que l'app avait demandé. Tampon tournant : GDI réutilise les poignées, et seule
+// compte la police tout juste créée (user32 vérifie le nom d'une police de boîte de dialogue aussitôt après l'avoir
+// créée). Sans verrou : l'appelant le tient.
+class FontAliases {
+public:
+    static constexpr int kSize = 256;
+    void remember(const void* font, const wchar_t* face) {
+        Entry& e = entries_[next_];
+        e.font = font;
+        wcsncpy_s(e.face, face ? face : L"", _TRUNCATE);
+        next_ = (next_ + 1) % kSize;
+    }
+    // Nom demandé à la création de cette police (la plus récente sous cette poignée), copié dans `out`.
+    bool find(const void* font, wchar_t (&out)[LF_FACESIZE]) const {
+        for (int i = 1; i <= kSize; ++i) {
+            const Entry& e = entries_[(next_ - i + kSize) % kSize];
+            if (e.font && e.font == font) {
+                wcsncpy_s(out, e.face, _TRUNCATE);
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    struct Entry {
+        const void* font = nullptr;
+        wchar_t face[LF_FACESIZE] = {};
+    };
+    Entry entries_[kSize];
+    int next_ = 0;
+};
+
 }  // namespace look
 
 #ifndef MACDOCK_LOOK_TEST
@@ -182,6 +216,8 @@ const wchar_t* replacementFor(look::Role role) {
 // ---- GDI ----
 using CreateFontIndirectExW_t = HFONT(WINAPI*)(const ENUMLOGFONTEXDVW*);
 CreateFontIndirectExW_t CreateFontIndirectExW_Original;
+look::FontAliases g_aliases;
+SRWLOCK g_aliasLock = SRWLOCK_INIT;
 
 HFONT WINAPI CreateFontIndirectExW_Hook(const ENUMLOGFONTEXDVW* font) {
     if (g_gdi && font) {
@@ -196,10 +232,36 @@ HFONT WINAPI CreateFontIndirectExW_Hook(const ENUMLOGFONTEXDVW* font) {
             LOGFONTW& out = copy.elfEnumLogfontEx.elfLogFont;
             wcsncpy_s(out.lfFaceName, to, _TRUNCATE);
             if (m.weight && (out.lfWeight == FW_DONTCARE || out.lfWeight == FW_NORMAL)) out.lfWeight = m.weight;
-            return CreateFontIndirectExW_Original(&copy);
+            const HFONT replaced = CreateFontIndirectExW_Original(&copy);
+            if (replaced) {   // pour la vérification des boîtes de dialogue (GetTextFaceAliasW)
+                AcquireSRWLockExclusive(&g_aliasLock);
+                g_aliases.remember(replaced, lf.lfFaceName);
+                ReleaseSRWLockExclusive(&g_aliasLock);
+            }
+            return replaced;
         }
     }
     return CreateFontIndirectExW_Original(font);
+}
+
+// user32 vérifie que la police d'une boîte de dialogue porte le nom de son modèle (« Segoe UI », « MS Shell Dlg 2 ») ;
+// sinon il prend la police bitmap « System » (Exécuter, Ouvrir, Enregistrer sous…). Pour les polices remplacées : le
+// nom demandé, la police dessinée reste SF Pro.
+using GetTextFaceAliasW_t = int(WINAPI*)(HDC, int, LPWSTR);
+GetTextFaceAliasW_t GetTextFaceAliasW_Original;
+
+int WINAPI GetTextFaceAliasW_Hook(HDC dc, int count, LPWSTR out) {
+    const int r = GetTextFaceAliasW_Original(dc, count, out);
+    if (r <= 0 || !g_gdi) return r;
+    wchar_t face[LF_FACESIZE] = {};
+    AcquireSRWLockShared(&g_aliasLock);
+    const bool found = g_aliases.find(GetCurrentObject(dc, OBJ_FONT), face);
+    ReleaseSRWLockShared(&g_aliasLock);
+    if (!found || !face[0]) return r;
+    if (!out) return int(wcslen(face)) + 1;   // taille demandée
+    if (count <= 0) return r;
+    wcsncpy_s(out, size_t(count), face, _TRUNCATE);
+    return int(wcslen(out)) + 1;   // caractères copiés, zéro final compris (comme Windows)
 }
 
 int CALLBACK fontExists(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM found) {
@@ -379,6 +441,11 @@ BOOL Wh_ModInit() {
     if (void* target = gdi ? reinterpret_cast<void*>(GetProcAddress(gdi, "CreateFontIndirectExW")) : nullptr)
         Wh_SetFunctionHook(target, reinterpret_cast<void*>(CreateFontIndirectExW_Hook),
                            reinterpret_cast<void**>(&CreateFontIndirectExW_Original));
+    // Vérification des boîtes de dialogue : user32 l'importe de gdi32.dll.
+    HMODULE gdi32 = LoadLibraryExW(L"gdi32.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (void* target = gdi32 ? reinterpret_cast<void*>(GetProcAddress(gdi32, "GetTextFaceAliasW")) : nullptr)
+        Wh_SetFunctionHook(target, reinterpret_cast<void*>(GetTextFaceAliasW_Hook),
+                           reinterpret_cast<void**>(&GetTextFaceAliasW_Original));
     // DirectWrite : les méthodes de la fabrique partagée et de la collection système (une seule implémentation pour
     // toutes les instances du processus).
     using DWriteCreateFactory_t = HRESULT(WINAPI*)(DWRITE_FACTORY_TYPE, REFIID, IUnknown**);

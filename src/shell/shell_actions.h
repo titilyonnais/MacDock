@@ -16,6 +16,9 @@ void restoreWindow(HWND hwnd);
 // App Réglages de MacDock (MacDockSettings.exe, à côté de l'exécutable courant), sur la section `pane` (--pane) ou celle
 // par défaut ; false si l'app manque (l'appelant ouvre alors le fichier JSON).
 bool openMacDockSettings(const std::wstring& pane);
+// Réduction demandée par MacDock : le Dock en est prévenu avant (MacDockWillMinimize), pour animer lui-même la
+// fenêtre sans que Windows joue aussi la sienne.
+void minimizeWindow(HWND hwnd, int command = SW_MINIMIZE);
 void minimizeAll(const std::vector<HWND>& windows);
 void openRecycleBin();
 void openFolder(const std::wstring& path);

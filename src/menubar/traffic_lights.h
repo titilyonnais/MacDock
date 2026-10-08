@@ -20,6 +20,7 @@ struct LightsWindowInfo {
     bool zoomed = false, iconic = false, ownProcess = false;
     LONG captionBottom = 0;   // bas de la barre de titre (GetTitleBarInfo) ; 0 = inconnu (on prend client.top)
     bool elevated = false;    // processus d'intégrité plus élevée : nos messages seraient refusés (UIPI)
+    RECT monitor{};           // écran de la fenêtre (rcMonitor) ; vide = inconnu
 };
 
 // Fenêtres à barre de titre (ni outil, ni shell, ni élevées…) ; les pastilles prennent ensuite la place de leurs
@@ -46,6 +47,12 @@ RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
 // dans toutes les apps (elles ont toutes ces boutons en haut à droite). Le haut reste transparent pour redimensionner
 // par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);
+// Attente avant de remontrer les pastilles quand la fenêtre est agrandie ou rendue à sa taille (`animated` : animation
+// de Windows active), en millisecondes.
+unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated);
+// Même attente quand la fenêtre revient d'une réduction avec l'animation de Windows ; `heldByDock` : le Dock a coupé
+// cette animation (restauration par le génie), elle arrive tout de suite.
+unsigned lightsRestoreWaitMs(bool animated, bool heldByDock);
 
 // Souris sur le calque : appui sur une pastille disponible, déplacement de la fenêtre depuis le fond, zoom par
 // double-clic sur le fond ; un double-clic sur une pastille ne fait rien (pas de seconde commande).
@@ -65,6 +72,7 @@ struct LightsState {
     double bounce = 1;
     bool enabled[3] = {true, true, true};        // indisponible : gris, sans action
     bool dark = false;                           // thème de la barre de titre (gris des pastilles indisponibles)
+    bool inactive = false;                       // fenêtre inactive : grises, en couleur au survol (macOS)
     std::uint32_t patchColor = 0xF3F3F3;         // 0xRRGGBB, couleur de la barre de titre
 };
 // Image BGRA prémultipliée du calque (taille de l.window) ; scale = dpi / 96.

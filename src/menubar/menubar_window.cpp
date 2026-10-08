@@ -1076,6 +1076,11 @@ void MenuBarApp::checkFullscreen() {
         Screen& s = *screens_[i];
         const HWND window = detectFullscreen(s);
         s.fullscreenWatch.watch(window, [this] { checkFullscreen(); });   // sortie vue tout de suite
+        if (window != s.fullscreenWindow) {   // coins carrés le temps du plein écran, arrondis de nouveau à la sortie
+            for (HWND h : {s.fullscreenWindow, window})
+                if (h && IsWindow(h) && settings_.macWindows) styler_.apply(h, readInfo(h), appsDarkMode(), effectiveDpi(h));
+            s.fullscreenWindow = window;
+        }
         const bool fs = window != nullptr;
         if (fs == s.fullscreen) continue;
         s.fullscreen = fs;

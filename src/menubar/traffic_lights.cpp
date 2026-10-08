@@ -67,6 +67,12 @@ RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
     return r.right > r.left && r.bottom > r.top ? r : frame;
 }
 
+unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated) {
+    return animated && wasZoomed != zoomed ? 300u : 0u;   // ~290 ms d'animation de DWM mesurées, aller comme retour
+}
+
+unsigned lightsRestoreWaitMs(bool animated, bool heldByDock) { return animated && !heldByDock ? 250u : 0u; }
+
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;
@@ -170,7 +176,9 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
                 if (std::abs(x + 0.5 - cx) > l.radius + 1 || std::abs(y + 0.5 - cy) > l.radius + 1) continue;
                 const bool down = s.pressed == i && s.enabled[i];
                 const double radius = l.radius * (down ? 0.94 : i == s.bouncing ? s.bounce : 1.0);   // enfoncée sous le doigt
-                const Rgb fill = rgb(s.enabled[i] ? kFill[i] : grayFill), edge = rgb(s.enabled[i] ? kEdge[i] : grayEdge);
+                // Fenêtre inactive : grises comme les indisponibles, en couleur au survol (macOS).
+                const bool colored = s.enabled[i] && (!s.inactive || s.hover);
+                const Rgb fill = rgb(colored ? kFill[i] : grayFill), edge = rgb(colored ? kEdge[i] : grayEdge);
                 int outer = 0, glyph = 0;
                 double sr = 0, sg = 0, sb = 0;
                 for (int sy = 0; sy < 4; ++sy)
@@ -184,7 +192,7 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
                         Rgb c = d > radius - border ? edge : fill;
                         const double shade = (1.0 - 0.07 * v) * (down ? 0.78 : 1.0);
                         c = {c.r * shade, c.g * shade, c.b * shade};
-                        if (s.enabled[i]) {
+                        if (colored) {
                             const double hx = u / 0.62, hy = (v + 0.52) / 0.34, gx = u / 0.55, gy = (v - 0.64) / 0.22;
                             double white = 0;
                             if (hx * hx + hy * hy < 1) white += (down ? 0.25 : 0.5) * (1 - (hx * hx + hy * hy));

@@ -94,8 +94,15 @@ void restoreWindow(HWND hwnd) {
     forceForeground(hwnd);
 }
 
+void minimizeWindow(HWND hwnd, int command) {
+    static const UINT msg = RegisterWindowMessageW(L"MacDockWillMinimize");
+    if (HWND dock = FindWindowW(L"MacDockWindow", nullptr))   // synchrone : coupé avant que la réduction parte
+        SendMessageTimeoutW(dock, msg, reinterpret_cast<WPARAM>(hwnd), 0, SMTO_ABORTIFHUNG, 100, nullptr);
+    ShowWindowAsync(hwnd, command);   // asynchrone : une app figée ne bloque pas l'appelant
+}
+
 void minimizeAll(const std::vector<HWND>& windows) {
-    for (HWND h : windows) ShowWindowAsync(h, SW_MINIMIZE);
+    for (HWND h : windows) minimizeWindow(h);
 }
 
 void openRecycleBin() { launchAsync(L"shell:RecycleBinFolder"); }

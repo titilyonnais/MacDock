@@ -72,6 +72,7 @@ constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la 
 constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
 constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
 constexpr UINT_PTR kArmTimer = 0x414D;       // "AM" : réduction annoncée qui ne vient pas
+constexpr UINT_PTR kTransitionTimer = 0x5447;   // "TG" : animations de Windows rendues aux fenêtres libérées
 constexpr UINT_PTR kWarmTimer = 0x574D;      // "WM" : case survolée assez longtemps : capture préparée
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
@@ -1371,6 +1372,37 @@ bool visibleBounds(HWND h, RECT& r) {
 }
 } // namespace
 
+// Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente. Appelé pour le bouton
+// « réduire » de Windows (crochet souris) et pour la pastille jaune de la barre (message MacDockGenieArm), qui cache
+// ce bouton.
+void DockApp::armGenie(HWND w, POINT pt) {
+    if (snapshot_ || !w || !IsWindow(w) || IsIconic(w) || !genieWouldAnimate(w)) return;
+    // Avant le relâchement, même pendant un autre génie (celui-ci le remplacera) : posée après, DWM jouerait sa
+    // propre réduction sous le génie.
+    holdTransitions(w);
+    if (genie_.active()) return;
+    RECT visible{}, dock{};
+    if (!visibleBounds(w, visible) || !GetWindowRect(hwnd_, &dock)) return;
+    KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
+    genie_.arm(instance_, w, visible, dock, pt);
+    if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+}
+
+void DockApp::holdTransitions(HWND w) {
+    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !w) return;
+    if (trace_ && !transitions_.held(w)) log::info(L"[trace] animations de Windows coupées pour %p", static_cast<void*>(w));
+    transitions_.hold(w, nowSeconds() + 1.5);
+    SetTimer(hwnd_, kTransitionTimer, 400, nullptr);
+}
+
+bool DockApp::genieWouldAnimate(HWND w) {
+    return settings_.minimizeEffect != MinimizeEffect::Windows && controller_.restingTile(toId(w)).has_value();
+}
+
+void DockApp::announceMinimize(HWND w) {
+    if (!snapshot_ && w && IsWindow(w) && !IsIconic(w) && genieWouldAnimate(w)) holdTransitions(w);
+}
+
 void DockApp::onButton(bool down, POINT pt) {
     if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows) return;
     HWND w = GetAncestor(WindowFromPoint(pt), GA_ROOT);
@@ -1379,7 +1411,7 @@ void DockApp::onButton(bool down, POINT pt) {
     if (pid == GetCurrentProcessId()) w = nullptr;   // le Dock et ses fenêtres
     if (down) {
         if (trace_) log::info(L"[trace] appui en %ld,%ld sur %p", pt.x, pt.y, static_cast<void*>(w));
-        if (!w || IsIconic(w) || genie_.active()) return;
+        if (!w || IsIconic(w)) return;   // pendant un génie aussi : la seconde réduction doit être retenue à temps
         RECT visible{}, dock{};
         if (!visibleBounds(w, visible) || !GetWindowRect(hwnd_, &dock)) return;
         // Seulement dans le coin des boutons de titre (haut à droite) : aucun aller-retour vers l'app pour les autres
@@ -1405,10 +1437,7 @@ void DockApp::onButton(bool down, POINT pt) {
             log::info(L"[trace] appui sur les boutons de %p en %ld,%ld : réduire %s (zone DWM %ld..%ld, test %d)",
                       static_cast<void*>(w), pt.x, pt.y, onMin ? L"oui" : L"non", buttons.left, buttons.right, int(hit));
         if (!onMin) return;
-        // Capture GPU et couverture prêtes avant le relâchement : le génie part sans trou ni attente.
-        KillTimer(hwnd_, kArmTimer);   // celui d'un appui précédent désarmerait celui-ci
-        genie_.arm(instance_, w, visible, dock, pt);
-        if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
+        armGenie(w, pt);
         return;
     }
     if (trace_) {
@@ -1479,6 +1508,7 @@ bool DockApp::startGenie(HWND window, bool restore) {
     if (auto it = lastSeen_.find(toId(window)); it != lastSeen_.end()) seen = it->second;
     const RECT from = genieStartRect(seen, wp, mi.rcWork, mi.rcMonitor, tool, SIZE{});
     const bool slow = GetAsyncKeyState(VK_SHIFT) < 0;   // Maj : ralenti, comme sur macOS
+    holdTransitions(window);   // restauration : la fenêtre revient sans l'animation de Windows en plus du génie
     if (!genie_.start(instance_, window, from, *cell, settings_.position, settings_.minimizeEffect, restore, nowSeconds(), slow))
         return false;
     if (trace_) log::info(L"[trace] génie %s %p", restore ? L"restauration" : L"réduction", static_cast<void*>(window));
@@ -2029,6 +2059,12 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 case CommandAction::Kind::Pass: break;
             }
         }
+        // ⊞↓ sur une fenêtre ni agrandie ni réduite : Windows va la réduire, le génie l'animera seul.
+        if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
+            !(GetAsyncKeyState(VK_SHIFT) & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+            const HWND fg = GetAncestor(GetForegroundWindow(), GA_ROOT);
+            if (fg && IsWindowVisible(fg) && !IsZoomed(fg)) self_->announceMinimize(fg);
+        }
         // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
         static bool escTaken = false;   // Échap a fermé le viseur : avalée jusqu'à son relâchement
         if (vk == VK_ESCAPE && escTaken && !self_->shotSession_) {
@@ -2162,6 +2198,14 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == spotlightMsg_ && spotlightMsg_) {
         openSpotlight();
+        return 0;
+    }
+    if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
+        announceMinimize(reinterpret_cast<HWND>(wp));
+        return 0;
+    }
+    if (msg == genieArmMsg_ && genieArmMsg_) {   // pastille jaune enfoncée : la réduction arrive au relâchement
+        armGenie(reinterpret_cast<HWND>(wp), POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
         return 0;
     }
     if (msg == taskbarCreated_ && taskbarCreated_) {
@@ -2399,6 +2443,16 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
                 return 0;
             }
+            if (wp == kTransitionTimer) {   // réduite, ou animée par le génie : retenue ; sinon animations rendues
+                transitions_.release(nowSeconds(), [this](HWND h) {
+                    return IsIconic(h) || genie_.armed() == h || (genie_.active() && genie_.source() == h);
+                });
+                // Toutes réduites (ou aucune) : plus rien à surveiller avant leur retour (ev.minimized, ev.closed).
+                bool waiting = false;
+                for (HWND h : transitions_.windows()) waiting = waiting || (IsWindow(h) && !IsIconic(h));
+                if (!waiting) KillTimer(hwnd_, kTransitionTimer);
+                return 0;
+            }
             if (wp == kArmTimer) {   // annoncée, mais pas réduite (app qui refuse, ou cache dans la zone de notification)
                 KillTimer(hwnd_, kArmTimer);
                 genie_.disarm();
@@ -2623,6 +2677,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         if (trace_) log::info(L"[trace] fermée %p", h);
         model_.windowClosed(toId(h));
         lastSeen_.erase(toId(h));
+        if (transitions_.held(h)) SetTimer(hwnd_, kTransitionTimer, 400, nullptr);   // oubliée au prochain tour
         requestFrame();
     };
     ev.minimized = [this](HWND h, bool m) {
@@ -2634,10 +2689,17 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         }
         model_.windowMinimized(toId(h), m);
         if (genieOnMinimize(genieRun(), toId(h), m, false) == GenieReact::Cancel) genie_.cancel();   // restaurée ailleurs
+        if (!m && transitions_.held(h)) SetTimer(hwnd_, kTransitionTimer, 400, nullptr);   // animations bientôt rendues
         requestFrame();
     };
     ev.minimizeStarted = [this](HWND h) {   // réduction vue à l'instant : vers sa case du Dock
-        if (genieOnMinimize(genieRun(), toId(h), true, true) == GenieReact::Start) startGenie(h, false);
+        ANIMATIONINFO ai{sizeof ai};
+        const bool windowsAnimates = SystemParametersInfoW(SPI_GETANIMATION, sizeof ai, &ai, 0) && ai.iMinAnimate;
+        if (genieOnMinimize(genieRun(), toId(h), true, true) == GenieReact::Start &&
+            genieTakesMinimize(transitions_.held(h), windowsAnimates))
+            startGenie(h, false);
+        else if (trace_ && !transitions_.held(h))
+            log::info(L"[trace] réduction non annoncée %p : animée par Windows", static_cast<void*>(h));
         if (genie_.armed()) genie_.disarm();   // annoncée mais pas animée (pas de case) : la couverture s'en va
         KillTimer(hwnd_, kArmTimer);
     };
@@ -2660,6 +2722,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     };
     tracker_.setTrace(trace_);
     thumbnails_.setTrace(trace_);
+    if (!snapshot_)   // un Dock précédent (planté, tué) a pu laisser des fenêtres sans animations
+        if (const int n = releaseOrphanTransitions()) log::info(L"Animations de Windows rendues à %d fenêtres", n);
     tracker_.start(hwnd_, ev);
 
     if (snapshot_) {
@@ -2675,6 +2739,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(hwnd_, spotlightMsg_, MSGFLT_ALLOW, nullptr);
     registerSpotlightHotkey();
     missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
+    genieArmMsg_ = RegisterWindowMessageW(L"MacDockGenieArm");
+    ChangeWindowMessageFilterEx(hwnd_, genieArmMsg_, MSGFLT_ALLOW, nullptr);
+    willMinimizeMsg_ = RegisterWindowMessageW(L"MacDockWillMinimize");
+    ChangeWindowMessageFilterEx(hwnd_, willMinimizeMsg_, MSGFLT_ALLOW, nullptr);
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
@@ -2795,7 +2863,8 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
 
     log::info(L"MacDock s'arrête");
     genie_.cancel();
-    minAnimate_.restore();   // l'animation de Windows revient
+    transitions_.releaseAll();   // fenêtres réduites par le génie : animations de Windows rendues
+    minAnimate_.restore();
     if (trashNotify_) SHChangeNotifyDeregister(trashNotify_);
     for (ULONG id : stackNotify_) SHChangeNotifyDeregister(id);
     thumbnails_.clear();
