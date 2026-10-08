@@ -25,7 +25,7 @@ constexpr double kBounceMs = 240;
 constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
 // Messages postés au fil des pastilles (sans fenêtre : les calques peuvent être recréés).
 constexpr UINT kMsgAttach = WM_APP + 1, kMsgDetach = WM_APP + 2, kMsgLeft = WM_APP + 3, kMsgQuit = WM_APP + 4,
-               kMsgRecreate = WM_APP + 5;
+               kMsgRecreate = WM_APP + 5, kMsgCapture = WM_APP + 6;
 
 
 } // namespace
@@ -121,6 +121,12 @@ void TrafficWindow::run() {
                 case kMsgRecreate:
                     if (ensureLayers() && target_) place(true);
                     continue;
+                case kMsgCapture:
+                    captureVisible_ = m.wParam != 0;
+                    for (HWND layer : {hwnd_, cover_})
+                        if (layer) SetWindowDisplayAffinity(layer, captureVisible_ || diagnosticCapture() ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+                    if (captureDone_) SetEvent(captureDone_);
+                    continue;
                 case kMsgQuit:
                     quitting_ = true;
                     doDetach();
@@ -148,6 +154,14 @@ void TrafficWindow::setAlwaysLeft(bool on) {
     if (threadId_) PostThreadMessageW(threadId_, kMsgLeft, on ? 1 : 0, 0);
 }
 
+void TrafficWindow::setCaptureVisible(bool on) {
+    if (!threadId_) return;
+    if (!captureDone_) captureDone_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!captureDone_) return;
+    ResetEvent(captureDone_);
+    if (PostThreadMessageW(threadId_, kMsgCapture, on ? 1 : 0, 0)) WaitForSingleObject(captureDone_, 200);
+}
+
 void TrafficWindow::destroy() {
     if (thread_.joinable()) {
         PostThreadMessageW(threadId_, kMsgQuit, 0, 0);
@@ -157,6 +171,8 @@ void TrafficWindow::destroy() {
     }
     threadId_ = 0;
     if (self_ == this) self_ = nullptr;
+    if (captureDone_) CloseHandle(captureDone_);
+    captureDone_ = nullptr;
 }
 
 bool TrafficWindow::ensureLayers() {
@@ -170,7 +186,7 @@ bool TrafficWindow::ensureLayers() {
     RegisterClassExW(&wc);   // déjà inscrite : sans effet
     // La mesure de la couleur ne voit pas les calques (sauf en diagnostic : visibles aux enregistreurs d'écran ; la
     // mesure se fait à côté d'eux de toute façon).
-    const DWORD affinity = diagnosticCapture() ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE;
+    const DWORD affinity = diagnosticCapture() || captureVisible_ ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE;
     for (HWND* layer : {&hwnd_, &cover_}) {
         if (*layer && IsWindow(*layer)) continue;
         *layer = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kLightsClass, L"", WS_POPUP, 0, 0, 1, 1,

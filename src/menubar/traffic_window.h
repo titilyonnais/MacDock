@@ -31,6 +31,9 @@ public:
     HWND target() const { return publicTarget_.load(); }
     // Toujours à gauche (réglage par défaut) ou, si la gauche est prise, sur les boutons de Windows.
     void setAlwaysLeft(bool on);
+    // Capture d'écran du Dock (⊞⇧3, ⊞⇧4) : calques visibles aux captures le temps de la copie. Synchrone (le fil
+    // répond en moins de 200 ms, sinon on n'attend plus).
+    void setCaptureVisible(bool on);
 
 private:
     enum class Spot { None, Left, Over };   // pas de pastilles, à gauche (+ cache), sur les boutons de Windows
@@ -84,6 +87,8 @@ private:
     // ils sont reportés après la sonde plutôt que traités au milieu d'elle.
     bool probing_ = false, attachPending_ = false, placePending_ = false;
     bool alwaysLeft_ = true;
+    bool captureVisible_ = false;    // capture d'écran en cours : calques visibles aux captures
+    HANDLE captureDone_ = nullptr;   // signalé par le fil une fois l'affichage des calques changé
     bool quitting_ = false;
     HINSTANCE instance_ = nullptr;
     std::thread thread_;

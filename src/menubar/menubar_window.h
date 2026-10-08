@@ -139,6 +139,8 @@ private:
     void startSample(Screen& s);
     void startSamples();
     void stopSamples();   // avant un menu : il capture l'écran à son tour (la pastille du HUD aussi)
+    void abortSamples();  // capture d'écran du Dock : échantillons arrêtés, couleur du texte inchangée
+    void onScreenshotReveal(bool on);   // ⊞⇧3, ⊞⇧4 : barre et pastilles visibles aux captures, le temps de la copie
     void registerVolumeKeys();          // touches de volume reprises selon settings_.hud (échec journalisé)
     void onVolumeKey(int id);           // volume +, −, sourdine : réglage puis pastille
     void showHud(const HudContent& c);  // pastille sur l'écran du curseur, ravivée
@@ -158,6 +160,8 @@ private:
     HINSTANCE instance_ = nullptr;
     HWND ctl_ = nullptr;   // fenêtre de contrôle cachée : minuteries, messages des fils, suivi des fenêtres, WM_CLOSE
     bool trace_ = false;
+    UINT shotRevealMsg_ = 0;   // « MacDockScreenshotReveal » (wParam 1 : visibles aux captures, 0 : exclues de nouveau)
+    bool shotReveal_ = false;  // capture d'écran du Dock en cours : pas d'échantillon (il exclurait la barre)
     std::wstring dataDir_;
     MenuBarSettings settings_;
     FILETIME settingsTime_{};

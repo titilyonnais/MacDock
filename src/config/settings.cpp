@@ -84,6 +84,7 @@ Settings settingsFromJson(const json::Value& v) {
         s.missionControlHotkey = mission;
     const std::wstring switcher = toLower(readString(v, "appSwitcherHotkey"));
     if (switcher == L"alt+tab" || switcher == L"off") s.appSwitcherHotkey = switcher;
+    s.screenshots = readBool(v, "screenshots", s.screenshots);
     if (auto* corners = v.find("hotCorners"); corners && corners->isObject())
         for (int c = 0; c < 4; ++c)   // valeur inconnue ou mauvais type : le coin garde son défaut
             if (auto a = parseHotCornerAction(readString(*corners, kCornerKeys[c]))) s.hotCorners[std::size_t(c)] = *a;
@@ -136,6 +137,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("spotlightHotkey", toUtf8(s.spotlightHotkey));
     v.set("missionControlHotkey", toUtf8(s.missionControlHotkey));
     v.set("appSwitcherHotkey", toUtf8(s.appSwitcherHotkey));
+    v.set("screenshots", s.screenshots);
     json::Value corners = json::Object{};
     for (int c = 0; c < 4; ++c) corners.set(kCornerKeys[c], toUtf8(hotCornerName(s.hotCorners[std::size_t(c)])));
     v.set("hotCorners", corners);
