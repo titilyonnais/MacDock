@@ -2,7 +2,7 @@
 #   ./build.ps1 -Target tests -Run
 #   ./build.ps1 -Target all -Config Release
 param(
-    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'all')] [string]$Target = 'all',
+    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'all')] [string]$Target = 'all',
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [switch]$Run
 )
@@ -56,6 +56,12 @@ $Targets = @{
                       'powrprof.lib', 'secur32.lib', 'winmm.lib') }
     launcher = @{ Exe = 'MacDockLauncher.exe'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
+    settings = @{ Exe = 'MacDockSettings.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
+                      'src\settings_app\*.cpp', 'src\anim\spring.cpp', 'src\anim\motion.cpp', 'src\menubar\menubar_settings.cpp',
+                      'src\menubar\clock_format.cpp'); Subsystem = 'WINDOWS';
+                  Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'dwmapi.lib',
+                      'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'gdi32.lib', 'advapi32.lib',
+                      'shcore.lib', 'version.lib', 'dxguid.lib') }
 }
 
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
@@ -92,7 +98,7 @@ function Build-Target([string]$Name) {
     if ($LASTEXITCODE -ne 0) { throw "Echec de compilation : $Name" }
 }
 
-$names = if ($Target -eq 'all') { @('tests', 'dock', 'menubar', 'launcher') } else { @($Target) }
+$names = if ($Target -eq 'all') { @('tests', 'dock', 'menubar', 'launcher', 'settings') } else { @($Target) }
 if ($names -contains 'tests' -or $names -contains 'dock' -or $names -contains 'menubar') { Build-Shaders }
 foreach ($n in $names) { Build-Target $n }
 

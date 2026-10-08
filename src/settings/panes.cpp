@@ -152,7 +152,7 @@ std::vector<GroupSpec> windowsPane() {
                           {L"Fenêtres à barre de titre", L"Toutes les fenêtres", L"Aucune"},
                           std::vector<LightsMode>{LightsMode::Standard, LightsMode::All, LightsMode::Off},
                           [](auto& m) -> auto& { return m.bar.trafficLights; },
-                          L"À la place des boutons de Windows, en haut à droite"));
+                          L"À la place des boutons de Windows"));
     g.rows.push_back(toggle(L"Apparence macOS des fenêtres", [](auto& m) -> auto& { return m.bar.macWindows; },
                             L"Coins arrondis, sans liseré coloré, barre de titre grise", L"coins bordure"));
     out.push_back(g);
@@ -167,7 +167,7 @@ const std::vector<PaneInfo>& paneList() {
         {PaneId::Dock, L"Dock", "dock", 0x1C1C1E, PaneIcon::Dock, true},
         {PaneId::MenuBar, L"Barre des menus", "menubar", 0x0088FF, PaneIcon::MenuBar, true},
         {PaneId::Windows, L"Fenêtres", "windows", 0x6155F5, PaneIcon::Windows, true},
-        {PaneId::Desktop, L"Bureau et Mission Control", "desktop", 0x00C3D0, PaneIcon::Desktop, false},
+        {PaneId::Desktop, L"Mission Control", "desktop", 0x00C3D0, PaneIcon::Desktop, false},
         {PaneId::Keyboard, L"Clavier", "keyboard", 0x8E8E93, PaneIcon::Keyboard, false},
         {PaneId::Screenshots, L"Captures d'écran", "screenshots", 0xFF8D28, PaneIcon::Screenshot, false},
         {PaneId::Sounds, L"Sons", "sounds", 0xFF383C, PaneIcon::Sound, false},
