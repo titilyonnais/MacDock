@@ -549,6 +549,12 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Essayé en vrai** : le panneau du jeudi 8 octobre 2026, avec la grille juste.
 - **Limite** : les notifications ne sont pas listées dans le panneau. L'API de Windows qui les lit (`UserNotificationListener`) demande une app empaquetée, ce que MacDock n'est pas.
 
+### Plan 35 — Menus visibles sur les captures d'écran
+
+- **Ce qui change** : un menu ouvert apparaît maintenant sur ⊞⇧3 et ⊞⇧4, qu'il vienne de la barre, du Dock, du Centre de contrôle ou du Centre de notifications. C'est l'usage courant sur Mac pour montrer un menu.
+- **Comment** : pendant la copie (environ 20 ms), le menu devient visible aux captures. Son verre cesse de suivre l'écran pendant ce temps, sinon il se verrait lui-même, et reprend 150 ms après.
+- **Non vérifié en vrai** : mon environnement d'essai ne peut pas envoyer de message aux fenêtres de MacDock. En diagnostic, les menus sont déjà toujours visibles, ce qui ne prouve rien. À essayer de ton côté : ouvre le Centre de contrôle, puis ⊞⇧3.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

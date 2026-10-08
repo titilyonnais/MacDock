@@ -98,6 +98,8 @@ struct Session {
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
+    bool captureVisible = false;   // capture d'écran en cours : panneaux visibles aux captures
+    ULONGLONG thawAt = 0;          // fin du gel du verre après la capture
     UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
     MenuWindow::Side side = MenuWindow::Side::Above;   // ouverture du menu principal
     const MenuWindow::BarLink* bar = nullptr;           // barre de menus (titres voisins), sinon nullptr
@@ -458,6 +460,8 @@ void Session::onBackdrop() {
                                   },
                                   scRgb, white);
     if (!got) return;
+    // Pendant une capture d'écran (et juste après), l'image contient le menu lui-même : elle n'est pas appliquée.
+    if (captureVisible || GetTickCount64() < thawAt) return;
     screenWhite = white;
     for (auto& p : panels) {
         copyBackdrop(*p);
@@ -897,6 +901,16 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 } // namespace
+
+void MenuWindow::setCaptureVisible(bool on) {
+    Session* session = g_session;
+    if (!session || session->captureVisible == on) return;
+    session->captureVisible = on;
+    if (!on) session->thawAt = GetTickCount64() + 150;
+    if (diagnosticCapture()) return;   // déjà visibles aux captures
+    for (auto& p : session->panels)
+        if (p->hwnd) SetWindowDisplayAffinity(p->hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+}
 
 bool MenuWindow::snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h) {
     Session session;
