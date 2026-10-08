@@ -85,8 +85,9 @@ std::optional<InstalledMod> installedMod(const std::wstring& id) {
 ModStatus modStatus(bool windhawk, const std::optional<InstalledMod>& installed, const std::optional<std::wstring>& available) {
     if (!windhawk) return ModStatus::WindhawkMissing;
     if (!installed) return ModStatus::NotInstalled;
-    if (installed->disabled) return ModStatus::Disabled;
+    // Une version plus récente passe devant l'état désactivé : « Mettre à jour… » plutôt que « Réinstaller… ».
     if (available && compareVersions(installed->version, *available) < 0) return ModStatus::UpdateAvailable;
+    if (installed->disabled) return ModStatus::Disabled;
     return ModStatus::UpToDate;
 }
 

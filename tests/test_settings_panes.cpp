@@ -174,3 +174,18 @@ TEST_CASE(settings_search_folds_case_and_accents) {
     CHECK(find(corners, md::PaneId::Desktop)->rows.size() == 4);
     CHECK(md::searchPanes(L"loupe", fullEnv()).front().pane == md::PaneId::Dock);   // mot-clé de l'agrandissement
 }
+
+TEST_CASE(settings_sidebar_keeps_only_found_panes) {
+    // Sans recherche : toutes les sections, dans leurs quatre groupes.
+    const md::SidebarView all = md::sidebarView(md::searchPanes(L"", fullEnv()));
+    CHECK(all.panes.size() == md::paneList().size());
+    CHECK(all.groups == md::sidebarGroups());
+    // Recherche : seulement les sections trouvées, les groupes vides disparaissent.
+    std::vector<md::PaneMatch> found{{md::PaneId::Dock}, {md::PaneId::Keyboard}, {md::PaneId::Mods}};
+    const md::SidebarView some = md::sidebarView(found);
+    REQUIRE(some.panes.size() == 3);
+    CHECK(md::paneList()[std::size_t(some.panes[0])].id == md::PaneId::Dock);
+    CHECK(md::paneList()[std::size_t(some.panes[2])].id == md::PaneId::Mods);
+    CHECK((some.groups == std::vector<int>{1, 1, 1}));
+    CHECK(md::sidebarView({}).panes.empty());
+}

@@ -1,6 +1,7 @@
-// Fenêtre de l'app Réglages MacDock, façon Réglages Système de macOS 27 : barre latérale translucide (fond acrylique de
+// Fenêtre de l'app Réglages MacDock, façon Réglages Système de macOS 26 : barre latérale translucide (fond acrylique de
 // DWM), sections en groupes arrondis, contrôles dessinés en Direct2D sur une chaîne d'échange DirectComposition.
 // Chaque changement est écrit tout de suite (settings_doc::commit) : le Dock et la barre l'appliquent en direct.
+// Recherche dans la barre latérale, raccourcis saisis au clavier, boutons d'action (fil de fond), feuilles d'alerte.
 #pragma once
 #include <windows.h>
 #include <d2d1_1.h>
@@ -10,11 +11,13 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "../anim/spring.h"
+#include "../settings/actions.h"
 #include "../settings/panes.h"
 #include "../ui/ui_draw.h"
 #include "../ui/ui_layout.h"
@@ -27,7 +30,9 @@ public:
     static UINT paneMessage();   // « MacDockSettingsPane » : wParam = indice de la section (seconde ouverture)
 
     ~SettingsWindow();
-    bool create(HINSTANCE instance, const std::wstring& dataDir, PaneId pane);
+    // testMode (--data) : démarrage avec Windows dans un fichier d'essai ; les actions qui touchent au vrai système
+    // (quitter MacDock, installateurs, dossiers ouverts) sont seulement écrites au journal.
+    bool create(HINSTANCE instance, const std::wstring& dataDir, PaneId pane, bool testMode = false);
     int run();   // boucle de messages, avec la surveillance du dossier des réglages
 
 private:
@@ -38,11 +43,21 @@ private:
     struct Geom {
         D2D1_RECT_F row{}, control{};
         float trackLeft = 0, trackRight = 0, cy = 0;
+        std::vector<D2D1_RECT_F> buttons;   // ligne de boutons : un rectangle par bouton
     };
     struct OpenMenu {
         int row = -1;
         D2D1_RECT_F rect{};
         int hover = -1;
+    };
+    // Feuille d'alerte : modale, elle descend de la barre de titre ; `done` reçoit le bouton choisi.
+    struct OpenSheet {
+        ui::SheetSpec spec;
+        ui::SheetLayout layout;          // refaite à chaque image
+        std::function<void(int)> done;
+        Spring appear;
+        int pressed = -1;
+        int cancel = -1;                 // bouton d'Échap (-1 : aucun)
     };
 
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
@@ -89,6 +104,27 @@ private:
     void onMouseUp(float x, float y);
     bool onKey(WPARAM key);
 
+    // Recherche.
+    void setQuery(std::wstring query);
+    void refreshSidebar();               // sections visibles, leurs positions, lignes soulignées
+    // Boutons, feuilles, actions.
+    int buttonAt(int row, float x, float y) const;
+    void runAction(ButtonSpec button);
+    void runCommands(std::vector<ActionCommand> commands, bool refreshEnv);
+    void exportTo();
+    void importFrom();
+    std::optional<std::wstring> fileDialog(bool save);
+    void openSheet(ui::SheetSpec spec, int cancel, std::function<void(int)> done);
+    void closeSheet(int choice);
+    void showMessage(std::wstring title, std::wstring message);
+    // Enregistreur de raccourci.
+    void startRecording(int row);
+    void stopRecording();
+    void onRecordKey(UINT vk, UINT mods);
+    void commitShortcut(int row, const std::wstring& text);
+    static LRESULT CALLBACK recordHook(int code, WPARAM wp, LPARAM lp);
+    static SettingsWindow* recordTarget_;
+
     HINSTANCE instance_ = nullptr;
     HWND hwnd_ = nullptr;
     std::wstring dir_;
@@ -121,6 +157,21 @@ private:
     bool animating_ = false;
     HANDLE change_ = INVALID_HANDLE_VALUE;
     HICON icon_ = nullptr, smallIcon_ = nullptr;
+
+    bool testMode_ = false;
+    std::wstring exeDir_;
+    SettingsIo io_;                       // démarrage avec Windows (registre, ou fichier d'essai)
+    std::wstring query_;
+    bool searchFocused_ = false;
+    std::vector<PaneMatch> matches_;
+    std::vector<int> visible_;            // indices de paneList() dans la barre latérale
+    std::vector<int> highlight_;          // lignes trouvées par la recherche, dans la section affichée
+    std::optional<OpenSheet> sheet_;
+    int recording_ = -1;                  // ligne de raccourci en écoute
+    std::wstring recordNote_;             // « Windows garde ce raccourci »
+    HHOOK recordHook_ = nullptr;
+    int pressedButton_ = -1, focusButton_ = 0;
+    bool busy_ = false;                   // une action tourne (installateur…)
 
     Microsoft::WRL::ComPtr<ID3D11Device> d3d_;
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_;

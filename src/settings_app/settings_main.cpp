@@ -56,7 +56,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     int code = 1;
     {
         md::SettingsWindow window;
-        if (window.create(instance, dir, pane)) code = window.run();
+        if (window.create(instance, dir, pane, !dataDir.empty())) code = window.run();
         else md::log::error(L"Réglages : fenêtre impossible (%lu)", GetLastError());
     }
     CoUninitialize();

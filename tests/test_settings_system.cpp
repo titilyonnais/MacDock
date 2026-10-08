@@ -100,6 +100,10 @@ TEST_CASE(settings_mods_versions_and_status) {
     CHECK(md::modStatus(true, mod, L"1.2.0") == S::UpToDate);
     mod.disabled = true;
     CHECK(md::modStatus(true, mod, L"1.2.0") == S::Disabled);
+    // Désactivé dans Windhawk avec une version plus récente livrée : la mise à jour passe devant (essai réel de la nuit
+    // du 9 octobre : « Réinstaller… » était proposé à la place de « Mettre à jour… »).
+    mod.version = L"1.2.0";
+    CHECK(md::modStatus(true, mod, L"1.3.0") == S::UpdateAvailable);
     // La source est cherchée à côté de l'exécutable, puis dans le dépôt (build\Release → ..\..\windhawk).
     const std::wstring root = freshDir(L"mods");
     CreateDirectoryW((root + L"/build").c_str(), nullptr);

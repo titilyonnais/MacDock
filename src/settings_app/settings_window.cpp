@@ -1,16 +1,24 @@
 #include "settings_window.h"
 
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <shellscalingapi.h>
+#include <shobjidl.h>
 #include <wincodec.h>
 #include <windowsx.h>
 
 #include <algorithm>
 #include <cmath>
+#include <thread>
 
 #include "../anim/motion.h"
+#include "../config/config_store.h"
 #include "../core/diag.h"
 #include "../core/log.h"
+#include "../core/version.h"
+#include "../interact/hotkey.h"
+#include "../settings/backup.h"
+#include "../settings/mods.h"
 #include "../settings/pane_icons.h"
 
 namespace md {
@@ -19,7 +27,10 @@ using Microsoft::WRL::ComPtr;
 namespace mt = ui::metrics;
 
 namespace {
-constexpr UINT_PTR kAnimTimer = 1, kReloadTimer = 2, kCommitTimer = 3;
+constexpr UINT_PTR kAnimTimer = 1, kReloadTimer = 2, kCommitTimer = 3, kEnvTimer = 4;
+// kMsgRecordKey : touche lue par le crochet de l'enregistreur (wParam vk, lParam MOD_…) ; kMsgActionDone : fil d'une
+// action fini (wParam : relire l'environnement, lParam : réussie).
+constexpr UINT kMsgRecordKey = WM_APP + 10, kMsgActionDone = WM_APP + 11;
 constexpr ULONGLONG kCommitEveryMs = 120;            // curseur tiré : une écriture au plus toutes les 120 ms
 constexpr float kLightsX = 20, kLightsY = 20;        // premier centre des pastilles
 constexpr D2D1_RECT_F kSearch{10, 46, mt::sidebarWidth - 10, 46 + mt::searchHeight};
@@ -36,11 +47,40 @@ bool appsDark() {
 
 float rowHeight(const RowSpec& r) {
     if (r.kind == RowKind::Slider) return mt::rowHeightSlider;
+    if (r.kind == RowKind::Shortcut) return mt::rowHeightDetail;   // place pour un conflit ou la consigne d'écoute
     return r.detail.empty() ? mt::rowHeight : mt::rowHeightDetail;
 }
 
 bool inside(const D2D1_RECT_F& r, float x, float y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
+
+// Modificateurs tenus pendant l'écoute d'un raccourci : le crochet garde les touches pour lui, l'état asynchrone du
+// clavier ne les voit donc pas ; il les suit lui-même (gauche et droite).
+struct HeldMods {
+    bool ctrl[2]{}, alt[2]{}, shift[2]{}, win[2]{};
+    UINT mods() const {
+        return (ctrl[0] || ctrl[1] ? MOD_CONTROL : 0u) | (alt[0] || alt[1] ? MOD_ALT : 0u) | (shift[0] || shift[1] ? MOD_SHIFT : 0u) |
+               (win[0] || win[1] ? MOD_WIN : 0u);
+    }
+    bool track(DWORD vk, bool down) {   // vrai pour une touche de modification
+        switch (vk) {
+            case VK_LCONTROL: ctrl[0] = down; return true;
+            case VK_RCONTROL: ctrl[1] = down; return true;
+            case VK_LMENU: alt[0] = down; return true;
+            case VK_RMENU: alt[1] = down; return true;
+            case VK_LSHIFT: shift[0] = down; return true;
+            case VK_RSHIFT: shift[1] = down; return true;
+            case VK_LWIN: win[0] = down; return true;
+            case VK_RWIN: win[1] = down; return true;
+            default: return false;
+        }
+    }
+};
+HeldMods g_held;
+
+D2D1_RECT_F searchClear() { return D2D1::RectF(kSearch.right - 24, kSearch.top, kSearch.right, kSearch.bottom); }
 }  // namespace
+
+SettingsWindow* SettingsWindow::recordTarget_ = nullptr;
 
 UINT SettingsWindow::paneMessage() {
     static const UINT msg = RegisterWindowMessageW(L"MacDockSettingsPane");
@@ -53,17 +93,25 @@ SettingsWindow::~SettingsWindow() {
     if (smallIcon_) DestroyIcon(smallIcon_);
 }
 
-bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, PaneId pane) {
+bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, PaneId pane, bool testMode) {
     instance_ = instance;
     dir_ = dataDir;
     pane_ = pane;
+    testMode_ = testMode;
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    exeDir_ = exe;
+    exeDir_ = exeDir_.substr(0, exeDir_.find_last_of(L"\\/"));
+    // Démarrage avec Windows : la clé Run réelle ; en essai (--data), un fichier du dossier d'essai.
+    const std::wstring launcher = exeDir_ + L"\\MacDockLauncher.exe";
+    io_ = testMode_ ? fileStartupIo(dir_ + L"\\startup-test.json", launcher) : registryIo(launcher);
     dark_ = appsDark();
-    model_ = loadModel(dir_, &files_);
+    model_ = loadModel(dir_, &files_, &io_);
     updateProblem();
-    buildEnv();
-    sidebarTops_ = ui::sidebarRowTops(sidebarGroups());
     DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwrite_.GetAddressOf()));
     font_ = ui::interfaceFont(dwrite_.Get());
+    buildEnv();
+    refreshSidebar();
     icon_ = makeSettingsIcon(GetSystemMetrics(SM_CXICON) * 2);
     smallIcon_ = makeSettingsIcon(GetSystemMetrics(SM_CXSMICON) * 2);
 
@@ -216,6 +264,10 @@ void SettingsWindow::render() {
             const RowSpec& s = spec(menu_->row);
             ui::drawMenu(p, menu_->rect, s.choices, int(std::lround(valueOf(menu_->row))), menu_->hover);
         }
+        if (sheet_) {
+            sheet_->layout = ui::layoutSheet(p, w, mt::titleBar, sheet_->spec);
+            ui::drawSheet(p, sheet_->layout, sheet_->spec, w, h, -1, sheet_->pressed, float(sheet_->appear.value()));
+        }
     }
     const HRESULT hr = dc_->EndDraw();
     const HRESULT shown = swap_->Present(1, 0);
@@ -244,14 +296,30 @@ void SettingsWindow::drawSidebar(ui::Painter& p, float h) {
     p.rt()->FillRectangle(D2D1::RectF(0, 0, mt::sidebarWidth, h), p.brush(pal.sidebarTint));
     p.rt()->DrawLine(D2D1::Point2F(mt::sidebarWidth - 0.5f, 0), D2D1::Point2F(mt::sidebarWidth - 0.5f, h), p.brush(pal.separator), 1);
     ui::drawWindowLights(p, D2D1::Point2F(kLightsX, kLightsY), active_, lightsHover_, lightsPressed_, 2);
-    ui::drawSearchField(p, kSearch, L"", false);
+    ui::drawSearchField(p, kSearch, query_, searchFocused_);
+    if (searchFocused_) {   // curseur d'insertion après le texte
+        const float x = kSearch.left + 27 + (query_.empty() ? 0.f : p.textWidth(query_, mt::fontBody)) + 1;
+        p.rt()->DrawLine(D2D1::Point2F(x, kSearch.top + 7), D2D1::Point2F(x, kSearch.bottom - 7), p.brush(pal.accent), 1.2f);
+    }
+    if (!query_.empty()) {   // ⓧ : efface la recherche
+        const D2D1_RECT_F c = searchClear();
+        const D2D1_POINT_2F o{(c.left + c.right) / 2, (c.top + c.bottom) / 2};
+        p.fillCircle(o, 7, pal.tertiaryText);
+        ID2D1SolidColorBrush* ink = p.brush(pal.window);
+        p.rt()->DrawLine(D2D1::Point2F(o.x - 2.6f, o.y - 2.6f), D2D1::Point2F(o.x + 2.6f, o.y + 2.6f), ink, 1.4f);
+        p.rt()->DrawLine(D2D1::Point2F(o.x - 2.6f, o.y + 2.6f), D2D1::Point2F(o.x + 2.6f, o.y - 2.6f), ink, 1.4f);
+    }
     const auto& panes = paneList();
-    for (std::size_t i = 0; i < panes.size() && i < sidebarTops_.size(); ++i) {
-        const float top = sidebarTops_[i];
+    if (visible_.empty())
+        p.text(L"Aucun résultat", D2D1::RectF(mt::sidebarInset, mt::sidebarTop, mt::sidebarWidth - mt::sidebarInset, mt::sidebarTop + 30),
+               mt::fontBody, pal.secondaryText, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_CENTER);
+    for (std::size_t k = 0; k < visible_.size() && k < sidebarTops_.size(); ++k) {
+        const std::size_t i = std::size_t(visible_[k]);
+        const float top = sidebarTops_[k];
         const D2D1_RECT_F row{mt::sidebarInset, top, mt::sidebarWidth - mt::sidebarInset, top + mt::sidebarRow};
         const bool selected = panes[i].id == pane_;
         if (selected) p.fillRound(row, 6, active_ ? pal.accent : pal.sidebarSelection);
-        else if (int(i) == sidebarHover_) p.fillRound(row, 6, ui::Rgba{pal.sidebarSelection.r, pal.sidebarSelection.g,
+        else if (int(k) == sidebarHover_) p.fillRound(row, 6, ui::Rgba{pal.sidebarSelection.r, pal.sidebarSelection.g,
                                                                          pal.sidebarSelection.b, pal.sidebarSelection.a * 0.5f});
         drawPaneTile(p, D2D1::RectF(row.left + 8, top + 4, row.left + 8 + mt::tile, top + 4 + mt::tile), panes[i].tile, panes[i].icon);
         p.text(panes[i].title, D2D1::RectF(row.left + 36, top, row.right - 6, top + mt::sidebarRow), mt::fontBody,
@@ -293,6 +361,29 @@ void SettingsWindow::computeGeometry(ui::Painter& p, float w) {
                 g.trackLeft = g.trackRight - mt::sliderWidth;
                 g.control = D2D1::RectF(g.trackLeft - mt::knob / 2, g.cy - mt::knob / 2, g.trackRight + mt::knob / 2, g.cy + mt::knob / 2);
                 break;
+            case RowKind::Value: {
+                const std::wstring t = s.text ? s.text(model_) : std::wstring();
+                const float tw = std::min(std::ceil(p.textWidth(t, mt::fontBody)) + 2, (right - x0) * 0.62f);
+                g.control = D2D1::RectF(right - tw, g.cy - 10, right, g.cy + 10);
+                break;
+            }
+            case RowKind::Buttons: {
+                float x = right;   // boutons alignés à droite, dans l'ordre
+                g.buttons.assign(s.buttons.size(), D2D1_RECT_F{});
+                for (int b = int(s.buttons.size()) - 1; b >= 0; --b) {
+                    const float bw = ui::buttonWidth(p, s.buttons[std::size_t(b)].label);
+                    g.buttons[std::size_t(b)] = D2D1::RectF(x - bw, g.cy - mt::buttonHeight / 2, x, g.cy + mt::buttonHeight / 2);
+                    x -= bw + mt::buttonGap;
+                }
+                const std::wstring t = s.text ? s.text(model_) : std::wstring();   // état en gris, avant les boutons
+                const float tw = t.empty() ? 0.f : std::ceil(p.textWidth(t, mt::fontBody)) + 2 + (s.buttons.empty() ? 0.f : 10.f);
+                const float end = s.buttons.empty() ? right : x + mt::buttonGap;
+                g.control = D2D1::RectF(end - tw, g.cy - mt::buttonHeight / 2, right, g.cy + mt::buttonHeight / 2);
+                break;
+            }
+            case RowKind::Shortcut:
+                g.control = D2D1::RectF(right - mt::shortcutWidth, g.cy - mt::shortcutHeight / 2, right, g.cy + mt::shortcutHeight / 2);
+                break;
             case RowKind::Info: break;
         }
     }
@@ -302,15 +393,33 @@ void SettingsWindow::drawRow(ui::Painter& p, int i) {
     const ui::Palette& pal = p.pal();
     const Geom& g = geoms_[std::size_t(i)];
     const RowSpec& s = spec(i);
+    if (std::find(highlight_.begin(), highlight_.end(), i) != highlight_.end())   // trouvée par la recherche
+        p.fillRound(D2D1::RectF(g.row.left + 4, g.row.top + 3, g.row.right - 4, g.row.bottom - 3), 8,
+                    ui::Rgba{pal.accent.r, pal.accent.g, pal.accent.b, 0.13f});
     const bool on = enabled(i);
     p.opacity = on ? 1.f : 0.4f;
     const float labelRight = (s.kind == RowKind::Info ? g.row.right : g.control.left) - mt::rowPadding;
     const float left = g.row.left + mt::rowPadding;
+    // Sous-titre : celui de la ligne ; pour un raccourci, la consigne d'écoute ou un conflit passent devant.
+    std::wstring detail = s.detail;
+    ui::Rgba detailInk = pal.secondaryText;
+    if (s.kind == RowKind::Shortcut) {
+        const std::wstring other = shortcutConflict(model_, s.label);
+        if (recording_ == i && !recordNote_.empty()) {
+            detail = recordNote_;
+            detailInk = pal.danger;
+        } else if (recording_ == i) {
+            detail = L"Échap annule, Retour arrière efface";
+        } else if (!other.empty()) {
+            detail = L"Déjà utilisé par " + other;
+            detailInk = pal.danger;
+        }
+    }
     if (s.kind == RowKind::Slider) {
         p.text(s.label, D2D1::RectF(left, g.cy - 10, g.trackLeft - 16, g.cy + 10), mt::fontBody, pal.text);
-    } else if (!s.detail.empty()) {
+    } else if (!detail.empty()) {
         p.text(s.label, D2D1::RectF(left, g.row.top + 6, labelRight, g.row.top + 25), mt::fontBody, pal.text);
-        p.text(s.detail, D2D1::RectF(left, g.row.top + 24, labelRight, g.row.top + 41), mt::fontDetail, pal.secondaryText);
+        p.text(detail, D2D1::RectF(left, g.row.top + 24, labelRight, g.row.top + 41), mt::fontDetail, detailInk);
     } else {
         p.text(s.label, D2D1::RectF(left, g.cy - 10, labelRight, g.cy + 10), mt::fontBody, pal.text);
     }
@@ -332,11 +441,31 @@ void SettingsWindow::drawRow(ui::Painter& p, int i) {
             break;
         }
         case RowKind::Segmented: ui::drawSegmented(p, g.control, s.choices, int(std::lround(v))); break;
+        case RowKind::Value: ui::drawValue(p, g.control, s.text ? s.text(model_) : std::wstring()); break;
+        case RowKind::Buttons: {
+            const std::wstring t = s.text ? s.text(model_) : std::wstring();
+            const float end = g.buttons.empty() ? g.control.right : g.buttons.front().left - 10;
+            if (!t.empty()) ui::drawValue(p, D2D1::RectF(g.control.left, g.cy - 10, end, g.cy + 10), t);
+            for (std::size_t b = 0; b < g.buttons.size(); ++b)
+                ui::drawButton(p, g.buttons[b], s.buttons[b].label, false, pressed && pressedButton_ == int(b));
+            break;
+        }
+        case RowKind::Shortcut: {
+            std::wstring shown;   // symboles (« ⌃⌥Espace ») ; vide : « Aucun »
+            if (s.text)
+                if (const auto hk = parseHotkey(s.text(model_), true)) shown = hotkeyLabel(*hk);
+            ui::drawShortcutField(p, g.control, shown, recording_ == i, !shortcutConflict(model_, s.label).empty());
+            break;
+        }
         case RowKind::Info: break;
     }
     p.opacity = 1;
-    if (focus_ == i && s.kind != RowKind::Info)
-        ui::drawFocusRing(p, g.control, s.kind == RowKind::Switch ? mt::switchHeight / 2 : s.kind == RowKind::Slider ? mt::knob / 2 : 6);
+    if (focus_ == i && focusable(i)) {
+        if (s.kind == RowKind::Buttons && !g.buttons.empty())
+            ui::drawFocusRing(p, g.buttons[std::size_t(std::clamp(focusButton_, 0, int(g.buttons.size()) - 1))], mt::buttonRadius);
+        else
+            ui::drawFocusRing(p, g.control, s.kind == RowKind::Switch ? mt::switchHeight / 2 : s.kind == RowKind::Slider ? mt::knob / 2 : 6);
+    }
 }
 
 void SettingsWindow::drawContent(ui::Painter& p, float w, float h) {
@@ -422,6 +551,21 @@ void SettingsWindow::buildEnv() {
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&ctx));
+    // Polices proposées : celles d'une courte liste qui sont installées.
+    ComPtr<IDWriteFontCollection> fonts;
+    if (dwrite_) dwrite_->GetSystemFontCollection(&fonts, FALSE);
+    for (const wchar_t* f : {L"SF Pro", L"SF Pro Text", L"SF Pro Display", L"SF Pro Rounded", L"Inter", L"Segoe UI Variable",
+                             L"Segoe UI", L"Helvetica Neue", L"Helvetica", L"Avenir Next", L"Arial"}) {
+        UINT32 index = 0;
+        BOOL exists = FALSE;
+        if (fonts && SUCCEEDED(fonts->FindFamilyName(f, &index, &exists)) && exists) env_.fonts.push_back(f);
+    }
+    env_.windhawk = windhawkInstalled();
+    for (const ModInfo& mod : macdockMods())
+        env_.mods.push_back({mod, installedMod(mod.id), modSourceVersion(modSourcePath(exeDir_, mod.id))});
+    env_.running = FindWindowW(L"MacDockWindow", nullptr) != nullptr;
+    env_.version = kMacDockVersion;
+    env_.dataDir = dir_;
 }
 
 void SettingsWindow::selectPane(PaneId pane) {
@@ -431,8 +575,12 @@ void SettingsWindow::selectPane(PaneId pane) {
     focus_ = -1;
     hoverRow_ = -1;
     menu_.reset();
+    stopRecording();
+    pressedButton_ = -1;
+    focusButton_ = 0;
     rebuildRows();
-    geoms_.clear();   // refaites à la prochaine image : aucun indice de l'ancienne section
+    refreshSidebar();   // lignes à souligner dans la nouvelle section
+    geoms_.clear();     // refaites à la prochaine image : aucun indice de l'ancienne section
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -472,7 +620,7 @@ void SettingsWindow::reportWrite(bool ok) {
         updateProblem();
         return;
     }
-    model_ = loadModel(dir_, &files_);   // l'écran montre ce qui est vraiment enregistré
+    model_ = loadModel(dir_, &files_, &io_);   // l'écran montre ce qui est vraiment enregistré
     updateProblem();
     if (problem_.empty()) problem_ = L"Écriture impossible dans le dossier des réglages";
     for (std::size_t i = 0; i < rows_.size(); ++i)
@@ -493,8 +641,9 @@ void SettingsWindow::endPress() {
     if (dragging && row >= 0 && row < int(rows_.size())) {   // dernière valeur du curseur, écrite une fois
         const RowSpec& s = spec(row);
         const double v = valueOf(row);
-        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_));
+        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_, &io_));
     }
+    pressedButton_ = -1;
     if (hwnd_ && GetCapture() == hwnd_) ReleaseCapture();
     if (reloadPending_) {
         reloadPending_ = false;
@@ -503,7 +652,7 @@ void SettingsWindow::endPress() {
 }
 
 void SettingsWindow::reloadModel() {
-    model_ = loadModel(dir_, &files_);
+    model_ = loadModel(dir_, &files_, &io_);
     updateProblem();
     for (std::size_t i = 0; i < rows_.size(); ++i)
         if (spec(int(i)).kind == RowKind::Switch) springs_[i].setTarget(valueOf(int(i)));
@@ -526,7 +675,11 @@ bool SettingsWindow::enabled(int index) const {
     return !s.enabled || s.enabled(model_);
 }
 
-bool SettingsWindow::focusable(int index) const { return spec(index).kind != RowKind::Info && enabled(index); }
+bool SettingsWindow::focusable(int index) const {
+    const RowSpec& s = spec(index);
+    if (s.kind == RowKind::Info || s.kind == RowKind::Value || (s.kind == RowKind::Buttons && s.buttons.empty())) return false;
+    return enabled(index);
+}
 
 void SettingsWindow::setValue(int index, double value, bool commitNow) {
     const RowSpec& s = spec(index);
@@ -538,7 +691,7 @@ void SettingsWindow::setValue(int index, double value, bool commitNow) {
     }
     if (commitNow) {
         pending_.reset();
-        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, value); }, &model_));
+        reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, value); }, &model_, &io_));
         lastCommit_ = GetTickCount64();
     } else {
         pending_ = value;
@@ -557,7 +710,7 @@ void SettingsWindow::commitPending() {
     const double v = *pending_;
     const RowSpec& s = spec(pressedRow_);
     pending_.reset();
-    reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_));
+    reportWrite(commit(dir_, [&](SettingsModel& m) { s.set(m, v); }, &model_, &io_));
     lastCommit_ = GetTickCount64();
 }
 
@@ -633,8 +786,13 @@ int SettingsWindow::controlAt(float x, float y) const {
     if (!paneInfo(pane_).ready || y < mt::titleBar) return -1;
     for (std::size_t i = 0; i < geoms_.size() && i < rows_.size(); ++i) {
         const Geom& g = geoms_[i];
-        if (spec(int(i)).kind == RowKind::Info) continue;
+        const RowKind kind = spec(int(i)).kind;
+        if (kind == RowKind::Info || kind == RowKind::Value) continue;
         D2D1_RECT_F hit = g.control;
+        if (kind == RowKind::Buttons) {   // les boutons seulement, pas le texte d'état
+            if (g.buttons.empty()) continue;
+            hit = D2D1::RectF(g.buttons.front().left, g.buttons.front().top, g.buttons.back().right, g.buttons.back().bottom);
+        }
         hit.left -= 4;
         hit.right += 4;
         hit.top = std::min(hit.top, g.cy - 14);
@@ -661,6 +819,12 @@ void SettingsWindow::onMouseDown(float x, float y) {
     if (diagnosticCapture())
         log::info(L"[diag] réglages : clic %.0f,%.0f pt (échelle %.2f) → barre %d, contrôle %d", x, y, scale_, sidebarAt(x, y), controlAt(x, y));
     SetCapture(hwnd_);
+    if (sheet_) {   // feuille ouverte : seuls ses boutons répondent
+        sheet_->pressed = ui::sheetButtonAt(sheet_->layout, x, y);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+    }
+    if (recording_ >= 0) stopRecording();   // un clic arrête l'écoute (sur un champ de raccourci, elle reprend plus bas)
     if (menu_) {
         if (inside(menu_->rect, x, y)) {
             menu_->hover = ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()));
@@ -677,8 +841,16 @@ void SettingsWindow::onMouseDown(float x, float y) {
         InvalidateRect(hwnd_, nullptr, FALSE);
         return;
     }
-    if (const int s = sidebarAt(x, y); s >= 0) {
-        selectPane(paneList()[std::size_t(s)].id);
+    const bool wasSearching = searchFocused_;
+    searchFocused_ = inside(kSearch, x, y);
+    if (searchFocused_) {
+        if (!query_.empty() && inside(searchClear(), x, y)) setQuery(L"");
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+    }
+    if (wasSearching) InvalidateRect(hwnd_, nullptr, FALSE);
+    if (const int s = sidebarAt(x, y); s >= 0 && s < int(visible_.size())) {
+        selectPane(paneList()[std::size_t(visible_[std::size_t(s)])].id);
         return;
     }
     const int i = controlAt(x, y);
@@ -703,6 +875,14 @@ void SettingsWindow::onMouseDown(float x, float y) {
             break;
         }
         case RowKind::Choice: openMenu(i); break;
+        case RowKind::Buttons:
+            pressedButton_ = buttonAt(i, x, y);
+            if (pressedButton_ < 0) pressedRow_ = -1;
+            break;
+        case RowKind::Shortcut:
+            pressedRow_ = -1;
+            startRecording(i);
+            break;
         default: break;
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -747,6 +927,15 @@ void SettingsWindow::onMouseUp(float x, float y) {
     // L'état est lu avant ReleaseCapture : WM_CAPTURECHANGED (endPress) le remettrait à zéro.
     const int pressed = pressedRow_;
     const int light = lightsPressed_;
+    const int button = pressedButton_;
+    if (sheet_) {
+        const int b = sheet_->pressed;
+        sheet_->pressed = -1;
+        ReleaseCapture();
+        if (b >= 0 && ui::sheetButtonAt(sheet_->layout, x, y) == b) closeSheet(b);
+        else InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+    }
     if (draggingSlider_) {   // curseur : la dernière valeur, écrite une fois
         endPress();
         InvalidateRect(hwnd_, nullptr, FALSE);
@@ -773,6 +962,10 @@ void SettingsWindow::onMouseUp(float x, float y) {
     }
     if (pressed >= 0 && pressed < int(rows_.size()) && spec(pressed).kind == RowKind::Switch && controlAt(x, y) == pressed)
         setValue(pressed, valueOf(pressed) >= 0.5 ? 0 : 1);
+    pressedButton_ = -1;
+    if (pressed >= 0 && pressed < int(rows_.size()) && spec(pressed).kind == RowKind::Buttons && button >= 0 &&
+        buttonAt(pressed, x, y) == button)
+        runAction(spec(pressed).buttons[std::size_t(button)]);   // copié : l'action peut refaire les lignes
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -781,6 +974,44 @@ bool SettingsWindow::onKey(WPARAM key) {
     if (ctrl && key == 'W') {
         PostMessageW(hwnd_, WM_CLOSE, 0, 0);
         return true;
+    }
+    if (sheet_) {   // feuille modale : Échap, Entrée ; le reste est ignoré
+        if (key == VK_ESCAPE && sheet_->cancel >= 0) closeSheet(sheet_->cancel);
+        else if (key == VK_RETURN || key == VK_SPACE) closeSheet(sheet_->spec.primary);
+        return true;
+    }
+    if (recording_ >= 0) {   // sans crochet (message posté par un essai) : la touche arrive ici
+        UINT mods = 0;
+        if (GetKeyState(VK_CONTROL) < 0) mods |= MOD_CONTROL;
+        if (GetKeyState(VK_MENU) < 0) mods |= MOD_ALT;
+        if (GetKeyState(VK_SHIFT) < 0) mods |= MOD_SHIFT;
+        if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) mods |= MOD_WIN;
+        onRecordKey(UINT(key), mods);
+        return true;
+    }
+    if (ctrl && key == 'F') {
+        searchFocused_ = true;
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return true;
+    }
+    if (searchFocused_) {
+        switch (key) {
+            case VK_ESCAPE:
+                if (!query_.empty()) setQuery(L"");
+                else searchFocused_ = false;
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return true;
+            case VK_RETURN:   // la première section trouvée ; la recherche reste affichée
+                if (!visible_.empty()) {
+                    searchFocused_ = false;
+                    selectPane(paneList()[std::size_t(visible_.front())].id);
+                }
+                return true;
+            case VK_TAB: searchFocused_ = false; break;
+            case VK_UP:
+            case VK_DOWN: break;   // parcourent les sections trouvées, comme sans recherche
+            default: return false;   // les caractères arrivent par WM_CHAR
+        }
     }
     if (menu_) {
         const int n = int(spec(menu_->row).choices.size());
@@ -799,6 +1030,7 @@ bool SettingsWindow::onKey(WPARAM key) {
         std::vector<bool> f(rows_.size());
         for (std::size_t i = 0; i < rows_.size(); ++i) f[i] = focusable(int(i));
         focus_ = ui::nextFocus(focus_, f, shift);
+        focusButton_ = 0;
         ensureVisible(focus_);
         InvalidateRect(hwnd_, nullptr, FALSE);
         return true;
@@ -808,13 +1040,14 @@ bool SettingsWindow::onKey(WPARAM key) {
         InvalidateRect(hwnd_, nullptr, FALSE);
         return true;
     }
-    if (focus_ < 0) {   // sans contrôle choisi, les flèches parcourent les sections
+    if (focus_ < 0 || searchFocused_) {   // sans contrôle choisi, les flèches parcourent les sections visibles
         const auto& panes = paneList();
-        int at = 0;
-        for (std::size_t i = 0; i < panes.size(); ++i)
-            if (panes[i].id == pane_) at = int(i);
-        if (key == VK_UP && at > 0) selectPane(panes[std::size_t(at - 1)].id);
-        else if (key == VK_DOWN && at + 1 < int(panes.size())) selectPane(panes[std::size_t(at + 1)].id);
+        int at = -1;
+        for (std::size_t k = 0; k < visible_.size(); ++k)
+            if (panes[std::size_t(visible_[k])].id == pane_) at = int(k);
+        const int n = int(visible_.size());
+        if (key == VK_UP && n && at != 0) selectPane(panes[std::size_t(visible_[std::size_t(at < 0 ? 0 : at - 1)])].id);
+        else if (key == VK_DOWN && n && at + 1 < n) selectPane(panes[std::size_t(visible_[std::size_t(at + 1)])].id);
         else return false;
         return true;
     }
@@ -843,6 +1076,20 @@ bool SettingsWindow::onKey(WPARAM key) {
             else return false;
             return true;
         }
+        case RowKind::Buttons: {
+            const int n = int(s.buttons.size());
+            if (key == VK_LEFT && focusButton_ > 0) --focusButton_;
+            else if (key == VK_RIGHT && focusButton_ + 1 < n) ++focusButton_;
+            else if ((key == VK_SPACE || key == VK_RETURN) && n) runAction(s.buttons[std::size_t(std::clamp(focusButton_, 0, n - 1))]);
+            else return false;
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return true;
+        }
+        case RowKind::Shortcut:
+            if (key == VK_SPACE || key == VK_RETURN) startRecording(focus_);
+            else return false;
+            return true;
+        case RowKind::Value:
         case RowKind::Info: return false;
     }
     return false;
@@ -861,6 +1108,23 @@ LRESULT CALLBACK SettingsWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == kMsgRecordKey) {
+        onRecordKey(UINT(wp), UINT(lp));
+        return 0;
+    }
+    if (msg == kMsgActionDone) {
+        busy_ = false;
+        if (!lp) showMessage(L"L'action n'a pas abouti", L"Windows ne l'a pas lancée, ou l'autorisation administrateur a été refusée.");
+        if (wp) {   // MacDock lancé, arrêté, mod installé… : état relu, et encore un peu plus tard (démarrage du Dock)
+            buildEnv();
+            rebuildRows();
+            refreshSidebar();
+            geoms_.clear();
+            SetTimer(hwnd_, kEnvTimer, 1500, nullptr);
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return 0;
+    }
     if (msg == paneMessage()) {   // seconde ouverture : la section demandée (sinon celle affichée), au premier plan
         if (wp < paneList().size()) selectPane(paneList()[wp].id);
         if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
@@ -920,6 +1184,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (!active_) {
                 endPress();
                 menu_.reset();
+                stopRecording();   // le clavier n'est plus à nous
             }
             InvalidateRect(hwnd_, nullptr, FALSE);
             break;
@@ -975,6 +1240,17 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_KEYDOWN:
             if (onKey(wp)) return 0;
             break;
+        case WM_CHAR:
+            if (searchFocused_ && !sheet_) {
+                const wchar_t c = wchar_t(wp);
+                if (c == 8) {
+                    if (!query_.empty()) setQuery(query_.substr(0, query_.size() - 1));
+                } else if (c >= 32 && c != 127) {
+                    setQuery(query_ + c);
+                }
+                return 0;
+            }
+            break;
         case WM_TIMER:
             if (wp == kAnimTimer) {
                 const ULONGLONG now = GetTickCount64();
@@ -982,6 +1258,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 lastFrame_ = now;
                 bool moving = false;
                 for (auto& s : springs_) moving = s.step(dt) || moving;
+                if (sheet_) moving = sheet_->appear.step(dt) || moving;
                 if (scrollbarAlpha_ > 0 && now - scrollbarShownAt_ > 800) {   // s'efface après 0,8 s
                     scrollbarAlpha_ = std::max(0.0, scrollbarAlpha_ - dt / 0.25);
                     moving = true;
@@ -998,13 +1275,289 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 else reloadModel();
             } else if (wp == kCommitTimer) {
                 commitPending();
+            } else if (wp == kEnvTimer) {
+                KillTimer(hwnd_, kEnvTimer);
+                if (pressedRow_ < 0 && !draggingSlider_) {
+                    buildEnv();
+                    rebuildRows();
+                    refreshSidebar();
+                    geoms_.clear();
+                    InvalidateRect(hwnd_, nullptr, FALSE);
+                }
             }
             return 0;
         case WM_CLOSE: DestroyWindow(hwnd_); return 0;
-        case WM_DESTROY: PostQuitMessage(0); return 0;
+        case WM_DESTROY:
+            stopRecording();
+            PostQuitMessage(0);
+            return 0;
         default: break;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
+}
+
+// ---- Recherche ----
+
+void SettingsWindow::setQuery(std::wstring query) {
+    query_ = std::move(query);
+    refreshSidebar();
+}
+
+void SettingsWindow::refreshSidebar() {
+    matches_ = searchPanes(query_, env_);
+    const SidebarView view = sidebarView(matches_);
+    visible_ = view.panes;
+    sidebarTops_ = ui::sidebarRowTops(view.groups);
+    highlight_.clear();
+    if (!query_.empty())
+        for (const PaneMatch& m : matches_)
+            if (m.pane == pane_) highlight_ = m.rows;
+    sidebarHover_ = -1;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// ---- Boutons, actions et feuilles ----
+
+int SettingsWindow::buttonAt(int row, float x, float y) const {
+    if (row < 0 || row >= int(geoms_.size())) return -1;
+    const auto& buttons = geoms_[std::size_t(row)].buttons;
+    for (std::size_t b = 0; b < buttons.size(); ++b)
+        if (inside(buttons[b], x, y)) return int(b);
+    return -1;
+}
+
+void SettingsWindow::runAction(ButtonSpec button) {
+    if (busy_) return;   // un installateur ou un redémarrage tourne déjà
+    ButtonContext ctx{exeDir_, dir_, button.arg};
+    std::wstring modTitle = button.arg;
+    for (const ModInfo& m : macdockMods())
+        if (m.id == button.arg) modTitle = m.title;
+    switch (button.action) {
+        case PaneAction::Export: exportTo(); return;
+        case PaneAction::Import: importFrom(); return;
+        case PaneAction::Reset:
+            openSheet({L"Rétablir les réglages par défaut ?",
+                       L"Les préférences du Dock et de la barre des menus reviennent à leur valeur d'origine. Les apps épinglées restent "
+                       L"dans le Dock.",
+                       {L"Annuler", L"Rétablir"}, 1},
+                      0, [this](int choice) {
+                          if (choice != 1) return;
+                          if (resetSettings(dir_)) reloadModel();
+                          else showMessage(L"Réglages non rétablis", L"Écriture impossible dans le dossier des réglages.");
+                      });
+            return;
+        case PaneAction::InstallMod:
+            openSheet({L"Installer « " + modTitle + L" » ?",
+                       L"Windows va demander l'autorisation administrateur. Pour prendre la police, l'Explorateur redémarre : ses "
+                       L"fenêtres se ferment et le bureau se redessine.",
+                       {L"Installer et redémarrer l'Explorateur", L"Installer sans redémarrer", L"Annuler"}, 0},
+                      2, [this, ctx](int choice) mutable {
+                          if (choice != 0 && choice != 1) return;
+                          ctx.restartExplorer = choice == 0;
+                          runCommands(actionCommands(PaneAction::InstallMod, ctx), true);
+                      });
+            return;
+        case PaneAction::UninstallMod:
+            openSheet({L"Retirer « " + modTitle + L" » ?",
+                       L"Windows va demander l'autorisation administrateur. Les apps reprennent leur police à leur prochain lancement.",
+                       {L"Annuler", L"Retirer"}, 1},
+                      0, [this, ctx](int choice) {
+                          if (choice == 1) runCommands(actionCommands(PaneAction::UninstallMod, ctx), true);
+                      });
+            return;
+        default: break;
+    }
+    const bool refresh = button.action == PaneAction::Launch || button.action == PaneAction::Quit || button.action == PaneAction::Restart;
+    runCommands(actionCommands(button.action, ctx), refresh);
+}
+
+void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refreshEnv) {
+    if (commands.empty()) return;
+    if (testMode_) {   // essai : rien ne touche au vrai système
+        for (const auto& c : commands) log::info(L"[essai] action non lancée : %s %s (%s)", c.file.c_str(), c.params.c_str(), c.verb.c_str());
+        PostMessageW(hwnd_, kMsgActionDone, refreshEnv ? 1 : 0, 1);
+        return;
+    }
+    busy_ = true;
+    const HWND hwnd = hwnd_;
+    std::thread([commands = std::move(commands), refreshEnv, hwnd] {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        bool ok = true;
+        for (const auto& c : commands) {
+            SHELLEXECUTEINFOW sei{sizeof sei};
+            sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
+            sei.hwnd = hwnd;
+            sei.lpVerb = c.verb.c_str();
+            sei.lpFile = c.file.c_str();
+            sei.lpParameters = c.params.empty() ? nullptr : c.params.c_str();
+            sei.nShow = c.file == L"powershell.exe" ? SW_SHOWNORMAL : SW_SHOWDEFAULT;
+            if (!ShellExecuteExW(&sei)) {   // autorisation refusée, fichier introuvable : la suite n'a plus de sens
+                log::warn(L"Réglages : %s %s refusé (%lu)", c.file.c_str(), c.params.c_str(), GetLastError());
+                ok = false;
+                break;
+            }
+            if (sei.hProcess) {
+                if (c.wait) WaitForSingleObject(sei.hProcess, 180000);   // l'installateur compile : jusqu'à 3 min
+                CloseHandle(sei.hProcess);
+            }
+        }
+        CoUninitialize();
+        PostMessageW(hwnd, kMsgActionDone, refreshEnv ? 1 : 0, ok ? 1 : 0);
+    }).detach();
+}
+
+std::optional<std::wstring> SettingsWindow::fileDialog(bool save) {
+    if (testMode_) {   // essai : MACDOCK_SETTINGS_FILE remplace le dialogue
+        wchar_t f[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"MACDOCK_SETTINGS_FILE", f, MAX_PATH)) return std::wstring(f);
+    }
+    ComPtr<IFileDialog> dialog;
+    if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&dialog))))
+        return std::nullopt;
+    const COMDLG_FILTERSPEC types[] = {{L"Sauvegarde de MacDock (*.json)", L"*.json"}};
+    dialog->SetFileTypes(1, types);
+    dialog->SetDefaultExtension(L"json");
+    if (save) dialog->SetFileName(L"Réglages MacDock.json");
+    dialog->SetTitle(save ? L"Exporter les réglages" : L"Importer des réglages");
+    if (FAILED(dialog->Show(hwnd_))) return std::nullopt;   // annulé
+    ComPtr<IShellItem> item;
+    PWSTR path = nullptr;
+    if (FAILED(dialog->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return std::nullopt;
+    std::wstring out = path;
+    CoTaskMemFree(path);
+    return out;
+}
+
+void SettingsWindow::exportTo() {
+    const auto path = fileDialog(true);
+    if (!path) return;
+    if (!saveJsonFileAtomic(*path, exportSettings(dir_)))
+        showMessage(L"Exportation impossible", L"Le fichier n'a pas pu être écrit à cet endroit.");
+    else
+        log::info(L"Réglages exportés : %s", path->c_str());
+}
+
+void SettingsWindow::importFrom() {
+    const auto path = fileDialog(false);
+    if (!path) return;
+    const LoadResult file = loadJsonFile(*path);
+    if (file.unreadable || file.wasInvalid) {
+        showMessage(L"Importation impossible", L"Ce fichier ne peut pas être lu.");
+        return;
+    }
+    switch (importSettings(dir_, file.value)) {
+        case ImportResult::Ok:
+            log::info(L"Réglages importés : %s", path->c_str());
+            reloadModel();
+            break;
+        case ImportResult::NotABackup:
+            showMessage(L"Importation impossible", L"Ce fichier n'est pas une sauvegarde des réglages de MacDock.");
+            break;
+        case ImportResult::Invalid:
+            showMessage(L"Importation impossible", L"La sauvegarde est abîmée : rien n'a été changé.");
+            break;
+        case ImportResult::WriteFailed:
+            showMessage(L"Importation impossible", L"Écriture impossible dans le dossier des réglages.");
+            break;
+    }
+}
+
+void SettingsWindow::openSheet(ui::SheetSpec spec, int cancel, std::function<void(int)> done) {
+    endPress();
+    menu_.reset();
+    stopRecording();
+    searchFocused_ = false;
+    OpenSheet sh;
+    sh.spec = std::move(spec);
+    sh.done = std::move(done);
+    sh.cancel = cancel;
+    const SpringParams sp = springFromResponse(0.32, 0.9);
+    sh.appear.setParams(sp.stiffness, sp.damping);
+    sh.appear.snap(0);
+    sh.appear.setTarget(1);
+    sheet_ = std::move(sh);
+    animate();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void SettingsWindow::closeSheet(int choice) {
+    if (!sheet_) return;
+    auto done = std::move(sheet_->done);
+    sheet_.reset();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (done) done(choice);
+}
+
+void SettingsWindow::showMessage(std::wstring title, std::wstring message) {
+    openSheet({std::move(title), std::move(message), {L"OK"}, 0}, 0, nullptr);
+}
+
+// ---- Enregistreur de raccourci ----
+
+void SettingsWindow::startRecording(int row) {
+    if (row < 0 || row >= int(rows_.size()) || spec(row).kind != RowKind::Shortcut) return;
+    stopRecording();
+    recording_ = row;
+    recordNote_.clear();
+    focus_ = row;
+    g_held = {};
+    recordTarget_ = this;
+    // Crochet clavier le temps de l'écoute : les combinaisons avec ⊞ (que Windows prendrait) arrivent ici.
+    recordHook_ = SetWindowsHookExW(WH_KEYBOARD_LL, recordHook, instance_, 0);
+    if (!recordHook_) log::warn(L"Réglages : crochet clavier impossible (%lu), touches lues par la fenêtre", GetLastError());
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void SettingsWindow::stopRecording() {
+    if (recordHook_) UnhookWindowsHookEx(recordHook_);
+    recordHook_ = nullptr;
+    if (recording_ >= 0 && hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    recording_ = -1;
+    recordNote_.clear();
+    if (recordTarget_ == this) recordTarget_ = nullptr;
+}
+
+LRESULT CALLBACK SettingsWindow::recordHook(int code, WPARAM wp, LPARAM lp) {
+    SettingsWindow* self = recordTarget_;
+    if (code == HC_ACTION && self && self->recording_ >= 0) {
+        const auto* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp);
+        const bool down = wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN;
+        if (!g_held.track(k->vkCode, down) && down) PostMessageW(self->hwnd_, kMsgRecordKey, k->vkCode, g_held.mods());
+        return 1;   // gardée pour l'enregistreur : rien d'autre ne réagit pendant l'écoute
+    }
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+void SettingsWindow::onRecordKey(UINT vk, UINT mods) {
+    const int row = recording_;
+    if (row < 0) return;
+    const HotkeyRecord r = recordHotkey(vk, mods);
+    switch (r.kind) {
+        case RecordKind::Wait: return;
+        case RecordKind::Cancel: stopRecording(); return;
+        case RecordKind::Reserved:
+            recordNote_ = L"Windows garde ce raccourci : choisis-en un autre";
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        case RecordKind::Clear:
+            stopRecording();
+            commitShortcut(row, L"off");
+            return;
+        case RecordKind::Accept:
+            stopRecording();
+            commitShortcut(row, hotkeyText(r.spec));
+            return;
+    }
+}
+
+void SettingsWindow::commitShortcut(int row, const std::wstring& text) {
+    if (row < 0 || row >= int(rows_.size())) return;
+    const RowSpec& s = spec(row);
+    if (!s.setText) return;
+    s.setText(model_, text);   // affiché tout de suite
+    reportWrite(commit(dir_, [&](SettingsModel& m) { s.setText(m, text); }, &model_, &io_));
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 // ---- Icône ----

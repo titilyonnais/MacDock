@@ -94,6 +94,13 @@ struct PaneMatch {
 };
 // Tous les mots de `query` doivent être trouvés ; vide : toutes les sections. Dans l'ordre de la barre latérale.
 std::vector<PaneMatch> searchPanes(std::wstring_view query, const PaneEnv& env);
+// Barre latérale pendant une recherche : les sections trouvées (indices de paneList), et la taille de chaque groupe
+// qui en garde au moins une (les groupes vides disparaissent).
+struct SidebarView {
+    std::vector<int> panes;
+    std::vector<int> groups;
+};
+SidebarView sidebarView(const std::vector<PaneMatch>& matches);
 
 // Une autre fonction (Spotlight, Mission Control, Fenêtres de l'app) utilise-t-elle le même raccourci que `name` ?
 // Son nom, ou vide.

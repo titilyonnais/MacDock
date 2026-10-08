@@ -423,6 +423,25 @@ std::vector<PaneMatch> searchPanes(std::wstring_view query, const PaneEnv& env) 
     return out;
 }
 
+SidebarView sidebarView(const std::vector<PaneMatch>& matches) {
+    SidebarView v;
+    const auto& panes = paneList();
+    int first = 0;
+    for (int size : sidebarGroups()) {
+        int kept = 0;
+        for (int i = first; i < first + size && i < int(panes.size()); ++i)
+            for (const PaneMatch& m : matches)
+                if (m.pane == panes[std::size_t(i)].id) {
+                    v.panes.push_back(i);
+                    ++kept;
+                    break;
+                }
+        if (kept) v.groups.push_back(kept);
+        first += size;
+    }
+    return v;
+}
+
 std::wstring shortcutConflict(const SettingsModel& m, const std::wstring& name) {
     const std::pair<const wchar_t*, const std::wstring*> all[] = {{L"Spotlight", &m.dock.spotlightHotkey},
                                                                   {L"Mission Control", &m.dock.missionControlHotkey},

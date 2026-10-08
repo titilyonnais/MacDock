@@ -78,7 +78,7 @@ Windows et la gestion des mods Windhawk, toutes entièrement fonctionnelles. Il 
 - [x] 3. Sections Général, Mission Control, Clavier, Captures, Sons, Police, Mods, À propos (tests d'aller-retour et
   d'actions).
 - [x] 4. Contrôles : bouton, champ de raccourci, valeur, feuille d'alerte (rendu testé hors écran).
-- [ ] 5. Fenêtre :
+- [x] 5. Fenêtre :
   - recherche ;
   - enregistreur de raccourci ;
   - actions des boutons ;
