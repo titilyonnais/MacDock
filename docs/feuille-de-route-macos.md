@@ -21,12 +21,13 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Touche ⌘** (option) : Alt de gauche joue ⌘, raccourcis du Finder dans l'Explorateur (plan 33).
 - **Centre de notifications** : date, calendrier du mois, lecture en cours, au clic sur l'horloge (plan 34).
 - **Menus, Spotlight et pastille visibles sur les captures** (plans 35 et 36).
-- **Moteur Liquid Glass v2** (formes qui fusionnent, lumière réglable) **et moteur d'animations** (ressorts SwiftUI, courbes Core Animation) (plan 37).
+- **Moteur Liquid Glass v2** (formes qui fusionnent, lumière réglable) **et moteur d'animations** (ressorts SwiftUI, courbes Core Animation) (plan 37), branchés dans les menus et l'infobulle du Dock (plan 38).
+- **⊞⇧5 et enregistrement de l'écran** (plan 39).
 
 ## À faire, par ordre d'effet
 1. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
 2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
-3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; Spotlight, l'écran Apps et la pastille du volume visibles sur les captures (les menus le sont depuis le plan 35).
+3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; l'écran Apps sur les captures ; le Dock dans les vidéos ; le son dans les vidéos (option).
 
 ## Limites connues
 - Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.

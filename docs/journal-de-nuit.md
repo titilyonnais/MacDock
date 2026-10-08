@@ -585,6 +585,26 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - un double-clic, une autorisation de Windows, et le mod est compilé avec le compilateur de Windhawk et les mêmes options que son éditeur, puis enregistré et activé comme tes autres mods ;
   - la compilation est vérifiée ici, sans droits ; `retirer-macdock-look.cmd` le retire.
 
+### Plan 39 — ⊞⇧5 et enregistrement de l'écran
+
+- **⊞⇧5** ouvre la barre de capture, comme ⌘⇧5, en bas au centre de l'écran du curseur. Elle contient :
+  - × ;
+  - trois modes de capture : tout l'écran, une fenêtre, une zone (choisie par défaut) ;
+  - deux modes d'enregistrement : tout l'écran, une zone ;
+  - « Capturer » ou « Enregistrer ». Échap ferme la barre.
+- **Enregistrement** :
+  - un fil copie l'écran ou la zone 30 fois par seconde, curseur compris, et Media Foundation l'encode en H.264 dans un MP4 ;
+  - la vidéo fait au plus 1920 px de large, sans son ; elle s'appelle « Enregistrement de l’écran AAAA-MM-JJ à HH.MM.SS.mp4 » et va sur le Bureau ;
+  - une pastille ⏹ avec la durée s'affiche en haut au centre ; un clic dessus, ou ⊞⇧5, arrête, et la vignette s'affiche ;
+  - si MacDock s'arrête, l'enregistrement en cours est finalisé.
+- **Vérifié** :
+  - un test encode des images synthétiques en un vrai MP4 (sans jamais capturer l'écran) ;
+  - en vrai, 3 s d'enregistrement de l'écran ont donné du H.264 en 1920×1080, 76 images en 2,5 s ; la barre et la pastille « 0:02 » sont conformes. La vidéo d'essai est partie à la Corbeille.
+- **Limites** :
+  - le Dock n'apparaît pas dans les vidéos (il est exclu des captures pour son verre) ;
+  - pas de son ;
+  - les modes « une fenêtre » et « enregistrer une zone » passent par le viseur de ⊞⇧4 et n'ont pas été essayés en vrai.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

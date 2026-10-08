@@ -72,6 +72,11 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
     - Un glisser vers la droite la renvoie.
     - Un glisser ailleurs dépose le fichier dans une autre app (Explorateur, message, document).
   - Ajoute Ctrl (`⊞⌃⇧3`, `⊞⌃⇧4`) pour copier l'image dans le presse-papiers, sans fichier.
+  - `⊞⇧5` ouvre la barre de capture, comme `⌘⇧5`.
+    - **Modes** : capturer tout l'écran, une fenêtre ou une zone ; enregistrer tout l'écran ou une zone. Puis « Capturer » ou « Enregistrer ».
+    - **Pendant l'enregistrement**, une pastille ⏹ affiche la durée en haut de l'écran ; un clic dessus, ou `⊞⇧5`, l'arrête.
+    - **La vidéo** « Enregistrement de l’écran AAAA-MM-JJ à HH.MM.SS.mp4 » (H.264, 30 images par seconde, au plus 1920 px de large, sans son) va sur le Bureau, avec sa vignette.
+    - Le Dock n'apparaît pas dans les vidéos.
   - `"screenshots": false` dans `settings.json` rend ces raccourcis à Windows.
 - **Touche ⌘** (option, désactivée par défaut) : avec `"altAsCommand": true` dans `settings.json`, la touche Alt de gauche, sous le pouce, joue le rôle de ⌘.
   - **Raccourcis** :

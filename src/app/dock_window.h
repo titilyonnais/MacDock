@@ -27,7 +27,9 @@
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../screenshot/screenshot_logic.h"
+#include "../screenshot/screen_recorder.h"
 #include "../screenshot/shot_thumbnail.h"
+#include "../screenshot/shot_toolbar.h"
 #include "../screenshot/shot_viewfinder.h"
 #include "../switcher/switcher_logic.h"
 #include "../switcher/switcher_window.h"
@@ -113,6 +115,10 @@ private:
     // Captures d'écran façon macOS (⊞⇧3, ⊞⇧4).
     void takeScreenShot(bool clipboard);    // chaque écran dans son fichier ; vignette sur l'écran du curseur
     void startRegionShot(bool clipboard);   // viseur : zone ou fenêtre
+    void openShotToolbar();                 // ⊞⇧5 : la barre ; pendant un enregistrement, l'arrêt
+    void onShotToolbar(int item);           // mode choisi dans la barre (ShotToolbarItem)
+    void startRecording(const RECT& area);  // vidéo de la zone sur le Bureau, pastille ⏹
+    void stopRecording();                   // fichier finalisé, vignette
     void onViewfinderDone(const ShotViewfinder::Result& r);
     // Fichiers sur le Bureau (écrits sur un fil à part) et vignette ; ou presse-papiers (⌃).
     void deliverShots(std::vector<std::pair<HMONITOR, BgraImage>> shots, HMONITOR thumbOn, bool clipboard);
@@ -184,6 +190,12 @@ private:
     bool quickLookBusy_ = false;          // lecture COM en cours (la boucle modale COM peut relancer le minuteur)
     ShotViewfinder viewfinder_;           // ⊞⇧4
     ShotThumbnail shotThumb_;             // vignette flottante de la dernière capture
+    ShotToolbar shotToolbar_;             // ⊞⇧5
+    ScreenRecorder recorder_;             // enregistrement de l'écran en cours
+    RecordingPill recPill_;               // pastille ⏹ et durée
+    std::wstring recordingPath_;
+    HMONITOR recordingMonitor_ = nullptr;
+    bool recordAfterViewfinder_ = false;  // « enregistrer une zone » : le viseur choisit la zone
     std::vector<std::future<void>> shotJobs_;   // écritures des captures (attendues à l'arrêt)
     UINT shotRevealMsg_ = 0;              // « MacDockScreenshotReveal » : pastilles de la barre visibles aux captures
     bool shotClipboard_ = false;          // viseur ouvert avec ⌃ : l'image ira au presse-papiers
