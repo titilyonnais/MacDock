@@ -4,6 +4,15 @@
 
 namespace md {
 
+bool shouldRoundCorners(DWORD original) { return original != 1 && original != 3; }
+
+bool appsDarkMode() {
+    DWORD value = 1, size = sizeof value;
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                 L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
+    return value == 0;
+}
+
 std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi) {
     LightsWindowInfo any = w;
     any.iconic = false;   // une fenêtre réduite garde son apparence pour son retour

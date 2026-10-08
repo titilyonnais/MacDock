@@ -20,6 +20,11 @@ struct WindowLook {
 
 // Fenêtres à barre de titre d'une autre app (mêmes règles que les pastilles) ; nullopt sinon.
 std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi);
+// Préférence de coins lue avant notre passage (DWMWA_WINDOW_CORNER_PREFERENCE) : carrés ou petits demandés par l'app
+// sont gardés.
+bool shouldRoundCorners(DWORD original);
+// Mode des applications (AppsUseLightTheme), et non celui de la barre des tâches.
+bool appsDarkMode();
 
 class WindowStyler {
 public:
@@ -33,11 +38,15 @@ public:
 private:
     struct Touched {
         HWND h;
-        bool dark;
+        bool dark = false;
+        DWORD pid = 0;          // un HWND réutilisé par une autre fenêtre n'est pas la même
+        DWORD corner = 0;       // préférence d'origine, rendue à la fermeture
+        bool rounded = false;   // nous avons changé les coins
         bool operator<(const Touched& o) const { return h < o.h; }
     };
+    void restore(const Touched& t);
     std::set<Touched> touched_;
-    bool enabled_ = true;
+    bool enabled_ = false;   // activé par setEnabled au démarrage, d'après le réglage
 };
 
 } // namespace md

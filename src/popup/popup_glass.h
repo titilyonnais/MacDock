@@ -18,6 +18,8 @@ struct Metrics;
 // (Spotlight, volume, sélecteur d'apps) plus vitrés. Ombre, capture et HDR restent à régler par l'appelant.
 enum class PopupMaterial { Menu, Panel };
 GlassParams popupGlassParams(const Metrics& m, bool dark, float scale, PopupMaterial kind);
+// Ombre des menus et panneaux : nette, indépendante de celle du Dock (presque nulle sur macOS 27).
+float popupShadowOpacity(bool dark);
 
 struct WindowBackdrop {   // portion de l'écran capturé située sous une fenêtre
     Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;

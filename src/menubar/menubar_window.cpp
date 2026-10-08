@@ -145,7 +145,7 @@ void MenuBarApp::checkSettingsFile() {
 void MenuBarApp::applySettings() {
     if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
     lights_.attach(lights_.target(), settings_.trafficLights);
-    if (ctl_) styler_.setEnabled(settings_.macWindows, systemDarkMode());
+    if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
     for (auto& s : screens_) syncAppBar(*s);
     repositionAll();
 }
@@ -370,7 +370,7 @@ void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
     const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
     lights_.attach(rootWindow, settings_.trafficLights);   // il décide
-    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), systemDarkMode(), effectiveDpi(rootWindow));
+    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
     // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
     // premier plan (un dialogue « Enregistrer sous » reçoit Ctrl+V, pas sa fenêtre principale désactivée).
     HWND root = GetAncestor(h, GA_ROOTOWNER);
@@ -1402,7 +1402,10 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 case kResampleSoon:   // fond ou clair/sombre changé : barre rééchantillonnée, fenêtres recolorées
                     KillTimer(ctl_, kResampleSoon);
                     startSamples();
-                    if (settings_.macWindows) styler_.applyAll(systemDarkMode());
+                    if (settings_.macWindows) {
+                        styler_.applyAll(appsDarkMode());
+                        lights_.attach(lights_.target(), settings_.trafficLights);   // couleur sous les pastilles remesurée
+                    }
                     break;
                 case kConfigTimer: checkSettingsFile(); break;
                 case kRecentTimer: saveRecent(); break;
@@ -1567,7 +1570,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     });
     SetTimer(ctl_, kTrayPruneTimer, 5000, nullptr);
     loadRecent();
-    if (settings_.macWindows) styler_.applyAll(systemDarkMode());   // fenêtres déjà ouvertes
+    styler_.setEnabled(settings_.macWindows, appsDarkMode());   // fenêtres déjà ouvertes
     onForeground(GetForegroundWindow());
     if (active_.name.empty()) {   // rien d'identifiable au premier plan : le bureau
         active_.name = L"Explorateur";

@@ -71,9 +71,11 @@ json::Value migrateMetricsJson(const json::Value& v) {
     for (auto& [key, value] : v.asObject()) {
         if (key == "indicatorInset" || key == "version") continue;
         json::Value copy = value;
-        for (auto& c : kChanged)
-            if (from < c.before && key == c.key && copy.isNumber() && std::fabs(copy.asNumber(0) - c.oldDefault) < 1e-9)
-                copy = c.newDefault;
+        for (auto& c : kChanged) {
+            if (from >= c.before || key != c.key || !copy.isNumber()) continue;
+            if (std::fabs(copy.asNumber(0) - c.oldDefault) >= 1e-9) break;   // choisie par l'utilisateur
+            copy = c.newDefault;   // défaut de l'époque : suit les étapes suivantes
+        }
         out.set(key, std::move(copy));
     }
     out.set("version", kMetricsVersion);

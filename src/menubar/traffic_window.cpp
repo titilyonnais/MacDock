@@ -350,7 +350,9 @@ void TrafficWindow::place(bool resample, bool probe) {
         if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
     }
     scale_ = dpi / 96.0;
-    const bool enabled[3] = {!(info.classStyle & CS_NOCLOSE), (info.style & WS_MINIMIZEBOX) != 0, (info.style & WS_MAXIMIZEBOX) != 0};
+    // Fermer : menu système, ou bouton fermer trouvé par la sonde (Electron sans menu système).
+    const bool closable = !(info.classStyle & CS_NOCLOSE) && ((info.style & WS_SYSMENU) || hasButtons);
+    const bool enabled[3] = {closable, (info.style & WS_MINIMIZEBOX) != 0, (info.style & WS_MAXIMIZEBOX) != 0};
     for (int i = 0; i < 3; ++i)
         if (state_.enabled[i] != enabled[i]) {
             state_.enabled[i] = enabled[i];

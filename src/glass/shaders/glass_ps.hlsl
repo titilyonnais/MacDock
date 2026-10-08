@@ -20,7 +20,7 @@ cbuffer Glass : register(b1) {
     float2 targetSize;    // étendue en pixels de la cible couverte par le flou (multiple de 4)
     float maxMip;         // dernier niveau de mip du flou
     float opacity;        // fondu de la forme (infobulle)
-    float hairline;       // fil sombre au bord (menus en clair), 0 à 1
+    float hairline;       // fil sombre au bord (menus et panneaux), 0 à 1
     float pad1;
 };
 Texture2D blurTex : register(t0);

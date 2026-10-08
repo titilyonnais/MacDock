@@ -200,3 +200,9 @@ TEST_CASE(popup_glass_menus_nearly_opaque_with_hairline) {
     CHECK(panel.tint > 0.35f);
     CHECK(panel.tint < light.tint);   // Spotlight, HUD : plus de verre que les menus
 }
+
+TEST_CASE(popup_shadow_independent_of_dock) {
+    // Le Dock n'a presque pas d'ombre, mais les menus en gardent une nette (capture du menu Édition).
+    CHECK(md::popupShadowOpacity(false) >= 0.25f);
+    CHECK(md::popupShadowOpacity(true) > md::popupShadowOpacity(false));
+}

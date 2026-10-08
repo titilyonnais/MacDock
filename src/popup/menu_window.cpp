@@ -542,7 +542,7 @@ void Session::render(Panel& p) {
             gp.backdropIsScRgb = p.scRgb;
             gp.sdrWhiteScale = p.white;
             GlassShape shape{panel.left, panel.top, panel.right, panel.bottom, radius, 0.6f,
-                             float(m.shadowOpacity * (dark ? 2.0 : 1.4)), opacity};
+                             popupShadowOpacity(dark), opacity};
             Com<ID3D11DeviceContext> ctx;
             env.device->GetImmediateContext(&ctx);
             glassDrawn = glass.render(ctx.Get(), p.backdropSrv.Get(), W, H, p.glassRtv.Get(), {&shape, 1}, gp);

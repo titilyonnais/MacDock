@@ -59,3 +59,11 @@ TEST_CASE(window_look_setting_defaults_on_and_roundtrips) {
     s.macWindows = false;
     CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).macWindows);
 }
+
+TEST_CASE(window_look_respects_app_corner_choice) {
+    // Une app qui a demandé des coins carrés ou petits (valeur lue avant notre passage) les garde.
+    CHECK(md::shouldRoundCorners(0));    // par défaut
+    CHECK(md::shouldRoundCorners(2));    // déjà ronds
+    CHECK(!md::shouldRoundCorners(1));   // DWMWCP_DONOTROUND
+    CHECK(!md::shouldRoundCorners(3));   // DWMWCP_ROUNDSMALL
+}

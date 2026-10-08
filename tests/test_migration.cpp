@@ -43,6 +43,12 @@ TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
     CHECK_NEAR(kept.glassTintLight, 0.5, 1e-9);
 }
 
+TEST_CASE(metrics_migrate_chain_keeps_value_chosen_before) {
+    // 0,30 choisi en v2 (défaut d'alors : 0,22) est une valeur de l'utilisateur, même si c'est le défaut de la v3.
+    auto m = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"glassTintLight":0.3})")));
+    CHECK_NEAR(m.glassTintLight, 0.30, 1e-9);
+}
+
 TEST_CASE(metrics_migrate_v3_glass_from_real_dock) {
     // v4 : verre recalé sur des captures du Dock réel (liseré fin, voile léger, fond saturé, ombre à peine visible).
     auto m = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(

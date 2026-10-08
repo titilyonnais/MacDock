@@ -10,6 +10,8 @@ namespace md {
 
 using Microsoft::WRL::ComPtr;
 
+float popupShadowOpacity(bool dark) { return dark ? 0.45f : 0.30f; }
+
 GlassParams popupGlassParams(const Metrics& m, bool dark, float scale, PopupMaterial kind) {
     const bool menu = kind == PopupMaterial::Menu;
     GlassParams gp;
