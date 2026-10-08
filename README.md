@@ -22,6 +22,8 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
 
    Sans Dock lancé, le mod ne cache rien. Depuis sa version 1.2, il transmet aussi à la barre de menus les icônes de la zone de notification (Discord, OneDrive, antivirus…) : si tu avais une version plus ancienne, recolle le code et recompile.
 
+   **Police de macOS dans toutes les apps** (facultatif) : même procédure avec `windhawk\macdock-look.wh.cpp`. Il faut que SF Pro (Text et Display) soit installée ; sinon le mod ne change rien. Les polices de l'interface de Windows (Segoe UI, Tahoma, MS Shell Dlg) deviennent SF Pro Text, et SF Pro Display à partir de 20 pt, dans les apps classiques comme modernes (Explorateur, Bloc-notes, navigateurs, Electron). Les polices d'icônes ne sont jamais touchées. **Les jeux et les anti-triche sont exclus** (Steam, Epic, Riot, EA, Ubisoft, simulateurs…) : injecter du code dans un jeu peut valoir un bannissement. Ajoute dans l'onglet *Avancé* du mod les dossiers d'autres jeux que tu utilises. Les apps déjà ouvertes changent de police à leur prochain lancement.
+
 3. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
 
 4. **Démarrage automatique** (facultatif) :
