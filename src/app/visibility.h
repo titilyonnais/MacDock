@@ -2,6 +2,7 @@
 #pragma once
 #include <windows.h>
 
+#include <functional>
 #include <vector>
 
 namespace md {
@@ -38,6 +39,7 @@ private:
     bool raw_ = true;           // cible immédiate des entrées
     double rawSince_ = 0;
     bool target_ = true;        // cible effective (après délai)
+    bool wasFullscreen_ = false;
     bool immediate_ = false;    // plein écran : pas de délai
 };
 
@@ -59,7 +61,25 @@ struct ZWindow {
 // plein écran le reste quand on travaille sur l'autre écran, comme sur Mac). Les fenêtres toujours au-dessus qui ne
 // le couvrent pas (vignette, pense-bête) sont passées.
 bool fullscreenOnMonitor(const std::vector<ZWindow>& zOrder, const RECT& monitor);
-// Même chose sur les vraies fenêtres (hors celles de ce processus et du shell).
-bool fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect);
+// Même chose sur les vraies fenêtres (hors celles de ce processus et du shell) : la fenêtre en plein écran, ou nullptr.
+HWND fullscreenWindowOn(HMONITOR monitor, const RECT& monitorRect);
+
+// Suit une fenêtre en plein écran : sa sortie (taille, place, masquage, fermeture) prévient tout de suite, sans attendre
+// la vérification périodique. Le rappel arrive sur le fil qui a appelé watch (par sa boucle de messages).
+class FullscreenWatch {
+public:
+    FullscreenWatch() = default;
+    FullscreenWatch(const FullscreenWatch&) = delete;
+    FullscreenWatch& operator=(const FullscreenWatch&) = delete;
+    ~FullscreenWatch() { stop(); }
+    void watch(HWND window, std::function<void()> changed);   // même fenêtre : rien ; nullptr : arrête
+    void stop();
+
+private:
+    static void CALLBACK onEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD);
+    HWND window_ = nullptr;
+    HWINEVENTHOOK hooks_[2] = {};
+    std::function<void()> changed_;
+};
 
 } // namespace md

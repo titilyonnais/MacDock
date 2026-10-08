@@ -1065,7 +1065,7 @@ void MenuBarApp::finishSample(Screen& s, std::optional<double> luminance) {
 
 // ---- Plein écran et masquage ----
 
-bool MenuBarApp::detectFullscreen(const Screen& s) const {
+HWND MenuBarApp::detectFullscreen(const Screen& s) const {
     // La plus haute fenêtre de cet écran, qu'elle ait le clavier ou non : la barre reste cachée sur une vidéo en
     // plein écran quand on travaille sur l'autre écran, comme sur Mac.
     return fullscreenWindowOn(s.monitor, s.rect);
@@ -1074,7 +1074,9 @@ bool MenuBarApp::detectFullscreen(const Screen& s) const {
 void MenuBarApp::checkFullscreen() {
     for (std::size_t i = 0; i < screens_.size(); ++i) {
         Screen& s = *screens_[i];
-        const bool fs = detectFullscreen(s);
+        const HWND window = detectFullscreen(s);
+        s.fullscreenWatch.watch(window, [this] { checkFullscreen(); });   // sortie vue tout de suite
+        const bool fs = window != nullptr;
         if (fs == s.fullscreen) continue;
         s.fullscreen = fs;
         if (trace_) log::info(L"[trace] barre : plein écran %s sur l'écran %zu", fs ? L"oui" : L"non", i);
