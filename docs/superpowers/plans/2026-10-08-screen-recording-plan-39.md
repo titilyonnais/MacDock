@@ -24,7 +24,7 @@
 - Pas de son dans la vidéo, comme le réglage par défaut de macOS.
 
 ## Tâches
-- [ ] 1. Logique : nom, taille, touche ⊞⇧5, boutons de la barre (tests).
-- [ ] 2. Enregistreur : fil, GDI, Media Foundation ; test hors écran (une petite zone, 10 images, fichier MP4 valide dans le dossier temporaire).
+- [x] 1. Logique : nom, taille, touche ⊞⇧5, boutons de la barre (tests).
+- [x] 2. Enregistreur : fil, GDI, Media Foundation ; test hors écran (une petite zone, 10 images, fichier MP4 valide dans le dossier temporaire).
 - [ ] 3. Barre ⊞⇧5 et pastille ⏹ ; branchement dans le Dock ; vignette à l'arrêt.
 - [ ] 4. Essai réel en diagnostic, documentation, fusion.
