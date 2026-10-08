@@ -16,6 +16,7 @@
 #include "../core/diag.h"
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
+#include "../anim/motion.h"
 #include "../glass/backdrop_capture.h"
 #include "../glass/glass_renderer.h"
 #include "glyphs.h"
@@ -31,7 +32,7 @@ constexpr wchar_t kClass[] = L"MacDockMenu";
 constexpr UINT WM_MENU_BACKDROP = WM_APP + 7;
 constexpr UINT_PTR kSubmenuTimer = 1;
 constexpr UINT_PTR kRefreshTimer = 2;   // lignes enrichies : valeurs relues (Live::refresh)
-constexpr double kFadeSeconds = 0.12;
+constexpr double kFadeSeconds = 0.18;   // apparition : motionPreset(Motion::MenuOpen)
 constexpr double kSubmenuDelay = 0.2;
 
 double now() {
@@ -511,7 +512,12 @@ void Session::render(Panel& p) {
     const UINT W = p.width(), H = p.height();
     const float sc = s();
     const double fadeT = p.shownAt < 0 ? 1.0 : std::clamp((now() - p.shownAt) / kFadeSeconds, 0.0, 1.0);
-    const float opacity = float(fadeT);
+    const double eased = kEaseOut(fadeT);   // vif au départ, posé à l'arrivée (courbe de Core Animation)
+    const float opacity = float(eased);
+    if (p.visual) {   // léger zoom depuis le bord haut (le titre ou le point d'où il s'ouvre)
+        const float zoom = float(0.96 + 0.04 * eased);
+        p.visual->SetTransform(D2D1::Matrix3x2F::Scale(zoom, zoom, D2D1::Point2F(float(W) / 2, p.margin)));
+    }
     const D2D1_RECT_F panel{p.margin, p.margin, float(W) - p.margin, float(H) - p.margin};
     const float radius = float(limitedCornerRadius(panel.right - panel.left, panel.bottom - panel.top, kMenuRadius * sc));
     const bool dark = env.dark;

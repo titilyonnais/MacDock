@@ -576,6 +576,15 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - le verre du Dock est inchangé à l'écran.
 - **Suite** : brancher la fusion et les ressorts dans l'interface (infobulle qui naît du Dock, menus qui jaillissent de la barre). Les captures d'un vrai Mac permettraient de régler finement les réponses et amortissements.
 
+### Plan 38 — Moteurs branchés dans l'interface, installateur du mod
+
+- **Menus** : ils s'ouvrent avec la courbe de macOS, un fondu « ease-out » de 0,18 s (vif au départ, posé à l'arrivée), et un léger zoom depuis leur bord haut (96 % → 100 %). Avant, c'était un fondu linéaire de 0,12 s. Essayé en vrai : à 40 ms, le menu est à mi-fondu et un peu réduit ; ouvert, il est identique à avant.
+- **Infobulle du Dock** (Dock en bas) : elle naît du verre du Dock. Une petite goutte collée au bord grandit jusqu'à sa place, reliée par un pont de verre qui se résorbe quand elle se détache, comme les éléments Liquid Glass de macOS 26. Le texte apparaît en fondu. Sur un Dock à gauche ou à droite, l'infobulle garde son fondu.
+- **Installateur du mod `macdock-look`** :
+  - je n'ai pas les droits administrateur que Windhawk exige, et ne peux donc pas l'installer moi-même. Il y a maintenant `windhawk\installer-macdock-look.cmd`, avec un raccourci sur ton Bureau ;
+  - un double-clic, une autorisation de Windows, et le mod est compilé avec le compilateur de Windhawk et les mêmes options que son éditeur, puis enregistré et activé comme tes autres mods ;
+  - la compilation est vérifiée ici, sans droits ; `retirer-macdock-look.cmd` le retire.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

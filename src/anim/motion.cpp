@@ -54,4 +54,16 @@ MotionPreset motionPreset(Motion m) {
     return p;
 }
 
+GlassMorph glassEmerge(double edgeY, const GlassMorph& to, double t, double reach) {
+    if (t >= 1) return {to.left, to.top, to.right, to.bottom, 0};
+    // Goutte de départ : petite pilule centrée sous la forme, posée un peu dans le bord (fondue avec le verre voisin).
+    const double h = to.bottom - to.top, w = to.right - to.left, cx = (to.left + to.right) / 2;
+    const double seedH = h * 0.45, seedW = std::max(seedH, w * 0.35);
+    const GlassMorph seed{cx - seedW / 2, edgeY + seedH * 0.25 - seedH, cx + seedW / 2, edgeY + seedH * 0.25, reach};
+    const double e = kEaseOut(std::clamp(t, 0.0, 1.0));
+    auto mix = [&](double a, double b) { return a + (b - a) * e; };
+    return {mix(seed.left, to.left), mix(seed.top, to.top), mix(seed.right, to.right), mix(seed.bottom, to.bottom),
+            reach * (1 - e)};
+}
+
 } // namespace md

@@ -36,4 +36,11 @@ struct MotionPreset {
 };
 MotionPreset motionPreset(Motion m);
 
+// Verre qui naît d'un autre (Liquid Glass) : à t = 0, une petite goutte collée au bord edgeY et fondue dans le verre
+// voisin (merge = reach) ; à t = 1, la forme à sa place, séparée (merge = 0). Rectangle en pixels.
+struct GlassMorph {
+    double left = 0, top = 0, right = 0, bottom = 0, merge = 0;
+};
+GlassMorph glassEmerge(double edgeY, const GlassMorph& to, double t, double reach);
+
 } // namespace md
