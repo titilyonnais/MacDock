@@ -24,7 +24,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 ## À faire, par ordre d'effet
 1. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
 2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
-3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
+3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; Spotlight, l'écran Apps et la pastille du volume visibles sur les captures (les menus le sont depuis le plan 35).
 
 ## Limites connues
 - Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.

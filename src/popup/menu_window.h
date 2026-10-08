@@ -50,6 +50,9 @@ public:
     // Rendu hors écran du menu (verre dépoli, sans fenêtre ni capture) : image BGRA prémultipliée w x h pixels
     // (vérifications, --snapshot de la barre). COM doit être initialisé.
     static bool snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h);
+    // Capture d'écran (⊞⇧3, ⊞⇧4) : le menu ouvert sur ce fil devient visible aux captures le temps de la copie. Son
+    // verre ne suit plus l'écran pendant ce temps (il s'y verrait), puis reprend 150 ms après. Sans menu : rien.
+    static void setCaptureVisible(bool on);
 };
 
 } // namespace md
