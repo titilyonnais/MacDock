@@ -424,6 +424,28 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - Entrée rendue à l'Explorateur : essayé en vrai, l'image s'ouvre dans Photos, au premier plan.
   - Corrigés au passage : texte coupé au milieu d'un caractère, tailles (« 1 octet », « 2 Mo »), fenêtre d'aperçu bornée à l'écran, `dwrite.dll` chargée depuis System32.
 
+### Plan 29 — Captures d'écran façon macOS
+
+- **⊞⇧3** capture tout l'écran, avec un fichier par écran. **⊞⇧4** ouvre le viseur : une croix avec les coordonnées en points, puis une zone grise translucide avec sa largeur et sa hauteur pendant le tirer.
+- **Mode fenêtre (Espace)** :
+  - la fenêtre survolée prend un voile bleu, et le curseur devient un appareil photo, dessiné par le code ;
+  - au clic, la fenêtre est capturée seule, avec ses coins arrondis et une ombre douce sur fond transparent. Alt au clic : sans ombre ;
+  - si rien ne la recouvre, l'image vient de l'écran, avec les feux tricolores ; sinon, de la fenêtre elle-même.
+- **Fichier** : « Capture d’écran 2026-10-08 à 13.25.54.png » sur le Bureau (redirigé vers OneDrive s'il l'est). Plusieurs écrans, ou la même seconde : « … (2).png ». Rien n'est jamais écrasé, et l'écriture se fait sur un fil à part.
+- **Vignette** : elle glisse en bas à droite, et le survol la retient au-delà de 5 s. Un clic ouvre la capture (Photos, au premier plan). Un glisser vers la droite la renvoie. Un glisser ailleurs dépose le fichier.
+- **Ctrl** en plus copie dans le presse-papiers. Non essayé en vrai : les essais n'écrivent jamais dans le presse-papiers.
+- **Le Dock et les feux tricolores apparaissent sur les captures.** D'habitude, ils en sont exclus, à cause de la capture du verre. Ils redeviennent visibles le temps de la copie (environ 20 ms), puis sont de nouveau exclus.
+  - Pendant ce temps, la capture du verre est en pause : elle ne voit jamais le Dock.
+  - La barre de menus a une sécurité de 3 s, au cas où le Dock ne rendrait pas la main.
+- **Essayé en vrai**, en diagnostic avec des frappes simulées :
+  - ⊞⇧3 sur deux écrans : le Dock, la barre et la Corbeille sont bien dans le fichier ;
+  - zone tirée ; mode fenêtre sur le Bloc-notes ;
+  - Échap, et Espace deux fois ;
+  - clic sur la vignette, et glisser vers la droite.
+  - Les captures d'essai sont parties à la Corbeille.
+- **Corrigé pendant l'essai** : un glisser de la vignette était pris pour un clic. `ReleaseCapture` envoie `WM_CAPTURECHANGED` pendant l'appel, ce qui remettait l'état à zéro.
+- `"screenshots": false` dans `settings.json` rend ⊞⇧3 et ⊞⇧4 à Windows.
+
 ## Mineurs reportés — plan 28
 - Coût du mod par processus : environ 2 ms et 1 Mo de mémoire de travail, même dans les outils en ligne de commande.
 - Réglages du mod lus sans verrou : un changement de réglage peut, le temps d'une création de police, donner un nom à moitié écrit.
