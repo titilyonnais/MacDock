@@ -238,7 +238,7 @@ bool DockApp::stepVisibility(double now) {
     in.fullscreen = fullscreen_;
     in.cursorAtEdge = cursorAtEdge_;
     in.cursorInDock = cursorInDock_;
-    in.menuOpen = menuOpen_;
+    in.menuOpen = menuOpen_ && !shotSession_;   // le viseur ne fait pas sortir le Dock masqué
     in.dragging = controller_.dragging();
     bool animating = visibility_.update(in, now);
     controller_.setShown(visibility_.shown());
@@ -542,7 +542,7 @@ void DockApp::onViewfinderDone(const ShotViewfinder::Result& r) {
         // qu'il cache), sinon sa propre image.
         RECT frame = windowFrameBounds(r.window);
         revealForCapture(false, true);
-        if (windowUnobscured(r.window, frame, shotIgnores)) img = grabScreen(frame);
+        if (rectOnScreens(frame, screenRects()) && windowUnobscured(r.window, frame, shotIgnores)) img = grabScreen(frame);
         concealAfterCapture();
         if (img.px.empty()) img = grabWindow(r.window, frame);
         if (!img.px.empty()) {
@@ -1858,10 +1858,16 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const bool repeat = down && held[vk];
         held[vk] = down;
         // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
+        static bool escTaken = false;   // Échap a fermé le viseur : avalée jusqu'à son relâchement
+        if (vk == VK_ESCAPE && escTaken && !self_->shotSession_) {
+            if (!down) escTaken = false;
+            return 1;
+        }
         if (self_->shotSession_) {
             const ShotSessionKey s = screenshotSessionKey(vk, down, repeat);
             if (s == ShotSessionKey::Cancel || s == ShotSessionKey::ToggleWindow)
                 PostMessageW(self_->hwnd_, WM_APP_SHOT_KEY, WPARAM(s), 0);
+            if (vk == VK_ESCAPE) escTaken = down;
             if (s != ShotSessionKey::Pass) return 1;
         }
         if ((vk == '3' || vk == '4') && self_->shotKeysOn_) {
@@ -1879,6 +1885,12 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             if (!down) t = false;
             if (a == ShotKey::Screen || a == ShotKey::Region) {
                 t = true;
+                // Touche neutre tout de suite : ⊞ relâchée sans autre frappe visible ouvrirait le menu Démarrer.
+                INPUT in[2] = {};
+                in[0].type = in[1].type = INPUT_KEYBOARD;
+                in[0].ki.wVk = in[1].ki.wVk = 0xE8;
+                in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(2, in, sizeof(INPUT));
                 PostMessageW(self_->hwnd_, WM_APP_SHOT, a == ShotKey::Screen ? 1 : 2, e.mods.ctrl ? 1 : 0);
             }
             if (a != ShotKey::Pass) return 1;
@@ -2093,17 +2105,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
-        case WM_APP_SHOT: {
-            // Touche neutre : ⊞ relâchée sans autre frappe visible ouvrirait le menu Démarrer.
-            INPUT in[2] = {};
-            in[0].type = in[1].type = INPUT_KEYBOARD;
-            in[0].ki.wVk = in[1].ki.wVk = 0xE8;
-            in[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, in, sizeof(INPUT));
+        case WM_APP_SHOT:   // touche neutre déjà envoyée par le crochet
             if (wp == 1) takeScreenShot(lp != 0);
             else startRegionShot(lp != 0);
             return 0;
-        }
         case WM_APP_SHOT_KEY:
             viewfinder_.key(ShotSessionKey(wp));
             return 0;
@@ -2155,7 +2160,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
                 KillTimer(hwnd_, kShotResumeTimer);
-                resumeCapture();
+                if (!menuOpen_ && !switchPanel_) resumeCapture();   // sinon, la fermeture du menu la reprend
                 return 0;
             }
             if (wp == kQuickLookTimer) {   // l'aperçu suit la sélection (flèches, clics dans l'Explorateur)

@@ -38,7 +38,8 @@ private:
     // Voile uni translucide (sélection, fenêtre visée) : transparent aux clics, déplacé sans redessiner.
     struct Tint {
         HWND hwnd = nullptr;
-        bool create(HINSTANCE instance, COLORREF fill, COLORREF border, BYTE alpha);
+        COLORREF fill = 0, border = 0;   // lues par tintProc (adresse stable : membre du viseur)
+        bool create(HINSTANCE instance, COLORREF fillColor, COLORREF borderColor, BYTE alpha);
         void show(const RECT& r, int radius);
         void hide();
         void destroy();
@@ -57,6 +58,7 @@ private:
 
     HINSTANCE instance_ = nullptr;
     bool active_ = false, windowMode_ = false, dragging_ = false;
+    bool rightPressed_ = false, windowPressed_ = false;   // annulation et capture de fenêtre au relâchement
     std::vector<HWND> catchers_;   // un par écran
     Tint selection_, highlight_;
     SpriteWindow label_;

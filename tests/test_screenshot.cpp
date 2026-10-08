@@ -190,3 +190,25 @@ TEST_CASE(screenshot_camera_cursor_drawn_by_code) {
     CHECK(dark > 100 && light > 30);   // corps noir, contour blanc : visible sur tous les fonds
     CHECK(px[3] == 0);
 }
+
+TEST_CASE(screenshot_window_fully_on_screens) {
+    const std::vector<RECT> one{RECT{0, 0, 1920, 1080}};
+    CHECK(md::rectOnScreens(RECT{100, 100, 500, 400}, one));
+    CHECK(!md::rectOnScreens(RECT{1800, 100, 2000, 400}, one));   // dépasse à droite : bande noire sinon
+    // Deux écrans de hauteurs différentes côte à côte : à cheval, mais dans le vide sous le petit écran.
+    const std::vector<RECT> two{RECT{0, 0, 1920, 1080}, RECT{1920, 0, 3840, 2160}};
+    CHECK(md::rectOnScreens(RECT{1800, 100, 2000, 400}, two));
+    CHECK(!md::rectOnScreens(RECT{1800, 1000, 2000, 1200}, two));
+    CHECK(md::rectOnScreens(RECT{-1900, 10, -1000, 500}, {RECT{-1920, 0, 0, 1080}, RECT{0, 0, 1920, 1080}}));
+}
+
+TEST_CASE(screenshot_clipboard_image_flattened_on_white) {
+    md::BgraImage img = solid(3, 1, 0, 0, 0);
+    img.px[3] = 0;     // transparent : blanc
+    img.px[7] = 128;   // noir à moitié : gris
+    const md::BgraImage flat = md::flattenOn(img, 255, 255, 255);
+    CHECK(flat.w == 3 && flat.h == 1);
+    CHECK(flat.px[0] == 255 && flat.px[1] == 255 && flat.px[2] == 255 && flat.px[3] == 255);
+    CHECK(flat.px[4] > 120 && flat.px[4] < 135 && flat.px[7] == 255);
+    CHECK(flat.px[8] == 0 && flat.px[11] == 255);   // opaque : inchangé
+}

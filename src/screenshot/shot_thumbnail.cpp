@@ -99,7 +99,6 @@ void ShotThumbnail::show(HINSTANCE instance, const BgraImage& shot, const std::w
     stayLeft_ = kThumbStay;
     offset_ = area_.right - home_.x;   // entièrement hors de l'écran
     place(offset_);
-    ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
     SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     SetTimer(hwnd_, kStepTimer, 15, nullptr);
 }
@@ -107,7 +106,8 @@ void ShotThumbnail::show(HINSTANCE instance, const BgraImage& shot, const std::w
 void ShotThumbnail::fileSaved(const std::wstring& path, bool ok) {
     if (path != path_) return;
     saved_ = ok;
-    if (ok && openPending_) open();
+    if (!ok) close();
+    else if (openPending_) open();
 }
 
 void ShotThumbnail::close() {

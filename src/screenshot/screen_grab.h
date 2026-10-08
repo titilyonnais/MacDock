@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "../core/bgra_image.h"
 
@@ -28,6 +29,8 @@ HWND topWindowAt(POINT pt, const std::function<bool(HWND)>& ignore);
 std::wstring desktopFolder();   // Bureau de l'utilisateur (redirigé vers OneDrive le cas échéant)
 // PNG avec alpha non prémultiplié. COM initialisé sur le fil appelant.
 bool saveScreenshotPng(const BgraImage& img, const std::wstring& path);
-bool copyImageToClipboard(HWND owner, const BgraImage& img);   // CF_DIB 32 bits, opaque
+// CF_DIB 32 bits, l'image posée sur du blanc (Paint et Office lisent ce format sans alpha).
+bool copyImageToClipboard(HWND owner, const BgraImage& img);
+std::vector<RECT> screenRects();   // rectangles de tous les écrans (pixels physiques)
 
 } // namespace md

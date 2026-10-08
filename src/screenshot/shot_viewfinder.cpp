@@ -22,10 +22,6 @@ namespace {
 constexpr wchar_t kCatcherClass[] = L"MacDockShotCatcher";
 constexpr wchar_t kTintClass[] = L"MacDockShotTint";
 
-struct TintColors {
-    COLORREF fill, border;
-};
-
 BOOL CALLBACK addMonitor(HMONITOR m, HDC, LPRECT, LPARAM lp) {
     reinterpret_cast<std::vector<HMONITOR>*>(lp)->push_back(m);
     return TRUE;
@@ -52,7 +48,8 @@ HCURSOR makeCameraCursor() {
     ReleaseDC(nullptr, screen);
     if (!color) return nullptr;
     std::memcpy(bits, px.data(), px.size());
-    HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);
+    const std::vector<BYTE> zeros(std::size_t((size + 15) / 16 * 2) * size, 0);   // lignes alignées sur 16 bits
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, zeros.data());
     ICONINFO ii{FALSE, DWORD(size / 2), DWORD(size / 2), mask, color};
     HCURSOR c = CreateIconIndirect(&ii);
     DeleteObject(mask);
@@ -64,15 +61,13 @@ HCURSOR makeCameraCursor() {
 
 // ---- Voile ----
 
-bool ShotViewfinder::Tint::create(HINSTANCE instance, COLORREF fill, COLORREF border, BYTE alpha) {
+bool ShotViewfinder::Tint::create(HINSTANCE instance, COLORREF fillColor, COLORREF borderColor, BYTE alpha) {
     if (hwnd) return true;
-    auto* colors = new TintColors{fill, border};
+    fill = fillColor;
+    border = borderColor;
     hwnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, kTintClass, L"",
-                           WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, instance, colors);
-    if (!hwnd) {
-        delete colors;
-        return false;
-    }
+                           WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, instance, this);
+    if (!hwnd) return false;
     SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
     if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     return true;
@@ -108,13 +103,12 @@ LRESULT CALLBACK ShotViewfinder::tintProc(HWND h, UINT msg, WPARAM wp, LPARAM lp
             SetWindowLongPtrW(h, GWLP_USERDATA, LONG_PTR(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams));
             break;
         case WM_NCDESTROY:
-            delete reinterpret_cast<TintColors*>(GetWindowLongPtrW(h, GWLP_USERDATA));
             SetWindowLongPtrW(h, GWLP_USERDATA, 0);
             break;
         case WM_PAINT: {
             PAINTSTRUCT ps;
             HDC dc = BeginPaint(h, &ps);
-            const auto* c = reinterpret_cast<TintColors*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+            const auto* c = reinterpret_cast<const Tint*>(GetWindowLongPtrW(h, GWLP_USERDATA));
             RECT rc;
             GetClientRect(h, &rc);
             if (c) {
@@ -204,6 +198,7 @@ void ShotViewfinder::teardown() {
     highlight_.destroy();
     label_.hide();
     active_ = dragging_ = windowMode_ = false;
+    rightPressed_ = windowPressed_ = false;
     hovered_ = nullptr;
 }
 
@@ -339,16 +334,11 @@ LRESULT ShotViewfinder::handle(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (!active_) return 0;
             POINT pt;
             GetCursorPos(&pt);
-            if (windowMode_) {
+            if (windowMode_) {   // capture au relâchement : il n'arrive pas, orphelin, à l'app visée
                 hover(pt);
                 if (!hovered_) return 0;   // le bureau : rien à capturer
-                Result r;
-                r.kind = Result::Kind::Window;
-                r.window = hovered_;
-                r.rect = windowFrameBounds(hovered_);
-                r.shadow = (GetKeyState(VK_MENU) & 0x8000) == 0;
-                r.monitor = MonitorFromWindow(hovered_, MONITOR_DEFAULTTONEAREST);
-                finish(r);   // le viseur n'existe plus : rien après
+                windowPressed_ = true;
+                SetCapture(h);
                 return 0;
             }
             MONITORINFO mi{sizeof mi};
@@ -361,9 +351,26 @@ LRESULT ShotViewfinder::handle(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_LBUTTONUP: {
-            if (!active_ || !dragging_) return 0;
+            if (!active_) return 0;
             POINT pt;
             GetCursorPos(&pt);
+            if (windowPressed_) {
+                windowPressed_ = false;   // avant ReleaseCapture (WM_CAPTURECHANGED)
+                hover(pt);
+                if (!hovered_ || !windowMode_) {
+                    ReleaseCapture();
+                    return 0;
+                }
+                Result r;
+                r.kind = Result::Kind::Window;
+                r.window = hovered_;
+                r.rect = windowFrameBounds(hovered_);
+                r.shadow = (GetAsyncKeyState(VK_MENU) & 0x8000) == 0;   // Alt : sans ombre
+                r.monitor = MonitorFromWindow(hovered_, MONITOR_DEFAULTTONEAREST);
+                finish(r);   // le viseur n'existe plus : rien après
+                return 0;
+            }
+            if (!dragging_) return 0;
             dragging_ = false;
             ReleaseCapture();
             const RECT r = selectionRect(anchor_, pt, bounds_);
@@ -379,14 +386,21 @@ LRESULT ShotViewfinder::handle(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             finish(res);
             return 0;
         }
-        case WM_RBUTTONDOWN:   // clic droit : annule, comme Échap
-            if (active_) cancel();
+        case WM_RBUTTONDOWN:   // clic droit : annule au relâchement (sinon il ouvrirait un menu contextuel dessous)
+            if (active_) {
+                rightPressed_ = true;
+                SetCapture(h);
+            }
+            return 0;
+        case WM_RBUTTONUP:
+            if (active_ && rightPressed_) cancel();
             return 0;
         case WM_CAPTURECHANGED:
             if (active_ && dragging_) {
                 dragging_ = false;
                 selection_.hide();
             }
+            rightPressed_ = windowPressed_ = false;
             return 0;
         case WM_NCHITTEST: return HTCLIENT;
         default: break;

@@ -445,6 +445,35 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - Les captures d'essai sont parties à la Corbeille.
 - **Corrigé pendant l'essai** : un glisser de la vignette était pris pour un clic. `ReleaseCapture` envoie `WM_CAPTURECHANGED` pendant l'appel, ce qui remettait l'état à zéro.
 - `"screenshots": false` dans `settings.json` rend ⊞⇧3 et ⊞⇧4 à Windows.
+- **Relecture finale** (Opus) : aucun critique, sept importants.
+  - **Corrigés :**
+    - avec le masquage automatique, le Dock ne sort plus pendant ⊞⇧4 (il entrait dans la capture) ;
+    - la touche neutre part du crochet, avant que ⊞ relâchée n'ouvre le menu Démarrer ;
+    - une fenêtre qui déborde de l'écran est capturée par sa propre image, sans bande noire ;
+    - une app figée n'est plus capturée (`PrintWindow` aurait figé le Dock) ;
+    - le presse-papiers reçoit l'image posée sur du blanc (sinon cadre noir dans Paint et Office) ;
+    - le clic droit annule au relâchement (sinon un menu contextuel s'ouvrait dessous), et le clic du mode fenêtre capture au relâchement.
+  - **Corrigés au passage :**
+    - Échap qui ferme le viseur reste avalée jusqu'à son relâchement ;
+    - un échec d'écriture efface le fichier et retire la vignette ;
+    - l'ancienne vignette ne réapparaît plus un instant ;
+    - la reprise de la capture du verre attend la fin d'un menu ;
+    - le masque du curseur est rempli de zéros ;
+    - plus de double libération possible dans le voile.
+  - **Essayé de nouveau en vrai** : clic droit sans menu contextuel, Bloc-notes qui dépasse de l'écran (capture complète), ⊞⇧3 sans menu Démarrer.
+  - **Limite connue** : les menus, Spotlight, l'écran Apps et la pastille du volume restent absents des captures (ils sont exclus pour leur verre). C'est ajouté à la feuille de route.
+
+## Mineurs reportés — plan 29
+- Le nom du fichier est choisi avant l'écriture, sur un autre fil : deux captures dans la même seconde, au même instant, pourraient viser le même nom (fenêtre très étroite).
+- Une fermeture de session pendant l'écriture peut couper le PNG.
+- `taken` (⊞⇧3 et ⊞⇧4) ne revient à faux qu'au relâchement vu par le crochet : si un relâchement est manqué, le suivant est avalé.
+- Alt seul pendant le mode fenêtre est livré à l'app au premier plan, qui active sa barre de menus.
+- La révélation des pastilles attend l'arrêt de l'échantillonnage de la barre, jusqu'à environ 0,5 s : au-delà de 400 ms, les pastilles manquent sur la capture.
+- Les calques transparents aux clics (vidéo flottante, horloge par-dessus tout) ne comptent pas comme recouvrants : ils peuvent entrer dans une capture de fenêtre.
+- Coins arrondis de 8 px imposés aussi aux fenêtres ancrées et sans cadre, que Windows laisse à coins droits.
+- Curseur appareil photo à la taille de l'écran principal (`SM_CXCURSOR`), pas de chaque écran.
+- `OpenClipboard` n'est pas réessayé si un gestionnaire de presse-papiers le tient.
+- Le sélecteur Alt+Tab envoie sa touche neutre depuis le fil de l'interface (faiblesse antérieure au plan 29).
 
 ## Mineurs reportés — plan 28
 - Coût du mod par processus : environ 2 ms et 1 Mo de mémoire de travail, même dans les outils en ligne de commande.

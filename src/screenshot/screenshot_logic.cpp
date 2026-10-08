@@ -203,6 +203,29 @@ std::vector<std::uint8_t> thumbnailPixels(const BgraImage& reduced, double scale
     return premultiply(out);
 }
 
+bool rectOnScreens(const RECT& r, const std::vector<RECT>& screens) {
+    const long long want = (long long)(r.right - r.left) * (r.bottom - r.top);
+    if (want <= 0) return false;
+    long long covered = 0;   // les écrans ne se chevauchent pas : les parts s'additionnent
+    for (const RECT& s : screens) {
+        const LONG l = std::max(r.left, s.left), t = std::max(r.top, s.top);
+        const LONG rr = std::min(r.right, s.right), b = std::min(r.bottom, s.bottom);
+        if (rr > l && b > t) covered += (long long)(rr - l) * (b - t);
+    }
+    return covered >= want;
+}
+
+BgraImage flattenOn(const BgraImage& img, std::uint8_t b, std::uint8_t g, std::uint8_t r) {
+    BgraImage out = img;
+    const std::uint8_t bg[3] = {b, g, r};
+    for (std::size_t i = 0; i + 3 < out.px.size(); i += 4) {
+        const unsigned a = out.px[i + 3];
+        for (int c = 0; c < 3; ++c) out.px[i + c] = std::uint8_t((out.px[i + c] * a + bg[c] * (255 - a) + 127) / 255);
+        out.px[i + 3] = 255;
+    }
+    return out;
+}
+
 std::vector<std::uint8_t> cameraCursorPixels(int size) {
     if (size <= 0) return {};
     const double s = size;

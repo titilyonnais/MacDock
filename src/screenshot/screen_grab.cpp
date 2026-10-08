@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "../core/log.h"
+#include "screenshot_logic.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -112,6 +113,13 @@ BgraImage grabWindow(HWND window, RECT& frame) {
     frame = windowFrameBounds(window);
     const int w = wr.right - wr.left, h = wr.bottom - wr.top;
     if (w <= 0 || h <= 0) return {};
+    // Une app figée bloquerait PrintWindow (et le Dock avec lui) : elle n'est pas capturée.
+    DWORD_PTR ignored = 0;
+    if (IsHungAppWindow(window) ||
+        !SendMessageTimeoutW(window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 200, &ignored)) {
+        log::warn(L"Capture d'écran : la fenêtre ne répond pas");
+        return {};
+    }
     Dib dib(w, h);
     if (!dib.ok() || !PrintWindow(window, dib.dc, PW_RENDERFULLCONTENT)) {
         log::warn(L"Capture d'écran : vue de la fenêtre refusée (%lu)", GetLastError());
@@ -177,19 +185,38 @@ bool saveScreenshotPng(const BgraImage& img, const std::wstring& path) {
         SUCCEEDED(frame->WritePixels(UINT(img.h), stride, size, const_cast<BYTE*>(img.px.data()))) &&
         SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
     if (!ok) {
+        frame.Reset();
+        encoder.Reset();
         stream.Reset();
         DeleteFileW(path.c_str());   // pas de fichier à moitié écrit sur le Bureau
     }
     return ok;
 }
 
-bool copyImageToClipboard(HWND owner, const BgraImage& img) {
-    if (img.w <= 0 || img.h <= 0 || img.px.size() < std::size_t(img.w) * img.h * 4) return false;
+std::vector<RECT> screenRects() {
+    std::vector<RECT> out;
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR, HDC, LPRECT r, LPARAM lp) -> BOOL {
+            reinterpret_cast<std::vector<RECT>*>(lp)->push_back(*r);
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&out));
+    return out;
+}
+
+bool copyImageToClipboard(HWND owner, const BgraImage& shot) {
+    if (shot.w <= 0 || shot.h <= 0 || shot.px.size() < std::size_t(shot.w) * shot.h * 4) return false;
+    const BgraImage img = flattenOn(shot, 255, 255, 255);   // ombre et coins arrondis sur du blanc, pas du noir
     // CF_DIB de bas en haut (le plus compris des apps), 32 bits sans alpha.
     const std::size_t pixels = std::size_t(img.w) * img.h * 4;
     HGLOBAL dib = GlobalAlloc(GMEM_MOVEABLE, sizeof(BITMAPINFOHEADER) + pixels);
     if (!dib) return false;
     auto* head = static_cast<BITMAPINFOHEADER*>(GlobalLock(dib));
+    if (!head) {
+        GlobalFree(dib);
+        return false;
+    }
     *head = BITMAPINFOHEADER{};
     head->biSize = sizeof(BITMAPINFOHEADER);
     head->biWidth = img.w;

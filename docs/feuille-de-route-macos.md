@@ -23,7 +23,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 4. **Exposé d'une app** : les fenêtres d'une seule app, depuis le menu du Dock ou avec ⌃↓.
 5. **Raccourcis ⌘** : Alt+C, V, X, Z, A, S, W, Q, T et N joués comme Ctrl, en option (« la touche ⌘ »).
 6. **Sons système façon macOS** : sons originaux (aucun son Apple), dont un déclic d'appareil photo pour les captures.
-7. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette.
+7. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
 
 ## Limites connues
 - Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.

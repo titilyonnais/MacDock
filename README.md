@@ -55,7 +55,7 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
     - **Espace** passe en mode fenêtre : la fenêtre survolée prend un voile bleu, et un clic la capture seule, même recouverte, avec ses coins arrondis et l'ombre de macOS sur fond transparent. Alt enfoncé au clic : sans ombre.
     - Échap ou un clic droit annule.
   - Le fichier « Capture d’écran AAAA-MM-JJ à HH.MM.SS.png » va sur ton Bureau. Plusieurs captures dans la même seconde, ou plusieurs écrans : « … (2).png », jamais d'écrasement.
-  - Le Dock et les feux tricolores apparaissent sur la capture.
+  - Le Dock et les feux tricolores apparaissent sur la capture. Les menus, Spotlight, l'écran Apps et la pastille du volume n'y sont pas encore.
   - **La vignette** glisse en bas à droite et reste 5 secondes ; le survol la retient.
     - Un clic ouvre la capture.
     - Un glisser vers la droite la renvoie.

@@ -63,6 +63,10 @@ std::vector<std::uint8_t> premultiply(const BgraImage& img);          // BGRA pr
 // Vignette : image déjà réduite → coins arrondis, liseré, petite ombre ; BGRA prémultiplié de w × h pixels, l'image
 // commençant à (margin, margin).
 std::vector<std::uint8_t> thumbnailPixels(const BgraImage& reduced, double scale, int& w, int& h, int& margin);
+// Vrai si tout r est sur les écrans (rectangles disjoints) : sinon une copie de l'écran aurait une bande noire.
+bool rectOnScreens(const RECT& r, const std::vector<RECT>& screens);
+// Image posée sur une couleur unie, opaque (presse-papiers CF_DIB, lu sans alpha par Paint et Office).
+BgraImage flattenOn(const BgraImage& img, std::uint8_t b, std::uint8_t g, std::uint8_t r);
 // Curseur appareil photo du mode fenêtre (corps noir, contour blanc), dessiné par le code : BGRA non prémultiplié.
 std::vector<std::uint8_t> cameraCursorPixels(int size);
 
