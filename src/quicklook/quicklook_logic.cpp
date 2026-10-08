@@ -1,0 +1,95 @@
+#include "quicklook_logic.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cwctype>
+
+namespace md {
+
+namespace {
+bool sameClass(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str(), b) == 0; }
+} // namespace
+
+QuickLookKey quickLookKey(unsigned vk, bool down, bool modifiers, bool injected, const QuickLookContext& c) {
+    if (vk != VK_SPACE || modifiers || injected) return QuickLookKey::Pass;
+    const bool explorer = sameClass(c.foregroundClass, L"CabinetWClass") || sameClass(c.foregroundClass, L"ExploreWClass");
+    const bool desktop = sameClass(c.foregroundClass, L"Progman") || sameClass(c.foregroundClass, L"WorkerW");
+    if (!explorer && !desktop) return QuickLookKey::Pass;
+    // Liste des fichiers seulement : jamais une zone de saisie (renommer, rechercher, adresse).
+    const bool list = sameClass(c.focusClass, L"DirectUIHWND") || sameClass(c.focusClass, L"SysListView32");
+    if (!list || !c.focusInShellView) return QuickLookKey::Pass;
+    return down ? QuickLookKey::Open : QuickLookKey::Swallow;
+}
+
+bool quickLookIsText(const std::wstring& path) {
+    const auto dot = path.find_last_of(L'.');
+    const auto slash = path.find_last_of(L"\\/");
+    if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash)) return false;
+    std::wstring ext = path.substr(dot + 1);
+    for (auto& ch : ext) ch = wchar_t(std::towlower(ch));
+    static const wchar_t* kText[] = {L"txt", L"md", L"markdown", L"log", L"json", L"xml", L"csv", L"tsv", L"ini", L"cfg",
+                                     L"conf", L"yaml", L"yml", L"toml", L"c", L"cc", L"cpp", L"cxx", L"h", L"hpp", L"cs",
+                                     L"java", L"kt", L"py", L"js", L"mjs", L"ts", L"tsx", L"jsx", L"css", L"scss", L"html",
+                                     L"htm", L"php", L"rb", L"go", L"rs", L"swift", L"sh", L"bat", L"cmd", L"ps1", L"sql",
+                                     L"lua", L"gitignore", L"env", L"reg", L"srt", L"nfo"};
+    for (const wchar_t* e : kText)
+        if (ext == e) return true;
+    return false;
+}
+
+std::wstring quickLookDecode(const std::vector<std::uint8_t>& b) {
+    if (b.size() >= 2 && b[0] == 0xFF && b[1] == 0xFE) {   // UTF-16 LE
+        std::wstring out;
+        for (std::size_t i = 2; i + 1 < b.size(); i += 2) out += wchar_t(b[i] | (b[i + 1] << 8));
+        return out;
+    }
+    if (b.size() >= 2 && b[0] == 0xFE && b[1] == 0xFF) {   // UTF-16 BE
+        std::wstring out;
+        for (std::size_t i = 2; i + 1 < b.size(); i += 2) out += wchar_t((b[i] << 8) | b[i + 1]);
+        return out;
+    }
+    std::size_t start = b.size() >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF ? 3 : 0;
+    if (start >= b.size()) return {};
+    const char* p = reinterpret_cast<const char*>(b.data() + start);
+    const int n = int(b.size() - start);
+    // UTF-8 strict d'abord ; un fichier ANSI (accents en Windows-1252) est relu dans la page de code du système.
+    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, p, n, nullptr, 0);
+    UINT cp = CP_UTF8;
+    if (len <= 0) {
+        cp = CP_ACP;
+        len = MultiByteToWideChar(cp, 0, p, n, nullptr, 0);
+    }
+    std::wstring out(std::size_t(std::max(len, 0)), L'\0');
+    if (len > 0) MultiByteToWideChar(cp, cp == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0, p, n, out.data(), len);
+    return out;
+}
+
+SIZE quickLookWindowSize(SIZE content, SIZE screen, int titleBar) {
+    const double maxW = screen.cx * 0.7, maxH = screen.cy * 0.7 - titleBar;
+    double w = std::max<LONG>(content.cx, 1), h = std::max<LONG>(content.cy, 1);
+    const double fit = std::min({maxW / w, maxH / h, 2.0});   // jamais plus de 2× une petite image
+    w *= fit;
+    h *= fit;
+    const double minW = 360;
+    return SIZE{LONG(std::lround(std::max(w, minW))), LONG(std::lround(h)) + titleBar};
+}
+
+std::wstring quickLookSize(std::uint64_t bytes) {
+    if (bytes == 0) return L"Zéro octet";
+    if (bytes < 1000) return std::to_wstring(bytes) + L" octets";
+    static const wchar_t* kUnits[] = {L"Ko", L"Mo", L"Go", L"To"};
+    double v = double(bytes);
+    int u = -1;
+    while (v >= 1000 && u < 3) {
+        v /= 1000;
+        ++u;
+    }
+    if (u == 0) return std::to_wstring(std::llround(v)) + L" Ko";   // Ko arrondis à l'unité, comme le Finder
+    wchar_t buf[32];
+    swprintf_s(buf, L"%.1f %s", v, kUnits[u]);
+    for (wchar_t* c = buf; *c; ++c)
+        if (*c == L'.') *c = L',';
+    return buf;
+}
+
+} // namespace md

@@ -18,6 +18,8 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/diag.h"
+#include "../quicklook/quicklook_logic.h"
+#include "../quicklook/quicklook_shell.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
@@ -55,6 +57,10 @@ constexpr UINT WM_APP_THEME = WM_APP + 11;   // lParam : ThemeResult de themeJob
 constexpr double kGenieSettleSeconds = 0.08;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre
 constexpr UINT WM_APP_SWITCHKEY = WM_APP + 13;   // wParam : kHotSwitch… (frappe prise par le crochet clavier)
 constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
+constexpr UINT WM_APP_QUICKLOOK = WM_APP + 30;      // wParam : fenêtre au premier plan (Espace dans une vue Shell)
+constexpr UINT WM_APP_QUICKLOOK_KEY = WM_APP + 31;  // wParam : touche pendant l'aperçu (Espace, Échap, Entrée)
+constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la sélection de l'Explorateur
+constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
 constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
 constexpr UINT_PTR kArmTimer = 0x414D;       // "AM" : réduction annoncée qui ne vient pas
 constexpr UINT_PTR kWarmTimer = 0x574D;      // "WM" : case survolée assez longtemps : capture préparée
@@ -1662,6 +1668,26 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
 }
 
 // Ne lit que Tab (avec Alt) et, pendant une session, Échap, flèches, Q, H ; tout le reste passe sans délai.
+namespace {
+// Contexte de Coup d'œil, lu dans le crochet clavier (aucun message envoyé : classes et focus seulement).
+QuickLookContext quickLookContextNow() {
+    QuickLookContext c;
+    const HWND fg = GetForegroundWindow();
+    wchar_t cls[64] = {};
+    if (fg && GetClassNameW(fg, cls, 64)) c.foregroundClass = cls;
+    GUITHREADINFO gti{sizeof gti};
+    if (fg && GetGUIThreadInfo(GetWindowThreadProcessId(fg, nullptr), &gti) && gti.hwndFocus) {
+        if (GetClassNameW(gti.hwndFocus, cls, 64)) c.focusClass = cls;
+        for (HWND h = gti.hwndFocus; h && h != fg; h = GetParent(h))
+            if (GetClassNameW(h, cls, 64) && _wcsicmp(cls, L"SHELLDLL_DefView") == 0) {
+                c.focusInShellView = true;
+                break;
+            }
+    }
+    return c;
+}
+} // namespace
+
 LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && self_) {
         const auto* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp);
@@ -1670,6 +1696,29 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const unsigned vk = k->vkCode & 0xFF;
         const bool repeat = down && held[vk];
         held[vk] = down;
+        // Coup d'œil : Espace dans la liste des fichiers ; pendant l'aperçu, Espace, Échap et Entrée lui reviennent.
+        if ((vk == VK_SPACE || vk == VK_ESCAPE || vk == VK_RETURN) && k->dwExtraInfo != kQuickLookReplay) {
+            // Frappes simulées ignorées (une app qui tape un texte) ; acceptées en diagnostic pour les essais.
+            const bool injected = (k->flags & LLKHF_INJECTED) != 0 && !diagnosticCapture();
+            const bool mods = ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_SHIFT) |
+                                GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
+            const QuickLookContext c = quickLookContextNow();
+            if (self_->quickLook_.isOpen()) {
+                const QuickLookKey a = quickLookKey(VK_SPACE, down, mods, injected, c);   // même contexte que l'ouverture
+                if (a != QuickLookKey::Pass) {
+                    if (down && !repeat) PostMessageW(self_->hwnd_, WM_APP_QUICKLOOK_KEY, WPARAM(vk), 0);
+                    return 1;
+                }
+            } else if (vk == VK_SPACE) {
+                switch (quickLookKey(vk, down, mods, injected, c)) {
+                    case QuickLookKey::Open:
+                        if (!repeat) PostMessageW(self_->hwnd_, WM_APP_QUICKLOOK, reinterpret_cast<WPARAM>(GetForegroundWindow()), 0);
+                        return 1;
+                    case QuickLookKey::Swallow: return 1;
+                    case QuickLookKey::Pass: break;
+                }
+            }
+        }
         if (self_->switchKeysOn_) {
             const bool alt = (k->flags & LLKHF_ALTDOWN) != 0;
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -1832,6 +1881,29 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kTrashTimer, 300, nullptr);   // une suppression multiple envoie une rafale d'avis
             return 0;
         }
+        case WM_APP_QUICKLOOK: {   // sélection lue ici (COM, fil de l'interface en STA), puis l'aperçu
+            const HWND owner = reinterpret_cast<HWND>(wp);
+            auto paths = shellSelection(owner);
+            if (trace_) log::info(L"[trace] coup d'œil : %zu élément(s) sélectionné(s)", paths.size());
+            if (!paths.empty()) {
+                quickLook_.show(instance_, std::move(paths), 0, owner);
+                SetTimer(hwnd_, kQuickLookTimer, 250, nullptr);
+            } else {   // rien de sélectionné : Espace rendu à l'Explorateur (il sélectionne l'élément qui a le focus)
+                INPUT in[2]{};
+                for (int i = 0; i < 2; ++i) {
+                    in[i].type = INPUT_KEYBOARD;
+                    in[i].ki.wVk = VK_SPACE;
+                    in[i].ki.dwExtraInfo = kQuickLookReplay;
+                }
+                in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(2, in, sizeof(INPUT));
+            }
+            return 0;
+        }
+        case WM_APP_QUICKLOOK_KEY:
+            if (wp == VK_RETURN) quickLook_.openFile();
+            else quickLook_.close();
+            return 0;
         case WM_APP_SWITCHKEY:
             if (switch_.active() || int(wp) == kHotSwitch || int(wp) == kHotSwitchBack) switcherKey(int(wp));
             return 0;
@@ -1866,6 +1938,18 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kQuickLookTimer) {   // l'aperçu suit la sélection (flèches, clics dans l'Explorateur)
+                const HWND owner = quickLook_.owner();
+                // Fermé si l'Explorateur (ou le bureau) n'est plus au premier plan : l'aperçu flotte au-dessus de tout.
+                if (!quickLook_.isOpen() || !IsWindow(owner) || GetForegroundWindow() != owner) {
+                    KillTimer(hwnd_, kQuickLookTimer);
+                    quickLook_.close();
+                    return 0;
+                }
+                auto paths = shellSelection(owner);
+                if (!paths.empty() && paths != quickLook_.paths()) quickLook_.show(instance_, std::move(paths), 0, owner);
+                return 0;
+            }
             if (wp == kCornerTimer) {
                 KillTimer(hwnd_, kCornerTimer);
                 runHotCorner(std::exchange(pendingCorner_, HotCornerAction::Off));

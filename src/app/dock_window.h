@@ -20,6 +20,7 @@
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
 #include "../popup/stack_window.h"
+#include "../quicklook/quicklook_window.h"
 #include "../render/dock_renderer.h"
 #include "../render/sprite_renderer.h"
 #include "../switcher/switcher_logic.h"
@@ -158,6 +159,7 @@ private:
     SwitchSession switch_;               // Alt+Tab en cours
     std::vector<std::wstring> switchApps_;   // rangée de la session (appId)
     SwitcherWindow switcher_;
+    QuickLookWindow quickLook_;   // Coup d'œil : Espace dans l'Explorateur ou sur le bureau
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     HotCornerTracker corners_;
     HotCornerAction pendingCorner_ = HotCornerAction::Off;   // action différée (veille de l'écran, économiseur)
