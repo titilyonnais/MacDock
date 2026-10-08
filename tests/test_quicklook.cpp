@@ -79,3 +79,46 @@ TEST_CASE(quicklook_text_cut_inside_utf8_sequence) {
     md::quickLookTrimUtf8(whole);   // séquence complète : rien n'est retiré
     CHECK(md::quickLookDecode(whole) == L"abcé");
 }
+
+TEST_CASE(quicklook_media_kinds) {
+    using md::QuickLookMedia;
+    CHECK(md::quickLookMedia(L"C:\\v\\Film.MP4") == QuickLookMedia::Video);
+    CHECK(md::quickLookMedia(L"C:\\v\\clip.mov") == QuickLookMedia::Video);
+    CHECK(md::quickLookMedia(L"C:\\m\\chanson.mp3") == QuickLookMedia::Audio);
+    CHECK(md::quickLookMedia(L"C:\\m\\son.FLAC") == QuickLookMedia::Audio);
+    CHECK(md::quickLookMedia(L"C:\\dossier.mp4\\notes") == QuickLookMedia::None);   // le point est dans le dossier
+    CHECK(md::quickLookMedia(L"C:\\a\\notes.txt") == QuickLookMedia::None);
+}
+
+TEST_CASE(quicklook_shell_previews_for_documents_only) {
+    CHECK(md::quickLookUsesShellPreview(L"C:\\d\\rapport.pdf"));
+    CHECK(md::quickLookUsesShellPreview(L"C:\\d\\lettre.DOCX"));
+    CHECK(md::quickLookUsesShellPreview(L"C:\\d\\police.ttf"));
+    CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\photo.jpg"));    // miniature : plus nette et plus rapide
+    CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\notes.txt"));    // vue texte maison
+    CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\film.mp4"));     // lecteur vidéo
+    CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\sansextension"));
+    CHECK(md::quickLookUsesShellPreview(L"C:\\d\\page.html"));   // la page rendue, pas son code
+    CHECK(!md::quickLookIsText(L"C:\\d\\page.htm"));
+}
+
+TEST_CASE(quicklook_document_window_sizes) {
+    const SIZE big{2560, 1400};
+    SIZE s = md::quickLookDocumentSize(L"C:\\d\\a.pdf", big, 44);
+    CHECK(s.cx == 620 && s.cy == 820 + 44);   // page en portrait
+    s = md::quickLookDocumentSize(L"C:\\d\\a.xlsx", big, 44);
+    CHECK(s.cx == 900 && s.cy == 600 + 44);   // feuille en paysage
+    s = md::quickLookDocumentSize(L"C:\\d\\a.pdf", SIZE{960, 540}, 44);   // 1080p à 200 %
+    CHECK(s.cx <= 960 * 9 / 10 && s.cy <= 540 * 9 / 10);
+}
+
+TEST_CASE(quicklook_zoom_from_the_icon) {
+    const RECT from{100, 100, 164, 164}, to{500, 300, 1500, 1000};
+    RECT r = md::quickLookZoom(from, to, 0);
+    CHECK(r.left == 100 && r.right == 164);
+    r = md::quickLookZoom(from, to, 1);
+    CHECK(r.left == 500 && r.top == 300 && r.right == 1500 && r.bottom == 1000);
+    r = md::quickLookZoom(from, to, 0.5);
+    CHECK(r.left > 300 && r.left < 500);   // ralentit à l'arrivée : plus de la moitié du chemin
+    CHECK(r.right - r.left > 532);
+}

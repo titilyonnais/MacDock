@@ -4,7 +4,15 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
 
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
-- **Coup d'œil** : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné l'affiche dans une fenêtre flottante (photo, vidéo, PDF, document, texte, ou grande icône avec type, taille et date). Espace ou Échap ferme, Entrée ouvre, et l'aperçu suit la sélection.
+- **Coup d'œil** : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné l'affiche dans une fenêtre flottante, qui s'ouvre en zoom depuis son icône.
+  - **Ce qu'elle montre** :
+    - les photos ;
+    - les vrais aperçus des documents : PDF, Word, Excel, PowerPoint, pages web, polices (ceux de Windows et d'Office) ;
+    - les vidéos et les sons, qui se lisent tout de suite (un clic met en pause) ;
+    - le texte ;
+    - sinon, une grande icône avec le type, la taille et la date.
+  - Le bouton à deux flèches passe en plein écran.
+  - Espace ou Échap ferme, Entrée ouvre, et l'aperçu suit la sélection.
 - **Captures d'écran** : `⊞⇧3` pour tout l'écran, `⊞⇧4` pour une zone ou une fenêtre, comme `⌘⇧3` et `⌘⇧4`. Le fichier va sur le Bureau et une vignette flottante apparaît en bas à droite.
 - **Fenêtres des autres apps** : feux tricolores à gauche, coins arrondis, barre de titre grise ; avec le mod `macdock-look`, police SF Pro partout.
 

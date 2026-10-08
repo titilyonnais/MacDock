@@ -1902,7 +1902,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             const bool mods = ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_SHIFT) |
                                 GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
             const QuickLookContext c = quickLookContextNow();
-            if (self_->quickLook_.isOpen()) {
+            if (self_->quickLook_->isOpen()) {
                 const QuickLookKey a = quickLookKey(VK_SPACE, down, mods, injected, c);   // même contexte que l'ouverture
                 if (a != QuickLookKey::Pass) {
                     if (down && !repeat) PostMessageW(self_->hwnd_, WM_APP_QUICKLOOK_KEY, WPARAM(vk), 0);
@@ -2091,7 +2091,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (trace_) log::info(L"[trace] coup d'œil : %s", first.empty() ? L"aucune sélection" : first.c_str());
             if (!first.empty()) {
-                quickLook_.show(instance_, {first}, 0, owner);
+                quickLook_->show(instance_, {first}, 0, owner);
                 SetTimer(hwnd_, kQuickLookTimer, 250, nullptr);
             } else {   // rien de sélectionné : Espace rendu à l'Explorateur (il sélectionne l'élément qui a le focus)
                 INPUT in[2]{};
@@ -2121,7 +2121,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_APP_QUICKLOOK_KEY:   // Espace, Échap, ou Entrée (passée aussi à l'Explorateur) : fermeture
-            quickLook_.close();
+            quickLook_->close();
             quickLookWatch_.reset();
             return 0;
         case WM_APP_SWITCHKEY:
@@ -2164,11 +2164,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (wp == kQuickLookTimer) {   // l'aperçu suit la sélection (flèches, clics dans l'Explorateur)
-                const HWND owner = quickLook_.owner();
+                const HWND owner = quickLook_->owner();
                 // Fermé si l'Explorateur (ou le bureau) n'est plus au premier plan : l'aperçu flotte au-dessus de tout.
-                if (!quickLook_.isOpen() || !IsWindow(owner) || GetForegroundWindow() != owner) {
+                if (!quickLook_->isOpen() || !IsWindow(owner) || GetForegroundWindow() != owner) {
                     KillTimer(hwnd_, kQuickLookTimer);
-                    quickLook_.close();
+                    quickLook_->close();
                     quickLookWatch_.reset();
                     return 0;
                 }
@@ -2176,12 +2176,13 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 quickLookBusy_ = true;
                 const std::wstring first = quickLookWatch_.first();
                 quickLookBusy_ = false;
+                if (!quickLook_->isOpen()) return 0;   // fermé (×) pendant la lecture : ne pas le rouvrir
                 if (first.empty()) {   // plus rien de sélectionné : l'aperçu se ferme
                     KillTimer(hwnd_, kQuickLookTimer);
-                    quickLook_.close();
+                    quickLook_->close();
                     quickLookWatch_.reset();
-                } else if (quickLook_.paths().empty() || first != quickLook_.paths().front()) {
-                    quickLook_.show(instance_, {first}, 0, owner);
+                } else if (quickLook_->paths().empty() || first != quickLook_->paths().front()) {
+                    quickLook_->show(instance_, {first}, 0, owner);
                 }
                 return 0;
             }
@@ -2618,6 +2619,11 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (configThread_.joinable()) configThread_.join();
     if (mouseThreadId_) PostThreadMessageW(mouseThreadId_, WM_QUIT, 0, 0);
     if (mouseThread_.joinable()) mouseThread_.join();
+    // Après le crochet clavier (il lit l'aperçu) : un aperçu figé (prevhost) n'empêche pas le Dock de s'arrêter.
+    if (!quickLook_->shutdown(3000)) {
+        log::warn(L"Coup d'œil : aperçu figé, abandonné à l'arrêt");
+        (void)quickLook_.release();
+    }
     CloseHandle(stopEvent_);
     pipe_.stop();
     tracker_.stop();

@@ -32,4 +32,16 @@ SIZE quickLookWindowSize(SIZE content, SIZE screen, int titleBar);
 
 std::wstring quickLookSize(std::uint64_t bytes);   // « 1,3 Mo » comme le Finder (puissances de 1000)
 
+// Vidéo ou son (lu par Media Foundation), d'après l'extension.
+enum class QuickLookMedia { None, Video, Audio };
+QuickLookMedia quickLookMedia(const std::wstring& path);
+// Document confié au gestionnaire d'aperçu du Shell (PDF, Office, HTML, polices…) ; pas les images (miniature), le
+// texte (vue maison) ni les médias.
+bool quickLookUsesShellPreview(const std::wstring& path);
+// Fenêtre d'un document (points, barre d'outils comprise) : page en portrait (PDF, Word), en paysage (tableur,
+// présentation, page web), sinon moyenne ; au plus 90 % de l'écran.
+SIZE quickLookDocumentSize(const std::wstring& path, SIZE screen, int titleBar);
+// Ouverture en zoom depuis l'icône : rectangle à t (0 → from, 1 → to), ralenti à l'arrivée.
+RECT quickLookZoom(const RECT& from, const RECT& to, double t);
+
 } // namespace md

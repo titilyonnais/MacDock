@@ -463,6 +463,43 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - **Essayé de nouveau en vrai** : clic droit sans menu contextuel, Bloc-notes qui dépasse de l'écran (capture complète), ⊞⇧3 sans menu Démarrer.
   - **Limite connue** : les menus, Spotlight, l'écran Apps et la pastille du volume restent absents des captures (ils sont exclus pour leur verre). C'est ajouté à la feuille de route.
 
+### Plan 30 — Coup d'œil, finitions
+
+- **Vrais aperçus des documents** : les gestionnaires d'aperçu de Windows et d'Office s'affichent sous la barre d'outils.
+  - **Essayé en vrai** : un PDF (avec la navigation par page), un document Word, et le passage de l'un à l'autre aux flèches.
+  - **Sans planter MacDock** : les gestionnaires tournent dans `prevhost.exe`, comme pour l'Explorateur ; un gestionnaire défaillant ne fait pas tomber MacDock.
+  - Chaque aperçu a sa propre fenêtre : le gestionnaire de Word occupait sinon toute la fenêtre, barre d'outils comprise.
+- **Vidéos et sons** : la lecture démarre tout de suite, et un clic met en pause.
+  - Le son s'arrête à la fermeture et au passage à un autre fichier.
+  - **Essayé en vrai** avec une mire vidéo et un son très faible, fabriqués pour l'essai : je n'ai ouvert aucun de tes fichiers.
+- **Ouverture en zoom** depuis l'icône du fichier, avec un fondu ; à défaut, depuis le centre.
+- **Plein écran** : le bouton à deux flèches. La fenêtre s'arrête sous la barre de menus, qui sinon cacherait les boutons.
+- **Le Dock ne se fige jamais** : la fenêtre du Coup d'œil a maintenant son propre fil.
+  - Un aperçu lent, ou une vidéo qui s'ouvre, n'arrête ni les animations ni les clics du Dock.
+  - Pendant ces appels, les messages qui arrivent sont mis de côté et rejoués ensuite.
+- **Note sur les essais** : un clic sur un fichier déjà sélectionné lance son renommage dans l'Explorateur ; l'Espace suivant est alors tapé dans le nom, et le Coup d'œil n'intervient pas, comme il se doit. C'est arrivé à un fichier d'essai, renommé ensuite. Désormais, je navigue au clavier.
+
+- **Relecture finale** (Sonnet, pour ménager la limite de la semaine) : un critique, six importants, tous corrigés.
+  - **Critique, arrêt du Dock** : si un aperçu est figé, l'arrêt du Dock pouvait planter. Le Dock attend maintenant 3 s au plus, puis abandonne l'objet du Coup d'œil plutôt que de le détruire. La fenêtre se cache dès la demande d'arrêt.
+  - **Réentrance** : tous les appels vers `prevhost.exe` (ouverture, fermeture, redimensionnement) sont gardés. Les messages arrivés pendant ces appels sont rejoués dans l'ordre, une fois le message en cours terminé. Changer vite de fichier n'affiche donc plus l'aperçu d'un autre.
+  - **Animation** : un nouveau fichier ou le plein écran pendant l'ouverture en zoom termine l'animation à la bonne place.
+  - **Fichier dépassé** : l'aperçu ou le son d'un fichier déjà dépassé n'est jamais ouvert.
+  - **Vidéos** : une vidéo sans miniature a quand même son image. Une vidéo illisible (codec absent) rend la miniature.
+  - **UI Automation** : le rectangle de l'icône est lu sur le fil de chargement, pour qu'un Explorateur lent ne fige plus la fenêtre.
+  - **Au passage** :
+    - les pages HTML sont rendues par le Shell, au lieu d'afficher leur code ;
+    - Alt+F4 sur l'aperçu le cache seulement ;
+    - un clic sur × pendant la lecture de la sélection ne le rouvre plus ;
+    - le fond de l'aperçu suit le thème ;
+    - le code inutile est retiré.
+  - **Essayé de nouveau en vrai** : Word, vidéo, PDF et son à la suite, chacun affiché en moins de 0,3 s.
+
+## Mineurs reportés — plan 30
+- « lecture » reste affiché après la fin d'un son.
+- L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
+- Un gestionnaire d'aperçu qui ne rend jamais la main fige la fenêtre du Coup d'œil (jamais le Dock). L'annulation des appels COM n'est pas encore en place.
+- La file des messages différés et les générations ne sont pas couvertes par des tests (code de fenêtre).
+
 ## Mineurs reportés — plan 29
 - Le nom du fichier est choisi avant l'écriture, sur un autre fil : deux captures dans la même seconde, au même instant, pourraient viser le même nom (fenêtre très étroite).
 - Une fermeture de session pendant l'écriture peut couper le PNG.
