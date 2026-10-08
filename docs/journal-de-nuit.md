@@ -463,6 +463,22 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - **Essayé de nouveau en vrai** : clic droit sans menu contextuel, Bloc-notes qui dépasse de l'écran (capture complète), ⊞⇧3 sans menu Démarrer.
   - **Limite connue** : les menus, Spotlight, l'écran Apps et la pastille du volume restent absents des captures (ils sont exclus pour leur verre). C'est ajouté à la feuille de route.
 
+### Plan 30 — Coup d'œil, finitions
+
+- **Vrais aperçus des documents** : les gestionnaires d'aperçu de Windows et d'Office s'affichent sous la barre d'outils.
+  - **Essayé en vrai** : un PDF (avec la navigation par page), un document Word, et le passage de l'un à l'autre aux flèches.
+  - **Sans planter MacDock** : les gestionnaires tournent dans `prevhost.exe`, comme pour l'Explorateur ; un gestionnaire défaillant ne fait pas tomber MacDock.
+  - Chaque aperçu a sa propre fenêtre : le gestionnaire de Word occupait sinon toute la fenêtre, barre d'outils comprise.
+- **Vidéos et sons** : la lecture démarre tout de suite, et un clic met en pause.
+  - Le son s'arrête à la fermeture et au passage à un autre fichier.
+  - **Essayé en vrai** avec une mire vidéo et un son très faible, fabriqués pour l'essai : je n'ai ouvert aucun de tes fichiers.
+- **Ouverture en zoom** depuis l'icône du fichier, avec un fondu ; à défaut, depuis le centre.
+- **Plein écran** : le bouton à deux flèches. La fenêtre s'arrête sous la barre de menus, qui sinon cacherait les boutons.
+- **Le Dock ne se fige jamais** : la fenêtre du Coup d'œil a maintenant son propre fil.
+  - Un aperçu lent, ou une vidéo qui s'ouvre, n'arrête ni les animations ni les clics du Dock.
+  - Pendant ces appels, les messages qui arrivent sont mis de côté et rejoués ensuite.
+- **Note sur les essais** : un clic sur un fichier déjà sélectionné lance son renommage dans l'Explorateur ; l'Espace suivant est alors tapé dans le nom, et le Coup d'œil n'intervient pas, comme il se doit. C'est arrivé à un fichier d'essai, renommé ensuite. Désormais, je navigue au clavier.
+
 ## Mineurs reportés — plan 29
 - Le nom du fichier est choisi avant l'écriture, sur un autre fil : deux captures dans la même seconde, au même instant, pourraient viser le même nom (fenêtre très étroite).
 - Une fermeture de session pendant l'écriture peut couper le PNG.

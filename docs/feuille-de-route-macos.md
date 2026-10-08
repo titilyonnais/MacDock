@@ -15,15 +15,15 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Mod Windhawk « MacDock - macOS Look »** : SF Pro dans toutes les apps (plan 28). Il reste **à installer par toi** dans Windhawk.
 - **Coup d'œil** (Quick Look) : Espace dans l'Explorateur et sur le bureau (plan 28).
 - **Captures d'écran façon macOS** : ⊞⇧3, ⊞⇧4 (zone ou fenêtre), vignette flottante, fichier sur le Bureau (plan 29).
+- **Coup d'œil, finitions** : vrais aperçus des documents, vidéos et sons, zoom depuis l'icône, plein écran (plan 30).
 
 ## À faire, par ordre d'effet
-1. **Coup d'œil, finitions** : animation d'ouverture depuis l'icône ; plein écran ; vidéos et PDF lisibles (gestionnaires d'aperçu du Shell).
-2. **Centre de notifications et widgets** : panneau à droite à l'ouverture de l'horloge.
-3. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
-4. **Exposé d'une app** : les fenêtres d'une seule app, depuis le menu du Dock ou avec ⌃↓.
-5. **Raccourcis ⌘** : Alt+C, V, X, Z, A, S, W, Q, T et N joués comme Ctrl, en option (« la touche ⌘ »).
-6. **Sons système façon macOS** : sons originaux (aucun son Apple), dont un déclic d'appareil photo pour les captures.
-7. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
+1. **Centre de notifications et widgets** : panneau à droite à l'ouverture de l'horloge.
+2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
+3. **Exposé d'une app** : les fenêtres d'une seule app, depuis le menu du Dock ou avec ⌃↓.
+4. **Raccourcis ⌘** : Alt+C, V, X, Z, A, S, W, Q, T et N joués comme Ctrl, en option (« la touche ⌘ »).
+5. **Sons système façon macOS** : sons originaux (aucun son Apple), dont un déclic d'appareil photo pour les captures.
+6. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
 
 ## Limites connues
 - Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.
