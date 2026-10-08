@@ -23,6 +23,10 @@ constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois 
 constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
 constexpr double kBounceMs = 240;
 constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
+// Fenêtre qui retrouve sa barre de titre (sortie du plein écran) : l'app la redessine un peu après avoir pris sa
+// nouvelle taille ; les pastilles attendent, pour ne pas flotter sur l'ancienne image.
+constexpr UINT_PTR kRevealTimer = 5;
+constexpr ULONGLONG kRevealMs = 120;
 // Messages postés au fil des pastilles (sans fenêtre : les calques peuvent être recréés).
 constexpr UINT kMsgAttach = WM_APP + 1, kMsgDetach = WM_APP + 2, kMsgQuit = WM_APP + 4, kMsgRecreate = WM_APP + 5,
                kMsgCapture = WM_APP + 6;
@@ -216,6 +220,8 @@ void TrafficWindow::doDetach() {
     state_.pressed = state_.bouncing = -1;
     placement_ = {};
     probeRetries_ = 0;
+    refused_ = nullptr;
+    revealAt_ = 0;
     if (hwnd_) KillTimer(hwnd_, kProbeTimer);
     hide();
     publicTarget_ = nullptr;
@@ -367,6 +373,7 @@ void TrafficWindow::place(bool resample, bool probe) {
     const UINT dpi = effectiveDpi(target_);
     if (!IsWindowVisible(target_) || !wantsLights(info, mode_, dpi)) {
         if (diagnosticCapture()) log::info(L"[diag] pastilles %p : refusée (style %08lx)", target_, info.style);
+        if (IsWindowVisible(target_) && !info.iconic) refused_ = target_;   // plein écran : sans barre de titre
         hide();
         return;
     }
@@ -408,6 +415,12 @@ void TrafficWindow::place(bool resample, bool probe) {
         hide();
         return;
     }
+    if (refused_ == target_) {   // la barre de titre revient (sortie du plein écran) : un instant de patience
+        refused_ = nullptr;
+        revealAt_ = GetTickCount64() + kRevealMs;
+        SetTimer(hwnd_, kRevealTimer, UINT(kRevealMs), nullptr);
+    }
+    if (GetTickCount64() < revealAt_) return;   // montrées par kRevealTimer
     const LightsLayout l = lightsOverButtons(buttons, dpi, info.zoomed);
     const bool resized = l.window.right - l.window.left != layout_.window.right - layout_.window.left ||
                          l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top ||
@@ -603,6 +616,10 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
                     if (target_ && !IsWindow(target_)) doDetach();
                     else place(false);
                 }
+            } else if (wp == kRevealTimer) {
+                KillTimer(hwnd_, kRevealTimer);
+                revealAt_ = 0;
+                place(true, true);   // nouvelle sonde : les boutons ont pu changer de taille
             } else if (wp == kSampleTimer) {
                 KillTimer(hwnd_, kSampleTimer);
                 place(true);

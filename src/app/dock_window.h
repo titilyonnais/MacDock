@@ -131,7 +131,7 @@ private:
     void registerDropTarget();
     void performDrop();
     void syncAppBar();                 // zone réservée seulement sans masquage automatique
-    bool detectFullscreen() const;
+    HWND detectFullscreen() const;   // fenêtre en plein écran sur l'écran du Dock, ou nullptr
     void checkFullscreen();
     bool stepVisibility(double now);
     void refreshTrash();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
@@ -249,6 +249,7 @@ private:
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
     GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
+    FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée

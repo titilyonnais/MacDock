@@ -119,3 +119,22 @@ TEST_CASE(fullscreen_stays_while_working_on_another_screen) {
     CHECK(!md::fullscreenOnMonitor({maxed}, mon));
     CHECK(!md::fullscreenOnMonitor({}, mon));
 }
+
+TEST_CASE(visibility_back_at_once_after_fullscreen) {
+    // Sortie du plein écran : la barre et le Dock sont là tout de suite, comme sur Mac (sinon la bande qui leur est
+    // réservée reste vide le temps d'une glissade, ce qui se voit sur les bords de la fenêtre qui reprend sa taille).
+    md::Visibility v;
+    md::VisibilityInputs fs;
+    fs.fullscreen = true;
+    run(v, fs, 0, 1);
+    CHECK(v.hidden());
+    v.update(md::VisibilityInputs{}, 1.0 + 1.0 / 60);
+    CHECK_NEAR(v.shown(), 1.0, 1e-9);
+    // Masquage automatique : rien n'apparaît à la sortie si le curseur n'est pas au bord.
+    md::Visibility w;
+    auto fsAuto = autohide();
+    fsAuto.fullscreen = true;
+    run(w, fsAuto, 0, 1);
+    w.update(autohide(), 1.0 + 1.0 / 60);
+    CHECK(w.hidden());
+}
