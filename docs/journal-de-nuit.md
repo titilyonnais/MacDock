@@ -503,6 +503,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - un clic sur l'une d'elles la restaure au premier plan.
 - **Réglage** : `appExposeHotkey` dans `settings.json` (`ctrl+alt+down` par défaut, `ctrl+down`, `off`).
 - **Essayé en vrai** avec trois Tables des caractères, dont une réduite : deux fenêtres rangées, la réduite en bas, et la réduite restaurée au clic.
+- **Relecture finale** (Sonnet) : aucun critique, deux importants, corrigés.
+  - Une fenêtre réduite depuis l'état agrandi ou ancré gardait une miniature écrasée. Elle prend maintenant la taille de l'image gardée par DWM ; sans image, elle n'est pas montrée.
+  - La pastille de titre des fenêtres ouvertes n'est plus recouverte par la rangée.
+  - **Au passage** :
+    - avec beaucoup de fenêtres réduites, les écarts rétrécissent (plus de largeur nulle ou négative) ;
+    - pas de lecture hors limites sur une zone vide ;
+    - le trait suit la zone quand le Dock est sur le côté ;
+    - « Afficher toutes les fenêtres » ramène l'app si rien n'est à montrer sur ce bureau.
+- **Mineurs reportés** :
+  - un raccourci refusé n'est pas retenté avant le prochain changement de réglage ;
+  - `Ctrl+Alt+↓` prend « Ajouter un curseur en dessous » de VS Code, et `ctrl+down` la navigation d'Excel et de Word : choisis `off` si besoin.
 
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.

@@ -1042,13 +1042,13 @@ void DockApp::openMissionControl() {
 }
 
 // Exposé d'une app : ses fenêtres ouvertes rangées, les réduites en rangée en bas ; un second appui ferme.
-void DockApp::openAppExpose(const std::wstring& appId) {
+bool DockApp::openAppExpose(const std::wstring& appId) {
     endSwitch(false);
     if (MissionView::isOpen()) {
         MissionView::closeOpen();
-        return;
+        return true;
     }
-    if (menuOpen_ || appId.empty()) return;
+    if (menuOpen_ || appId.empty()) return false;
     MissionView::Request r;
     Microsoft::WRL::ComPtr<IVirtualDesktopManager> desktops;
     CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&desktops));
@@ -1066,7 +1066,7 @@ void DockApp::openAppExpose(const std::wstring& appId) {
         r.windows.push_back({h, model_.titleOf(id)});
     }
     if (trace_) log::info(L"[trace] exposé %s : %zu ouverte(s), %zu réduite(s)", appId.c_str(), r.windows.size(), r.minimized.size());
-    if (r.windows.empty() && r.minimized.empty()) return;
+    if (r.windows.empty() && r.minimized.empty()) return false;
     MenuWindow::Env env = popupEnv();
     controller_.setCursor(std::nullopt);
     requestFrame();
@@ -1075,6 +1075,7 @@ void DockApp::openAppExpose(const std::wstring& appId) {
     menuOpen_ = false;
     if (chosen) activateApp({*chosen});   // une fenêtre réduite est restaurée
     requestFrame();
+    return true;
 }
 
 void DockApp::registerAppExposeHotkey() {
@@ -1521,8 +1522,8 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
         case kCmdOpen:
             activateItem(item);
             break;
-        case kCmdShowAll:   // Exposé de l'app, comme sur macOS
-            openAppExpose(item.appId);
+        case kCmdShowAll:   // Exposé de l'app, comme sur macOS ; rien à montrer ici : l'app passe devant
+            if (!openAppExpose(item.appId)) activateItem(item);
             break;
         case kCmdKeep:
             if (model_.pinnedIndexOf(item.key)) {

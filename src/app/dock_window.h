@@ -83,9 +83,10 @@ private:
     void openSpotlight();                                      // Spotlight ; ferme celui qui est ouvert
     void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
     void openMissionControl();                                 // Mission Control ; ferme celui qui est ouvert
-    void registerMissionHotkey();
-    void registerAppExposeHotkey();
-    void openAppExpose(const std::wstring& appId);   // les fenêtres d'une seule app (réduites en rangée en bas)                              // raccourci du réglage missionControlHotkey
+    void registerMissionHotkey();                              // raccourci du réglage missionControlHotkey
+    void registerAppExposeHotkey();                            // raccourci du réglage appExposeHotkey
+    // Les fenêtres d'une seule app (réduites en rangée en bas) ; false : rien à montrer (autre bureau virtuel…).
+    bool openAppExpose(const std::wstring& appId);
     void registerSwitcherHotkey();                             // Alt+Tab et Alt+Maj+Tab (réglage appSwitcherHotkey)
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau

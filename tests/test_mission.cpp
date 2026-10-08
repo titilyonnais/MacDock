@@ -174,3 +174,19 @@ TEST_CASE(app_expose_hotkey) {
     CHECK(!md::parseAppExposeHotkey(L"off").has_value());
     CHECK(!md::parseAppExposeHotkey(L"bizarre").has_value());
 }
+
+TEST_CASE(app_expose_shelf_leaves_room_for_titles) {
+    const md::MissionRect area{0, 0, 1920, 1080};
+    const std::vector<md::MissionRect> two(2, md::MissionRect{0, 0, 1600, 900});
+    const md::MissionShelf s = md::missionShelf(two, area, 24, 32);
+    for (const auto& r : s.rects) CHECK(s.above.y + s.above.h + 32 <= r.y + 1e-6);   // pastille de titre sous la fenêtre
+    CHECK(s.lineY > s.above.y + s.above.h && s.lineY < s.rects[0].y);
+}
+
+TEST_CASE(app_expose_shelf_many_or_degenerate) {
+    const std::vector<md::MissionRect> lots(80, md::MissionRect{0, 0, 1600, 900});
+    const md::MissionShelf s = md::missionShelf(lots, md::MissionRect{0, 0, 1920, 1080}, 24);
+    for (const auto& r : s.rects) CHECK(r.w > 1 && r.h > 1);   // écarts réduits : jamais de largeur nulle ou négative
+    const md::MissionShelf z = md::missionShelf(lots, md::MissionRect{0, 0, 0, 0}, 24);
+    CHECK(z.rects.size() == lots.size());   // une place par fenêtre, même vide (pas de lecture hors limites)
+}

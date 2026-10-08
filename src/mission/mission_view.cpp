@@ -138,6 +138,7 @@ struct Screen {
     D2D1_RECT_F wallSrc{};
     int hover = -1;   // indice dans Session::thumbs
     double shelfLine = -1;   // trait au-dessus des fenêtres réduites (pixels de la vue) ; -1 : aucun
+    double shelfX0 = 0, shelfX1 = 0;   // étendue du trait : la zone de rangement (le Dock sur le côté la rétrécit)
     UINT w() const { return UINT(rc.right - rc.left); }
     UINT h() const { return UINT(rc.bottom - rc.top); }
 };
@@ -249,8 +250,11 @@ void Session::place() {
         const MissionRect work{double(s.work.left - s.rc.left), double(s.work.top - s.rc.top),
                                double(s.work.right - s.work.left), double(s.work.bottom - s.work.top)};
         // Fenêtres réduites en rangée au bas de l'écran, sous un trait ; les ouvertes se rangent au-dessus.
-        const MissionShelf shelf = missionShelf(shelfWins, missionArea(work, s.sc), kMissionGap * s.sc);
+        const MissionRect area = missionArea(work, s.sc);
+        const MissionShelf shelf = missionShelf(shelfWins, area, kMissionGap * s.sc, kMissionLabelRoom * s.sc);
         screens[k].shelfLine = shelfOf.empty() ? -1 : shelf.lineY;
+        screens[k].shelfX0 = area.x;
+        screens[k].shelfX1 = area.x + area.w;
         const auto rects = missionLayout(wins, shelf.above, kMissionGap * s.sc, (kMissionGap + kMissionLabelRoom) * s.sc);
         for (std::size_t j = 0; j < mine.size(); ++j) thumbs[mine[j]].to = rects[j];
         for (std::size_t j = 0; j < shelfOf.size(); ++j) {   // elles montent du bas de l'écran
@@ -311,9 +315,8 @@ void Session::render(Screen& s) {
     if (s.shelfLine >= 0) {   // trait de séparation des fenêtres réduites
         Com<ID2D1SolidColorBrush> line;
         d->CreateSolidColorBrush(rgba(1, 1, 1, 0.28f * float(easeOut(q))), &line);
-        const MissionRect a = missionArea({0, 0, double(s.w()), double(s.h())}, s.sc);
         if (line)
-            d->FillRectangle(D2D1::RectF(float(a.x), float(s.shelfLine), float(a.x + a.w), float(s.shelfLine) + std::max(1.f, s.sc)),
+            d->FillRectangle(D2D1::RectF(float(s.shelfX0), float(s.shelfLine), float(s.shelfX1), float(s.shelfLine) + std::max(1.f, s.sc)),
                              line.Get());
     }
     if (s.hover >= 0 && dir > 0 && q >= 1) {
@@ -490,16 +493,19 @@ std::optional<HWND> MissionView::track(const MenuWindow::Env& env, const Request
     if (shelfScreen == s.screens.size()) shelfScreen = 0;
     for (const auto& w : request.minimized) {
         if (!IsWindow(w.hwnd) || !IsIconic(w.hwnd)) continue;
-        WINDOWPLACEMENT wp{sizeof wp};
-        GetWindowPlacement(w.hwnd, &wp);
         Thumb th;
         th.src = w.hwnd;
         th.title = w.title;
         th.screen = shelfScreen;
         th.minimized = true;
-        th.from = {0, 0, double(std::max<LONG>(1, wp.rcNormalPosition.right - wp.rcNormalPosition.left)),
-                   double(std::max<LONG>(1, wp.rcNormalPosition.bottom - wp.rcNormalPosition.top))};
         if (FAILED(DwmRegisterThumbnail(s.screens[shelfScreen].hwnd, w.hwnd, &th.id))) continue;
+        // Taille de l'image que DWM garde (agrandie ou ancrée avant la réduction) : jamais déformée. Sans image : rien.
+        SIZE src{};
+        if (FAILED(DwmQueryThumbnailSourceSize(th.id, &src)) || src.cx <= 0 || src.cy <= 0) {
+            DwmUnregisterThumbnail(th.id);
+            continue;
+        }
+        th.from = {0, 0, double(src.cx), double(src.cy)};
         s.thumbs.push_back(std::move(th));
     }
     s.place();

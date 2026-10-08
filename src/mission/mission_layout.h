@@ -31,7 +31,8 @@ struct MissionShelf {
     MissionRect above;
     double lineY = 0;
 };
-MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap);
+// labelRoom : place laissée sous les fenêtres ouvertes pour leur pastille de titre.
+MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap, double labelRoom = 0);
 
 int missionHit(const std::vector<MissionRect>& rects, double x, double y);   // -1 : aucune
 MissionRect lerpRect(const MissionRect& a, const MissionRect& b, double t);

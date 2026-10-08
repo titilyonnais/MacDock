@@ -93,29 +93,38 @@ double easeOut(double t) {
     return 1 - u * u * u;
 }
 
-MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap) {
+MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap, double labelRoom) {
     MissionShelf out{{}, area, area.y + area.h};
-    if (minimized.empty() || area.w <= 0 || area.h <= 0) return out;
-    const double band = area.h * 0.18;            // bas de l'écran, comme les fenêtres réduites de macOS
+    if (minimized.empty()) return out;
+    const std::size_t n = minimized.size();
+    if (area.w <= 0 || area.h <= 0) {   // une place (vide) par fenêtre : l'appelant les lit toutes
+        out.rects.assign(n, MissionRect{area.x, area.y, 0, 0});
+        return out;
+    }
+    const double band = area.h * 0.18;               // bas de l'écran, comme les fenêtres réduites de macOS
     const double rowH = std::max(1.0, band - gap);   // trait de séparation au-dessus de la rangée
-    std::vector<double> w(minimized.size()), h(minimized.size());
-    double total = gap * double(minimized.size() - 1);
-    for (std::size_t i = 0; i < minimized.size(); ++i) {
+    // Beaucoup de fenêtres : les écarts rétrécissent aussi (jamais de largeur nulle ou négative).
+    const double g = n > 1 ? std::min(gap, 0.25 * area.w / double(n - 1)) : gap;
+    std::vector<double> w(n), h(n);
+    double widths = 0;
+    for (std::size_t i = 0; i < n; ++i) {
         const double sw = std::max(1.0, minimized[i].w), sh = std::max(1.0, minimized[i].h);
         const double k = std::min(1.0, rowH / sh);   // jamais agrandie
         w[i] = sw * k;
         h[i] = sh * k;
-        total += w[i];
+        widths += w[i];
     }
-    const double fit = total > area.w ? (area.w - gap * double(minimized.size() - 1)) / (total - gap * double(minimized.size() - 1)) : 1.0;
-    double x = area.x + (area.w - std::min(total, area.w)) / 2;
+    const double gaps = g * double(n - 1);
+    const double fit = widths + gaps > area.w ? (area.w - gaps) / widths : 1.0;
+    double x = area.x + (area.w - std::min(widths * fit + gaps, area.w)) / 2;
     const double bottom = area.y + area.h;
-    for (std::size_t i = 0; i < minimized.size(); ++i) {
+    for (std::size_t i = 0; i < n; ++i) {
         const double rw = w[i] * fit, rh = h[i] * fit;
         out.rects.push_back({x, bottom - rh, rw, rh});
-        x += rw + gap;
+        x += rw + g;
     }
-    out.above = {area.x, area.y, area.w, area.h - band};
+    // Les fenêtres ouvertes au-dessus, avec la place de leur pastille de titre.
+    out.above = {area.x, area.y, area.w, std::max(0.0, area.h - band - labelRoom)};
     out.lineY = area.y + area.h - band + gap / 2;
     return out;
 }
