@@ -247,8 +247,12 @@ std::vector<Com<IUIAutomationElement>> entriesOf(IUIAutomation* u, IUIAutomation
     Com<IUIAutomationElementArray> arr;
     if (menu && cond && SUCCEEDED(u->CreateCacheRequest(&req)) && SUCCEEDED(u->CreateTrueCondition(&raw)) &&
         SUCCEEDED(req->put_TreeFilter(raw.Get())) && SUCCEEDED(req->put_AutomationElementMode(AutomationElementMode_Full)) &&
-        SUCCEEDED(menu->FindAllBuildCache(TreeScope_Children, cond.Get(), req.Get(), &arr)) && arr)
-        return list(arr.Get());
+        SUCCEEDED(menu->FindAllBuildCache(TreeScope_Children, cond.Get(), req.Get(), &arr)) && arr) {
+        auto raw = list(arr.Get());
+        // Un conteneur non « contrôle » peut placer les entrées plus bas dans la vue brute : on garde la plus complète.
+        auto plain = children(u, menu, cond.Get());
+        return raw.size() >= plain.size() ? raw : plain;
+    }
     return children(u, menu, cond.Get());
 }
 

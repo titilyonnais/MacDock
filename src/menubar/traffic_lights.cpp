@@ -222,7 +222,7 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
             // Fond : couleur de la barre de titre (fondu sur la fin à droite pour des pastilles posées à gauche) ; le
             // bord du haut reste transparent quand il faut pouvoir y redimensionner la fenêtre.
             double pa = l.fade ? std::clamp((w - (x + 0.5)) / fade, 0.0, 1.0) : 1.0;
-            if (y < l.topGap) pa = 0;
+            if (y < l.topGap || !l.opaque) pa = 0;
             double a = pa, r = patch.r * pa, g = patch.g * pa, b = patch.b * pa;   // prémultiplié
             for (int i = 0; i < 3 && l.lights; ++i) {
                 const double cx = (l.circles[i].left + l.circles[i].right) / 2.0 - l.window.left;

@@ -33,6 +33,9 @@ struct LightsLayout {
     RECT patch{};        // fond de la couleur de la barre de titre
     bool lights = true;  // false : simple cache (boutons de Windows recouverts)
     bool fade = true;    // fondu du fond sur la fin à droite (pastilles posées à gauche)
+    // Fond peint ; faux quand la gauche est occupée (onglet, menu) : transparent, les clics hors pastilles atteignent
+    // l'app.
+    bool opaque = true;
     LONG topGap = 0;     // rangées du haut laissées transparentes : le bord de la fenêtre reste redimensionnable
 };
 

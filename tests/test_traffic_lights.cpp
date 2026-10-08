@@ -309,3 +309,20 @@ TEST_CASE(lights_spot_always_left_by_default) {
     s.lightsAlwaysLeft = false;
     CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).lightsAlwaysLeft);
 }
+
+TEST_CASE(lights_forced_left_background_passes_clicks) {
+    // Gauche occupée (premier onglet, menu Fichier) : seul ce qui est pastille capte la souris ; ailleurs le calque
+    // est transparent (alpha nul), donc les clics atteignent l'app.
+    auto l = md::lightsLayout(RECT{100, 100, 900, 700}, RECT{108, 131, 892, 692}, 96);
+    l.opaque = false;
+    md::LightsState st;
+    st.patchColor = 0x404040;
+    const auto px = md::renderLights(l, st, 1.0);
+    const int w = l.window.right - l.window.left;
+    CHECK_EQ(int(px[(std::size_t(2) * w + 2) * 4 + 3]), 0);   // coin : transparent
+    const int cx = (l.circles[0].left + l.circles[0].right) / 2 - l.window.left;
+    const int cy = (l.circles[0].top + l.circles[0].bottom) / 2 - l.window.top;
+    CHECK(int(px[(std::size_t(cy) * w + cx) * 4 + 3]) > 200);   // pastille : opaque
+    md::MenuBarSettings s = md::menuBarSettingsFromJson(*md::json::parse(R"({"trafficLightsSide":"right"})"));
+    CHECK(!s.lightsAlwaysLeft);   // toute valeur autre que « left » : comportement automatique
+}

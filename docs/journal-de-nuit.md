@@ -386,6 +386,19 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - Limite : dans les apps qui dessinent des onglets tout en haut à gauche (Bloc-notes, Explorateur, navigateurs), les pastilles cachent le début du premier onglet. Seule une modification de l'app elle-même pourrait libérer cette place.
 - **Intégration comme fenêtre enfant** (essayée puis abandonnée) : poser les pastilles comme fenêtres enfants de l'app supprimait tout retard au déplacement, mais Windows 11 ne les affiche pas dans les fenêtres WinUI aux coins arrondis. En calque flottant, le décalage n'est pas visible sur des captures prises en plein glissement.
 - Les pastilles tournent maintenant sur leur propre fil : une app figée ne fige plus la barre de menus.
+- **Relecture finale (Opus)** : 1 critique et 4 importants, corrigés.
+  - **Critique** : le démarrage du fil des pastilles pouvait relire une variable déjà disparue, avec le risque de n'avoir aucune pastille de la session.
+  - Démarrage qui pouvait se bloquer.
+  - Rattrapage du premier plan qui traitait nos propres menus.
+  - Clics bloqués sous les pastilles forcées à gauche : le fond y est maintenant transparent, donc le premier onglet ou le menu Fichier restent cliquables.
+  - Raccourcis en accord (« Ctrl+K, Ctrl+C ») affichés comme Copier.
+  - Plusieurs mineurs corrigés aussi : arrêt borné, glisser asynchrone, couleur du cache par défaut, apparence des fenêtres qui ne retire plus les couleurs propres à une app, repli de la lecture UIA.
+
+## Mineurs reportés — plan 27
+- `target()` est lu de façon asynchrone : rarement, après un changement de réglage, les pastilles peuvent revenir sur l'ancienne fenêtre jusqu'au prochain changement d'app.
+- `GetTitleBarInfo` (dans `readInfo`) reste appelé sur le fil de la barre à chaque activation : une app figée peut le retarder.
+- En diagnostic, le verre des panneaux se capture lui-même : les enregistrements ne montrent pas le vrai rendu du verre, seulement la mise en page.
+- Lecture de `DWMWA_USE_IMMERSIVE_DARK_MODE` non documentée en lecture : à surveiller selon les versions de Windows 11.
 
 ## Mineurs reportés — plan 26
 - Après un plantage de la barre de menus, les fenêtres déjà traitées gardent leur apparence macOS jusqu'à leur fermeture (le relancement les reprend de toute façon).

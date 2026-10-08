@@ -118,3 +118,11 @@ TEST_CASE(menu_shortcut_shown_with_mac_symbols) {
     CHECK(md::macShortcutLabel(L"ctrl+shift+n") == L"⌃⇧N");
     CHECK(md::macShortcutLabel(L"") == L"");
 }
+
+TEST_CASE(menu_shortcut_chords_and_spaces) {
+    // Accords (Visual Studio) laissés tels quels ; espaces autour des « + » tolérés ; majuscules accentuées reconnues.
+    CHECK(md::macShortcutLabel(L"Ctrl+K, Ctrl+C") == L"Ctrl+K, Ctrl+C");
+    CHECK(md::macShortcutLabel(L"Ctrl + Z") == L"⌃Z");
+    CHECK(md::macShortcutLabel(L"ÉCHAP") == L"⎋");
+    CHECK(md::macShortcutLabel(L"Ctrl+ENTRÉE") == L"⌃↩");
+}

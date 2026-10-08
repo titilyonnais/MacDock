@@ -1413,7 +1413,11 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     break;
                 case kConfigTimer: checkSettingsFile(); break;
                 case kForegroundTimer:   // premier plan changé sans annonce : rattrapé
-                    if (HWND fg = GetForegroundWindow(); fg && fg != lastForeground_ && fg != ctl_) onForeground(fg);
+                    if (HWND fg = GetForegroundWindow(); fg && fg != lastForeground_) {
+                        DWORD pid = 0;   // nos menus déroulants prennent le premier plan : jamais traités ici
+                        GetWindowThreadProcessId(fg, &pid);
+                        if (pid != GetCurrentProcessId()) onForeground(fg);
+                    }
                     break;
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:

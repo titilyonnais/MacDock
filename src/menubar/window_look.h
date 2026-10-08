@@ -43,6 +43,8 @@ private:
         DWORD pid = 0;          // un HWND réutilisé par une autre fenêtre n'est pas la même
         DWORD corner = 0;       // préférence d'origine, rendue à la fermeture
         bool rounded = false;   // nous avons changé les coins
+        bool captioned = false; // nous avons coloré la barre de titre
+        DWORD backdrop = 0;     // fond de la fenêtre lors de notre passage (Mica arrivé depuis : barre rendue)
         bool operator<(const Touched& o) const { return h < o.h; }
     };
     void restore(const Touched& t);

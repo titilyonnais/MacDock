@@ -63,19 +63,25 @@ bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, 
 }
 
 namespace {
-std::wstring lowered(std::wstring_view s) {
-    std::wstring l(s);
-    for (auto& c : l) c = wchar_t(std::towlower(c));
+std::wstring lowered(std::wstring_view s) {   // Unicode (« ÉCHAP » → « échap »), espaces retirés
+    std::wstring l;
+    for (wchar_t c : s)
+        if (c != L' ') l += c;
+    if (!l.empty())
+        CharLowerBuffW(l.data(), DWORD(l.size()));
     return l;
 }
 } // namespace
 
 std::wstring macShortcutLabel(std::wstring_view shortcut) {
     if (shortcut.empty()) return {};
+    // Accord (« Ctrl+K, Ctrl+C ») : laissé tel quel plutôt que réduit à sa dernière touche.
+    if (shortcut.find(L", ") != std::wstring_view::npos) return std::wstring(shortcut);
     // Morceaux séparés par « + » ; un « + » final (« Ctrl++ ») est la touche plus elle-même.
     std::vector<std::wstring> parts;
     std::wstring cur;
     for (std::size_t i = 0; i < shortcut.size(); ++i) {
+        if (shortcut[i] == L' ') continue;
         if (shortcut[i] == L'+' && !cur.empty()) {
             parts.push_back(cur);
             cur.clear();
@@ -96,7 +102,7 @@ std::wstring macShortcutLabel(std::wstring_view shortcut) {
         else key = part;
     }
     static const std::pair<const wchar_t*, const wchar_t*> kKeys[] = {
-        {L"suppr", L"⌦"}, {L"del", L"⌦"}, {L"delete", L"⌦"}, {L"retour arrière", L"⌫"}, {L"backspace", L"⌫"},
+        {L"suppr", L"⌦"}, {L"del", L"⌦"}, {L"delete", L"⌦"}, {L"retourarrière", L"⌫"}, {L"backspace", L"⌫"},
         {L"entrée", L"↩"}, {L"enter", L"↩"}, {L"retour", L"↩"}, {L"échap", L"⎋"}, {L"esc", L"⎋"}, {L"tab", L"⇥"},
         {L"origine", L"↖"}, {L"home", L"↖"}, {L"fin", L"↘"}, {L"end", L"↘"}, {L"pg.préc", L"⇞"}, {L"pgup", L"⇞"},
         {L"pg.suiv", L"⇟"}, {L"pgdn", L"⇟"}, {L"haut", L"↑"}, {L"bas", L"↓"}, {L"gauche", L"←"}, {L"droite", L"→"},

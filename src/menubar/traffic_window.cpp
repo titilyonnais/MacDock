@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <future>
 #include <optional>
 
 #include "../core/diag.h"
@@ -89,17 +90,20 @@ bool TrafficWindow::create(HINSTANCE instance) {
     if (thread_.joinable()) return true;
     self_ = this;
     instance_ = instance;
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    bool ok = false;
-    thread_ = std::thread([this, ready, &ok] {
+    quitting_ = false;
+    std::promise<bool> started;
+    std::future<bool> result = started.get_future();
+    thread_ = std::thread([this, &started] {
         threadId_ = GetCurrentThreadId();
-        ok = ensureLayers();
-        SetEvent(ready);
-        if (ok) run();
+        const bool created = ensureLayers();   // copie locale : la promesse n'existe plus après set_value
+        started.set_value(created);
+        if (created) run();
     });
-    WaitForSingleObject(ready, 5000);
-    CloseHandle(ready);
-    if (!ok && thread_.joinable()) thread_.join();
+    const bool ok = result.get();   // sans limite : le fil répond toujours (comme UiaWorker)
+    if (!ok) {
+        thread_.join();
+        threadId_ = 0;
+    }
     return ok;
 }
 
@@ -132,7 +136,8 @@ void TrafficWindow::run() {
 }
 
 void TrafficWindow::attach(HWND target, LightsMode mode) {
-    if (threadId_) PostThreadMessageW(threadId_, kMsgAttach, reinterpret_cast<WPARAM>(target), LPARAM(mode));
+    if (threadId_ && !PostThreadMessageW(threadId_, kMsgAttach, reinterpret_cast<WPARAM>(target), LPARAM(mode)))
+        log::warn(L"Feux tricolores : message perdu (%lu)", GetLastError());
 }
 
 void TrafficWindow::detach() {
@@ -146,13 +151,16 @@ void TrafficWindow::setAlwaysLeft(bool on) {
 void TrafficWindow::destroy() {
     if (thread_.joinable()) {
         PostThreadMessageW(threadId_, kMsgQuit, 0, 0);
-        thread_.join();
+        // Borné : un glisser en cours vers une app figée ne doit pas bloquer la fermeture de la barre.
+        if (WaitForSingleObject(thread_.native_handle(), 3000) == WAIT_OBJECT_0) thread_.join();
+        else thread_.detach();
     }
     threadId_ = 0;
     if (self_ == this) self_ = nullptr;
 }
 
 bool TrafficWindow::ensureLayers() {
+    if (hwnd_ && cover_ && IsWindow(hwnd_) && IsWindow(cover_)) return true;   // chemin courant : rien à faire
     WNDCLASSEXW wc{sizeof wc};
     wc.style = CS_DBLCLKS;
     wc.lpfnWndProc = proc;
@@ -361,6 +369,7 @@ TrafficWindow::Placement TrafficWindow::measure(const LightsWindowInfo& info, UI
         titleBottom = b.bottom;
     const bool left = leftCaptionFree(info.frame, titleBottom, dpi, hit);
     complete = !late;
+    p.leftFree = left;
     switch (chooseLightsSpot(left, found, alwaysLeft_)) {
         case LightsSpot::Left: p.spot = Spot::Left; break;
         case LightsSpot::Over: p.spot = Spot::Over; break;
@@ -428,6 +437,7 @@ void TrafficWindow::place(bool resample, bool probe) {
         RECT title = info.client;
         title.top = f.top + placement_.titleBottom;
         l = lightsLayout(f, title, dpi);
+        l.opaque = placement_.leftFree;   // gauche occupée : rien ne cache ni ne bloque l'app hors des pastilles
     } else if (spot_ == Spot::Over && hasButtons) {
         l = lightsOverButtons(buttons, dpi, info.zoomed);
     } else {
@@ -436,7 +446,7 @@ void TrafficWindow::place(bool resample, bool probe) {
     }
     const bool resized = l.window.right - l.window.left != layout_.window.right - layout_.window.left ||
                          l.window.bottom - l.window.top != layout_.window.bottom - layout_.window.top ||
-                         l.topGap != layout_.topGap || l.fade != layout_.fade;
+                         l.topGap != layout_.topGap || l.fade != layout_.fade || l.opaque != layout_.opaque;
     layout_ = l;
     const bool wantCover = cover_ && spot_ == Spot::Left && hasButtons;
     if (wantCover) {
@@ -463,7 +473,7 @@ void TrafficWindow::place(bool resample, bool probe) {
     if (!painted_) paint();
     else moveLayer(hwnd_, layout_.window);
     if (wantCover) {
-        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_, coverColor_);
+        if (!coverPainted_) paintLayer(cover_, coverLayout_, coverSize_, coverColor_ ? coverColor_ : state_.patchColor);
         else moveLayer(cover_, coverLayout_.window);
         coverPainted_ = true;
     }
@@ -475,7 +485,7 @@ void TrafficWindow::paint() {
     paintLayer(hwnd_, layout_, paintedSize_, state_.patchColor);
     painted_ = paintedSize_.cx > 0;
     if (cover_ && coverLayout_.window.right > coverLayout_.window.left && !coverPainted_) {
-        paintLayer(cover_, coverLayout_, coverSize_, coverColor_);
+        paintLayer(cover_, coverLayout_, coverSize_, coverColor_ ? coverColor_ : state_.patchColor);
         coverPainted_ = true;
     }
 }
@@ -549,6 +559,7 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
                 if (from == hwnd_) hwnd_ = nullptr;
                 if (from == cover_) cover_ = nullptr;
                 shown_ = false;
+                tracking_ = false;
                 PostThreadMessageW(GetCurrentThreadId(), kMsgRecreate, 0, 0);
             }
             break;   // la fenêtre de l'app reste active
@@ -556,7 +567,7 @@ LRESULT TrafficWindow::handle(HWND from, UINT msg, WPARAM wp, LPARAM lp) {
             if (dragging_ && target_) {
                 const POINT p = screenPoint();
                 SetWindowPos(target_, nullptr, dragFrom_.left + p.x - dragStart_.x, dragFrom_.top + p.y - dragStart_.y, 0, 0,
-                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
                 return 0;
             }
             if (cover) return 0;

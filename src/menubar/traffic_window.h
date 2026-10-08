@@ -42,6 +42,7 @@ private:
         Spot spot = Spot::None;
         RECT buttons{};          // boutons de Windows, relatifs au coin haut droit du cadre
         LONG titleBottom = 0;    // bas de la barre de titre, relatif au haut du cadre
+        bool leftFree = true;    // gauche libre (sinon pastilles forcées à gauche : fond transparent)
     };
 
     void run();
