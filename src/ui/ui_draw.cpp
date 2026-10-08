@@ -77,14 +77,28 @@ void Painter::text(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c, DWR
         rt_->DrawText(s.c_str(), UINT32(s.size()), f, r, brush(c), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
-void Painter::paragraph(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c) {
+void Painter::paragraph(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c, DWRITE_FONT_WEIGHT weight) {
     if (s.empty()) return;
     ComPtr<IDWriteTextFormat> f;
-    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_FONT_STYLE_NORMAL,
-                                         DWRITE_FONT_STRETCH_NORMAL, size, L"fr-FR", &f)))
+    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                                         size, L"fr-FR", &f)))
         return;
     f->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
     rt_->DrawText(s.c_str(), UINT32(s.size()), f.Get(), r, brush(c));
+}
+
+float Painter::paragraphHeight(const std::wstring& s, float width, float size, DWRITE_FONT_WEIGHT weight) {
+    if (s.empty()) return 0;
+    ComPtr<IDWriteTextFormat> f;
+    ComPtr<IDWriteTextLayout> layout;
+    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                                         size, L"fr-FR", &f)))
+        return 0;
+    f->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+    if (FAILED(dwrite_->CreateTextLayout(s.c_str(), UINT32(s.size()), f.Get(), width, 10000, &layout))) return 0;
+    DWRITE_TEXT_METRICS m{};
+    layout->GetMetrics(&m);
+    return std::ceil(m.height);
 }
 
 float Painter::textWidth(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight) {
@@ -231,6 +245,119 @@ void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, 
             }
         }
     }
+}
+
+void drawButton(Painter& p, D2D1_RECT_F r, const std::wstring& label, bool primary, bool pressed) {
+    const float radius = std::min(metrics::buttonRadius, (r.bottom - r.top) / 2);
+    if (primary) {
+        Rgba fill = p.pal().accent;
+        if (pressed) fill = mix(fill, rgb(0x000000), 0.18f);
+        p.fillRound(D2D1::RectF(r.left, r.top + 0.75f, r.right, r.bottom + 0.75f), radius, withAlpha(p.pal().shadow, 0.6f));
+        p.fillRound(r, radius, fill);
+        // Reflet discret du haut (verre).
+        p.fillRound(D2D1::RectF(r.left + 1, r.top + 1, r.right - 1, (r.top + r.bottom) / 2), radius - 1, rgb(0xFFFFFF, 0.10f));
+        p.text(label, r, metrics::fontBody, p.pal().onAccent, DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_TEXT_ALIGNMENT_CENTER);
+        return;
+    }
+    p.fillRound(r, radius, withAlpha(p.pal().buttonFill, pressed ? 2.f : 1.f));
+    p.strokeRound(D2D1::RectF(r.left + 0.25f, r.top + 0.25f, r.right - 0.25f, r.bottom - 0.25f), radius, p.pal().buttonEdge, 0.5f);
+    p.text(label, r, metrics::fontBody, p.pal().text, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_CENTER);
+}
+
+float buttonWidth(Painter& p, const std::wstring& label) {
+    return std::max(std::ceil(p.textWidth(label, metrics::fontBody, DWRITE_FONT_WEIGHT_MEDIUM)) + 2 * metrics::buttonPadding, 64.f);
+}
+
+void drawShortcutField(Painter& p, D2D1_RECT_F r, const std::wstring& label, bool listening, bool conflict) {
+    p.fillRound(r, metrics::shortcutRadius, p.pal().controlFill);
+    const D2D1_RECT_F inner{r.left + 8, r.top, r.right - 8, r.bottom};
+    if (listening) {
+        p.strokeRound(inflate(r, 1), metrics::shortcutRadius + 1, p.pal().accent, 2);
+        p.text(L"Tapez le raccourci…", inner, metrics::fontBody, p.pal().tertiaryText, DWRITE_FONT_WEIGHT_REGULAR,
+               DWRITE_TEXT_ALIGNMENT_CENTER);
+    } else if (label.empty()) {
+        p.text(L"Aucun", inner, metrics::fontBody, p.pal().tertiaryText, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_CENTER);
+    } else {
+        p.text(label, inner, metrics::fontBody, conflict ? p.pal().danger : p.pal().text, DWRITE_FONT_WEIGHT_REGULAR,
+               DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+}
+
+void drawValue(Painter& p, D2D1_RECT_F r, const std::wstring& text) {
+    p.text(text, r, metrics::fontBody, p.pal().secondaryText, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_TRAILING);
+}
+
+SheetLayout layoutSheet(Painter& p, float windowWidth, float top, const SheetSpec& s) {
+    namespace mt = metrics;
+    SheetLayout l;
+    const float w = std::min(mt::sheetWidth, windowWidth - 2 * mt::contentMargin), pad = mt::sheetPadding;
+    const float left = (windowWidth - w) / 2, inner = w - 2 * pad;
+    l.card = D2D1::RectF(left, top + mt::sheetTop, left + w, top + mt::sheetTop);
+    float y = l.card.top + pad;
+    const float titleH = p.paragraphHeight(s.title, inner, mt::fontBody, DWRITE_FONT_WEIGHT_BOLD);
+    l.title = D2D1::RectF(left + pad, y, left + pad + inner, y + titleH);
+    y += titleH + (s.message.empty() ? 0 : 6);
+    const float messageH = p.paragraphHeight(s.message, inner, mt::fontDetail);
+    l.message = D2D1::RectF(left + pad, y, left + pad + inner, y + messageH);
+    y += messageH + 18;
+    const int n = int(s.buttons.size());
+    bool side = n <= 2;
+    const float slot = n ? (inner - (n - 1) * mt::buttonGap) / float(n) : inner;
+    for (const auto& b : s.buttons)
+        if (buttonWidth(p, b) > slot) side = false;   // trop long : l'un sous l'autre
+    l.buttons.resize(std::size_t(n));
+    if (side) {
+        for (int i = 0; i < n; ++i) {
+            const int at = n == 2 ? (i == s.primary ? 1 : 0) : i;   // le bouton par défaut à droite
+            const float x = left + pad + at * (slot + mt::buttonGap);
+            l.buttons[std::size_t(i)] = D2D1::RectF(x, y, x + slot, y + mt::sheetButtonHeight);
+        }
+        if (n) y += mt::sheetButtonHeight;
+    } else {
+        int row = 0;
+        for (int pass = 0; pass < 2; ++pass)   // le bouton par défaut en haut, puis les autres dans l'ordre
+            for (int i = 0; i < n; ++i) {
+                if ((i == s.primary) != (pass == 0)) continue;
+                const float by = y + row++ * (mt::sheetButtonHeight + mt::buttonGap);
+                l.buttons[std::size_t(i)] = D2D1::RectF(left + pad, by, left + pad + inner, by + mt::sheetButtonHeight);
+            }
+        y += n * mt::sheetButtonHeight + std::max(0, n - 1) * mt::buttonGap;
+    }
+    l.card.bottom = y + pad;
+    return l;
+}
+
+void drawSheet(Painter& p, const SheetLayout& l, const SheetSpec& s, float windowWidth, float windowHeight, int hover,
+               int pressed, float progress) {
+    const float t = std::clamp(progress, 0.f, 1.f);
+    p.rt()->FillRectangle(D2D1::RectF(0, 0, windowWidth, windowHeight), p.brush(withAlpha(p.pal().dim, t)));
+    D2D1_MATRIX_3X2_F before;
+    p.rt()->GetTransform(&before);
+    p.rt()->SetTransform(D2D1::Matrix3x2F::Translation(0, -16 * (1 - t)) * before);   // descend en apparaissant
+    const float keep = p.opacity;
+    p.opacity = keep * t;
+    const float r = metrics::sheetRadius;
+    for (int k = 4; k >= 1; --k)   // ombre portée douce
+        p.fillRound(D2D1::RectF(l.card.left - k * 2.f, l.card.top - k * 1.f, l.card.right + k * 2.f, l.card.bottom + k * 4.f),
+                    r + k * 2, withAlpha(p.pal().shadow, 0.16f));
+    p.fillRound(l.card, r, p.pal().sheetBackground);
+    p.strokeRound(l.card, r, p.pal().sheetEdge, 0.5f);
+    p.paragraph(s.title, l.title, metrics::fontBody, p.pal().text, DWRITE_FONT_WEIGHT_BOLD);
+    p.paragraph(s.message, l.message, metrics::fontDetail, p.pal().text);
+    for (int i = 0; i < int(l.buttons.size()); ++i) {
+        (void)hover;
+        drawButton(p, l.buttons[std::size_t(i)], s.buttons[std::size_t(i)], i == s.primary, i == pressed);
+    }
+    p.opacity = keep;
+    p.rt()->SetTransform(before);
+}
+
+int sheetButtonAt(const SheetLayout& l, float x, float y) {
+    for (int i = 0; i < int(l.buttons.size()); ++i) {
+        const D2D1_RECT_F& b = l.buttons[std::size_t(i)];
+        if (x >= b.left && x < b.right && y >= b.top && y < b.bottom) return i;
+    }
+    return -1;
 }
 
 }  // namespace md::ui

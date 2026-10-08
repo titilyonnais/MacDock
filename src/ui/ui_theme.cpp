@@ -22,6 +22,12 @@ Palette palette(bool dark) {
         p.menuBackground = rgb(0xF6F6F7, 0.98f);
         p.menuEdge = rgb(0x000000, 0.12f);
         p.shadow = rgb(0x000000, 0.18f);
+        p.buttonFill = rgb(0x000000, 0.08f);
+        p.buttonEdge = rgb(0x000000, 0.06f);
+        p.danger = rgb(0xFF383C);
+        p.dim = rgb(0x000000, 0.22f);
+        p.sheetBackground = rgb(0xF6F6F8, 0.98f);
+        p.sheetEdge = rgb(0x000000, 0.10f);
     } else {
         p.window = rgb(0x1E1E1E);
         p.sidebarTint = rgb(0x262628, 0.55f);
@@ -40,6 +46,12 @@ Palette palette(bool dark) {
         p.menuBackground = rgb(0x2A2A2C, 0.98f);
         p.menuEdge = rgb(0xFFFFFF, 0.14f);
         p.shadow = rgb(0x000000, 0.45f);
+        p.buttonFill = rgb(0xFFFFFF, 0.14f);
+        p.buttonEdge = rgb(0xFFFFFF, 0.06f);
+        p.danger = rgb(0xFF4245);
+        p.dim = rgb(0x000000, 0.40f);
+        p.sheetBackground = rgb(0x2C2C2E, 0.98f);
+        p.sheetEdge = rgb(0xFFFFFF, 0.12f);
     }
     p.onAccent = rgb(0xFFFFFF);
     p.knob = rgb(0xFFFFFF);

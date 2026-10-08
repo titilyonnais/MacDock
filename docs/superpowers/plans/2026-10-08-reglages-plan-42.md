@@ -77,7 +77,7 @@ Windows et la gestion des mods Windhawk, toutes entièrement fonctionnelles. Il 
 - [x] 2. Modèle : `SystemIo` (démarrage), `backup` (exporter, importer, défauts), `mods` (versions, état) (tests).
 - [x] 3. Sections Général, Mission Control, Clavier, Captures, Sons, Police, Mods, À propos (tests d'aller-retour et
   d'actions).
-- [ ] 4. Contrôles : bouton, champ de raccourci, valeur, feuille d'alerte (rendu testé hors écran).
+- [x] 4. Contrôles : bouton, champ de raccourci, valeur, feuille d'alerte (rendu testé hors écran).
 - [ ] 5. Fenêtre :
   - recherche ;
   - enregistreur de raccourci ;

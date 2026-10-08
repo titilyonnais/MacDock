@@ -28,6 +28,10 @@ struct Palette {
     Rgba focusRing;
     Rgba menuBackground, menuEdge;
     Rgba shadow;
+    Rgba buttonFill, buttonEdge;   // bouton poussoir ordinaire
+    Rgba danger;                   // raccourci en conflit, action destructrice
+    Rgba dim;                      // voile sur la fenêtre sous une feuille
+    Rgba sheetBackground, sheetEdge;
 };
 Palette palette(bool dark);
 
@@ -46,6 +50,10 @@ constexpr float sliderWidth = 220, knob = 20, sliderTrack = 4;
 constexpr float popupHeight = 22, segmentHeight = 22, segmentPadding = 14;
 constexpr float menuItem = 22, menuPadding = 6, menuRadius = 10;
 constexpr float fontBody = 13, fontDetail = 11, fontGroupTitle = 13;
+// Contrôles de macOS 26 (estimations des recherches, à recaler sur la VM de référence) : boutons en capsule.
+constexpr float buttonHeight = 24, buttonRadius = 12, buttonPadding = 14, buttonGap = 8;
+constexpr float shortcutWidth = 150, shortcutHeight = 22, shortcutRadius = 6;
+constexpr float sheetWidth = 300, sheetPadding = 20, sheetRadius = 26, sheetButtonHeight = 28, sheetTop = 8;
 constexpr float bottomPadding = 24;
 }  // namespace metrics
 
