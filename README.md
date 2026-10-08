@@ -1,9 +1,11 @@
 # MacDock
 
-Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
+Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
 
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
+- **Coup d'œil** : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné l'affiche dans une fenêtre flottante (photo, vidéo, PDF, document, texte, ou grande icône avec type, taille et date). Espace ou Échap ferme, Entrée ouvre, et l'aperçu suit la sélection.
+- **Fenêtres des autres apps** : feux tricolores à gauche, coins arrondis, barre de titre grise ; avec le mod `macdock-look`, police SF Pro partout.
 
 > État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Les fenêtres se réduisent dans le Dock avec l'effet génie (plan 10) et ont des feux tricolores (plan 11). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
@@ -21,6 +23,8 @@ Un Dock et une barre de menus façon **macOS Tahoe** pour Windows 11.
    - *Compiler le mod*, puis *Quitter l'éditeur* et vérifier qu'il est activé.
 
    Sans Dock lancé, le mod ne cache rien. Depuis sa version 1.2, il transmet aussi à la barre de menus les icônes de la zone de notification (Discord, OneDrive, antivirus…) : si tu avais une version plus ancienne, recolle le code et recompile.
+
+   **Police de macOS dans toutes les apps** (facultatif) : même procédure avec `windhawk\macdock-look.wh.cpp`. Il faut que SF Pro (Text et Display) soit installée ; sinon le mod ne change rien. Les polices de l'interface de Windows (Segoe UI, Segoe UI Variable, MS Shell Dlg) deviennent SF Pro Text, et SF Pro Display à partir de 20 pt, dans les apps classiques comme modernes (Explorateur, Bloc-notes, navigateurs, Electron). Les polices d'icônes ne sont jamais touchées. Les jeux, Office et les lecteurs PDF sont exclus (les documents gardent leurs polices). **Anti-triche** : une exclusion du mod n'écarte que le mod, Windhawk lui-même reste chargé. Ajoute chaque jeu en ligne à la liste globale de Windhawk (*Paramètres > Avancé > Process exclusion list*) : injecter du code dans un jeu protégé peut valoir un bannissement. Les apps déjà ouvertes changent de police à leur prochain lancement.
 
 3. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
 
