@@ -73,12 +73,12 @@ Windows et la gestion des mods Windhawk, toutes entièrement fonctionnelles. Il 
 - Aucun mod n'est installé pendant les tests ou les essais ; seule l'interface est vérifiée.
 
 ## Tâches
-- [ ] 1. `hotkey` : analyse, texte, symboles, conflits, réservés ; le Dock les utilise (tests, dont les anciennes valeurs).
-- [ ] 2. Modèle : `SystemIo` (démarrage), `backup` (exporter, importer, défauts), `mods` (versions, état) (tests).
-- [ ] 3. Sections Général, Mission Control, Clavier, Captures, Sons, Police, Mods, À propos (tests d'aller-retour et
+- [x] 1. `hotkey` : analyse, texte, symboles, conflits, réservés ; le Dock les utilise (tests, dont les anciennes valeurs).
+- [x] 2. Modèle : `SystemIo` (démarrage), `backup` (exporter, importer, défauts), `mods` (versions, état) (tests).
+- [x] 3. Sections Général, Mission Control, Clavier, Captures, Sons, Police, Mods, À propos (tests d'aller-retour et
   d'actions).
-- [ ] 4. Contrôles : bouton, champ de raccourci, valeur, feuille d'alerte (rendu testé hors écran).
-- [ ] 5. Fenêtre :
+- [x] 4. Contrôles : bouton, champ de raccourci, valeur, feuille d'alerte (rendu testé hors écran).
+- [x] 5. Fenêtre :
   - recherche ;
   - enregistreur de raccourci ;
   - actions des boutons ;
@@ -86,4 +86,4 @@ Windows et la gestion des mods Windhawk, toutes entièrement fonctionnelles. Il 
   - dialogues de fichiers ;
   - installateur des mods ;
   - démarrage.
-- [ ] 6. Essai réel, documentation, relecture, fusion.
+- [x] 6. Essai réel, documentation, relecture, fusion.

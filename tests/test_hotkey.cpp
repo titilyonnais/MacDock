@@ -70,3 +70,51 @@ TEST_CASE(hotkey_dock_parsers_accept_new_and_old_values) {
     CHECK(!md::parseSpotlightHotkey(L"off"));
     CHECK(!md::parseMissionHotkey(L"win+l"));   // réservé
 }
+
+TEST_CASE(hotkey_recorder_reads_one_key) {
+    // Enregistreur de l'app Réglages : chaque touche appuyée, avec les modificateurs tenus à ce moment.
+    CHECK(md::recordHotkey(VK_LCONTROL, MOD_CONTROL).kind == md::RecordKind::Wait);   // modificateur seul : on attend
+    CHECK(md::recordHotkey(VK_RWIN, MOD_WIN).kind == md::RecordKind::Wait);
+    CHECK(md::recordHotkey(VK_ESCAPE, 0).kind == md::RecordKind::Cancel);
+    CHECK(md::recordHotkey(VK_BACK, 0).kind == md::RecordKind::Clear);               // « Aucun »
+    CHECK(md::recordHotkey(VK_DELETE, 0).kind == md::RecordKind::Clear);
+    const md::HotkeyRecord k = md::recordHotkey('K', MOD_CONTROL | MOD_ALT);
+    REQUIRE(k.kind == md::RecordKind::Accept);
+    CHECK(md::hotkeyText(k.spec) == L"ctrl+alt+k");
+    CHECK(md::recordHotkey('K', 0).kind == md::RecordKind::Wait);                     // il faut un modificateur
+    CHECK(md::recordHotkey(VK_F5, 0).kind == md::RecordKind::Accept);                 // sauf pour une touche F
+    CHECK(md::recordHotkey('L', MOD_WIN).kind == md::RecordKind::Reserved);           // Windows la garde
+    CHECK(md::recordHotkey(VK_OEM_1, MOD_CONTROL).kind == md::RecordKind::Wait);      // touche sans nom : ignorée
+    CHECK(md::recordHotkey(VK_SPACE, MOD_CONTROL | MOD_ALT).kind == md::RecordKind::Accept);
+}
+
+TEST_CASE(hotkey_recorder_gate_never_leaves_keys_stuck) {
+    // Relecture du plan 42 : le crochet avalait toutes les relâches, dont celle de Maj tenue avant l'écoute (Maj+Entrée
+    // sur le champ) ; Windows croyait alors Maj enfoncée dans tout le système.
+    md::KeyGate gate;
+    gate.listen(true);
+    CHECK(!gate.swallow(VK_LSHIFT, false));   // relâche d'une touche tenue avant l'écoute : rendue au système
+    CHECK(gate.swallow(VK_LCONTROL, true));   // appui pendant l'écoute : gardé pour l'enregistreur
+    CHECK(gate.swallow('K', true));
+    gate.listen(false);                       // raccourci accepté : l'écoute s'arrête, touches encore enfoncées
+    CHECK(gate.pending());
+    CHECK(gate.swallow('K', true));           // répétition d'une touche dont l'appui a été gardé
+    CHECK(!gate.swallow('J', true));          // nouvel appui après l'écoute : au système
+    CHECK(gate.swallow('K', false));          // relâches des appuis gardés : gardées aussi
+    CHECK(gate.swallow(VK_LCONTROL, false));
+    CHECK(!gate.pending());                   // le crochet peut partir
+    CHECK(!gate.swallow('J', false));
+}
+
+TEST_CASE(hotkey_recorder_refuses_app_and_macdock_shortcuts) {
+    // Ctrl ou Maj sans Alt ni ⊞ : ce sont les raccourcis des apps (Ctrl+C, Ctrl+W, Maj+→…). Un raccourci global les
+    // retirerait à toutes : refusés à l'enregistrement (les anciennes valeurs des fichiers restent lues).
+    CHECK(md::recordHotkey('C', MOD_CONTROL).kind == md::RecordKind::Common);
+    CHECK(md::recordHotkey(VK_UP, MOD_CONTROL | MOD_SHIFT).kind == md::RecordKind::Common);
+    CHECK(md::recordHotkey(VK_RIGHT, MOD_SHIFT).kind == md::RecordKind::Common);
+    CHECK(md::parseHotkey(L"ctrl+up").has_value());   // valeur d'avant, toujours acceptée dans settings.json
+    // Raccourcis fixes de MacDock (calque de diagnostic, opacité du Dock) : déjà pris.
+    CHECK(md::recordHotkey('O', MOD_CONTROL | MOD_ALT | MOD_SHIFT).kind == md::RecordKind::Reserved);
+    CHECK(md::recordHotkey(VK_UP, MOD_CONTROL | MOD_ALT | MOD_SHIFT).kind == md::RecordKind::Reserved);
+    CHECK(md::recordHotkey(VK_UP, MOD_CONTROL | MOD_ALT).kind == md::RecordKind::Accept);
+}

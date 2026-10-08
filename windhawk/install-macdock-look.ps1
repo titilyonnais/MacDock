@@ -3,7 +3,10 @@
 #   Double-clic sur installer-macdock-look.cmd (ou retirer-macdock-look.cmd).
 #   Windows demande l'autorisation administrateur : Windhawk garde ses mods dans HKLM et C:\ProgramData.
 # -OutDir : compile seulement, dans ce dossier (essai sans droits administrateur).
-param([switch]$Uninstall, [string]$OutDir)
+# -Restart / -NoRestart : redémarrer l'Explorateur ou non, sans poser la question ni attendre Entrée à la fin (lancé par
+# l'app Réglages de MacDock, qui attend la fin de l'installation).
+param([switch]$Uninstall, [string]$OutDir, [switch]$Restart, [switch]$NoRestart)
+$quiet = $Restart -or $NoRestart
 $ErrorActionPreference = 'Stop'
 
 $id = 'local@macdock-look'
@@ -19,6 +22,8 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin -and -not $OutDir) {
     $extra = if ($Uninstall) { ' -Uninstall' } else { '' }
+    if ($Restart) { $extra += ' -Restart' }
+    if ($NoRestart) { $extra += ' -NoRestart' }
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"$extra"
     exit
 }
@@ -33,7 +38,7 @@ if ($Uninstall) {
     if ($old) { Remove-Item (Join-Path $modsDir $old) -Force -ErrorAction SilentlyContinue }
     Remove-Item (Join-Path $sourcesDir "$id.wh.cpp") -Force -ErrorAction SilentlyContinue
     Write-Host 'Mod « MacDock - macOS Look » retiré. Les apps reprennent leur police à leur prochain lancement.'
-    Read-Host 'Entrée pour fermer'
+    if (-not $quiet) { Read-Host 'Entrée pour fermer' }
     exit
 }
 
@@ -70,7 +75,8 @@ foreach ($pair in @(@('libc++.dll', 'libc++.whl'), @('libunwind.dll', 'libunwind
 $old = (Get-ItemProperty $key -ErrorAction SilentlyContinue).LibraryFileName
 $text = Get-Content $source -Raw
 $excludes = [regex]::Matches($text, '(?m)^// @exclude\s+(.+?)\s*$') | ForEach-Object { $_.Groups[1].Value }
-New-Item -Path $key -Force | Out-Null
+# Sans -Force : sur une clé existante, -Force la recrée et efface les réglages du mod (police choisie…).
+if (-not (Test-Path $key)) { New-Item -Path $key | Out-Null }
 New-ItemProperty -Path $key -Name LibraryFileName -Value $dllName -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $key -Name Disabled -Value 0 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $key -Name LoggingEnabled -Value 0 -PropertyType DWord -Force | Out-Null
@@ -98,11 +104,18 @@ Write-Host 'Les apps prennent la police SF Pro à leur prochain lancement (il fa
 Write-Host 'Jeux en ligne : ajoute-les aussi à Windhawk > Paramètres > Avancé > Process exclusion list.'
 Write-Host ''
 # L'Explorateur (fenêtres de dossiers, bureau) garde ses polices jusqu'à son redémarrage ; ses fenêtres se rouvrent vides.
-$answer = Read-Host "Redémarrer l'Explorateur maintenant pour qu'il prenne SF Pro ? (O/N)"
+$answer = if ($Restart) { 'o' } elseif ($NoRestart) { 'n' } else { Read-Host "Redémarrer l'Explorateur maintenant pour qu'il prenne SF Pro ? (O/N)" }
 if ($answer -match '^[oOyY]') {
-    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }
-    Write-Host "Explorateur redémarré. Les autres apps prennent SF Pro à leur prochain lancement."
+    # Seulement l'Explorateur de cette session ; Windows le relance de lui-même. Jamais relancé d'ici : ce PowerShell
+    # est administrateur, l'Explorateur le serait aussi.
+    $session = (Get-Process -Id $PID).SessionId
+    Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session } | Stop-Process -Force
+    $back = $false
+    foreach ($i in 1..20) {
+        Start-Sleep -Milliseconds 250
+        if (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session }) { $back = $true; break }
+    }
+    if ($back) { Write-Host "Explorateur redémarré. Les autres apps prennent SF Pro à leur prochain lancement." }
+    else { Write-Host "L'Explorateur ne s'est pas relancé tout seul : Ctrl+Maj+Échap, « Exécuter une nouvelle tâche », explorer." }
 }
-Read-Host 'Entrée pour fermer'
+if (-not $quiet) { Read-Host 'Entrée pour fermer' }

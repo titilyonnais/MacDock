@@ -32,7 +32,10 @@ public:
     void text(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c, DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_REGULAR,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
     // Texte sur plusieurs lignes, depuis le haut de r.
-    void paragraph(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c);
+    void paragraph(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c,
+                   DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_REGULAR);
+    float paragraphHeight(const std::wstring& s, float width, float size,
+                          DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_REGULAR);
     float textWidth(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_REGULAR);
     const std::wstring& font() const { return font_; }
 
@@ -75,5 +78,32 @@ void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius);
 // survol ; `disabled` : indice grisé (agrandir), -1 sinon.
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled = -1);
 constexpr float kLightRadius = 7, kLightSpacing = 23;
+
+// Bouton poussoir en capsule ; `primary` : bouton par défaut, sur l'accent ; plus sombre sous le doigt.
+void drawButton(Painter& p, D2D1_RECT_F r, const std::wstring& label, bool primary, bool pressed);
+float buttonWidth(Painter& p, const std::wstring& label);
+// Champ de raccourci : symboles (« ⌃⌥Espace ») ou « Aucun » en gris ; en écoute, « Tapez le raccourci… » et un anneau
+// d'accent ; `conflict` : en rouge (une autre fonction a le même).
+void drawShortcutField(Painter& p, D2D1_RECT_F r, const std::wstring& label, bool listening, bool conflict);
+// Valeur en gris alignée à droite dans r.
+void drawValue(Painter& p, D2D1_RECT_F r, const std::wstring& text);
+
+// Feuille d'alerte façon macOS 26 : carte arrondie centrée sous la barre de titre, titre en gras et message alignés à
+// gauche, boutons en capsules sur toute la largeur (deux côte à côte, le bouton par défaut à droite ; plus : l'un
+// sous l'autre, le bouton par défaut en haut).
+struct SheetSpec {
+    std::wstring title, message;
+    std::vector<std::wstring> buttons;
+    int primary = 0;
+};
+struct SheetLayout {
+    D2D1_RECT_F card{}, title{}, message{};
+    std::vector<D2D1_RECT_F> buttons;   // dans l'ordre de SheetSpec::buttons
+};
+SheetLayout layoutSheet(Painter& p, float windowWidth, float top, const SheetSpec& s);
+// progress de 0 à 1 : la carte descend en apparaissant, la fenêtre s'assombrit.
+void drawSheet(Painter& p, const SheetLayout& l, const SheetSpec& s, float windowWidth, float windowHeight, int hover,
+               int pressed, float progress);
+int sheetButtonAt(const SheetLayout& l, float x, float y);   // bouton sous le point, ou -1
 
 }  // namespace md::ui

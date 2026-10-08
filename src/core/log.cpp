@@ -56,7 +56,11 @@ void write(const wchar_t* level, const wchar_t* fmt, va_list args) {
 void init(const std::wstring& dir) {
     std::lock_guard lock(g_mutex);
     g_dir = dir;
-    CreateDirectoryW(dir.c_str(), nullptr);
+    // Chaque dossier du chemin, parents compris (un dossier d'essai neuf n'a pas encore de « logs »).
+    for (std::size_t at = dir.find_first_of(L"\\/", 3); !dir.empty(); at = dir.find_first_of(L"\\/", at + 1)) {
+        CreateDirectoryW(dir.substr(0, at).c_str(), nullptr);
+        if (at == std::wstring::npos) break;
+    }
 }
 
 void info(const wchar_t* fmt, ...) { va_list a; va_start(a, fmt); write(L"INFO", fmt, a); va_end(a); }

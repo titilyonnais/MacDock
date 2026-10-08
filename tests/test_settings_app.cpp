@@ -82,7 +82,7 @@ TEST_CASE(settings_panes_list_and_keys) {
     CHECK(md::paneFromKey("windows") == md::PaneId::Windows);
     CHECK(!md::paneFromKey("nope").has_value());
     CHECK(md::paneInfo(md::PaneId::Dock).ready);
-    CHECK(!md::paneInfo(md::PaneId::Mods).ready);   // plan 42
+    CHECK(md::paneInfo(md::PaneId::Mods).ready);   // toutes prêtes depuis le plan 42
     int total = 0;   // les groupes de la barre latérale couvrent toutes les sections
     for (int n : md::sidebarGroups()) total += n;
     CHECK_EQ(std::size_t(total), md::paneList().size());
@@ -366,4 +366,64 @@ TEST_CASE(settings_commit_migrates_a_v1_file) {
     const md::json::Value f = readFile(dir + L"\\settings.json");
     CHECK(f.find("version") && f.find("version")->asNumber(0) == 2);
     CHECK_NEAR(md::loadModel(dir).dock.largeSize, 128.0, 1e-9);
+}
+
+TEST_CASE(ui_draw_buttons_shortcut_and_value) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(360, 120);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+        const float w = md::ui::buttonWidth(p, L"Exporter…");
+        CHECK(w > p.textWidth(L"Exporter…", md::ui::metrics::fontBody) + 10);   // marges autour du texte
+        md::ui::drawButton(p, D2D1::RectF(10, 10, 10 + w, 10 + md::ui::metrics::buttonHeight), L"Exporter…", false, false);
+        md::ui::drawButton(p, D2D1::RectF(200, 10, 200 + w, 10 + md::ui::metrics::buttonHeight), L"Relancer", true, false);
+        md::ui::drawShortcutField(p, D2D1::RectF(10, 60, 160, 82), L"", true, false);   // en écoute
+        md::ui::drawShortcutField(p, D2D1::RectF(200, 60, 350, 82), L"⌃⌥Espace", false, false);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        CHECK(bluish(c.at(204, 22)));       // bouton par défaut : accent (bord gauche, hors du texte)
+        CHECK(!bluish(c.at(14, 22)));       // bouton ordinaire : pas d'accent
+        CHECK(!whiteish(c.at(14, 22)) || !whiteish(c.at(10 + int(w) / 2, 10)));   // il se voit sur le blanc
+        CHECK(bluish(c.at(10, 71)) || bluish(c.at(9, 71)));   // champ en écoute : anneau d'accent au bord gauche
+        CHECK(!bluish(c.at(199, 71)) && !bluish(c.at(200, 71)));
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_sheet_layout_and_buttons) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(500, 400);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        md::ui::SheetSpec s;
+        s.title = L"Rétablir les réglages par défaut ?";
+        s.message = L"Toutes les préférences de MacDock reviennent à leur valeur d'origine. Les apps épinglées sont gardées.";
+        s.buttons = {L"Annuler", L"Rétablir"};
+        s.primary = 1;
+        const md::ui::SheetLayout l = md::ui::layoutSheet(p, 500, 52, s);
+        CHECK(std::abs((l.card.left + l.card.right) / 2 - 250) < 1);   // centrée
+        CHECK(l.card.top >= 52);
+        REQUIRE(l.buttons.size() == 2);
+        CHECK(l.buttons[0].bottom <= l.card.bottom && l.buttons[1].right <= l.card.right);
+        CHECK(l.message.bottom - l.message.top > md::ui::metrics::fontDetail * 1.5f);   // message sur plusieurs lignes
+        CHECK(l.buttons[1].left > l.buttons[0].left);   // le bouton par défaut à droite
+        const auto mid = [](const D2D1_RECT_F& r) { return D2D1::Point2F((r.left + r.right) / 2, (r.top + r.bottom) / 2); };
+        CHECK_EQ(md::ui::sheetButtonAt(l, mid(l.buttons[0]).x, mid(l.buttons[0]).y), 0);
+        CHECK_EQ(md::ui::sheetButtonAt(l, mid(l.buttons[1]).x, mid(l.buttons[1]).y), 1);
+        CHECK_EQ(md::ui::sheetButtonAt(l, l.card.left - 5, mid(l.buttons[1]).y), -1);
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+        md::ui::drawSheet(p, l, s, 500, 400, -1, -1, 1.0f);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        CHECK(bluish(c.at(int(l.buttons[1].left) + 6, int(mid(l.buttons[1]).y))));   // bouton par défaut sur l'accent
+        CHECK(!whiteish(c.at(5, 395)));   // fond de la fenêtre assombri
+        // Carte claire : sous les boutons, hors des coins arrondis (rayon de 26 pt).
+        CHECK(c.at(int(l.card.left) + 40, int(l.card.bottom) - 8)[0] > 200);
+    }
+    CoUninitialize();
 }
