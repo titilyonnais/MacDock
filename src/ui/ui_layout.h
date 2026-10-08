@@ -39,6 +39,13 @@ int menuItemAt(float y, float top, float itemHeight, int count);
 // Tab (ou Maj+Tab) : prochain élément disponible en bouclant ; -1 si aucun.
 int nextFocus(int current, const std::vector<bool>& focusable, bool backwards);
 
+// Panneau de verre de la barre latérale (Tahoe) : rectangle arrondi en retrait, dans une fenêtre de cette hauteur.
+struct Panel {
+    float left = 0, top = 0, right = 0, bottom = 0, radius = 0;
+};
+Panel sidebarPanel(float windowHeight);
+bool insidePanel(const Panel& p, float x, float y);   // coins arrondis compris
+
 // Barre latérale : haut de chaque ligne, sections en groupes de `sizes` lignes.
 std::vector<float> sidebarRowTops(const std::vector<int>& sizes);
 int sidebarRowAt(float y, const std::vector<float>& tops);   // ligne sous y, ou -1

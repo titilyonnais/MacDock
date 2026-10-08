@@ -430,3 +430,38 @@ TEST_CASE(ui_sheet_layout_and_buttons) {
     }
     CoUninitialize();
 }
+
+TEST_CASE(ui_floating_sidebar_panel_geometry) {
+    // macOS 26 Tahoe : barre latérale flottante, en retrait de 8 pt (haut, gauche, bas), rayon 18 pt (26 − 8).
+    const md::ui::Panel panel = md::ui::sidebarPanel(600);
+    CHECK_NEAR(panel.left, 8.0, 1e-6);
+    CHECK_NEAR(panel.top, 8.0, 1e-6);
+    CHECK_NEAR(panel.bottom, 592.0, 1e-6);
+    CHECK(panel.right < md::ui::metrics::sidebarWidth);
+    CHECK_NEAR(panel.radius, 18.0, 1e-6);
+    // Pastilles, champ de recherche et lignes à l'intérieur du panneau, coins arrondis compris.
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::lightsX - md::ui::kLightRadius, md::ui::metrics::lightsY - md::ui::kLightRadius));
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::sidebarInset, md::ui::metrics::sidebarTop));
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::sidebarWidth - md::ui::metrics::sidebarInset, md::ui::metrics::sidebarTop));
+    CHECK(!md::ui::insidePanel(panel, 9, 9));    // coin du haut à gauche : hors de l'arrondi
+    CHECK(!md::ui::insidePanel(panel, 4, 300));  // marge : le contenu
+}
+
+TEST_CASE(ui_draw_floating_sidebar_panel) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(500, 400);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(0, 0, 0, 0));   // transparent : le fond acrylique de la fenêtre
+        md::ui::drawWindowBackground(p, 500, 400);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        CHECK(c.at(300, 200)[3] == 255);   // contenu : opaque
+        CHECK(c.at(3, 200)[3] == 255);     // marge autour du panneau : peinte comme le contenu
+        CHECK(c.at(100, 200)[3] < 230);    // panneau : laisse voir le fond acrylique
+        CHECK(c.at(9, 9)[3] > 200);        // coin arrondi du panneau : peint (hors du verre)
+    }
+    CoUninitialize();
+}

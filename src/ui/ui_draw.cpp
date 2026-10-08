@@ -121,6 +121,40 @@ std::wstring interfaceFont(IDWriteFactory* dwrite) {
     return L"Segoe UI";
 }
 
+void drawWindowBackground(Painter& p, float width, float height) {
+    const Panel panel = sidebarPanel(height);
+    const D2D1_ROUNDED_RECT glass = D2D1::RoundedRect(D2D1::RectF(panel.left, panel.top, panel.right, panel.bottom), panel.radius,
+                                                      panel.radius);
+    ID2D1Factory* f = p.factory();
+    ComPtr<ID2D1RoundedRectangleGeometry> hole;
+    f->CreateRoundedRectangleGeometry(glass, &hole);
+    // Une forme moins le panneau : le contenu autour, puis chaque anneau de l'ombre (jamais sur le verre).
+    auto fillOutside = [&](ID2D1Geometry* shape, Rgba color) {
+        ComPtr<ID2D1PathGeometry> path;
+        ComPtr<ID2D1GeometrySink> sink;
+        if (FAILED(f->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return;
+        shape->CombineWithGeometry(hole.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get());
+        sink->Close();
+        p.rt()->FillGeometry(path.Get(), p.brush(color));
+    };
+    ComPtr<ID2D1RectangleGeometry> all;
+    f->CreateRectangleGeometry(D2D1::RectF(0, 0, width, height), &all);
+    fillOutside(all.Get(), p.pal().window);
+    for (int k = 4; k >= 1; --k) {   // ombre douce, plus marquée près du panneau
+        const float d = float(k) * 1.5f;
+        ComPtr<ID2D1RoundedRectangleGeometry> ring;
+        f->CreateRoundedRectangleGeometry(D2D1::RoundedRect(D2D1::RectF(panel.left - d, panel.top - d * 0.6f, panel.right + d,
+                                                                       panel.bottom + d * 1.4f),
+                                                            panel.radius + d, panel.radius + d),
+                                          &ring);
+        fillOutside(ring.Get(), withAlpha(p.pal().shadow, 0.10f));
+    }
+    p.rt()->FillRoundedRectangle(glass, p.brush(p.pal().sidebarTint));   // verre : le fond acrylique transparaît
+    p.rt()->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(panel.left + 0.5f, panel.top + 0.5f, panel.right - 0.5f, panel.bottom - 0.5f),
+                                                   panel.radius - 0.5f, panel.radius - 0.5f),
+                                 p.brush(p.pal().sidebarEdge), 1);
+}
+
 void drawSwitch(Painter& p, D2D1_RECT_F r, float progress, bool pressed) {
     const float h = r.bottom - r.top, w = r.right - r.left, t = std::clamp(progress, 0.f, 1.f);
     p.fillRound(r, h / 2, p.pal().switchOff);

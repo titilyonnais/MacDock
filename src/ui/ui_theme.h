@@ -32,6 +32,7 @@ struct Palette {
     Rgba danger;                   // raccourci en conflit, action destructrice
     Rgba dim;                      // voile sur la fenêtre sous une feuille
     Rgba sheetBackground, sheetEdge;
+    Rgba sidebarEdge;              // liseré du panneau de verre flottant
 };
 Palette palette(bool dark);
 
@@ -43,7 +44,11 @@ constexpr float contentMargin = 20;                 // marges latérales des gro
 constexpr float groupRadius = 12, groupGap = 18, groupTitle = 26, footerGap = 6, footerHeight = 30;
 constexpr float rowHeight = 36, rowHeightDetail = 48, rowHeightSlider = 56, rowPadding = 12;
 constexpr float sidebarTop = titleBar + 40;         // sous le champ de recherche
-constexpr float sidebarRow = 28, sidebarGroupGap = 10, sidebarInset = 10, tile = 20, tileRadius = 5;
+// Barre latérale flottante de Tahoe : panneau de verre en retrait de 8 pt, rayon 18 (26 − 8, coins concentriques) ;
+// pastilles, recherche et lignes à l'intérieur.
+constexpr float sidebarFloatInset = 8, sidebarFloatRadius = 18;
+constexpr float lightsX = 26, lightsY = 26;          // premier centre des pastilles de la fenêtre
+constexpr float sidebarRow = 28, sidebarGroupGap = 10, sidebarInset = 16, tile = 20, tileRadius = 5;
 constexpr float searchHeight = 28;
 constexpr float switchWidth = 32, switchHeight = 18;
 constexpr float sliderWidth = 220, knob = 20, sliderTrack = 4;

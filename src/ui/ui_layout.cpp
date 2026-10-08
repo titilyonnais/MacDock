@@ -69,6 +69,19 @@ int nextFocus(int current, const std::vector<bool>& focusable, bool backwards) {
     return -1;
 }
 
+Panel sidebarPanel(float windowHeight) {
+    const float in = metrics::sidebarFloatInset;
+    return {in, in, metrics::sidebarWidth - in, windowHeight - in, metrics::sidebarFloatRadius};
+}
+
+bool insidePanel(const Panel& p, float x, float y) {
+    if (x < p.left || x > p.right || y < p.top || y > p.bottom) return false;
+    // Dans un coin : à moins d'un rayon du centre de son arrondi.
+    const float cx = x < p.left + p.radius ? p.left + p.radius : x > p.right - p.radius ? p.right - p.radius : x;
+    const float cy = y < p.top + p.radius ? p.top + p.radius : y > p.bottom - p.radius ? p.bottom - p.radius : y;
+    return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= p.radius * p.radius;
+}
+
 std::vector<float> sidebarRowTops(const std::vector<int>& sizes) {
     std::vector<float> tops;
     float y = metrics::sidebarTop;

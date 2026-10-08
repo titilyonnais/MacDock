@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ui_layout.h"
 #include "ui_theme.h"
 
 namespace md::ui {
@@ -56,6 +57,10 @@ private:
 
 // Police de l'interface : SF Pro si elle est installée, puis Inter, puis Segoe UI Variable.
 std::wstring interfaceFont(IDWriteFactory* dwrite);
+
+// Fond de la fenêtre façon Tahoe : la couleur du contenu partout, sauf le panneau flottant de la barre latérale (voile
+// sur le fond acrylique, liseré, ombre douce autour).
+void drawWindowBackground(Painter& p, float width, float height);
 
 // Interrupteur dans r (32 × 18 pt) ; progress de 0 (éteint) à 1 (allumé), animé par l'appelant.
 void drawSwitch(Painter& p, D2D1_RECT_F r, float progress, bool pressed);
