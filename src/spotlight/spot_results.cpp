@@ -115,14 +115,7 @@ std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder) 
     return L"search-ms:query=" + percentEncode(query) + L"&crumb=location:" + percentEncode(folder);
 }
 
-std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text) {
-    std::wstring t;
-    for (wchar_t c : toLower(text))
-        if (c != L' ') t.push_back(c);
-    if (t == L"alt+space") return HotkeySpec{MOD_ALT, VK_SPACE};
-    if (t == L"ctrl+space" || t == L"control+space") return HotkeySpec{MOD_CONTROL, VK_SPACE};
-    return std::nullopt;
-}
+std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text) { return parseHotkey(text); }
 
 void spotEraseLast(std::wstring& query) {
     if (query.empty()) return;

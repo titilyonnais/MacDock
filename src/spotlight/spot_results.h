@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../apps/app_catalog.h"
+#include "../interact/hotkey.h"
 
 namespace md {
 
@@ -63,11 +64,7 @@ struct DocFeed {
     }
 };
 
-struct HotkeySpec {
-    UINT mods = 0;
-    UINT vk = 0;
-};
-// « alt+space » ou « ctrl+space » (casse ignorée) ; nullopt pour « off » ou une valeur inconnue.
+// Raccourci de Spotlight : toute combinaison valide (hotkey.h) ; nullopt pour « off » ou une valeur inconnue ou réservée.
 std::optional<HotkeySpec> parseSpotlightHotkey(const std::wstring& text);
 
 // Saisie : efface le dernier caractère (une paire de substitution, comme un émoji, d'un coup).

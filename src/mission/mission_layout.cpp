@@ -129,23 +129,8 @@ MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const Missi
     return out;
 }
 
-std::optional<HotkeySpec> parseAppExposeHotkey(const std::wstring& text) {
-    std::wstring t;
-    for (wchar_t c : toLower(text))
-        if (c != L' ') t.push_back(c);
-    if (t == L"ctrl+alt+down") return HotkeySpec{MOD_CONTROL | MOD_ALT, VK_DOWN};
-    if (t == L"ctrl+down") return HotkeySpec{MOD_CONTROL, VK_DOWN};
-    return std::nullopt;
-}
+std::optional<HotkeySpec> parseAppExposeHotkey(const std::wstring& text) { return parseHotkey(text); }
 
-std::optional<HotkeySpec> parseMissionHotkey(const std::wstring& text) {
-    std::wstring t;
-    for (wchar_t c : toLower(text))
-        if (c != L' ') t.push_back(c);
-    if (t == L"ctrl+alt+up") return HotkeySpec{MOD_CONTROL | MOD_ALT, VK_UP};
-    if (t == L"ctrl+up") return HotkeySpec{MOD_CONTROL, VK_UP};
-    if (t == L"f3") return HotkeySpec{0, VK_F3};
-    return std::nullopt;
-}
+std::optional<HotkeySpec> parseMissionHotkey(const std::wstring& text) { return parseHotkey(text); }
 
 } // namespace md
