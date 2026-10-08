@@ -63,7 +63,7 @@ TEST_CASE(screenshot_keys_win_shift_3_and_4) {
     CHECK(md::screenshotKey(press('3', {true, true, false, true})) == ShotKey::Pass);    // Alt : un autre raccourci
     CHECK(md::screenshotKey(press('3', {true, false, false, false})) == ShotKey::Pass);  // ⊞3 : reste à Windows
     CHECK(md::screenshotKey(press('3', {false, true, false, false})) == ShotKey::Pass);  // # tapé
-    CHECK(md::screenshotKey(press('5', ws)) == ShotKey::Pass);
+    CHECK(md::screenshotKey(press('6', ws)) == ShotKey::Pass);   // ⊞⇧5 : la barre d'outils (plus bas)
     CHECK(md::screenshotKey(press(VK_NUMPAD3, ws)) == ShotKey::Pass);
     md::ShotKeyEvent fake = press('3', ws);
     fake.injected = true;   // une app qui simule des frappes ne déclenche rien
@@ -211,4 +211,43 @@ TEST_CASE(screenshot_clipboard_image_flattened_on_white) {
     CHECK(flat.px[0] == 255 && flat.px[1] == 255 && flat.px[2] == 255 && flat.px[3] == 255);
     CHECK(flat.px[4] > 120 && flat.px[4] < 135 && flat.px[7] == 255);
     CHECK(flat.px[8] == 0 && flat.px[11] == 255);   // opaque : inchangé
+}
+
+TEST_CASE(recording_names_and_video_size) {
+    SYSTEMTIME t{};
+    t.wYear = 2026;
+    t.wMonth = 10;
+    t.wDay = 8;
+    t.wHour = 9;
+    t.wMinute = 5;
+    t.wSecond = 7;
+    CHECK(md::recordingBaseName(t) == L"Enregistrement de l\u2019\u00e9cran 2026-10-08 \u00e0 09.05.07");
+    const std::set<std::wstring> taken{L"D:\\b\\X.mp4"};
+    auto exists = [&](const std::wstring& p) { return taken.count(p) > 0; };
+    CHECK(md::uniqueRecordingPath(L"D:\\b", L"Y", exists) == L"D:\\b\\Y.mp4");
+    CHECK(md::uniqueRecordingPath(L"D:\\b", L"X", exists) == L"D:\\b\\X (2).mp4");
+    SIZE s = md::recordingSize(SIZE{3840, 2160}, 1920);   // 4K : réduite à 1080p
+    CHECK(s.cx == 1920 && s.cy == 1080);
+    s = md::recordingSize(SIZE{1001, 601}, 1920);   // H.264 : dimensions paires, jamais agrandie
+    CHECK(s.cx == 1000 && s.cy == 600);
+    s = md::recordingSize(SIZE{5120, 1440}, 1920);
+    CHECK(s.cx == 1920 && s.cy == 540);
+    s = md::recordingSize(SIZE{3, 3}, 1920);   // zone minuscule : au moins 2 × 2
+    CHECK(s.cx == 2 && s.cy == 2);
+}
+
+TEST_CASE(screenshot_toolbar_key_and_layout) {
+    CHECK(md::screenshotKey(press('5', {true, true, false, false})) == md::ShotKey::Toolbar);   // ⊞⇧5
+    const md::ShotToolbarLayout l = md::shotToolbarLayout(1.0);
+    CHECK(l.buttons.size() == 7);   // ×, cinq modes, action
+    CHECK(l.width > 0 && l.height > 0);
+    for (std::size_t i = 0; i < l.buttons.size(); ++i) {
+        const auto& b = l.buttons[i];
+        CHECK(md::shotToolbarHit(l, b.x + b.w / 2, b.y + b.h / 2) == int(i));
+        for (std::size_t j = i + 1; j < l.buttons.size(); ++j)
+            CHECK(b.x + b.w <= l.buttons[j].x + 1e-9 || l.buttons[j].x + l.buttons[j].w <= b.x + 1e-9);
+    }
+    CHECK(md::shotToolbarHit(l, -5, 5) == -1);
+    const md::ShotToolbarLayout big = md::shotToolbarLayout(2.0);
+    CHECK(std::abs(big.width - 2 * l.width) < 1e-6);
 }

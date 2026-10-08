@@ -50,6 +50,62 @@ std::wstring screenshotBaseName(const SYSTEMTIME& t) {
     return buf;
 }
 
+std::wstring recordingBaseName(const SYSTEMTIME& t) {
+    wchar_t buf[96];
+    swprintf_s(buf, L"Enregistrement de l’écran %04u-%02u-%02u à %02u.%02u.%02u", t.wYear, t.wMonth, t.wDay,
+               t.wHour, t.wMinute, t.wSecond);
+    return buf;
+}
+
+std::wstring uniqueRecordingPath(const std::wstring& dir, const std::wstring& base,
+                                 const std::function<bool(const std::wstring&)>& exists) {
+    std::wstring folder = dir;
+    while (!folder.empty() && (folder.back() == L'\\' || folder.back() == L'/')) folder.pop_back();
+    std::wstring path;
+    for (int n = 1; n < 1000; ++n) {
+        path = folder + L"\\" + base + (n > 1 ? L" (" + std::to_wstring(n) + L")" : L"") + L".mp4";
+        if (!exists || !exists(path)) break;
+    }
+    return path;
+}
+
+SIZE recordingSize(SIZE source, int maxWidth) {
+    const double w = std::max<LONG>(source.cx, 2), h = std::max<LONG>(source.cy, 2);
+    const double k = std::min(1.0, double(std::max(maxWidth, 2)) / w);
+    auto even = [](double v) { return std::max(2L, LONG(v) & ~1L); };
+    return SIZE{even(w * k), even(h * k)};
+}
+
+ShotToolbarLayout shotToolbarLayout(double scale) {
+    // Comme la barre de ⌘⇧5 : × à gauche, trois modes de capture, deux d'enregistrement, puis l'action.
+    constexpr double kPad = 10, kButton = 40, kGap = 4, kSeparator = 14, kAction = 96, kHeight = 56;
+    ShotToolbarLayout l;
+    double x = kPad;
+    const double y = (kHeight - kButton) / 2;
+    auto add = [&](double w) {
+        l.buttons.push_back({x * scale, y * scale, w * scale, kButton * scale});
+        x += w + kGap;
+    };
+    add(kButton);   // ×
+    x += kSeparator;
+    for (int i = 0; i < 3; ++i) add(kButton);   // écran, fenêtre, zone
+    x += kSeparator;
+    for (int i = 0; i < 2; ++i) add(kButton);   // enregistrer l'écran, une zone
+    x += kSeparator;
+    add(kAction);   // « Capturer » ou « Enregistrer »
+    l.width = (x - kGap + kPad) * scale;
+    l.height = kHeight * scale;
+    return l;
+}
+
+int shotToolbarHit(const ShotToolbarLayout& l, double x, double y) {
+    for (std::size_t i = 0; i < l.buttons.size(); ++i) {
+        const ShotToolbarButton& b = l.buttons[i];
+        if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return int(i);
+    }
+    return -1;
+}
+
 std::wstring screenshotFileName(const std::wstring& base, int n) {
     return n <= 1 ? base + L".png" : base + L" (" + std::to_wstring(n) + L").png";
 }
@@ -68,10 +124,10 @@ std::wstring uniqueScreenshotPath(const std::wstring& dir, const std::wstring& b
 }
 
 ShotKey screenshotKey(const ShotKeyEvent& e) {
-    if (e.vk != '3' && e.vk != '4') return ShotKey::Pass;
+    if (e.vk != '3' && e.vk != '4' && e.vk != '5') return ShotKey::Pass;
     if (!e.down || e.repeat) return e.taken ? ShotKey::Swallow : ShotKey::Pass;
     if (e.injected || !e.mods.win || !e.mods.shift || e.mods.alt) return ShotKey::Pass;
-    return e.vk == '3' ? ShotKey::Screen : ShotKey::Region;
+    return e.vk == '3' ? ShotKey::Screen : e.vk == '4' ? ShotKey::Region : ShotKey::Toolbar;
 }
 
 ShotSessionKey screenshotSessionKey(unsigned vk, bool down, bool repeat) {

@@ -30,8 +30,27 @@ struct ShotKeyEvent {
     ShotMods mods;
     bool taken = false;   // l'appui de cette touche a été pris : son relâchement et ses répétitions aussi
 };
-enum class ShotKey { Pass, Screen, Region, Swallow };
+enum class ShotKey { Pass, Screen, Region, Toolbar, Swallow };   // Toolbar : ⊞⇧5
 ShotKey screenshotKey(const ShotKeyEvent& e);
+
+// Enregistrement de l'écran : « Enregistrement de l’écran 2026-10-08 à 09.05.07 » ; « … (2).mp4 » si le nom est pris.
+std::wstring recordingBaseName(const SYSTEMTIME& t);
+std::wstring uniqueRecordingPath(const std::wstring& dir, const std::wstring& base,
+                                 const std::function<bool(const std::wstring&)>& exists);
+// Taille de la vidéo : au plus maxWidth de large, proportions gardées, jamais agrandie, dimensions paires (H.264).
+SIZE recordingSize(SIZE source, int maxWidth);
+
+// Barre de ⊞⇧5 (points × scale) : ×, capturer l'écran, une fenêtre, une zone, enregistrer l'écran, une zone, action.
+struct ShotToolbarButton {
+    double x = 0, y = 0, w = 0, h = 0;
+};
+struct ShotToolbarLayout {
+    double width = 0, height = 0;
+    std::vector<ShotToolbarButton> buttons;
+};
+enum ShotToolbarItem { kToolClose = 0, kToolScreen, kToolWindow, kToolRegion, kToolRecordScreen, kToolRecordRegion, kToolAction };
+ShotToolbarLayout shotToolbarLayout(double scale);
+int shotToolbarHit(const ShotToolbarLayout& l, double x, double y);   // -1 : aucun bouton
 
 // Pendant le viseur : Échap annule, Espace bascule entre zone et fenêtre ; les autres touches passent.
 enum class ShotSessionKey { Pass, Cancel, ToggleWindow, Swallow };
