@@ -763,6 +763,57 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - « Masquer » enchaîne un génie par fenêtre (comme avant) au lieu de les faire disparaître d'un coup comme macOS ;
   - le test `uia_menus_read_and_invoke_fake_app` est lent quand la machine est chargée (10 s pour 15 s permises).
 
+### Plan 42 — app Réglages MacDock (2/3), nuit du 9 octobre
+
+- **Les onze sections sont prêtes**, plus aucun « Bientôt » :
+  - Général : démarrage avec Windows, relancer ou quitter MacDock, exporter, importer, rétablir les défauts ;
+  - Dock, Barre des menus, Fenêtres ;
+  - Mission Control : coins actifs et raccourcis ;
+  - Clavier : ⌘ et raccourci de Spotlight ;
+  - Captures d'écran, Sons, Police ;
+  - Mods Windhawk : versions, Installer, Mettre à jour, Retirer ;
+  - À propos : version, dossiers.
+- **Recherche** en haut de la barre latérale (Ctrl+F) : sans casse ni accents ; seules les sections trouvées restent,
+  Entrée ouvre la première et les lignes trouvées sont soulignées.
+- **Raccourcis saisis au clavier** :
+  - clic sur le champ, puis la combinaison voulue, ⊞ compris : un crochet clavier, posé seulement pendant l'écoute, la
+    garde pour l'app ;
+  - Échap annule, Retour arrière efface ;
+  - les combinaisons gardées par Windows sont refusées, et deux fonctions sur le même raccourci sont signalées en rouge.
+- **Feuilles d'alerte façon macOS 26** : rétablir les défauts, installer ou retirer un mod (avec ou sans redémarrage de
+  l'Explorateur), erreurs.
+- **Contrôles** : boutons en capsule, champ de raccourci, valeurs grises.
+- **Installateur du mod** : options `-Restart` / `-NoRestart` à la place de la question O/N. L'app attend la fin de
+  l'installation (autorisation administrateur demandée par Windows), puis relit l'état.
+- **Essai réel de la nuit**, dans un dossier d'essai (`--data`) et avec des clics envoyés à la fenêtre :
+  - recherche, enregistrement de Ctrl+Alt+K, rétablissement, export, import, fichier étranger refusé ;
+  - le démarrage avec Windows est allé dans le fichier d'essai : **la vraie clé Run n'a pas bougé** ;
+  - « Ouvrir » et l'installateur ont seulement été écrits au journal.
+- **Défauts trouvés par l'essai, corrigés et testés** :
+  - un mod désactivé avec une mise à jour proposait « Réinstaller… » au lieu de « Mettre à jour… » ;
+  - le journal ne créait pas son dossier dans un dossier neuf ;
+  - un plantage dans les tests : deux types `md::ActionContext` différents (la barre de menus en avait déjà un).
+- **Relecture indépendante** : aucun défaut critique. Les cinq importants sont corrigés et testés :
+  - une instance d'essai pouvait piloter la vraie app (et l'inverse) : mutex et classe de fenêtre séparés ;
+  - « Relancer » ne relançait presque jamais : l'app attend maintenant que MacDock soit vraiment arrêté ;
+  - une version avec un suffixe (« -beta ») faisait boucler la section Mods et la recherche ;
+  - l'enregistreur pouvait laisser Maj « enfoncée » dans tout Windows : il ne garde plus que les touches qu'il a
+    vues enfoncées ;
+  - Entrée tenue validait la feuille de confirmation que son premier appui ouvrait.
+- **Mineurs corrigés** :
+  - code de sortie de l'installateur lu ;
+  - raccourcis des apps (Ctrl+C…) et de MacDock refusés, et une combinaison déjà prise par une autre app est
+    détectée ;
+  - export refusé sur un fichier invalide ;
+  - import confirmé par une feuille, sans fichier .bak laissé chez toi, avec les épingles réseau signalées ;
+  - recherche dans le texte des boutons ;
+  - l'Explorateur est redémarré par l'app, dans ta session et sans droits élevés ;
+  - l'installateur ne recrée plus la clé du mod, qui effaçait tes réglages du mod à chaque réinstallation.
+- **Choix gardés** :
+  - « Rétablir » remet aussi les mesures de la barre aux valeurs par défaut ;
+  - le bouton par défaut de l'installation redémarre l'Explorateur (c'est ce qu'il faut pour sa police).
+- **Mineur reporté** : à l'import, l'option de garder ses épingles actuelles.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

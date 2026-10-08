@@ -154,11 +154,13 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
 ## Réglages
 
 Le plus simple : l'app **Réglages MacDock** ( > « Réglages MacDock… »).
-- Barre latérale de sections.
-- Interrupteurs, curseurs et menus appliqués tout de suite.
-- Clair ou sombre selon Windows.
-
-Sections déjà prêtes : Dock, Barre des menus et Fenêtres. Les autres suivent : Général, Mission Control, Clavier, Captures, Sons, Police, Mods Windhawk, À propos.
+- Barre latérale de onze sections : Général, Dock, Barre des menus, Fenêtres, Mission Control, Clavier, Captures d'écran, Sons, Police, Mods Windhawk, À propos.
+- **Recherche** en haut de la barre latérale (Ctrl+F) : sans casse ni accents ; seules les sections trouvées restent, Entrée ouvre la première et les lignes trouvées sont soulignées.
+- Interrupteurs, curseurs et menus appliqués tout de suite ; clair ou sombre selon Windows.
+- **Raccourcis** (Spotlight, Mission Control, Fenêtres de l'app) : clic sur le champ, puis la combinaison voulue, ⊞ compris. Échap annule, Retour arrière efface. Les combinaisons gardées par Windows (⊞L, Ctrl+Alt+Suppr, Alt+Tab…) sont refusées, et deux fonctions sur le même raccourci sont signalées en rouge.
+- **Général** : ouvrir MacDock à l'ouverture de session (clé `Run` de Windows), relancer ou quitter MacDock, exporter et importer tous les réglages dans un fichier, rétablir les réglages par défaut (les apps épinglées restent).
+- **Mods Windhawk** : versions installée et livrée de chaque mod, Installer, Mettre à jour ou Retirer. Windows demande l'autorisation administrateur ; une feuille propose de redémarrer l'Explorateur.
+- Les confirmations s'ouvrent dans des feuilles d'alerte, comme sur macOS.
 
 Elle écrit les mêmes fichiers que ceux décrits ci-dessous, et seulement la clé changée : rien de ce que le Dock y a écrit n'est perdu.
 
@@ -207,7 +209,7 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `MacMenuBar.exe --lights-snapshot planche.png` : les feux tricolores (clair, sombre ; normal, survol, indisponible) dans une image, sans rien afficher.
 - `MacMenuBar.exe --hud-snapshot hud.png [--kind volume|brightness] [--level 0.5] [--muted] [--theme light|dark]` : la pastille du volume ou de la luminosité dans une image, sans rien afficher ni régler.
 - `MacMenuBar.exe --quit` : ferme la barre seule.
-- `MacDockSettings.exe --pane dock` : ouvre l'app Réglages sur une section (`general`, `dock`, `menubar`, `windows`, `desktop`, `keyboard`, `screenshots`, `sounds`, `font`, `mods`, `about`) ; `--data <dossier>` lui fait lire et écrire un autre dossier de réglages (essais).
+- `MacDockSettings.exe --pane dock` : ouvre l'app Réglages sur une section (`general`, `dock`, `menubar`, `windows`, `desktop`, `keyboard`, `screenshots`, `sounds`, `font`, `mods`, `about`) ; `--data <dossier>` lui fait lire et écrire un autre dossier de réglages (essais) : le démarrage avec Windows y est gardé dans `startup-test.json` au lieu de la clé `Run`, et les actions qui touchent au système (quitter MacDock, installateurs, dossiers) sont seulement écrites au journal ; `MACDOCK_SETTINGS_FILE` y remplace les dialogues d'export et d'import.
 - `./build.ps1 -Target tests -Run` : tests automatiques.
 
 ## Note

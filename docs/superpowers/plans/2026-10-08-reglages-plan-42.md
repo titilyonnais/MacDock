@@ -86,4 +86,4 @@ Windows et la gestion des mods Windhawk, toutes entièrement fonctionnelles. Il 
   - dialogues de fichiers ;
   - installateur des mods ;
   - démarrage.
-- [ ] 6. Essai réel, documentation, relecture, fusion.
+- [x] 6. Essai réel, documentation, relecture, fusion.
