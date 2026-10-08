@@ -19,9 +19,10 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Exposé d'une app** : ⌃⌥↓ ou « Afficher toutes les fenêtres », fenêtres réduites en rangée en bas (plan 31).
 - **Sons système originaux** : capture, Corbeille vidée, « poof », « pop » du volume (plan 32).
 - **Touche ⌘** (option) : Alt de gauche joue ⌘, raccourcis du Finder dans l'Explorateur (plan 33).
+- **Centre de notifications** : date, calendrier du mois, lecture en cours, au clic sur l'horloge (plan 34).
 
 ## À faire, par ordre d'effet
-1. **Centre de notifications et widgets** : panneau à droite à l'ouverture de l'horloge.
+1. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
 2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
 3. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
 

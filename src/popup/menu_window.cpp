@@ -670,6 +670,34 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
             }
             break;
         }
+        case MenuRow::Calendar: {   // mois du Centre de notifications : aujourd'hui dans une pastille rouge
+            auto centered = [&](IDWriteTextFormat* fmt, const std::wstring& text, float cx, float cy, ID2D1Brush* b) {
+                Com<IDWriteTextLayout> l;
+                if (!fmt || FAILED(dw->CreateTextLayout(text.c_str(), UINT32(text.size()), fmt, 200 * sc, 40 * sc, &l))) return;
+                DWRITE_TEXT_METRICS tm{};
+                l->GetMetrics(&tm);
+                d->DrawTextLayout({cx - tm.width / 2, cy - tm.height / 2}, l.Get(), b);
+            };
+            const float pad = 10 * sc;
+            drawText(d, dw, boldFormat.Get(), it.text, x0 + pad, top + 2 * sc, x1 - x0 - 2 * pad, 22 * sc, ink.Get());
+            const float cellW = (x1 - x0 - 2 * pad) / 7, gridTop = top + 26 * sc, rowStep = 24 * sc;
+            static const wchar_t* kInitials[] = {L"L", L"M", L"M", L"J", L"V", L"S", L"D"};
+            for (int c = 0; c < 7; ++c)
+                centered(smallFormat.Get(), kInitials[c], x0 + pad + (float(c) + 0.5f) * cellW, gridTop + 8 * sc, grey.Get());
+            Com<ID2D1SolidColorBrush> red, faint;
+            d->CreateSolidColorBrush(rgba(1.0f, 0.23f, 0.19f, opacity), &red);   // rouge du Calendrier
+            d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.28f * opacity) : rgba(0, 0, 0, 0.26f * opacity), &faint);
+            const int year = int(it.date / 10000), month = int(it.date / 100 % 100), day = int(it.date % 100);
+            const auto cells = calendarCells(year, month, day);
+            for (std::size_t k = 0; k < cells.size(); ++k) {
+                const float cx = x0 + pad + (float(k % 7) + 0.5f) * cellW;
+                const float cy = gridTop + 18 * sc + (float(k / 7) + 0.5f) * rowStep;
+                if (cells[k].today) d->FillEllipse(D2D1::Ellipse({cx, cy}, 11 * sc, 11 * sc), red.Get());
+                centered(smallFormat.Get(), std::to_wstring(cells[k].day), cx, cy,
+                         cells[k].today ? white.Get() : cells[k].inMonth ? ink.Get() : faint.Get());
+            }
+            break;
+        }
     }
 }
 

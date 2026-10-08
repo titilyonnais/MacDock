@@ -18,6 +18,7 @@ double menuRowHeight(MenuRow r) {
         case MenuRow::Toggle: return kMenuToggleHeight;
         case MenuRow::Tiles: return kMenuTilesHeight;
         case MenuRow::Media: return kMenuMediaHeight;
+        case MenuRow::Calendar: return kMenuCalendarHeight;
         case MenuRow::Normal: break;
     }
     return kMenuItemHeight;
@@ -179,6 +180,34 @@ int barTitleAt(const std::vector<RECT>& titles, POINT pt, int current) {
     for (std::size_t i = 0; i < titles.size(); ++i)
         if (int(i) != current && PtInRect(&titles[i], pt)) return int(i);
     return -1;
+}
+
+namespace {
+int daysIn(int year, int month) {
+    static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    return month == 2 && leap ? 29 : kDays[(month - 1 + 12) % 12];
+}
+int dayOfWeek(int y, int m, int d) {   // 0 = dimanche (méthode de Sakamoto)
+    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) y -= 1;
+    return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+} // namespace
+
+std::vector<CalendarCell> calendarCells(int year, int month, int today) {
+    std::vector<CalendarCell> out(42);
+    if (month < 1 || month > 12) return out;
+    const int lead = (dayOfWeek(year, month, 1) + 6) % 7;   // lundi en premier
+    const int days = daysIn(year, month), before = daysIn(month == 1 ? year - 1 : year, month == 1 ? 12 : month - 1);
+    for (int i = 0; i < 42; ++i) {
+        CalendarCell& c = out[std::size_t(i)];
+        const int d = i - lead + 1;
+        c.inMonth = d >= 1 && d <= days;
+        c.day = d < 1 ? before + d : d > days ? d - days : d;
+        c.today = c.inMonth && d == today;
+    }
+    return out;
 }
 
 } // namespace md

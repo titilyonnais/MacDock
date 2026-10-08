@@ -37,12 +37,14 @@ enum class MenuRow {
     Toggle,   // texte et interrupteur (on) à droite
     Tiles,    // rangée de tuiles (tiles)
     Media,    // lecture en cours : text (titre), subtitle (artiste), boutons précédent, lecture/pause, suivant
+    Calendar, // mois du Centre de notifications : text (« Octobre 2026 »), date (AAAAMMJJ, le jour mis en avant)
 };
 constexpr double kMenuHeaderHeight = 22;
 constexpr double kMenuSliderHeight = 30;
 constexpr double kMenuToggleHeight = 26;
 constexpr double kMenuTilesHeight = 62;
 constexpr double kMenuMediaHeight = 50;
+constexpr double kMenuCalendarHeight = 196;   // titre, initiales des jours, six semaines
 constexpr double kMenuSliderLeft = 36;     // début de la piste (après le pictogramme), depuis le bord de la ligne
 constexpr double kMenuSliderRight = 14;
 constexpr double kMenuTileInset = 4;       // marge des tuiles dans la ligne
@@ -71,6 +73,7 @@ struct MenuItem {
     std::vector<MenuTile> tiles;
     std::wstring subtitle;         // média : artiste
     bool playing = false;          // média
+    std::uint32_t date = 0;        // calendrier : AAAAMMJJ
     bool separator() const { return row == MenuRow::Normal && id == 0 && submenu.empty(); }
     // Entrée ordinaire, au clavier ou à la souris ; les lignes enrichies ne réagissent qu'à la souris.
     bool selectable() const { return row == MenuRow::Normal && !separator() && enabled; }
@@ -82,6 +85,12 @@ struct MenuModel {
 };
 
 double menuRowHeight(MenuRow r);
+// Grille d'un mois, lundi en premier (comme en France) : 42 cases ; today : jour mis en avant (0 : aucun).
+struct CalendarCell {
+    int day = 0;
+    bool inMonth = false, today = false;
+};
+std::vector<CalendarCell> calendarCells(int year, int month, int today);
 // Valeur du curseur sous x (points depuis le bord gauche de la ligne), bornée à [0, 1].
 double sliderValueAt(double rowWidth, double x);
 int tileAt(std::size_t tiles, double rowWidth, double x);   // -1 hors des tuiles

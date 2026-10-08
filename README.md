@@ -125,7 +125,11 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
   - sinon, des menus génériques Fichier, Édition, Présentation, Fenêtre, Aide. Ils envoient les raccourcis standard (`Ctrl+S`, `Ctrl+Z`…), affichés à droite de chaque entrée. Les apps Chromium, Electron et Firefox gardent toujours ces menus génériques. Le menu Fenêtre liste les fenêtres de l'app ;
   - sur le bureau ou dans l'Explorateur, les menus de l'Explorateur, avec **Aller** (Téléchargements, Documents, Applications, Corbeille…), comme le Finder.
 - **Ouvrir un menu** : un clic sur un titre ; tant qu'un menu est ouvert, survoler un autre titre l'ouvre aussi, et les flèches ← → passent au voisin. Le clavier reste à ton app : la commande choisie lui est envoyée.
-- **À droite**, comme sur macOS : le son, le Wi-Fi (s'il y a une carte Wi-Fi), la batterie (s'il y en a une), la loupe (Spotlight du Dock ; la recherche de Windows, `Win+S`, si le Dock ne tourne pas), le Centre de contrôle, puis la date et l'heure (`mer. 7 oct. 14:32`, un clic ouvre le centre de notifications). Les icônes sont dessinées dans la couleur du texte et suivent l'état réel (volume, sourdine, signal, charge).
+- **À droite**, comme sur macOS : le son, le Wi-Fi (s'il y a une carte Wi-Fi), la batterie (s'il y en a une), la loupe (Spotlight du Dock ; la recherche de Windows, `Win+S`, si le Dock ne tourne pas), le Centre de contrôle, puis la date et l'heure (`mer. 7 oct. 14:32`).
+- **Centre de notifications** (clic sur la date et l'heure) :
+  - la date du jour, et le calendrier du mois, avec aujourd'hui dans une pastille rouge ;
+  - la lecture en cours (précédent, lecture/pause, suivant) ;
+  - les liens vers les notifications de Windows, le calendrier et les réglages de date et heure. Les icônes sont dessinées dans la couleur du texte et suivent l'état réel (volume, sourdine, signal, charge).
   - **Son** : curseur du volume, choix de la sortie (un clic en fait la sortie par défaut), « Réglages Son… ».
   - **Wi-Fi** : interrupteur, réseaux connus (un clic connecte), autres réseaux (ouvrent les réglages), « Réglages Wi-Fi… ».
   - **Batterie** : charge, source d'alimentation, réglages.
