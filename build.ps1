@@ -36,16 +36,16 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\menubar\status_audio.cpp', 'src\menubar\status_power.cpp', 'src\menubar\status_network.cpp', 'src\menubar\status_winrt.cpp', 'src\menubar\status_brightness.cpp', 'src\menubar\status_hub.cpp', 'src\menubar\status_menus.cpp', 'src\menubar\tray_model.cpp', 'src\menubar\bar_screens.cpp', 'src\menubar\traffic_lights.cpp', 'src\menubar\window_look.cpp')
 
 $Targets = @{
-    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\popup\popup_glass.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp'); Subsystem = 'CONSOLE'; Includes = @('tests\stubs');
+    tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\popup\popup_glass.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\screenshot\screen_recorder.cpp'); Subsystem = 'CONSOLE'; Includes = @('tests\stubs');
                   Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib', 'oleaut32.lib', 'uiautomationcore.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib', 
-                      'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib') }
+                      'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib', 'mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib') }
     dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
                       'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\popup\*.cpp', 'src\interact\*.cpp', 'src\stack\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp', 'src\spotlight\*.cpp', 'src\mission\*.cpp', 'src\switcher\*.cpp', 'src\quicklook\*.cpp', 'src\screenshot\*.cpp', 'src\sound\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib', 'windowsapp.lib',
-                      'mfplat.lib', 'mfplay.lib', 'winmm.lib') }
+                      'mfplat.lib', 'mfplay.lib', 'winmm.lib', 'mfreadwrite.lib', 'mfuuid.lib') }
     menubar  = @{ Exe = 'MacMenuBar.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
                       'src\icons\*.cpp', 'src\tracker\*.cpp', 'src\shell\*.cpp', 'src\glass\*.cpp', 'src\calib\*.cpp',
                       'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\popup\popup_glass.cpp', 'src\theme\wallpaper_art.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp', 'src\hud\*.cpp', 'src\ipc\*.cpp', 'src\sound\*.cpp', 'src\anim\motion.cpp'); Subsystem = 'WINDOWS';

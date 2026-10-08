@@ -66,6 +66,7 @@ constexpr UINT WM_APP_SHOT = WM_APP + 32;        // wParam : 1 écran entier (�
 constexpr UINT WM_APP_SHOT_KEY = WM_APP + 33;    // wParam : ShotSessionKey (Échap, Espace pendant le viseur)
 constexpr UINT WM_APP_SHOT_SAVED = WM_APP + 34;  // wParam : écrit ; lParam : std::wstring* (chemin, à libérer)
 constexpr UINT_PTR kShotResumeTimer = 0x5352;    // "SR" : capture du verre reprise, Dock de nouveau exclu
+constexpr UINT_PTR kRecordTimer = 0x5245;        // "RE" : durée de l'enregistrement dans la pastille
 constexpr ULONG_PTR kCommandReplay = 0x4D44434B;   // "MDCK" : frappes envoyées par la touche ⌘ (le crochet les laisse)
 constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la sélection de l'Explorateur
 constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
@@ -533,12 +534,83 @@ void DockApp::startRegionShot(bool clipboard) {
     }
 }
 
+void DockApp::openShotToolbar() {
+    if (recorder_.recording()) {   // ⊞⇧5 pendant un enregistrement : il s'arrête
+        stopRecording();
+        return;
+    }
+    if (viewfinder_.active() || menuOpen_ || shotToolbar_.isOpen() || snapshot_) return;
+    shotSession_ = true;   // Échap ferme la barre
+    if (!shotToolbar_.open(instance_, [this](int item) { onShotToolbar(item); })) shotSession_ = false;
+}
+
+void DockApp::onShotToolbar(int item) {
+    shotSession_ = false;
+    switch (item) {
+        case kToolScreen: takeScreenShot(false); break;
+        case kToolWindow:
+            startRegionShot(false);
+            viewfinder_.key(ShotSessionKey::ToggleWindow);   // directement en mode fenêtre
+            break;
+        case kToolRegion: startRegionShot(false); break;
+        case kToolRecordScreen: {
+            POINT cursor;
+            GetCursorPos(&cursor);
+            MONITORINFO mi{sizeof mi};
+            GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY), &mi);
+            startRecording(mi.rcMonitor);
+            break;
+        }
+        case kToolRecordRegion:
+            recordAfterViewfinder_ = true;
+            startRegionShot(false);
+            break;
+        default: break;   // ×
+    }
+}
+
+void DockApp::startRecording(const RECT& area) {
+    if (recorder_.recording()) return;
+    const std::wstring dir = desktopFolder();
+    if (dir.empty()) return;
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    recordingPath_ = uniqueRecordingPath(dir, recordingBaseName(now), [](const std::wstring& p) {
+        return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES;
+    });
+    recordingMonitor_ = MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST);
+    if (!recorder_.start(area, recordingPath_, 30)) return;
+    log::info(L"Enregistrement de l'écran : %s", recordingPath_.c_str());
+    recPill_.show(instance_, recordingMonitor_, [this] { stopRecording(); });
+    SetTimer(hwnd_, kRecordTimer, 500, nullptr);
+}
+
+void DockApp::stopRecording() {
+    if (!recorder_.recording()) return;
+    KillTimer(hwnd_, kRecordTimer);
+    recPill_.hide();
+    BgraImage last;
+    const bool ok = recorder_.stop(&last);
+    if (ok) log::info(L"Enregistrement terminé : %s", recordingPath_.c_str());
+    else log::warn(L"Enregistrement : fichier incomplet (%s)", recordingPath_.c_str());
+    if (!last.px.empty()) {
+        shotThumb_.show(instance_, last, recordingPath_, recordingMonitor_);   // un clic ouvre la vidéo
+        shotThumb_.fileSaved(recordingPath_, ok);
+    }
+}
+
 void DockApp::onViewfinderDone(const ShotViewfinder::Result& r) {
     shotSession_ = false;
     menuOpen_ = false;
     requestFrame();
     const bool clipboard = shotClipboard_;
     shotClipboard_ = false;
+    const bool record = recordAfterViewfinder_;   // ⊞⇧5, « enregistrer une zone »
+    recordAfterViewfinder_ = false;
+    if (record) {
+        if (r.kind == ShotViewfinder::Result::Kind::Region) startRecording(r.rect);
+        return;
+    }
     if (r.kind == ShotViewfinder::Result::Kind::Cancel) return;
     BgraImage img;
     if (r.kind == ShotViewfinder::Result::Kind::Region) {
@@ -1977,8 +2049,8 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             if (vk == VK_ESCAPE) escTaken = down;
             if (s != ShotSessionKey::Pass) return 1;
         }
-        if ((vk == '3' || vk == '4') && self_->shotKeysOn_) {
-            static bool taken[2] = {};   // fil du crochet seulement : appui pris, relâchement avalé aussi
+        if ((vk == '3' || vk == '4' || vk == '5') && self_->shotKeysOn_) {
+            static bool taken[3] = {};   // fil du crochet seulement : appui pris, relâchement avalé aussi
             bool& t = taken[vk - '3'];
             auto pressed = [](int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; };
             ShotKeyEvent e;
@@ -1990,7 +2062,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             e.taken = t;
             const ShotKey a = screenshotKey(e);
             if (!down) t = false;
-            if (a == ShotKey::Screen || a == ShotKey::Region) {
+            if (a == ShotKey::Screen || a == ShotKey::Region || a == ShotKey::Toolbar) {
                 t = true;
                 // Touche neutre tout de suite : ⊞ relâchée sans autre frappe visible ouvrirait le menu Démarrer.
                 INPUT in[2] = {};
@@ -1998,7 +2070,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 in[0].ki.wVk = in[1].ki.wVk = 0xE8;
                 in[1].ki.dwFlags = KEYEVENTF_KEYUP;
                 SendInput(2, in, sizeof(INPUT));
-                PostMessageW(self_->hwnd_, WM_APP_SHOT, a == ShotKey::Screen ? 1 : 2, e.mods.ctrl ? 1 : 0);
+                PostMessageW(self_->hwnd_, WM_APP_SHOT, a == ShotKey::Screen ? 1 : a == ShotKey::Region ? 2 : 3, e.mods.ctrl ? 1 : 0);
             }
             if (a != ShotKey::Pass) return 1;
         }
@@ -2218,9 +2290,17 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_APP_SHOT:   // touche neutre déjà envoyée par le crochet
             if (wp == 1) takeScreenShot(lp != 0);
-            else startRegionShot(lp != 0);
+            else if (wp == 2) startRegionShot(lp != 0);
+            else openShotToolbar();
             return 0;
         case WM_APP_SHOT_KEY:
+            if (shotToolbar_.isOpen()) {   // Échap ferme la barre de ⊞⇧5
+                if (ShotSessionKey(wp) == ShotSessionKey::Cancel) {
+                    shotToolbar_.close();
+                    shotSession_ = false;
+                }
+                return 0;
+            }
             viewfinder_.key(ShotSessionKey(wp));
             return 0;
         case WM_APP_SHOT_SAVED: {
@@ -2269,6 +2349,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kRecordTimer) {
+                recPill_.update(recorder_.seconds());
+                return 0;
+            }
             if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
                 KillTimer(hwnd_, kShotResumeTimer);
                 if (!menuOpen_ && !switchPanel_) resumeCapture();   // sinon, la fermeture du menu la reprend
@@ -2727,7 +2811,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         dropTarget_->Release();
         dropTarget_ = nullptr;
     }
+    recorder_.stop();   // un enregistrement en cours est finalisé
     viewfinder_.cancel();
+    shotToolbar_.close();
     shotThumb_.close();
     for (auto& job : shotJobs_) job.wait();   // captures en cours d'écriture : jamais de fichier coupé
     capture_.stop();
