@@ -82,6 +82,10 @@ enum class GenieReact { Nothing, Start, Cancel };
 // Fenêtre réduite (minimized) ou restaurée. live : réduction vue à l'instant, pas une fenêtre découverte déjà
 // réduite (lancement du Dock, redémarrage de l'Explorateur). Restaurée ailleurs pendant son animation : annulée.
 GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minimized, bool live);
+// Réduction vue en direct : le génie la prend si l'animation de Windows a été coupée à temps (`held` : réduction
+// annoncée) ou si Windows n'anime pas les réductions (choix de l'utilisateur) ; sinon deux animations se
+// superposeraient (barre des tâches, ⊞M, app qui se réduit elle-même) et Windows anime seul.
+bool genieTakesMinimize(bool held, bool windowsAnimates);
 // Une animation va en remplacer une autre : une restauration interrompue doit quand même aboutir.
 bool genieMustRestoreFirst(const GenieRun& run);
 

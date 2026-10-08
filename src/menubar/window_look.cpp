@@ -17,6 +17,11 @@ std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UI
     LightsWindowInfo any = w;
     any.iconic = false;   // une fenêtre réduite garde son apparence pour son retour
     if (!wantsLights(any, LightsMode::All, dpi)) return std::nullopt;
+    // Plein écran sans être agrandie (vidéo, jeu sans bordure) : rendue à Windows, coins carrés.
+    const RECT& m = w.monitor;
+    if (!w.zoomed && m.right > m.left && w.frame.left <= m.left && w.frame.top <= m.top && w.frame.right >= m.right &&
+        w.frame.bottom >= m.bottom)
+        return std::nullopt;
     WindowLook l;
     // Barre de titre dessinée par Windows (au moins 20 pt au-dessus de la zone client) : gris de macOS 27.
     if (backdrop <= 1 && w.client.top - w.frame.top >= std::lround(20.0 * (dpi ? dpi : 96) / 96)) {
