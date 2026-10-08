@@ -76,6 +76,13 @@ bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitPro
     return true;
 }
 
+RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed) {
+    if (!zoomed || work.right <= work.left) return frame;
+    RECT r{std::max(frame.left, work.left), std::max(frame.top, work.top), std::min(frame.right, work.right),
+           std::min(frame.bottom, work.bottom)};
+    return r.right > r.left && r.bottom > r.top ? r : frame;
+}
+
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;

@@ -18,8 +18,9 @@ struct WindowLook {
     COLORREF captionColor = 0, textColor = 0;
 };
 
-// Fenêtres à barre de titre d'une autre app (mêmes règles que les pastilles) ; nullopt sinon.
-std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi);
+// Fenêtres à barre de titre d'une autre app (mêmes règles que les pastilles) ; nullopt sinon. backdrop :
+// DWMWA_SYSTEMBACKDROP_TYPE de la fenêtre (0 auto, 1 aucun ; 2 à 4 Mica ou Acrylic : sa barre est laissée telle quelle).
+std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi, int backdrop = 0);
 // Préférence de coins lue avant notre passage (DWMWA_WINDOW_CORNER_PREFERENCE) : carrés ou petits demandés par l'app
 // sont gardés.
 bool shouldRoundCorners(DWORD original);

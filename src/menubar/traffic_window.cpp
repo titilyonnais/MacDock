@@ -130,6 +130,7 @@ void TrafficWindow::detach() {
     state_.pressed = state_.bouncing = -1;
     placement_ = {};
     probeRetries_ = 0;
+    if (hwnd_) KillTimer(hwnd_, kProbeTimer);
     hide();
 }
 
@@ -137,10 +138,9 @@ void TrafficWindow::hide() {
     if (hwnd_ && shown_) ShowWindow(hwnd_, SW_HIDE);
     if (cover_ && IsWindowVisible(cover_)) ShowWindow(cover_, SW_HIDE);
     shown_ = false;
-    if (hwnd_) {
-        KillTimer(hwnd_, kSampleTimer);
-        KillTimer(hwnd_, kProbeTimer);
-    }
+    // La nouvelle sonde reste programmée : une fenêtre masquée faute de mesure complète (app qui démarre) doit
+    // recevoir ses pastilles à la reprise. Seul detach() l'annule.
+    if (hwnd_) KillTimer(hwnd_, kSampleTimer);
 }
 
 void TrafficWindow::attach(HWND target, LightsMode mode) {
@@ -281,7 +281,10 @@ void TrafficWindow::place(bool resample, bool probe) {
         detach();
         return;
     }
-    const LightsWindowInfo info = readInfo(target_);
+    LightsWindowInfo info = readInfo(target_);
+    MONITORINFO mon{sizeof mon};
+    if (GetMonitorInfoW(MonitorFromWindow(target_, MONITOR_DEFAULTTONEAREST), &mon))
+        info.frame = visibleFrame(info.frame, mon.rcWork, info.zoomed);   // agrandie : pas sous la barre de menus
     const UINT dpi = effectiveDpi(target_);
     if (!IsWindowVisible(target_) || !wantsLights(info, mode_, dpi)) {
         if (diagnosticCapture()) log::info(L"[diag] pastilles %p : refusée (style %08lx)", target_, info.style);

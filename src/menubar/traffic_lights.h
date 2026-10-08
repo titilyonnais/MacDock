@@ -45,6 +45,8 @@ RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwmBounds
 // La place des pastilles à gauche ne contient que de la légende (ou l'icône système) sur toute leur hauteur :
 // pas d'onglets ni de menus de l'app dessous. titleBottom : bas de la barre de titre (pixels écran).
 bool leftCaptionFree(const RECT& frame, LONG titleBottom, UINT dpi, const HitProbe& hit);
+// Partie visible du cadre : une fenêtre agrandie peut déclarer un cadre qui déborde sous la barre de menus.
+RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
 // Pastilles posées à la place des boutons de Windows (pas de place à gauche), qu'elles recouvrent. Le haut reste
 // transparent pour redimensionner par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
 LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);

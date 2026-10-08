@@ -239,7 +239,17 @@ Com<IUIAutomationElement> openedMenu(IUIAutomation* u, IUIAutomationElement* ite
 }
 
 std::vector<Com<IUIAutomationElement>> entriesOf(IUIAutomation* u, IUIAutomationElement* menu) {
-    return children(u, menu, either(u, UIA_MenuItemControlTypeId, UIA_SeparatorControlTypeId).Get());
+    // Vue brute : les séparateurs WinUI (Bloc-notes…) ne sont pas des « éléments de contrôle » et la vue par défaut les
+    // écarte. Repli sur la vue par défaut si la demande échoue.
+    auto cond = either(u, UIA_MenuItemControlTypeId, UIA_SeparatorControlTypeId);
+    Com<IUIAutomationCacheRequest> req;
+    Com<IUIAutomationCondition> raw;
+    Com<IUIAutomationElementArray> arr;
+    if (menu && cond && SUCCEEDED(u->CreateCacheRequest(&req)) && SUCCEEDED(u->CreateTrueCondition(&raw)) &&
+        SUCCEEDED(req->put_TreeFilter(raw.Get())) && SUCCEEDED(req->put_AutomationElementMode(AutomationElementMode_Full)) &&
+        SUCCEEDED(menu->FindAllBuildCache(TreeScope_Children, cond.Get(), req.Get(), &arr)) && arr)
+        return list(arr.Get());
+    return children(u, menu, cond.Get());
 }
 
 std::vector<RawMenuItem> readEntries(IUIAutomation* u, IUIAutomationElement* menu, HWND window, int depth, ULONGLONG start) {

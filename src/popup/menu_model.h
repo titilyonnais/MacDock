@@ -6,6 +6,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../icons/icon_provider.h"
@@ -95,6 +96,10 @@ struct MenuLayout {
     double iconSpace = 0;          // place des icônes devant le texte (0 si aucune entrée n'en a)
     double textLeft = kMenuTextLeft;   // colonne de coche, réduite dans un menu sans coche
 };
+
+// Raccourci affiché à la manière de macOS : modificateurs en symboles dans l'ordre ⌃⌥⇧⌘, touches spéciales en
+// symboles (⌦, ↩, ⎋…), lettres en majuscules. La touche reste celle du PC (⌃ = Ctrl).
+std::wstring macShortcutLabel(std::wstring_view shortcut);
 
 // textWidthMax, shortcutWidthMax : largeurs du texte et du raccourci les plus longs (points), mesurées par l'appelant.
 MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax = 0);

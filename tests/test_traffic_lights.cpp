@@ -283,3 +283,15 @@ TEST_CASE(lights_pressed_is_darker) {
     const std::size_t i = (std::size_t(116 - l.window.top) * w + (120 - l.window.left)) * 4;
     CHECK(pressed[i + 2] + 20 < normal[i + 2]);   // rouge plus sombre sous le doigt
 }
+
+TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
+    // Bloc-notes agrandi (mesuré) : cadre déclaré dès y = 35, sous la barre de menus (zone de travail dès 48). Les
+    // pastilles et la couleur de leur fond se prennent dans la partie visible.
+    const RECT work{0, 48, 3840, 2022};
+    const RECT f = md::visibleFrame(RECT{-13, 35, 3853, 2035}, work, true);
+    CHECK_EQ(f.top, 48L);
+    CHECK_EQ(f.left, 0L);
+    CHECK_EQ(f.right, 3840L);
+    const RECT normal = md::visibleFrame(RECT{100, 30, 900, 700}, work, false);   // fenêtre déplacée : telle quelle
+    CHECK_EQ(normal.top, 30L);
+}

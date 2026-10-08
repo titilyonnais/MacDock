@@ -102,3 +102,19 @@ TEST_CASE(menu_layout_text_close_to_edge_without_checks) {
     CHECK_NEAR(b.textLeft, md::kMenuTextLeft, 1e-9);
     CHECK(a.width < b.width);
 }
+
+TEST_CASE(menu_shortcut_shown_with_mac_symbols) {
+    // macOS écrit les raccourcis en symboles, modificateurs dans l'ordre ⌃⌥⇧⌘ ; la touche reste celle du PC.
+    CHECK(md::macShortcutLabel(L"Ctrl+Z") == L"⌃Z");
+    CHECK(md::macShortcutLabel(L"Ctrl+Maj+Z") == L"⌃⇧Z");
+    CHECK(md::macShortcutLabel(L"Maj+Ctrl+Z") == L"⌃⇧Z");
+    CHECK(md::macShortcutLabel(L"Alt+Maj+F3") == L"⌥⇧F3");
+    CHECK(md::macShortcutLabel(L"Suppr") == L"⌦");
+    CHECK(md::macShortcutLabel(L"Ctrl+,") == L"⌃,");
+    CHECK(md::macShortcutLabel(L"Ctrl++") == L"⌃+");
+    CHECK(md::macShortcutLabel(L"Win+←") == L"⊞←");
+    CHECK(md::macShortcutLabel(L"Ctrl+Entrée") == L"⌃↩");
+    CHECK(md::macShortcutLabel(L"F5") == L"F5");
+    CHECK(md::macShortcutLabel(L"ctrl+shift+n") == L"⌃⇧N");
+    CHECK(md::macShortcutLabel(L"") == L"");
+}
