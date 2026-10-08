@@ -538,6 +538,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - Je n'ai pas essayé ⌘C ni ⌘X, qui écriraient dans ton presse-papiers.
 - **Limite** : pendant le mode fenêtre de ⊞⇧4, Alt (gardé de côté) ne retire plus l'ombre quand l'option est active.
 
+### Plan 34 — Centre de notifications
+
+- **Ouverture** : un clic sur la date et l'heure ouvre un panneau de verre sous l'horloge, comme sur macOS. Il ouvrait jusqu'ici celui de Windows.
+- **Contenu** :
+  - la date du jour (« Jeudi 8 octobre ») ;
+  - le calendrier du mois, lundi en premier, aujourd'hui dans une pastille rouge comme dans le Calendrier, les jours hors du mois grisés ;
+  - la lecture en cours (précédent, lecture/pause, suivant), quand quelque chose joue ;
+  - trois liens : « Notifications de Windows… » (le panneau de Windows reste à un clic), « Ouvrir le calendrier… » et « Réglages Date et heure… ».
+- **Essayé en vrai** : le panneau du jeudi 8 octobre 2026, avec la grille juste.
+- **Limite** : les notifications ne sont pas listées dans le panneau. L'API de Windows qui les lit (`UserNotificationListener`) demande une app empaquetée, ce que MacDock n'est pas.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

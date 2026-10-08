@@ -1,6 +1,8 @@
 #include "status_menus.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cwctype>
 
 namespace md {
 namespace {
@@ -147,6 +149,32 @@ void controlCenterMenu(Builder& b, const StatusState& s) {
     b.item(L"Réglages de la barre des menus…", {StatusAction::BarSettings, {}});
 }
 
+// Date du jour, mois du calendrier, lecture en cours ; les notifications de Windows et l'agenda à un clic.
+void notificationCenter(Builder& b, const StatusState& s) {
+    static const wchar_t* kDays[] = {L"Dimanche", L"Lundi", L"Mardi", L"Mercredi", L"Jeudi", L"Vendredi", L"Samedi"};
+    static const wchar_t* kMonths[] = {L"janvier", L"février", L"mars", L"avril", L"mai", L"juin", L"juillet", L"août",
+                                       L"septembre", L"octobre", L"novembre", L"décembre"};
+    const bool known = s.month >= 1 && s.month <= 12 && s.weekday >= 0 && s.weekday <= 6;
+    if (known) {
+        b.header(std::wstring(kDays[s.weekday]) + L" " + std::to_wstring(s.day) + L" " + kMonths[s.month - 1]);
+        std::wstring month = kMonths[s.month - 1];
+        month[0] = wchar_t(std::towupper(month[0]));
+        MenuItem& cal = b.item(month + L" " + std::to_wstring(s.year));   // ligne inerte (« Ouvrir le calendrier… » plus bas)
+        cal.row = MenuRow::Calendar;
+        cal.date = std::uint32_t(s.year * 10000 + s.month * 100 + s.day);
+    }
+    if (s.snap.media.present) {
+        MenuItem& m = b.item(s.snap.media.title.empty() ? L"Lecture en cours" : s.snap.media.title, {StatusAction::Media, {}});
+        m.row = MenuRow::Media;
+        m.subtitle = s.snap.media.artist;
+        m.playing = s.snap.media.playing;
+    }
+    b.separator();
+    b.item(L"Notifications de Windows…", {StatusAction::Shortcut, L"Win+N"});
+    b.item(L"Ouvrir le calendrier…", {StatusAction::OpenUri, L"outlookcal:"});
+    b.item(L"Réglages Date et heure…", {StatusAction::OpenUri, L"ms-settings:dateandtime"});
+}
+
 } // namespace
 
 std::vector<StatusItem> statusItems(const StatusState& s) {
@@ -164,7 +192,7 @@ std::vector<StatusItem> statusItems(const StatusState& s) {
     return out;
 }
 
-bool opensMenu(StatusKind k) { return k != StatusKind::Search && k != StatusKind::Clock; }
+bool opensMenu(StatusKind k) { return k != StatusKind::Search; }
 
 StatusMenu statusMenu(StatusKind kind, const StatusState& s) {
     StatusMenu out;
@@ -189,8 +217,12 @@ StatusMenu statusMenu(StatusKind kind, const StatusState& s) {
             controlCenterMenu(b, s);
             break;
         }
-        case StatusKind::Search:
-        case StatusKind::Clock: break;
+        case StatusKind::Clock: {   // Centre de notifications, comme un clic sur la date de macOS
+            Builder b(out, 300);
+            notificationCenter(b, s);
+            break;
+        }
+        case StatusKind::Search: break;
     }
     return out;
 }

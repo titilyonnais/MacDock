@@ -99,7 +99,7 @@ TEST_CASE(status_menus_order_and_hit) {
     CHECK(kinds(md::statusItems(s)) == (std::vector<K>{K::ControlCenter, K::Clock}));
     CHECK(md::opensMenu(K::Sound));
     CHECK(!md::opensMenu(K::Search));   // Win+S
-    CHECK(!md::opensMenu(K::Clock));    // centre de notifications
+    CHECK(md::opensMenu(K::Clock));     // Centre de notifications (le nôtre ; celui de Windows y est relié)
 }
 
 TEST_CASE(status_menus_sound_lists_outputs) {
@@ -268,4 +268,46 @@ TEST_CASE(status_menus_output_failure_opens_settings) {   // sortie refusée : r
     REQUIRE(f.has_value());
     CHECK(*f == std::make_pair(md::StatusAction::OpenUri, std::wstring(L"ms-settings:sound")));
     CHECK(!md::statusFallback({md::StatusAction::OpenUri, L"ms-settings:sound"}).has_value());
+}
+
+TEST_CASE(notification_center_from_the_clock) {
+    md::StatusState s;
+    s.year = 2026;
+    s.month = 10;
+    s.day = 8;
+    s.weekday = 4;   // jeudi (SYSTEMTIME : 0 = dimanche)
+    const md::StatusMenu m = md::statusMenu(md::StatusKind::Clock, s);
+    CHECK(!m.model.items.empty() && m.model.items.front().row == md::MenuRow::Header);
+    CHECK(m.model.items.front().text == L"Jeudi 8 octobre");
+    bool calendar = false, windows = false, media = false;
+    for (const auto& it : m.model.items) {
+        if (it.row == md::MenuRow::Calendar) calendar = it.date == 20261008 && it.text == L"Octobre 2026";
+        if (it.row == md::MenuRow::Media) media = true;
+        if (it.text == L"Notifications de Windows…") {
+            const auto a = m.actions.find(it.id);
+            windows = a != m.actions.end() && a->second.first == md::StatusAction::Shortcut && a->second.second == L"Win+N";
+        }
+    }
+    CHECK(calendar && windows && !media);   // pas de lecture en cours : pas de ligne média
+    s.snap.media.present = true;
+    s.snap.media.title = L"Morceau";
+    bool mediaNow = false;
+    for (const auto& it : md::statusMenu(md::StatusKind::Clock, s).model.items) mediaNow = mediaNow || it.row == md::MenuRow::Media;
+    CHECK(mediaNow);
+}
+
+TEST_CASE(calendar_month_grid_monday_first) {
+    const auto cells = md::calendarCells(2026, 10, 8);   // octobre 2026 commence un jeudi
+    CHECK(cells.size() == 42);
+    CHECK(!cells[0].inMonth && cells[0].day == 28 && !cells[2].inMonth && cells[2].day == 30);   // fin de septembre
+    CHECK(cells[3].inMonth && cells[3].day == 1);
+    CHECK(cells[10].day == 8 && cells[10].today);
+    CHECK(cells[33].inMonth && cells[33].day == 31 && !cells[34].inMonth && cells[34].day == 1);
+    int todays = 0;
+    for (const auto& c : cells) todays += c.today ? 1 : 0;
+    CHECK(todays == 1);
+    const auto feb = md::calendarCells(2028, 2, 0);   // année bissextile, aucun jour du mois mis en avant
+    int inFeb = 0;
+    for (const auto& c : feb) inFeb += c.inMonth ? 1 : 0;
+    CHECK(inFeb == 29);
 }

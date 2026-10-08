@@ -675,6 +675,12 @@ StatusState MenuBarApp::statusState() {
     s.muted = s.audio && audio_.muted();
     s.settings = settings_;
     s.clock = clock_;
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    s.year = now.wYear;
+    s.month = now.wMonth;
+    s.day = now.wDay;
+    s.weekday = now.wDayOfWeek;
     return s;
 }
 

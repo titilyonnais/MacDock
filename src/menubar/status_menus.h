@@ -32,6 +32,7 @@ struct StatusState {
     std::vector<AudioOutput> outputs;
     MenuBarSettings settings;
     std::wstring clock;
+    int year = 0, month = 0, day = 0, weekday = 0;   // aujourd'hui (weekday : 0 = dimanche), Centre de notifications
 };
 
 std::vector<StatusItem> statusItems(const StatusState& s);   // de gauche à droite, horloge en dernier
