@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../anim/motion.h"
 #include "../calib/png_io.h"
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
@@ -355,24 +354,11 @@ bool DockRenderer::runGlass(const RenderFrame& f, const Metrics& m, const std::w
                       float(limitedCornerRadius(f.bgRight - f.bgLeft, f.bgBottom - f.bgTop, f.cornerRadius)), 1, shadow, 1});
     D2D1_RECT_F tip{};
     Com<IDWriteTextLayout> layout;
-    if (tooltipLayout(f, m, font, tip, layout)) {
+    if (tooltipLayout(f, m, font, tip, layout)) {   // à sa place, d'un coup (fondu bref seulement en partant)
         float th = tip.bottom - tip.top;
-        const float o = f.tooltip.opacity;
-        if (f.position == DockPosition::Bottom && o > 0 && o < 0.999f) {
-            // Liquid Glass : l'infobulle naît du verre du Dock — une goutte collée au bord grandit jusqu'à sa place,
-            // reliée par un pont de verre qui se résorbe (le texte, lui, apparaît en fondu).
-            const double reach = std::max(8.0, double(f.bgTop - tip.bottom)) * 1.4;
-            const GlassMorph g = glassEmerge(f.bgTop, {tip.left, tip.top, tip.right, tip.bottom, 0}, o, reach);
-            const float gh = float(g.bottom - g.top);
-            shapes.push_back({float(g.left), float(g.top), float(g.right), float(g.bottom),
-                              float(limitedCornerRadius(float(g.right - g.left), gh, gh / 2)), float(m.tooltipGlassStrength),
-                              shadow * 0.6f, 1});
-            p.merge = float(g.merge);
-        } else {
-            shapes.push_back({tip.left, tip.top, tip.right, tip.bottom,
-                              float(limitedCornerRadius(tip.right - tip.left, th, th / 2)), float(m.tooltipGlassStrength),
-                              shadow * 0.6f, o});
-        }
+        shapes.push_back({tip.left, tip.top, tip.right, tip.bottom,
+                          float(limitedCornerRadius(tip.right - tip.left, th, th / 2)), float(m.tooltipGlassStrength),
+                          shadow * 0.6f, f.tooltip.opacity});
     }
     Com<ID3D11DeviceContext> ctx;
     d3d_->GetImmediateContext(&ctx);
