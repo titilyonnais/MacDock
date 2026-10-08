@@ -41,6 +41,7 @@ public:
 
     const Value* find(std::string_view key) const;   // nullptr si absent ou pas un objet
     Value& set(std::string key, Value v);             // convertit en objet si besoin
+    bool erase(std::string_view key);                 // false si absent ou pas un objet
     Value& push(Value v);                              // convertit en tableau si besoin
 
 private:

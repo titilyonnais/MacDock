@@ -1151,6 +1151,7 @@ void MenuBarApp::onPress(Screen& s, POINT client, bool doubleClick) {
 }
 
 void MenuBarApp::openSettingsFile() {
+    if (openMacDockSettings(L"menubar")) return;   // sinon (app absente) : le fichier dans le Bloc-notes
     ShellExecuteW(nullptr, L"open", L"notepad.exe", (L"\"" + dataDir_ + L"\\menubar.json\"").c_str(), nullptr, SW_SHOWNORMAL);
 }
 
@@ -1182,6 +1183,7 @@ void MenuBarApp::onRightClick(Screen& s, POINT client) {
     switch (r) {
         case kCmdBarSettings: openSettingsFile(); break;
         case kCmdBarAutohide:
+            checkSettingsFile();   // un changement fait dans l'app Réglages depuis la dernière relecture n'est pas écrasé
             settings_.autohide = !settings_.autohide;
             saveJsonFileAtomic(dataDir_ + L"\\menubar.json", menuBarSettingsToJson(settings_));
             fileTime(dataDir_ + L"\\menubar.json", settingsTime_);
@@ -1727,7 +1729,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     scheduleClock();
     startSamples();
     SetTimer(ctl_, kResampleTimer, 60000, nullptr);
-    SetTimer(ctl_, kConfigTimer, 2000, nullptr);
+    SetTimer(ctl_, kConfigTimer, 400, nullptr);   // l'app Réglages : changements appliqués presque tout de suite
     SetTimer(ctl_, kFullscreenTimer, 1000, nullptr);
     SetTimer(ctl_, kForegroundTimer, 500, nullptr);
     checkFullscreen();
