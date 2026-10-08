@@ -141,3 +141,69 @@ TEST_CASE(settings_panes_dock_specifics) {
     position->set(m, 0);
     CHECK(m.dock.position == md::DockPosition::Left);
 }
+
+#include "../src/ui/ui_layout.h"
+#include "../src/ui/ui_theme.h"
+
+TEST_CASE(ui_pane_layout_groups_and_rows) {
+    // Deux groupes : sans titre (3 lignes de 36 pt), puis titré (36 et 44 pt) avec une note. Le contenu commence sous
+    // la zone de titre ; 18 pt entre groupes ; le titre d'un groupe est posé juste au-dessus de lui.
+    std::vector<md::ui::GroupShape> groups(2);
+    groups[0].rows = {36, 36, 36};
+    groups[1].title = true;
+    groups[1].rows = {36, 44};
+    groups[1].footer = true;
+    const md::ui::PaneLayout l = md::ui::layoutPane(groups);
+    REQUIRE(l.groups.size() == 2);
+    const float top = md::ui::metrics::contentTop;
+    CHECK_NEAR(l.groups[0].top, top, 1e-4);
+    CHECK_NEAR(l.groups[0].height, 108.0, 1e-4);
+    CHECK_NEAR(l.groups[0].rows[1].top, top + 36, 1e-4);
+    const md::ui::GroupBox& g = l.groups[1];
+    CHECK(g.titleTop > l.groups[0].top + 108);
+    CHECK_NEAR(g.top - (l.groups[0].top + 108), md::ui::metrics::groupGap + md::ui::metrics::groupTitle, 1e-4);
+    CHECK_NEAR(g.rows[1].height, 44.0, 1e-4);
+    CHECK(g.footerTop >= g.top + g.height);
+    CHECK(l.height > g.footerTop);
+}
+
+TEST_CASE(ui_slider_value_and_position) {
+    // Piste de 100 à 300 pt, valeurs de 16 à 128 au pas de 1 ; bouts et pas respectés.
+    CHECK_NEAR(md::ui::sliderValueAt(100, 16, 128, 1, 100, 300), 16.0, 1e-9);
+    CHECK_NEAR(md::ui::sliderValueAt(300, 16, 128, 1, 100, 300), 128.0, 1e-9);
+    CHECK_NEAR(md::ui::sliderValueAt(50, 16, 128, 1, 100, 300), 16.0, 1e-9);    // avant la piste
+    CHECK_NEAR(md::ui::sliderValueAt(200, 16, 128, 1, 100, 300), 72.0, 1e-9);
+    CHECK_NEAR(md::ui::sliderKnobX(72, 16, 128, 100, 300), 200.0, 1e-4);
+    CHECK_NEAR(md::ui::sliderValueAt(md::ui::sliderKnobX(100, 16, 128, 100, 300), 16, 128, 1, 100, 300), 100.0, 1e-9);
+}
+
+TEST_CASE(ui_segments_menu_and_focus) {
+    CHECK_EQ(md::ui::segmentAt(105, 100, 400, 3), 0);
+    CHECK_EQ(md::ui::segmentAt(250, 100, 400, 3), 1);
+    CHECK_EQ(md::ui::segmentAt(399, 100, 400, 3), 2);
+    CHECK_EQ(md::ui::segmentAt(401, 100, 400, 3), -1);
+    CHECK_EQ(md::ui::menuItemAt(10, 6, 22, 3), 0);    // marge de 6 pt en haut, éléments de 22 pt
+    CHECK_EQ(md::ui::menuItemAt(51, 6, 22, 3), 2);
+    CHECK_EQ(md::ui::menuItemAt(80, 6, 22, 3), -1);
+    // Tab : suivant disponible, en bouclant ; les éléments grisés sont sautés.
+    const std::vector<bool> focusable{true, false, true, true};
+    CHECK_EQ(md::ui::nextFocus(-1, focusable, false), 0);
+    CHECK_EQ(md::ui::nextFocus(0, focusable, false), 2);
+    CHECK_EQ(md::ui::nextFocus(3, focusable, false), 0);
+    CHECK_EQ(md::ui::nextFocus(0, focusable, true), 3);   // Maj+Tab
+    CHECK_EQ(md::ui::nextFocus(0, std::vector<bool>{false, false}, false), -1);
+}
+
+TEST_CASE(ui_sidebar_rows_and_palette) {
+    // Barre latérale : sections groupées, 28 pt par ligne, un écart entre les groupes.
+    const std::vector<float> tops = md::ui::sidebarRowTops({1, 4, 4, 2});
+    REQUIRE(tops.size() == 11);
+    CHECK_NEAR(tops[1] - tops[0], 28 + md::ui::metrics::sidebarGroupGap, 1e-4);
+    CHECK_NEAR(tops[2] - tops[1], 28.0, 1e-4);
+    CHECK_EQ(md::ui::sidebarRowAt(tops[3] + 5, tops), 3);
+    CHECK_EQ(md::ui::sidebarRowAt(tops[0] - 5, tops), -1);
+    const md::ui::Palette light = md::ui::palette(false), dark = md::ui::palette(true);
+    CHECK(light.window.r > 0.9f && dark.window.r < 0.2f);   // fond clair / sombre
+    CHECK(light.accent.b > 0.9f && light.accent.r < 0.1f);  // bleu système
+    CHECK(light.text.a > 0.8f && light.text.r < 0.1f);
+}
