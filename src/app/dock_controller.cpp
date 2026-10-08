@@ -296,11 +296,11 @@ bool DockController::tick(double dt) {
 
     auto hovered = hoveredIndex();
     if (hovered) tooltipIndex_ = hovered;
+    // Comme macOS : le nom apparaît d'un coup au survol ; il ne s'efface en fondu qu'en partant.
     double target = hovered ? 1.0 : 0.0;
     double step = metrics_.tooltipFadeSeconds > 0 ? dt / metrics_.tooltipFadeSeconds : 1.0;
     if (tooltipOpacity_ != target) {
-        tooltipOpacity_ = target > tooltipOpacity_ ? std::min(target, tooltipOpacity_ + step)
-                                                   : std::max(target, tooltipOpacity_ - step);
+        tooltipOpacity_ = target > tooltipOpacity_ ? target : std::max(target, tooltipOpacity_ - step);
         animating = true;
     }
     if (animating) dirty_ = true;

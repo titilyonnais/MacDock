@@ -1388,6 +1388,17 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         onScreenshotReveal(wp != 0);
         return 1;
     }
+    if (taskbarCreated_ && msg == taskbarCreated_) {
+        // Sans réenregistrement, la bande de la barre n'est plus réservée : les fenêtres agrandies passent dessous et
+        // leur barre de titre devient impossible à saisir.
+        log::info(L"Barre : Explorateur redémarré, réenregistrement des zones réservées");
+        for (auto& s : screens_) {
+            removeAppBar(*s);
+            syncAppBar(*s);
+        }
+        repositionAll();
+        return 0;
+    }
     switch (msg) {
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
@@ -1593,6 +1604,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     }
     loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
+    taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
+    ChangeWindowMessageFilterEx(ctl_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
     lights_.create(instance);
     lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     rebuildScreens();

@@ -160,6 +160,7 @@ private:
     HINSTANCE instance_ = nullptr;
     HWND ctl_ = nullptr;   // fenêtre de contrôle cachée : minuteries, messages des fils, suivi des fenêtres, WM_CLOSE
     bool trace_ = false;
+    UINT taskbarCreated_ = 0;   // « TaskbarCreated » : l'Explorateur a redémarré et oublié les zones réservées
     UINT shotRevealMsg_ = 0;   // « MacDockScreenshotReveal » (wParam 1 : visibles aux captures, 0 : exclues de nouveau)
     bool shotReveal_ = false;  // capture d'écran du Dock en cours : pas d'échantillon (il exclurait la barre)
     std::wstring dataDir_;

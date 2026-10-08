@@ -634,6 +634,18 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Vérifié** : la même app XAML, avec le code du mod, s'affiche en SF Pro ; le mod compile avec le compilateur de Windhawk.
 - **À faire de ton côté** : relancer le raccourci d'installation, répondre O, puis rouvrir les apps.
 
+### Correctif — la barre de menus après un redémarrage de l'Explorateur
+
+- **Constat** : la barre passait au-dessus des fenêtres agrandies, dont la barre de titre ne se saisissait plus.
+- **Cause** : quand l'Explorateur redémarre (ici l'installateur du mod de police), Windows oublie toutes les zones réservées. Le Dock se réenregistrait sur `TaskbarCreated`, la barre non : sa bande n'était plus réservée sur aucun écran.
+- **Correction** : la barre écoute aussi `TaskbarCreated` et refait la réservation de chaque écran.
+- **Vérifié en réel** : réservation retirée côté Windows, puis `TaskbarCreated` envoyé ; le haut de la zone de travail revient de 0 à 48 px (écran à 200 %) et de 548 à 572 (second écran).
+
+### Correctif — le nom des apps au survol du Dock
+
+- **Constat** : l'étiquette naissait d'une goutte de verre qui sortait du Dock (pont qui se résorbe) avec un fondu, ce qui rendait mal.
+- **Correction** : comme sur macOS, le nom apparaît d'un coup, net, à sa place ; seul un fondu bref subsiste quand il disparaît. La goutte (`glassEmerge`), qui n'avait pas d'autre usage, est retirée.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

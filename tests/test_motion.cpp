@@ -69,14 +69,3 @@ TEST_CASE(motion_presets_for_macos) {
     CHECK(bounce.dampingFraction < 1);   // un peu de rebond
 }
 
-TEST_CASE(motion_glass_emerges_from_an_edge) {
-    const md::GlassMorph to{100, 40, 220, 72, 0};   // infobulle à sa place, au-dessus du Dock (bord à y = 90)
-    const md::GlassMorph start = md::glassEmerge(90, to, 0, 24);
-    CHECK(start.bottom >= 90 - 1e-9 && start.bottom - start.top < 20);   // petite goutte collée au bord
-    CHECK(std::abs((start.left + start.right) / 2 - 160) < 1e-9);         // centrée sous la bulle
-    CHECK(start.merge == 24);                                             // fondue dans le verre du Dock
-    const md::GlassMorph end = md::glassEmerge(90, to, 1, 24);
-    CHECK(end.left == 100 && end.top == 40 && end.right == 220 && end.bottom == 72 && end.merge == 0);
-    const md::GlassMorph mid = md::glassEmerge(90, to, 0.5, 24);
-    CHECK(mid.merge > 0 && mid.merge < 24 && mid.top < start.top && mid.top > to.top - 1e-9);
-}

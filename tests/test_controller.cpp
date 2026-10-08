@@ -158,6 +158,24 @@ TEST_CASE(controller_tooltip_on_hover) {
     CHECK(frame.tooltip.opacity > 0.9f);
 }
 
+TEST_CASE(controller_tooltip_appears_at_once) {
+    // Comme macOS : le nom apparaît d'un coup au survol, sans fondu ; il ne s'efface en fondu, bref, qu'en partant.
+    Fixture f;
+    md::IconProvider icons;
+    f.c.setCursor(f.at(-108));
+    f.c.tick(1.0 / 120);
+    const auto shown = f.c.buildFrame(false, icons);
+    CHECK(shown.tooltip.visible);
+    CHECK_NEAR(shown.tooltip.opacity, 1.0, 1e-6);
+    f.c.setCursor(std::nullopt);
+    f.c.tick(1.0 / 120);
+    const auto leaving = f.c.buildFrame(false, icons);
+    CHECK(leaving.tooltip.opacity > 0 && leaving.tooltip.opacity < 1);
+    for (int i = 0; i < 60; ++i) f.c.tick(1.0 / 60);
+    const auto gone = f.c.buildFrame(false, icons);
+    CHECK(!gone.tooltip.visible || gone.tooltip.opacity == 0);
+}
+
 TEST_CASE(controller_attention_stops_when_app_closes) {
     Fixture f;
     f.model.windowOpened(1, idOf(L"C:\\a.exe"));
