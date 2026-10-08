@@ -73,6 +73,16 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
     - Un glisser ailleurs dépose le fichier dans une autre app (Explorateur, message, document).
   - Ajoute Ctrl (`⊞⌃⇧3`, `⊞⌃⇧4`) pour copier l'image dans le presse-papiers, sans fichier.
   - `"screenshots": false` dans `settings.json` rend ces raccourcis à Windows.
+- **Touche ⌘** (option, désactivée par défaut) : avec `"altAsCommand": true` dans `settings.json`, la touche Alt de gauche, sous le pouce, joue le rôle de ⌘.
+  - **Raccourcis** :
+    - ⌘C, ⌘V, ⌘X, ⌘Z (⌘⇧Z), ⌘A, ⌘S, ⌘W, ⌘T, ⌘N, ⌘F, ⌘P, ⌘O, ⌘R, ⌘Y et ⌘, deviennent Ctrl+… ;
+    - ⌘Q ferme l'app (Alt+F4 : elle demande d'enregistrer) ;
+    - ⌘← et ⌘→ vont au début et à la fin de la ligne, ⌘↑ et ⌘↓ au début et à la fin du document (Maj sélectionne).
+  - **Dans l'Explorateur**, comme dans le Finder : ⌘↑ remonte au dossier parent, ⌘↓ ouvre, ⌘⌫ met à la Corbeille.
+  - **Ce qui ne change pas** :
+    - Alt Gr n'est jamais touché (@, #, { sur un clavier français) ;
+    - avec toute autre touche, Alt garde son rôle (Alt+Tab, Alt+F4, Alt+Entrée dans un jeu) ;
+    - Alt seul n'ouvre plus le menu de l'app, comme ⌘ sur Mac.
 - **Sons système**, tous originaux (synthétisés par MacDock, aucun son d'Apple) :
   - un déclic d'appareil photo pour les captures ;
   - un froissement quand la Corbeille est vidée depuis le Dock ;

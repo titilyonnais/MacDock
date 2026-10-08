@@ -88,6 +88,7 @@ Settings settingsFromJson(const json::Value& v) {
     if (expose == L"ctrl+alt+down" || expose == L"ctrl+down" || expose == L"off") s.appExposeHotkey = expose;
     s.screenshots = readBool(v, "screenshots", s.screenshots);
     s.sounds = readBool(v, "sounds", s.sounds);
+    s.altAsCommand = readBool(v, "altAsCommand", s.altAsCommand);
     if (auto* corners = v.find("hotCorners"); corners && corners->isObject())
         for (int c = 0; c < 4; ++c)   // valeur inconnue ou mauvais type : le coin garde son défaut
             if (auto a = parseHotCornerAction(readString(*corners, kCornerKeys[c]))) s.hotCorners[std::size_t(c)] = *a;
@@ -143,6 +144,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("appExposeHotkey", toUtf8(s.appExposeHotkey));
     v.set("screenshots", s.screenshots);
     v.set("sounds", s.sounds);
+    v.set("altAsCommand", s.altAsCommand);
     json::Value corners = json::Object{};
     for (int c = 0; c < 4; ++c) corners.set(kCornerKeys[c], toUtf8(hotCornerName(s.hotCorners[std::size_t(c)])));
     v.set("hotCorners", corners);

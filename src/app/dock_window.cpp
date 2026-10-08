@@ -66,6 +66,7 @@ constexpr UINT WM_APP_SHOT = WM_APP + 32;        // wParam : 1 écran entier (�
 constexpr UINT WM_APP_SHOT_KEY = WM_APP + 33;    // wParam : ShotSessionKey (Échap, Espace pendant le viseur)
 constexpr UINT WM_APP_SHOT_SAVED = WM_APP + 34;  // wParam : écrit ; lParam : std::wstring* (chemin, à libérer)
 constexpr UINT_PTR kShotResumeTimer = 0x5352;    // "SR" : capture du verre reprise, Dock de nouveau exclu
+constexpr ULONG_PTR kCommandReplay = 0x4D44434B;   // "MDCK" : frappes envoyées par la touche ⌘ (le crochet les laisse)
 constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la sélection de l'Explorateur
 constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
 constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
@@ -177,6 +178,7 @@ void DockApp::applySettings() {
     if (!snapshot_) genie_.prepare(instance_);
     updateGlass();   // réglage glass modifié à chaud
     shotKeysOn_ = settings_.screenshots && !snapshot_;
+    commandKeyOn_ = settings_.altAsCommand && !snapshot_;
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
         registerMissionHotkey();
@@ -1886,6 +1888,30 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
 
 // Ne lit que Tab (avec Alt) et, pendant une session, Échap, flèches, Q, H ; tout le reste passe sans délai.
 namespace {
+// Touche ⌘ : frappes simulées, marquées (le crochet les laisse passer sans les relire).
+void sendKeys(std::initializer_list<std::pair<int, bool>> keys) {   // (touche, relâchement)
+    INPUT in[8] = {};
+    UINT n = 0;
+    for (const auto& [vk, up] : keys) {
+        if (n == 8) break;
+        INPUT& i = in[n++];
+        i.type = INPUT_KEYBOARD;
+        i.ki.wVk = WORD(vk);
+        i.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+        if (vk == VK_HOME || vk == VK_END || vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN)
+            i.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;   // pas les touches du pavé numérique
+        i.ki.dwExtraInfo = kCommandReplay;
+    }
+    SendInput(n, in, sizeof(INPUT));
+}
+
+void sendChord(const Chord& c) {
+    const int vk = int(c.vk);
+    if (c.ctrl) sendKeys({{VK_LCONTROL, false}, {vk, false}, {vk, true}, {VK_LCONTROL, true}});
+    else if (c.alt) sendKeys({{VK_LMENU, false}, {vk, false}, {vk, true}, {VK_LMENU, true}});
+    else sendKeys({{vk, false}, {vk, true}});
+}
+
 // Contexte de Coup d'œil, lu dans le crochet clavier (aucun message envoyé : classes et focus seulement).
 QuickLookContext quickLookContextNow() {
     QuickLookContext c;
@@ -1913,6 +1939,27 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const unsigned vk = k->vkCode & 0xFF;
         const bool repeat = down && held[vk];
         held[vk] = down;
+        // Touche ⌘ (option) : avant tout le reste. Nos frappes simulées passent sans être relues.
+        bool commandAlt = false;   // Alt rendu à Windows pour cette frappe (pas encore dans l'état du clavier)
+        if (self_->commandKeyOn_ && k->dwExtraInfo != kCommandReplay &&
+            ((k->flags & LLKHF_INJECTED) == 0 || diagnosticCapture())) {
+            wchar_t cls[32] = {};   // Explorateur au premier plan : raccourcis du Finder (⌘↑ parent, ⌘⌫ Corbeille)
+            const HWND fg = GetForegroundWindow();
+            const bool explorer = fg && GetClassNameW(fg, cls, 32) &&
+                                  (_wcsicmp(cls, L"CabinetWClass") == 0 || _wcsicmp(cls, L"ExploreWClass") == 0);
+            const CommandAction a = self_->commandKeys_.onKey(vk, down, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0, explorer);
+            switch (a.kind) {
+                case CommandAction::Kind::Swallow: return 1;
+                case CommandAction::Kind::Send:
+                    sendChord(a.chord);
+                    return 1;
+                case CommandAction::Kind::AltThenPass:
+                    sendKeys({{VK_LMENU, false}});   // le vrai Alt d'abord (Alt+Tab, Alt+F4, Alt+Entrée)
+                    commandAlt = true;
+                    break;
+                case CommandAction::Kind::Pass: break;
+            }
+        }
         // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
         static bool escTaken = false;   // Échap a fermé le viseur : avalée jusqu'à son relâchement
         if (vk == VK_ESCAPE && escTaken && !self_->shotSession_) {
@@ -1976,7 +2023,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             }
         }
         if (self_->switchKeysOn_) {
-            const bool alt = (k->flags & LLKHF_ALTDOWN) != 0;
+            const bool alt = (k->flags & LLKHF_ALTDOWN) != 0 || commandAlt;
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             const SwitchKey a = switcherKeyAction(vk, down, alt, shift, self_->switchSession_, repeat,
                                                   (k->flags & LLKHF_INJECTED) != 0);
@@ -1995,6 +2042,10 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 if (id) PostMessageW(self_->hwnd_, WM_APP_SWITCHKEY, WPARAM(id), 0);
                 return 1;   // avalée : ni le sélecteur de Windows, ni l'app au premier plan
             }
+        }
+        if (commandAlt) {   // l'app doit voir Alt avant la touche : la vraie est avalée et renvoyée derrière
+            sendKeys({{int(vk), false}});
+            return 1;
         }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
