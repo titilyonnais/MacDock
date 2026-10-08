@@ -1,3 +1,4 @@
+#include "popup_glass.h"
 #include "menu_window.h"
 
 #include <d2d1_3.h>
@@ -535,17 +536,7 @@ void Session::render(Panel& p) {
         }
         if (p.glassTex) {
             const Metrics& m = env.metrics;
-            GlassParams gp;
-            gp.scale = sc;
-            gp.dark = dark;
-            gp.blurSigmaPx = float(m.glassBlur) * 2.2f * sc;   // menus : verre plus dépoli que le Dock
-            gp.bevelPx = float(m.glassBevel) * 0.6f * sc;
-            gp.refraction = float(m.glassRefraction) * 0.5f;
-            gp.chromatic = float(m.glassChromatic) * 0.5f;
-            gp.fresnel = float(m.glassFresnel);
-            gp.specular = float(m.glassSpecular);
-            gp.tint = std::min(1.0f, float(dark ? m.glassTintDark : m.glassTintLight) * 2.4f);
-            gp.saturation = float(m.glassSaturation);
+            GlassParams gp = popupGlassParams(m, dark, sc, PopupMaterial::Menu);   // matériau Golden Gate
             gp.shadowBlurPx = float(m.shadowBlur) * sc;
             gp.shadowOffsetPx = 3 * sc;
             gp.backdropIsScRgb = p.scRgb;

@@ -20,7 +20,8 @@ struct GlassParams {
     float scale = 1;
     bool dark = false;
     float blurSigmaPx = 20, bevelPx = 18, refraction = 0.6f, chromatic = 0.1f, fresnel = 0.18f, specular = 0.55f;
-    float tint = 0.22f, saturation = 1.15f;
+    float tint = 0.10f, saturation = 1.5f;
+    float hairline = 0;             // fil sombre au bord (menus en clair)
     float shadowBlurPx = 36, shadowOffsetPx = 4;
     bool backdropIsScRgb = false;
     float sdrWhiteScale = 1;        // HDR : valeur scRGB du blanc SDR

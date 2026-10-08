@@ -29,7 +29,7 @@ struct GlassCb {
     float refraction, chromatic, fresnel, specular;
     float tint, saturation, shadowBlur, shadowOffset;
     float scale, dark, targetSize[2];
-    float maxMip, opacity, pad[2];
+    float maxMip, opacity, hairline, pad;
 };
 static_assert(sizeof(GlassCb) % 16 == 0);
 } // namespace
@@ -221,6 +221,7 @@ bool GlassRenderer::render(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* b
         c.targetSize[1] = float(down_.h * kDownsample);
         c.maxMip = float(blurB_.mips - 1);
         c.opacity = s.opacity;
+        c.hairline = p.hairline;
         setConstants(ctx, glassCb_.Get(), c);
         float margin = s.shadowOpacity > 0 ? 3 * p.shadowBlurPx + p.shadowOffsetPx : 2;
         drawQuad(ctx, std::max(0.0f, s.left - margin), std::max(0.0f, s.top - margin),

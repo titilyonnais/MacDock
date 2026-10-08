@@ -26,7 +26,7 @@ TEST_CASE(metrics_v2_keeps_v1_values) {   // les changements de la v1 ne s'appli
 }
 
 TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
-    // Golden Gate : verre plus opaque et reflet plus vif ; les valeurs choisies par l'utilisateur restent.
+    // Golden Gate : un fichier v2 suit les défauts successifs (v3 puis v4) ; les valeurs choisies restent.
     auto v = md::migrateMetricsJson(*md::json::parse(
         R"({"version":2,"glassTintLight":0.22,"glassTintDark":0.3,"glassSpecular":0.55,"iconGap":6,)"
         R"("autohideShowSeconds":0.45,"autohideHideSeconds":0.45,"poofSeconds":0.35})"));
@@ -34,16 +34,27 @@ TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
     CHECK_NEAR(m.autohideShowSeconds, 0.40, 1e-9);   // animations ~12 % plus courtes
     CHECK_NEAR(m.autohideHideSeconds, 0.40, 1e-9);
     CHECK_NEAR(m.poofSeconds, 0.31, 1e-9);
-    CHECK_NEAR(m.glassTintLight, 0.30, 1e-9);
-    CHECK_NEAR(m.glassTintDark, 0.38, 1e-9);
-    CHECK_NEAR(m.glassSpecular, 0.70, 1e-9);
+    CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
+    CHECK_NEAR(m.glassTintDark, 0.22, 1e-9);
+    CHECK_NEAR(m.glassSpecular, 0.75, 1e-9);
     CHECK_NEAR(m.iconGap, 6, 1e-9);
-    CHECK_EQ(md::jsonVersion(v), 3);
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"glassTintLight":0.5})")));
     CHECK_NEAR(kept.glassTintLight, 0.5, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v3_glass_from_real_dock) {
+    // v4 : verre recalé sur des captures du Dock réel (liseré fin, voile léger, fond saturé, ombre à peine visible).
+    auto m = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(
+        R"({"version":3,"glassBevel":9,"glassFresnel":0.18,"glassTintLight":0.3,"glassSaturation":1.15,"shadowOpacity":0.22})")));
+    CHECK_NEAR(m.glassBevel, 4, 1e-9);
+    CHECK_NEAR(m.glassFresnel, 0.04, 1e-9);
+    CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
+    CHECK_NEAR(m.glassSaturation, 1.50, 1e-9);
+    CHECK_NEAR(m.shadowOpacity, 0.07, 1e-9);
     const md::Metrics defaults;
-    CHECK_NEAR(defaults.glassTintLight, 0.30, 1e-9);
-    CHECK_NEAR(defaults.glassSpecular, 0.70, 1e-9);
+    CHECK_NEAR(defaults.glassTintLight, 0.10, 1e-9);
+    CHECK_NEAR(defaults.glassSpecular, 0.75, 1e-9);
 }
 
 TEST_CASE(settings_migrate_v1_large_size) {

@@ -55,6 +55,16 @@ json::Value migrateMetricsJson(const json::Value& v) {
         {3, "autohideShowSeconds", 0.45, 0.40},   // animations Golden Gate ~12 % plus courtes
         {3, "autohideHideSeconds", 0.45, 0.40},
         {3, "poofSeconds", 0.35, 0.31},
+        // v4 : verre recalé sur des captures du Dock réel (liseré d'un pixel, voile léger, fond saturé, ombre
+        // à peine visible).
+        {4, "glassBevel", 9, 4},
+        {4, "glassChromatic", 0.10, 0.05},
+        {4, "glassFresnel", 0.18, 0.04},
+        {4, "glassSpecular", 0.70, 0.75},
+        {4, "glassTintLight", 0.30, 0.10},
+        {4, "glassTintDark", 0.38, 0.22},
+        {4, "glassSaturation", 1.15, 1.50},
+        {4, "shadowOpacity", 0.22, 0.07},
     };
     const int from = jsonVersion(v);
     json::Value out = json::Object{};
@@ -62,7 +72,7 @@ json::Value migrateMetricsJson(const json::Value& v) {
         if (key == "indicatorInset" || key == "version") continue;
         json::Value copy = value;
         for (auto& c : kChanged)
-            if (from < c.before && key == c.key && value.isNumber() && std::fabs(value.asNumber(0) - c.oldDefault) < 1e-9)
+            if (from < c.before && key == c.key && copy.isNumber() && std::fabs(copy.asNumber(0) - c.oldDefault) < 1e-9)
                 copy = c.newDefault;
         out.set(key, std::move(copy));
     }
