@@ -30,6 +30,9 @@ public:
     static std::optional<Choice> track(const MenuWindow::Env& env, const Request& request);
     static bool isOpen();
     static void closeOpen();   // ferme le panneau ouvert (second appui sur le raccourci)
+    // Capture d'écran (⊞⇧3, ⊞⇧4) : le panneau ouvert devient visible aux captures le temps de la copie ; son verre ne
+    // suit plus l'écran pendant ce temps (il s'y verrait), puis reprend 150 ms après.
+    static void setCaptureVisible(bool on);
 };
 
 // Même dessin hors écran (Direct2D sur une bitmap, aucune fenêtre) : fond d'écran Tahoe, panneau dépoli, cases de

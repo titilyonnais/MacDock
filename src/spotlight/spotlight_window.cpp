@@ -240,6 +240,8 @@ struct Session {
     ScreenBackdrop screen;
     WindowBackdrop backdrop;
     GlassTarget glassTarget;
+    bool captureVisible = false;   // capture d'écran en cours : visible aux captures, verre gelé
+    ULONGLONG thawAt = 0;
 
     HWND hwnd = nullptr;
     RECT rc{};   // fenêtre (pixels d'écran)
@@ -579,8 +581,9 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             render();
             return 0;
         }
-        case WM_SPOT_BACKDROP:
-            if (screen.take(env.device) && screen.copyTo(env.device, rc, backdrop)) render();
+        case WM_SPOT_BACKDROP:   // pendant une capture d'écran, l'image contient le panneau : elle n'est pas appliquée
+            if (screen.take(env.device) && !captureVisible && GetTickCount64() >= thawAt && screen.copyTo(env.device, rc, backdrop))
+                render();
             return 0;
         default: break;
     }
@@ -595,6 +598,13 @@ std::uint32_t placeholderColor(std::size_t i) {   // cases de couleur du rendu h
 } // namespace
 
 bool SpotlightWindow::isOpen() { return g_open != nullptr; }
+
+void SpotlightWindow::setCaptureVisible(bool on) {
+    if (!g_open || g_open->captureVisible == on) return;
+    g_open->captureVisible = on;
+    if (!on) g_open->thawAt = GetTickCount64() + 150;
+    if (!diagnosticCapture() && g_open->hwnd) SetWindowDisplayAffinity(g_open->hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+}
 
 void SpotlightWindow::closeOpen() {
     if (!g_open) return;

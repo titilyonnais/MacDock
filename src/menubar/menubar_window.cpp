@@ -844,12 +844,14 @@ void MenuBarApp::onScreenshotReveal(bool on) {
         abortSamples();
         lights_.setCaptureVisible(true);
         MenuWindow::setCaptureVisible(true);   // un menu ouvert de la barre (Centre de contrôle…) est photographié
+        hud_.setCaptureVisible(true);           // la pastille du volume aussi
         SetTimer(ctl_, kShotRevealTimer, 3000, nullptr);   // le Dock rend la main en moins d'une seconde
     } else if (shotReveal_) {
         shotReveal_ = false;
         KillTimer(ctl_, kShotRevealTimer);
         lights_.setCaptureVisible(false);
         MenuWindow::setCaptureVisible(false);
+        hud_.setCaptureVisible(false);
     }
     if (trace_ || diagnosticCapture()) log::info(L"[trace] capture d'écran : pastilles %s", on ? L"visibles" : L"exclues de nouveau");
 }
