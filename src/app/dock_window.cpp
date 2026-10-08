@@ -200,7 +200,9 @@ void DockApp::syncAppBar() {
 }
 
 bool DockApp::detectFullscreen() const {
-    return fullscreenOn(GetForegroundWindow(), MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), monitor_);
+    // La plus haute fenêtre de l'écran du Dock, qu'elle ait le clavier ou non : une vidéo en plein écran le reste
+    // quand on travaille sur un autre écran.
+    return fullscreenWindowOn(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), monitor_);
 }
 
 bool DockApp::fullscreenAt(POINT screen) const {
@@ -210,22 +212,7 @@ bool DockApp::fullscreenAt(POINT screen) const {
         return true;
     const HMONITOR mon = MonitorFromPoint(screen, MONITOR_DEFAULTTONULL);
     MONITORINFO mi{sizeof mi};
-    return mon && GetMonitorInfoW(mon, &mi) && fullscreenOn(GetForegroundWindow(), mon, mi.rcMonitor);
-}
-
-bool DockApp::fullscreenOn(HWND fg, HMONITOR mon, const RECT& monitorRc) const {
-    if (!fg || !IsWindowVisible(fg) || IsIconic(fg)) return false;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(fg, &pid);
-    if (pid == GetCurrentProcessId()) return false;   // menus et sprites du Dock
-    wchar_t cls[64] = {};
-    GetClassNameW(fg, cls, 64);
-    for (const wchar_t* shell : {L"Progman", L"WorkerW", L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd"})
-        if (wcscmp(cls, shell) == 0) return false;
-    if (MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != mon) return false;
-    RECT rc;
-    bool caption = (GetWindowLongPtrW(fg, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
-    return GetWindowRect(fg, &rc) && isFullscreenWindow(rc, monitorRc, IsZoomed(fg) != FALSE, caption);
+    return mon && GetMonitorInfoW(mon, &mi) && fullscreenWindowOn(mon, mi.rcMonitor);
 }
 
 void DockApp::checkFullscreen() {

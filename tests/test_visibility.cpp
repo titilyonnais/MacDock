@@ -84,3 +84,38 @@ TEST_CASE(fullscreen_maximized_window_with_caption_is_not_fullscreen) {
     CHECK(md::isFullscreenWindow({0, 0, 1920, 1080}, mon, false, true));   // F11 d'un navigateur
     CHECK(!md::isFullscreenWindow({0, 0, 1920, 1000}, mon, false, false));
 }
+
+TEST_CASE(fullscreen_stays_while_working_on_another_screen) {
+    // Vidéo en plein écran sur l'écran 1, travail dans une fenêtre de l'écran 2 : l'écran 1 reste en plein écran (la
+    // barre et le Dock y restent cachés), comme sur Mac. On lit l'ordre d'affichage, pas le premier plan.
+    const RECT mon{0, 0, 1920, 1080};
+    md::ZWindow video;
+    video.rect = mon;
+    video.onMonitor = true;
+    md::ZWindow other;   // fenêtre de l'écran 2, au premier plan
+    other.rect = {1920, 0, 3840, 1040};
+    other.onMonitor = false;
+    CHECK(md::fullscreenOnMonitor({other, video}, mon));
+    // Une fenêtre ordinaire de cet écran passe devant la vidéo : plus de plein écran.
+    md::ZWindow front;
+    front.rect = {100, 100, 900, 700};
+    front.onMonitor = true;
+    CHECK(!md::fullscreenOnMonitor({front, video}, mon));
+    // Une fenêtre toujours au-dessus qui ne couvre pas l'écran (vignette, pense-bête) ne compte pas.
+    md::ZWindow pip = front;
+    pip.topmost = true;
+    CHECK(md::fullscreenOnMonitor({pip, video}, mon));
+    // Calques transparents aux clics (superpositions AMD, NVIDIA, Discord) : ignorés, même de la taille de l'écran.
+    md::ZWindow overlay = video;
+    overlay.topmost = true;
+    overlay.eligible = false;
+    CHECK(!md::fullscreenOnMonitor({overlay, front}, mon));
+    // Fenêtre agrandie à barre de titre : pas du plein écran.
+    md::ZWindow maxed;
+    maxed.rect = {-8, -8, 1928, 1088};
+    maxed.onMonitor = true;
+    maxed.zoomed = true;
+    maxed.caption = true;
+    CHECK(!md::fullscreenOnMonitor({maxed}, mon));
+    CHECK(!md::fullscreenOnMonitor({}, mon));
+}
