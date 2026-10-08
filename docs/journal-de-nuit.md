@@ -525,6 +525,19 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Réglages** : `"sounds": false` dans `settings.json`, `"volumeFeedback": false` dans `menubar.json`.
 - **Vérifié** : format WAV, durée, volume plafonné et fondus, par les tests. **Pas entendu** : je suis à distance, et je n'ai pas vidé ta Corbeille pour l'essayer.
 
+### Plan 33 — Touche ⌘ (option)
+
+- **Option** `"altAsCommand": true` dans `settings.json`, désactivée par défaut : la touche Alt de gauche joue le rôle de ⌘. Les raccourcis sont listés dans le README.
+- **Dans l'Explorateur**, comme dans le Finder : ⌘↑ remonte au dossier parent, ⌘↓ ouvre, ⌘⌫ met à la Corbeille.
+- **Alt Gr n'est jamais touché**, pour les caractères @, # et { du clavier français.
+- **Alt reste un vrai Alt avec toute autre touche** : il est rendu à Windows juste avant elle, dans le bon ordre. Alt+Tab ouvre donc toujours le sélecteur, et Alt+F4 ou Alt+Entrée marchent comme d'habitude.
+- **Essayé en vrai** dans le Bloc-notes, avec l'option activée le temps de l'essai puis remise à `false` :
+  - ⌘A puis « x » a tout remplacé ;
+  - ⌘← puis « y » a écrit au début de la ligne : le texte final est « yx » ;
+  - Alt+Tab est passé à l'app précédente.
+  - Je n'ai pas essayé ⌘C ni ⌘X, qui écriraient dans ton presse-papiers.
+- **Limite** : pendant le mode fenêtre de ⊞⇧4, Alt (gardé de côté) ne retire plus l'ombre quand l'option est active.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

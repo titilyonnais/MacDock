@@ -15,6 +15,7 @@
 #include "../config/metrics.h"
 #include "../config/settings.h"
 #include "../glass/backdrop_capture.h"
+#include "../interact/command_key.h"
 #include "../icons/icon_provider.h"
 #include "../interact/hot_corners.h"
 #include "../ipc/pipe_server.h"
@@ -250,6 +251,8 @@ private:
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::atomic<bool> shotKeysOn_{false};      // le crochet prend ⊞⇧3 et ⊞⇧4 (réglage screenshots)
+    std::atomic<bool> commandKeyOn_{false};    // Alt de gauche joue ⌘ (réglage altAsCommand)
+    CommandKeys commandKeys_;                  // fil du crochet seulement
     std::atomic<bool> shotSession_{false};     // viseur ouvert : Échap et Espace lui reviennent
     std::thread configThread_;
     HANDLE stopEvent_ = nullptr;

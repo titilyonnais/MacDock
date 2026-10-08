@@ -47,7 +47,8 @@ struct Settings {
     std::wstring appSwitcherHotkey = L"alt+tab";          // sélecteur d'apps : alt+tab ou off
     std::wstring appExposeHotkey = L"ctrl+alt+down";      // Exposé de l'app au premier plan : ctrl+alt+down, ctrl+down, off
     bool screenshots = true;
-    bool sounds = true;        // sons système originaux : capture, Corbeille vidée, nuage « poof »   // ⊞⇧3 et ⊞⇧4 : captures d'écran façon macOS (false : rendus à Windows)
+    bool sounds = true;
+    bool altAsCommand = false;   // Alt de gauche joue ⌘ (⌘C, ⌘V, ⌘Q…) ; Alt Gr jamais touché        // sons système originaux : capture, Corbeille vidée, nuage « poof »   // ⊞⇧3 et ⊞⇧4 : captures d'écran façon macOS (false : rendus à Windows)
     // Coins actifs, indexés par Corner (haut gauche, haut droit, bas gauche, bas droit) ; aucun par défaut (un coin
     // actif surprend : l'horloge et le logo sont tout près).
     std::array<HotCornerAction, 4> hotCorners{HotCornerAction::Off, HotCornerAction::Off, HotCornerAction::Off,

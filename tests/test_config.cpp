@@ -238,3 +238,11 @@ TEST_CASE(settings_system_sounds_on_by_default) {
     s.sounds = false;
     CHECK(!md::settingsFromJson(md::settingsToJson(s)).sounds);
 }
+
+TEST_CASE(settings_alt_as_command_off_by_default) {
+    CHECK(!md::settingsFromJson(*md::json::parse("{}")).altAsCommand);   // option : Alt garde son rôle de Windows
+    CHECK(md::settingsFromJson(*md::json::parse("{\"altAsCommand\":true}")).altAsCommand);
+    md::Settings s;
+    s.altAsCommand = true;
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).altAsCommand);
+}
