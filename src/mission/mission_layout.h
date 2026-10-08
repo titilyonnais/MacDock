@@ -24,11 +24,23 @@ MissionRect missionArea(const MissionRect& work, double scale);
 std::vector<MissionRect> missionLayout(const std::vector<MissionRect>& windows, const MissionRect& area, double gap,
                                        double rowGap = -1);
 
+// Exposé d'une app : rangée des fenêtres réduites au bas de area (proportions gardées, jamais agrandies, centrée) ;
+// above : la place qui reste au-dessus pour les fenêtres ouvertes ; lineY : trait de séparation.
+struct MissionShelf {
+    std::vector<MissionRect> rects;
+    MissionRect above;
+    double lineY = 0;
+};
+// labelRoom : place laissée sous les fenêtres ouvertes pour leur pastille de titre.
+MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap, double labelRoom = 0);
+
 int missionHit(const std::vector<MissionRect>& rects, double x, double y);   // -1 : aucune
 MissionRect lerpRect(const MissionRect& a, const MissionRect& b, double t);
 double easeOut(double t);   // cubique, t borné à [0, 1]
 
 // « ctrl+alt+up », « ctrl+up », « f3 » (casse ignorée) ; nullopt pour « off » ou une valeur inconnue.
 std::optional<HotkeySpec> parseMissionHotkey(const std::wstring& text);
+// Exposé d'une app : « ctrl+alt+down », « ctrl+down » ; nullopt pour « off » ou une valeur inconnue.
+std::optional<HotkeySpec> parseAppExposeHotkey(const std::wstring& text);
 
 } // namespace md
