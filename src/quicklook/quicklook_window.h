@@ -31,6 +31,9 @@ public:
     // Fil du Dock. Montre paths[index] (sélection de la fenêtre owner) ; remplace l'aperçu déjà ouvert.
     void show(HINSTANCE instance, std::vector<std::wstring> paths, std::size_t index, HWND owner);
     void close();
+    // Fil du Dock, à l'arrêt : false si le fil de la fenêtre ne répond pas en ms (un aperçu figé). L'objet doit alors
+    // être abandonné, pas détruit : le fil s'en sert encore.
+    bool shutdown(DWORD ms);
     bool isOpen() const { return open_.load(); }
     HWND owner() const { return owner_; }                               // fil du Dock
     const std::vector<std::wstring>& paths() const { return paths_; }   // fil du Dock
@@ -45,6 +48,7 @@ public:
         QuickLookMedia media = QuickLookMedia::None;
         bool shellPreview = false;         // un gestionnaire d'aperçu du Shell est enregistré
         CLSID previewClsid{};
+        RECT itemRect{};                   // icône du fichier à l'écran (UI Automation), pour le zoom d'ouverture
         std::uint64_t generation = 0;
     };
 
@@ -54,6 +58,7 @@ private:
         std::uint64_t generation = 0;
         float scale = 1;
         HWND target = nullptr;
+        bool itemRect = false;   // première ouverture : rectangle de l'icône lu ici, pas sur le fil de la fenêtre
     };
     struct ShowRequest {
         std::wstring path;
@@ -77,6 +82,7 @@ private:
     int hitButton(POINT client) const;   // 0 aucun, 1 fermer, 2 ouvrir, 3 plein écran
     void startHosts();           // aperçu du Shell ou média, une fois la fenêtre en place
     void stopHosts();
+    void drainDeferred();        // messages mis de côté pendant un appel sortant, dans l'ordre d'arrivée
     void stepAnimation();
     void toggleFullscreen();
 
@@ -102,9 +108,16 @@ private:
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap_;
     PreviewHost preview_;
     MediaHost media_;
-    // Appel COM sortant (DoPreview…) : la boucle modale de COM peut livrer nos messages ; ils sont rejoués après.
-    bool inHostCall_ = false;
+    // Appel COM sortant (DoPreview, Unload, SetRect, MFPlay) : la boucle modale de COM peut livrer nos messages ; ils
+    // sont mis de côté et rejoués dans l'ordre, une fois le message le plus extérieur traité.
+    int hostDepth_ = 0;
+    bool draining_ = false;
     std::vector<MSG> deferred_;
+    struct HostCall {
+        QuickLookWindow& w;
+        explicit HostCall(QuickLookWindow& window) : w(window) { ++w.hostDepth_; }
+        ~HostCall() { --w.hostDepth_; }
+    };
     // Ouverture en zoom depuis l'icône du fichier.
     bool animating_ = false;
     ULONGLONG animStart_ = 0;

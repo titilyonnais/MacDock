@@ -173,7 +173,8 @@ private:
     SwitchSession switch_;               // Alt+Tab en cours
     std::vector<std::wstring> switchApps_;   // rangée de la session (appId)
     SwitcherWindow switcher_;
-    QuickLookWindow quickLook_;   // Coup d'œil : Espace dans l'Explorateur ou sur le bureau
+    // Coup d'œil : Espace dans l'Explorateur ou sur le bureau. Pointeur : abandonné (pas détruit) si son fil est figé.
+    std::unique_ptr<QuickLookWindow> quickLook_ = std::make_unique<QuickLookWindow>();
     ShellSelectionWatch quickLookWatch_;   // sélection de la fenêtre de l'aperçu (vue gardée, premier élément lu)
     bool quickLookBusy_ = false;          // lecture COM en cours (la boucle modale COM peut relancer le minuteur)
     ShotViewfinder viewfinder_;           // ⊞⇧4

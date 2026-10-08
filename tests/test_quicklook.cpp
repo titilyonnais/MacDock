@@ -98,6 +98,8 @@ TEST_CASE(quicklook_shell_previews_for_documents_only) {
     CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\notes.txt"));    // vue texte maison
     CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\film.mp4"));     // lecteur vidéo
     CHECK(!md::quickLookUsesShellPreview(L"C:\\d\\sansextension"));
+    CHECK(md::quickLookUsesShellPreview(L"C:\\d\\page.html"));   // la page rendue, pas son code
+    CHECK(!md::quickLookIsText(L"C:\\d\\page.htm"));
 }
 
 TEST_CASE(quicklook_document_window_sizes) {
@@ -119,11 +121,4 @@ TEST_CASE(quicklook_zoom_from_the_icon) {
     r = md::quickLookZoom(from, to, 0.5);
     CHECK(r.left > 300 && r.left < 500);   // ralentit à l'arrivée : plus de la moitié du chemin
     CHECK(r.right - r.left > 532);
-}
-
-TEST_CASE(quicklook_fullscreen_fits_the_screen) {
-    RECT r = md::quickLookFullscreen(SIZE{4000, 3000}, RECT{0, 0, 3840, 2160});
-    CHECK(r.top == 0 && r.bottom == 2160 && r.right - r.left == 2880 && r.left == 480);
-    r = md::quickLookFullscreen(SIZE{1000, 4000}, RECT{-1920, 0, 0, 1080});   // écran à gauche, image en hauteur
-    CHECK(r.bottom - r.top == 1080 && r.right - r.left == 270 && r.left == -1920 + 825);
 }

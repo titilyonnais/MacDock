@@ -43,7 +43,5 @@ bool quickLookUsesShellPreview(const std::wstring& path);
 SIZE quickLookDocumentSize(const std::wstring& path, SIZE screen, int titleBar);
 // Ouverture en zoom depuis l'icône : rectangle à t (0 → from, 1 → to), ralenti à l'arrivée.
 RECT quickLookZoom(const RECT& from, const RECT& to, double t);
-// Plein écran : l'image ajustée dans l'écran, proportions gardées, centrée.
-RECT quickLookFullscreen(SIZE content, const RECT& monitor);
 
 } // namespace md

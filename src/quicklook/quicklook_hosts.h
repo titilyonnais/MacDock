@@ -34,19 +34,19 @@ private:
 class MediaHost {
 public:
     ~MediaHost() { close(); }
-    // video : fenêtre enfant dans rc ; sinon, son seul (pas de fenêtre).
-    bool open(HINSTANCE instance, HWND parent, const RECT& rc, const std::wstring& path, bool video);
+    // video : fenêtre enfant dans rc ; sinon, son seul (pas de fenêtre). Une erreur de lecture poste errorMsg à notify.
+    bool open(HINSTANCE instance, HWND parent, const RECT& rc, const std::wstring& path, bool video, HWND notify, UINT errorMsg);
     void resize(const RECT& rc);
     void toggle();   // lecture ⇄ pause
     void close();    // le son s'arrête toujours
     bool active() const { return player_ != nullptr; }
-    bool playing() const;
     bool paused() const { return paused_; }   // mis en pause par un clic (pas : pas encore lancé, ou fini)
 
 private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     HWND video_ = nullptr;
     bool paused_ = false;
+    Microsoft::WRL::ComPtr<IMFPMediaPlayerCallback> events_;
     Microsoft::WRL::ComPtr<IMFPMediaPlayer> player_;
 };
 

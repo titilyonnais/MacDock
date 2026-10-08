@@ -29,8 +29,8 @@ bool quickLookIsText(const std::wstring& path) {
     for (auto& ch : ext) ch = wchar_t(std::towlower(ch));
     static const wchar_t* kText[] = {L"txt", L"md", L"markdown", L"log", L"json", L"xml", L"csv", L"tsv", L"ini", L"cfg",
                                      L"conf", L"yaml", L"yml", L"toml", L"c", L"cc", L"cpp", L"cxx", L"h", L"hpp", L"cs",
-                                     L"java", L"kt", L"py", L"js", L"mjs", L"ts", L"tsx", L"jsx", L"css", L"scss", L"html",
-                                     L"htm", L"php", L"rb", L"go", L"rs", L"swift", L"sh", L"bat", L"cmd", L"ps1", L"sql",
+                                     L"java", L"kt", L"py", L"js", L"mjs", L"ts", L"tsx", L"jsx", L"css", L"scss",
+                                     L"php", L"rb", L"go", L"rs", L"swift", L"sh", L"bat", L"cmd", L"ps1", L"sql",
                                      L"lua", L"gitignore", L"env", L"reg", L"srt", L"nfo"};
     for (const wchar_t* e : kText)
         if (ext == e) return true;
@@ -155,15 +155,6 @@ RECT quickLookZoom(const RECT& from, const RECT& to, double t) {
     const double u = std::clamp(t, 0.0, 1.0), e = 1 - std::pow(1 - u, 3);   // ralenti à l'arrivée
     auto mix = [&](LONG a, LONG b) { return LONG(std::lround(a + (b - a) * e)); };
     return RECT{mix(from.left, to.left), mix(from.top, to.top), mix(from.right, to.right), mix(from.bottom, to.bottom)};
-}
-
-RECT quickLookFullscreen(SIZE content, const RECT& monitor) {
-    const double mw = monitor.right - monitor.left, mh = monitor.bottom - monitor.top;
-    const double cw = std::max<LONG>(content.cx, 1), ch = std::max<LONG>(content.cy, 1);
-    const double k = std::min(mw / cw, mh / ch);
-    const LONG w = LONG(std::lround(cw * k)), h = LONG(std::lround(ch * k));
-    const LONG x = monitor.left + LONG((mw - w) / 2), y = monitor.top + LONG((mh - h) / 2);
-    return RECT{x, y, x + w, y + h};
 }
 
 } // namespace md

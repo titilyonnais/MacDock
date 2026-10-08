@@ -1,7 +1,6 @@
 #include "quicklook_window.h"
 
 #include <dwmapi.h>
-#include <mfapi.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
 #include <shlobj.h>
@@ -175,6 +174,8 @@ RECT focusedItemRect() {
 
 constexpr UINT WM_APP_SHOW = WM_APP + 2;    // lParam : ShowRequest* (fil du Dock → fil de la fenêtre)
 constexpr UINT WM_APP_CLOSE = WM_APP + 3;
+constexpr UINT WM_APP_QUIT = WM_APP + 4;          // arrêt du Dock (WM_CLOSE venu d'ailleurs ne fait que cacher)
+constexpr UINT WM_APP_MEDIA_ERROR = WM_APP + 5;   // lecture impossible : la miniature reste
 constexpr UINT_PTR kAnimTimer = 1;
 constexpr double kAnimSeconds = 0.22;
 
@@ -183,11 +184,22 @@ constexpr double kAnimSeconds = 0.22;
 // ---- Fil du Dock ----
 
 QuickLookWindow::~QuickLookWindow() {
-    if (!ui_.joinable()) return;
-    PostMessageW(hwnd_, WM_CLOSE, 0, 0);   // le fil sort de sa boucle, ferme ses aperçus et sa fenêtre
+    // Le Dock appelle shutdown avant ; s'il échoue, il abandonne l'objet au lieu de le détruire.
+    if (ui_.joinable() && !shutdown(3000)) {
+        ui_.detach();
+        if (worker_.joinable()) worker_.detach();
+    }
+}
+
+bool QuickLookWindow::shutdown(DWORD ms) {
+    if (!ui_.joinable()) return true;
+    open_ = false;
+    ++generation_;   // rien de ce qui est encore en file ne rouvre un aperçu
+    PostMessageW(hwnd_, WM_APP_QUIT, 0, 0);
     // Borné : un gestionnaire d'aperçu figé ne doit pas bloquer l'arrêt du Dock.
-    if (WaitForSingleObject(ui_.native_handle(), 3000) == WAIT_OBJECT_0) ui_.join();
-    else ui_.detach();
+    if (WaitForSingleObject(ui_.native_handle(), ms) != WAIT_OBJECT_0) return false;
+    ui_.join();
+    return true;
 }
 
 bool QuickLookWindow::startThread(HINSTANCE instance) {
@@ -224,7 +236,6 @@ void QuickLookWindow::close() {
 
 void QuickLookWindow::threadMain(HINSTANCE instance, std::promise<bool>* ready) {
     const HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    const HRESULT mf = MFStartup(MF_VERSION, MFSTARTUP_LITE);
     instance_ = instance;
     WNDCLASSEXW wc{sizeof wc};
     wc.style = CS_DROPSHADOW;
@@ -260,10 +271,14 @@ void QuickLookWindow::threadMain(HINSTANCE instance, std::promise<bool>* ready) 
     }
     wake_.notify_one();
     if (worker_.joinable()) worker_.join();   // avant la fenêtre : le fil de chargement y poste ses résultats
+    for (const MSG& m : deferred_) {   // jamais rejoués : libérés
+        if (m.message == WM_APP_LOADED) delete reinterpret_cast<Content*>(m.lParam);
+        if (m.message == WM_APP_SHOW) delete reinterpret_cast<ShowRequest*>(m.lParam);
+    }
+    deferred_.clear();
     if (hwnd_) DestroyWindow(hwnd_);
     rt_.Reset();
     bitmap_.Reset();
-    if (SUCCEEDED(mf)) MFShutdown();
     if (SUCCEEDED(co)) CoUninitialize();
 }
 
@@ -294,7 +309,7 @@ void QuickLookWindow::onClose() {
 void QuickLookWindow::startLoad() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        pending_ = Request{path_, ++generation_, scale_, hwnd_};   // remplace une demande pas encore prise
+        pending_ = Request{path_, ++generation_, scale_, hwnd_, !visible_};   // remplace une demande pas encore prise
     }
     wake_.notify_one();
     if (!worker_.joinable()) worker_ = std::thread(&QuickLookWindow::workerLoop, this);
@@ -314,6 +329,7 @@ void QuickLookWindow::workerLoop() {
         if (req.generation != generation_.load()) continue;   // déjà dépassée
         auto c = loadContent(req.path, req.scale, [&] { return req.generation != generation_.load(); });
         c->generation = req.generation;
+        if (req.itemRect) c->itemRect = focusedItemRect();   // ici : un Explorateur lent ne fige pas la fenêtre
         if (PostMessageW(req.target, WM_APP_LOADED, 0, reinterpret_cast<LPARAM>(c.get()))) c.release();
     }
     if (SUCCEEDED(co)) CoUninitialize();
@@ -358,9 +374,13 @@ RECT QuickLookWindow::contentRect() const {
 void QuickLookWindow::place() {
     if (!content_) return;
     const RECT to = targetRect();
+    if (animating_) {   // nouveau contenu ou plein écran pendant le zoom : il finit sur la nouvelle place
+        animTo_ = to;
+        return;
+    }
     if (!visible_ && !fullscreen_) {
         // Ouverture en zoom depuis l'icône du fichier (ou depuis le centre, en plus petit), avec un fondu.
-        RECT from = focusedItemRect();
+        RECT from = content_->itemRect;
         if (from.right - from.left < 8 || from.bottom - from.top < 8 || from.right - from.left > to.right - to.left) from = {};
         if (from.right <= from.left) {
             const LONG cx = (to.left + to.right) / 2, cy = (to.top + to.bottom) / 2;
@@ -384,7 +404,10 @@ void QuickLookWindow::place() {
     visible_ = true;
     SetWindowPos(hwnd_, HWND_TOPMOST, to.left, to.top, to.right - to.left, to.bottom - to.top, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     if (rt_) rt_->Resize(D2D1::SizeU(UINT32(to.right - to.left), UINT32(to.bottom - to.top)));
-    if (preview_.active()) preview_.resize(contentRect());
+    if (preview_.active()) {
+        HostCall call(*this);   // SetRect part vers prevhost.exe
+        preview_.resize(contentRect());
+    }
     if (media_.active()) media_.resize(contentRect());
     render();
     if (!animating_ && !preview_.active() && !media_.active()) startHosts();
@@ -412,28 +435,39 @@ void QuickLookWindow::toggleFullscreen() {
 }
 
 void QuickLookWindow::startHosts() {
-    if (!content_ || inHostCall_ || !open_) return;
-    const std::uint64_t gen = generation_.load();
-    inHostCall_ = true;   // DoPreview et MFPlay peuvent laisser passer nos messages : ils attendent la fin
+    // Jamais l'aperçu ou le son d'un fichier déjà dépassé.
+    if (!content_ || hostDepth_ || !open_ || content_->generation != generation_.load()) return;
+    const std::uint64_t gen = content_->generation;
+    const QuickLookMedia media = content_->media;
+    const bool shell = content_->shellPreview;
     bool shown = false;
-    if (content_->media != QuickLookMedia::None)
-        shown = media_.open(instance_, hwnd_, contentRect(), path_, content_->media == QuickLookMedia::Video &&
-                                                                      content_->kind == Content::Kind::Image);
-    else if (content_->shellPreview)
-        shown = preview_.open(instance_, hwnd_, contentRect(), path_, content_->previewClsid, dark_);
-    inHostCall_ = false;
-    if (diagnosticCapture() && (content_->media != QuickLookMedia::None || content_->shellPreview))
+    {
+        HostCall call(*this);   // DoPreview et MFPlay peuvent laisser passer nos messages : ils attendent la fin
+        if (media != QuickLookMedia::None)
+            shown = media_.open(instance_, hwnd_, contentRect(), path_, media == QuickLookMedia::Video, hwnd_, WM_APP_MEDIA_ERROR);
+        else if (shell)
+            shown = preview_.open(instance_, hwnd_, contentRect(), path_, content_->previewClsid, dark_);
+    }
+    if (diagnosticCapture() && (media != QuickLookMedia::None || shell))
         log::info(L"[diag] coup d'œil : aperçu %s", shown ? L"affiché" : L"impossible (miniature gardée)");
     if (shown && (gen != generation_.load() || !open_)) stopHosts();   // fermé ou remplacé pendant l'ouverture
     render();
-    std::vector<MSG> later;
-    later.swap(deferred_);
-    for (const MSG& m : later) handle(m.message, m.wParam, m.lParam);
 }
 
 void QuickLookWindow::stopHosts() {
+    HostCall call(*this);   // Unload part vers prevhost.exe
     preview_.close();
     media_.close();
+}
+
+void QuickLookWindow::drainDeferred() {
+    draining_ = true;
+    while (!deferred_.empty()) {   // dans l'ordre d'arrivée ; ceux qui arrivent pendant le rejeu passent après
+        const MSG m = deferred_.front();
+        deferred_.erase(deferred_.begin());
+        handle(m.message, m.wParam, m.lParam);
+    }
+    draining_ = false;
 }
 
 int QuickLookWindow::hitButton(POINT p) const {
@@ -599,15 +633,18 @@ LRESULT CALLBACK QuickLookWindow::proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     auto* self = reinterpret_cast<QuickLookWindow*>(GetWindowLongPtrW(h, GWLP_USERDATA));
     if (self && (self->hwnd_ == h || !self->hwnd_)) {
         if (!self->hwnd_) self->hwnd_ = h;   // messages de création
-        return self->handle(msg, wp, lp);
+        const LRESULT r = self->handle(msg, wp, lp);
+        // Le message le plus extérieur est traité : ceux mis de côté pendant un appel sortant passent maintenant.
+        if (!self->hostDepth_ && !self->draining_ && !self->deferred_.empty()) self->drainDeferred();
+        return r;
     }
     return DefWindowProcW(h, msg, wp, lp);
 }
 
 LRESULT QuickLookWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     // Pendant DoPreview ou l'ouverture d'un média, la boucle modale de COM peut livrer ces messages : rejoués après.
-    if (inHostCall_ && (msg == WM_APP_SHOW || msg == WM_APP_CLOSE || msg == WM_APP_LOADED || msg == WM_LBUTTONUP ||
-                        msg == WM_TIMER || msg == WM_CLOSE)) {
+    if (hostDepth_ && (msg == WM_APP_SHOW || msg == WM_APP_CLOSE || msg == WM_APP_LOADED || msg == WM_LBUTTONUP ||
+                       msg == WM_TIMER || msg == WM_CLOSE || msg == WM_APP_QUIT || msg == WM_APP_MEDIA_ERROR)) {
         deferred_.push_back(MSG{hwnd_, msg, wp, lp, 0, {}});
         return 0;
     }
@@ -635,8 +672,19 @@ LRESULT QuickLookWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == kAnimTimer) stepAnimation();
             return 0;
-        case WM_CLOSE:   // arrêt du Dock : fin de la boucle du fil
+        case WM_APP_QUIT:   // arrêt du Dock : fenêtre cachée tout de suite, puis fin de la boucle du fil
+            open_ = false;
+            onClose();
             PostQuitMessage(0);
+            return 0;
+        case WM_CLOSE:   // venu d'ailleurs (Alt+F4, outil) : on cache seulement, le Coup d'œil reste disponible
+            open_ = false;
+            onClose();
+            return 0;
+        case WM_APP_MEDIA_ERROR:   // codec absent… : le lecteur se ferme, la miniature reste
+            if (diagnosticCapture()) log::info(L"[diag] coup d'œil : lecture impossible, miniature gardée");
+            media_.close();
+            render();
             return 0;
         case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // l'Explorateur garde le focus (flèches, Espace)
         case WM_NCHITTEST: {

@@ -15,9 +15,50 @@ constexpr wchar_t kVideoClass[] = L"MacDockQuickLookVideo";
 constexpr wchar_t kBoxClass[] = L"MacDockQuickLookPreview";
 
 LRESULT CALLBACK boxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
-    if (msg == WM_MOUSEACTIVATE) return MA_NOACTIVATE;   // l'Explorateur garde le clavier
+    switch (msg) {
+        case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, LONG_PTR(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams)); break;
+        case WM_MOUSEACTIVATE: return MA_NOACTIVATE;   // l'Explorateur garde le clavier
+        case WM_ERASEBKGND: {   // fond clair ou sombre de cet aperçu (la classe n'est inscrite qu'une fois)
+            RECT rc;
+            GetClientRect(h, &rc);
+            FillRect(reinterpret_cast<HDC>(wp), &rc, static_cast<HBRUSH>(GetStockObject(GetWindowLongPtrW(h, GWLP_USERDATA) ? BLACK_BRUSH : WHITE_BRUSH)));
+            return 1;
+        }
+        default: break;
+    }
     return DefWindowProcW(h, msg, wp, lp);
 }
+
+// Erreur de lecture (codec absent…) : la fenêtre du Coup d'œil ferme le lecteur et garde la miniature.
+class MediaEvents : public IMFPMediaPlayerCallback {
+public:
+    MediaEvents(HWND notify, UINT msg) : notify_(notify), msg_(msg) {}
+    STDMETHODIMP QueryInterface(REFIID riid, void** out) override {
+        if (!out) return E_POINTER;
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IMFPMediaPlayerCallback)) {
+            *out = static_cast<IMFPMediaPlayerCallback*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return ULONG(InterlockedIncrement(&ref_)); }
+    STDMETHODIMP_(ULONG) Release() override {
+        const LONG r = InterlockedDecrement(&ref_);
+        if (!r) delete this;
+        return ULONG(r);
+    }
+    void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* e) override {
+        if (e && (e->eEventType == MFP_EVENT_TYPE_ERROR || FAILED(e->hrEvent))) PostMessageW(notify_, msg_, 0, 0);
+    }
+
+private:
+    virtual ~MediaEvents() = default;
+    LONG ref_ = 1;
+    HWND notify_;
+    UINT msg_;
+};
 constexpr wchar_t kPreviewHandlerIid[] = L"{8895b1c6-b41f-4c1c-a562-0d564250836f}";
 } // namespace
 
@@ -64,11 +105,10 @@ bool PreviewHost::open(HINSTANCE instance, HWND parent, const RECT& rc, const st
     wc.lpfnWndProc = boxProc;
     wc.hInstance = instance;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(dark ? BLACK_BRUSH : WHITE_BRUSH));
     wc.lpszClassName = kBoxClass;
     RegisterClassExW(&wc);
     box_ = CreateWindowExW(0, kBoxClass, L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, rc.left, rc.top,
-                           rc.right - rc.left, rc.bottom - rc.top, parent, nullptr, instance, nullptr);
+                           rc.right - rc.left, rc.bottom - rc.top, parent, nullptr, instance, reinterpret_cast<void*>(INT_PTR(dark)));
     const RECT inner{0, 0, rc.right - rc.left, rc.bottom - rc.top};
     if (!box_ || FAILED(handler->SetWindow(box_, &inner)) || FAILED(handler->DoPreview())) {
         handler->Unload();
@@ -88,17 +128,18 @@ void PreviewHost::resize(const RECT& rc) {
 }
 
 void PreviewHost::close() {
-    if (handler_) {
-        handler_->Unload();
-        handler_.Reset();
-    }
-    if (box_) DestroyWindow(box_);
+    // Sortis des membres avant l'appel : une réentrance pendant Unload ne peut plus les toucher.
+    ComPtr<IPreviewHandler> handler = std::move(handler_);
+    const HWND box = box_;
     box_ = nullptr;
+    if (handler) handler->Unload();
+    if (box) DestroyWindow(box);
 }
 
 // ---- Vidéo et son ----
 
-bool MediaHost::open(HINSTANCE instance, HWND parent, const RECT& rc, const std::wstring& path, bool video) {
+bool MediaHost::open(HINSTANCE instance, HWND parent, const RECT& rc, const std::wstring& path, bool video, HWND notify,
+                     UINT errorMsg) {
     close();
     if (video) {
         WNDCLASSEXW wc{sizeof wc};
@@ -112,7 +153,8 @@ bool MediaHost::open(HINSTANCE instance, HWND parent, const RECT& rc, const std:
                                  rc.bottom - rc.top, parent, nullptr, instance, this);
         if (!video_) return false;
     }
-    if (FAILED(MFPCreateMediaPlayer(path.c_str(), TRUE, 0, nullptr, video_, &player_))) {
+    events_.Attach(new MediaEvents(notify, errorMsg));
+    if (FAILED(MFPCreateMediaPlayer(path.c_str(), TRUE, 0, events_.Get(), video_, &player_))) {
         log::warn(L"Coup d'œil : lecture impossible (%s)", path.c_str());
         close();
         return false;
@@ -124,11 +166,6 @@ void MediaHost::resize(const RECT& rc) {
     if (video_) SetWindowPos(video_, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-bool MediaHost::playing() const {
-    MFP_MEDIAPLAYER_STATE state = MFP_MEDIAPLAYER_STATE_EMPTY;
-    return player_ && SUCCEEDED(player_->GetState(&state)) && state == MFP_MEDIAPLAYER_STATE_PLAYING;
-}
-
 void MediaHost::toggle() {
     if (!player_) return;
     paused_ = !paused_;
@@ -138,13 +175,15 @@ void MediaHost::toggle() {
 
 void MediaHost::close() {
     paused_ = false;
-    if (player_) {
-        player_->Stop();
-        player_->Shutdown();
-        player_.Reset();
-    }
-    if (video_) DestroyWindow(video_);
+    ComPtr<IMFPMediaPlayer> player = std::move(player_);   // sorti avant l'appel (réentrance)
+    const HWND video = video_;
     video_ = nullptr;
+    if (player) {
+        player->Stop();
+        player->Shutdown();
+    }
+    events_.Reset();
+    if (video) DestroyWindow(video);
 }
 
 LRESULT CALLBACK MediaHost::proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
