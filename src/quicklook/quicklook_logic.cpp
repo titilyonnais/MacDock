@@ -105,4 +105,65 @@ std::wstring quickLookSize(std::uint64_t bytes) {
     return std::to_wstring(tenths / 10) + L"," + std::to_wstring(tenths % 10) + L" " + kUnits[u];
 }
 
+namespace {
+// Extension en minuscules, sans le point ; vide si le dernier point est dans un dossier.
+std::wstring extensionOf(const std::wstring& path) {
+    const auto dot = path.find_last_of(L'.');
+    const auto slash = path.find_last_of(L"\\/");
+    if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash)) return {};
+    std::wstring ext = path.substr(dot + 1);
+    for (auto& ch : ext) ch = wchar_t(std::towlower(ch));
+    return ext;
+}
+
+bool among(const std::wstring& ext, std::initializer_list<const wchar_t*> list) {
+    for (const wchar_t* e : list)
+        if (ext == e) return true;
+    return false;
+}
+
+bool isImage(const std::wstring& ext) {
+    return among(ext, {L"jpg", L"jpeg", L"jfif", L"png", L"gif", L"bmp", L"webp", L"heic", L"heif", L"avif", L"tif", L"tiff",
+                       L"ico"});
+}
+} // namespace
+
+QuickLookMedia quickLookMedia(const std::wstring& path) {
+    const std::wstring ext = extensionOf(path);
+    if (among(ext, {L"mp4", L"m4v", L"mov", L"wmv", L"avi", L"mkv", L"webm", L"3gp"})) return QuickLookMedia::Video;
+    if (among(ext, {L"mp3", L"m4a", L"aac", L"wav", L"flac", L"wma", L"ogg", L"opus"})) return QuickLookMedia::Audio;
+    return QuickLookMedia::None;
+}
+
+bool quickLookUsesShellPreview(const std::wstring& path) {
+    const std::wstring ext = extensionOf(path);
+    return !ext.empty() && !isImage(ext) && !quickLookIsText(path) && quickLookMedia(path) == QuickLookMedia::None;
+}
+
+SIZE quickLookDocumentSize(const std::wstring& path, SIZE screen, int titleBar) {
+    const std::wstring ext = extensionOf(path);
+    SIZE c{700, 560};
+    if (among(ext, {L"pdf", L"doc", L"docx", L"docm", L"odt", L"rtf", L"xps", L"oxps"})) c = SIZE{620, 820};
+    else if (among(ext, {L"xls", L"xlsx", L"xlsm", L"ods", L"ppt", L"pptx", L"odp", L"html", L"htm", L"mht", L"svg"}))
+        c = SIZE{900, 600};
+    c.cx = std::min<LONG>(c.cx, LONG(screen.cx * 0.9));
+    c.cy = std::min<LONG>(c.cy, LONG(screen.cy * 0.9) - titleBar);
+    return SIZE{c.cx, c.cy + titleBar};
+}
+
+RECT quickLookZoom(const RECT& from, const RECT& to, double t) {
+    const double u = std::clamp(t, 0.0, 1.0), e = 1 - std::pow(1 - u, 3);   // ralenti à l'arrivée
+    auto mix = [&](LONG a, LONG b) { return LONG(std::lround(a + (b - a) * e)); };
+    return RECT{mix(from.left, to.left), mix(from.top, to.top), mix(from.right, to.right), mix(from.bottom, to.bottom)};
+}
+
+RECT quickLookFullscreen(SIZE content, const RECT& monitor) {
+    const double mw = monitor.right - monitor.left, mh = monitor.bottom - monitor.top;
+    const double cw = std::max<LONG>(content.cx, 1), ch = std::max<LONG>(content.cy, 1);
+    const double k = std::min(mw / cw, mh / ch);
+    const LONG w = LONG(std::lround(cw * k)), h = LONG(std::lround(ch * k));
+    const LONG x = monitor.left + LONG((mw - w) / 2), y = monitor.top + LONG((mh - h) / 2);
+    return RECT{x, y, x + w, y + h};
+}
+
 } // namespace md
