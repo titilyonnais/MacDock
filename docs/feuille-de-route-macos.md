@@ -16,14 +16,14 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Coup d'œil** (Quick Look) : Espace dans l'Explorateur et sur le bureau (plan 28).
 - **Captures d'écran façon macOS** : ⊞⇧3, ⊞⇧4 (zone ou fenêtre), vignette flottante, fichier sur le Bureau (plan 29).
 - **Coup d'œil, finitions** : vrais aperçus des documents, vidéos et sons, zoom depuis l'icône, plein écran (plan 30).
+- **Exposé d'une app** : ⌃⌥↓ ou « Afficher toutes les fenêtres », fenêtres réduites en rangée en bas (plan 31).
 
 ## À faire, par ordre d'effet
 1. **Centre de notifications et widgets** : panneau à droite à l'ouverture de l'horloge.
 2. **Finder** : style de l'Explorateur (barre latérale, barre d'outils), avec un mod Windhawk de style XAML.
-3. **Exposé d'une app** : les fenêtres d'une seule app, depuis le menu du Dock ou avec ⌃↓.
-4. **Raccourcis ⌘** : Alt+C, V, X, Z, A, S, W, Q, T et N joués comme Ctrl, en option (« la touche ⌘ »).
-5. **Sons système façon macOS** : sons originaux (aucun son Apple), dont un déclic d'appareil photo pour les captures.
-6. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
+3. **Raccourcis ⌘** : Alt+C, V, X, Z, A, S, W, Q, T et N joués comme Ctrl, en option (« la touche ⌘ »).
+4. **Sons système façon macOS** : sons originaux (aucun son Apple), dont un déclic d'appareil photo pour les captures.
+5. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; menus, Spotlight et pastilles visibles sur les captures.
 
 ## Limites connues
 - Les apps qui dessinent des onglets ou des menus tout en haut à gauche (navigateurs, Explorateur, Bloc-notes) n'ont pas de place libre pour les pastilles. Elles s'y posent, mais les clics autour passent à l'app.
