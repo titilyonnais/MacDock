@@ -12,6 +12,7 @@
 
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
+#include "../core/diag.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../tracker/app_identity.h"
@@ -50,6 +51,7 @@ struct UiaTitles {
 };
 constexpr UINT_PTR kClockTimer = 0x434C;        // "CL"
 constexpr UINT_PTR kSampleTimeout = 0x5354;     // "ST" : pas d'image utilisable de la capture
+constexpr UINT_PTR kShotRevealTimer = 0x5352;   // "SR" : sécurité, si le Dock ne rend jamais la main
 constexpr UINT_PTR kResampleTimer = 0x5253;     // "RS" : diaporama de fonds d'écran
 constexpr UINT_PTR kResampleSoon = 0x5253 + 1;  // après un changement de fond (transition de Windows)
 constexpr UINT_PTR kConfigTimer = 0x4346;       // "CF"
@@ -805,7 +807,7 @@ void MenuBarApp::scheduleClock() {
 // ---- Couleur du texte ----
 
 void MenuBarApp::startSample(Screen& s) {
-    if (menuOpen_ || hud_.visible() || s.sampler.running() || !s.visible || !s.hwnd) return;
+    if (menuOpen_ || shotReveal_ || hud_.visible() || s.sampler.running() || !s.visible || !s.hwnd) return;
     // La barre est exclue de la capture le temps de l'échantillon : on mesure le fond, pas son texte.
     SetWindowDisplayAffinity(s.hwnd, WDA_EXCLUDEFROMCAPTURE);
     RECT strip{s.rect.left, s.rect.top, s.rect.right, s.rect.top + s.heightPx};
@@ -818,6 +820,29 @@ void MenuBarApp::startSample(Screen& s) {
 
 void MenuBarApp::startSamples() {
     for (std::size_t i = 0; i < screens_.size(); ++i) startSample(*screens_[i]);
+}
+
+void MenuBarApp::abortSamples() {
+    for (auto& s : screens_) {
+        if (!s->sampler.running()) continue;
+        s->sampler.stop();
+        KillTimer(s->hwnd, kSampleTimeout);
+        SetWindowDisplayAffinity(s->hwnd, WDA_NONE);   // la barre réapparaît dans les captures d'écran
+    }
+}
+
+void MenuBarApp::onScreenshotReveal(bool on) {
+    if (on) {
+        shotReveal_ = true;
+        abortSamples();
+        lights_.setCaptureVisible(true);
+        SetTimer(ctl_, kShotRevealTimer, 3000, nullptr);   // le Dock rend la main en moins d'une seconde
+    } else if (shotReveal_) {
+        shotReveal_ = false;
+        KillTimer(ctl_, kShotRevealTimer);
+        lights_.setCaptureVisible(false);
+    }
+    if (trace_ || diagnosticCapture()) log::info(L"[trace] capture d'écran : pastilles %s", on ? L"visibles" : L"exclues de nouveau");
 }
 
 void MenuBarApp::stopSamples() {   // une seule duplication d'un écran par processus : le menu capture à son tour
@@ -1347,6 +1372,10 @@ LRESULT MenuBarApp::handleScreen(Screen& s, UINT msg, WPARAM wp, LPARAM lp) {
 
 LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
+    if (shotRevealMsg_ && msg == shotRevealMsg_) {
+        onScreenshotReveal(wp != 0);
+        return 1;
+    }
     switch (msg) {
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
@@ -1430,6 +1459,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     render();
                     break;
                 case kHudTimer: stepHud(); break;
+                case kShotRevealTimer: onScreenshotReveal(false); break;
                 case kTrayPruneTimer:
                     if (tray_.prune([](std::uint64_t h) { return IsWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(h))) != FALSE; }))
                         SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);
@@ -1550,6 +1580,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
         return 2;
     }
     loadSettings(false);   // écrit menubar.json s'il manque (la barre tourne maintenant)
+    shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     lights_.create(instance);
     lights_.setAlwaysLeft(settings_.lightsAlwaysLeft);
     rebuildScreens();

@@ -178,10 +178,10 @@ std::vector<std::uint8_t> premultiply(const BgraImage& img) {
     return out;
 }
 
-std::vector<std::uint8_t> thumbnailPixels(const BgraImage& small, double scale, int& w, int& h, int& margin) {
+std::vector<std::uint8_t> thumbnailPixels(const BgraImage& reduced, double scale, int& w, int& h, int& margin) {
     w = h = margin = 0;
-    if (small.w <= 0 || small.h <= 0 || small.px.size() < std::size_t(small.w) * small.h * 4) return {};
-    BgraImage img = small;
+    if (reduced.w <= 0 || reduced.h <= 0 || reduced.px.size() < std::size_t(reduced.w) * reduced.h * 4) return {};
+    BgraImage img = reduced;
     // Liseré sombre très fin le long du bord (la vignette se détache aussi sur un fond clair).
     const int edge = std::max(1, int(std::lround(scale)));
     for (int y = 0; y < img.h; ++y)

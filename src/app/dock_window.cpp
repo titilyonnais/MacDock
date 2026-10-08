@@ -1,6 +1,7 @@
 #include "dock_window.h"
 
 #include <dcomp.h>
+#include <dwmapi.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
 #include <shobjidl.h>
@@ -20,6 +21,7 @@
 #include "../core/diag.h"
 #include "../quicklook/quicklook_logic.h"
 #include "../quicklook/quicklook_shell.h"
+#include "../screenshot/screen_grab.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
@@ -59,6 +61,10 @@ constexpr UINT WM_APP_SWITCHKEY = WM_APP + 13;   // wParam : kHotSwitch… (frap
 constexpr UINT WM_APP_CORNER = WM_APP + 12;  // wParam : HotCornerAction (lancée hors du suivi du pointeur)
 constexpr UINT WM_APP_QUICKLOOK = WM_APP + 30;      // wParam : fenêtre au premier plan (Espace dans une vue Shell)
 constexpr UINT WM_APP_QUICKLOOK_KEY = WM_APP + 31;  // wParam : touche pendant l'aperçu (Espace, Échap, Entrée)
+constexpr UINT WM_APP_SHOT = WM_APP + 32;        // wParam : 1 écran entier (⊞⇧3), 2 viseur (⊞⇧4) ; lParam : ⌃
+constexpr UINT WM_APP_SHOT_KEY = WM_APP + 33;    // wParam : ShotSessionKey (Échap, Espace pendant le viseur)
+constexpr UINT WM_APP_SHOT_SAVED = WM_APP + 34;  // wParam : écrit ; lParam : std::wstring* (chemin, à libérer)
+constexpr UINT_PTR kShotResumeTimer = 0x5352;    // "SR" : capture du verre reprise, Dock de nouveau exclu
 constexpr UINT_PTR kQuickLookTimer = 0x514C;        // "QL" : l'aperçu suit la sélection de l'Explorateur
 constexpr ULONG_PTR kQuickLookReplay = 0x4D44514C;   // Espace rejoué pour l'Explorateur : le crochet le laisse passer
 constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement ; lParam : point écran (crochet)
@@ -169,6 +175,7 @@ void DockApp::applySettings() {
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     if (!snapshot_) genie_.prepare(instance_);
     updateGlass();   // réglage glass modifié à chaud
+    shotKeysOn_ = settings_.screenshots && !snapshot_;
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
         registerMissionHotkey();
@@ -434,6 +441,160 @@ void DockApp::resumeCapture() {
     capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
                    {rc.left, rc.top, rc.right, rc.bottom});
     requestFrame();
+}
+
+// ---- Captures d'écran façon macOS ----
+
+bool DockApp::shotIgnores(HWND h) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    if (pid == GetCurrentProcessId()) return true;   // Dock, viseur, vignette, menus
+    wchar_t cls[64] = {};
+    GetClassNameW(h, cls, 64);
+    return wcscmp(cls, L"MacMenuBarLights") == 0;   // pastilles posées sur la fenêtre : elles en font partie
+}
+
+void DockApp::revealForCapture(bool dock, bool lights) {
+    revealDock_ = dock && excluded_;
+    shotPausedCapture_ = false;
+    if (revealDock_) {
+        // Le verre garde sa dernière image : sa capture ne doit pas voir le Dock pendant ce temps.
+        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
+        if (shotPausedCapture_) pauseCapture();
+        SetWindowDisplayAffinity(hwnd_, WDA_NONE);
+    }
+    revealLights_ = false;
+    if (lights && shotRevealMsg_)
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) {
+            DWORD_PTR r = 0;
+            revealLights_ = SendMessageTimeoutW(bar, shotRevealMsg_, 1, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 400, &r) && r == 1;
+        }
+    // L'affichage change à la prochaine composition : deux images de DWM avant la copie.
+    DwmFlush();
+    DwmFlush();
+}
+
+void DockApp::concealAfterCapture() {
+    if (revealDock_) {
+        SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
+        if (shotPausedCapture_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
+    }
+    if (revealLights_)
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) PostMessageW(bar, shotRevealMsg_, 0, 0);
+    revealDock_ = revealLights_ = false;
+}
+
+namespace {
+BOOL CALLBACK addShotMonitor(HMONITOR m, HDC, LPRECT, LPARAM lp) {
+    reinterpret_cast<std::vector<HMONITOR>*>(lp)->push_back(m);
+    return TRUE;
+}
+} // namespace
+
+void DockApp::takeScreenShot(bool clipboard) {
+    if (viewfinder_.active() || snapshot_) return;
+    std::vector<HMONITOR> monitors;
+    EnumDisplayMonitors(nullptr, nullptr, addShotMonitor, reinterpret_cast<LPARAM>(&monitors));
+    // Écran principal d'abord (« … .png »), les autres ensuite (« … (2).png »…), comme sur macOS.
+    std::stable_partition(monitors.begin(), monitors.end(), [](HMONITOR m) {
+        MONITORINFO mi{sizeof mi};
+        return GetMonitorInfoW(m, &mi) && (mi.dwFlags & MONITORINFOF_PRIMARY);
+    });
+    std::vector<std::pair<HMONITOR, BgraImage>> shots;
+    revealForCapture(true, true);
+    for (HMONITOR m : monitors) {
+        MONITORINFO mi{sizeof mi};
+        if (GetMonitorInfoW(m, &mi)) shots.emplace_back(m, grabScreen(mi.rcMonitor));
+    }
+    concealAfterCapture();
+    POINT cursor;
+    GetCursorPos(&cursor);
+    deliverShots(std::move(shots), MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY), clipboard);
+}
+
+void DockApp::startRegionShot(bool clipboard) {
+    if (viewfinder_.active() || menuOpen_ || snapshot_) return;
+    shotClipboard_ = clipboard;
+    shotSession_ = true;
+    menuOpen_ = true;   // une fenêtre modale à la fois ; le Dock ne réagit plus au survol
+    controller_.setCursor(std::nullopt);
+    requestFrame();
+    if (!viewfinder_.start(instance_, [this](const ShotViewfinder::Result& r) { onViewfinderDone(r); }, shotIgnores)) {
+        shotSession_ = false;
+        menuOpen_ = false;
+    }
+}
+
+void DockApp::onViewfinderDone(const ShotViewfinder::Result& r) {
+    shotSession_ = false;
+    menuOpen_ = false;
+    requestFrame();
+    const bool clipboard = shotClipboard_;
+    shotClipboard_ = false;
+    if (r.kind == ShotViewfinder::Result::Kind::Cancel) return;
+    BgraImage img;
+    if (r.kind == ShotViewfinder::Result::Kind::Region) {
+        revealForCapture(true, true);
+        img = grabScreen(r.rect);
+        concealAfterCapture();
+    } else if (IsWindow(r.window)) {
+        // La fenêtre seule : copie de l'écran si rien ne la recouvre (pastilles comprises, Dock exclu : on voit ce
+        // qu'il cache), sinon sa propre image.
+        RECT frame = windowFrameBounds(r.window);
+        revealForCapture(false, true);
+        if (windowUnobscured(r.window, frame, shotIgnores)) img = grabScreen(frame);
+        concealAfterCapture();
+        if (img.px.empty()) img = grabWindow(r.window, frame);
+        if (!img.px.empty()) {
+            roundCorners(img, windowCornerRadius(r.window));
+            if (r.shadow) img = withShadow(img, windowShadowSpec(monitorScale(r.monitor)));
+        }
+    }
+    std::vector<std::pair<HMONITOR, BgraImage>> shots;
+    shots.emplace_back(r.monitor, std::move(img));
+    deliverShots(std::move(shots), r.monitor, clipboard);
+}
+
+void DockApp::deliverShots(std::vector<std::pair<HMONITOR, BgraImage>> shots, HMONITOR thumbOn, bool clipboard) {
+    std::erase_if(shots, [](const auto& s) { return s.second.px.empty(); });
+    if (shots.empty()) {
+        log::warn(L"Capture d'écran : aucune image");
+        return;
+    }
+    std::size_t main = 0;
+    for (std::size_t i = 0; i < shots.size(); ++i)
+        if (shots[i].first == thumbOn) main = i;
+    if (clipboard) {   // ⌃ : ni fichier ni vignette, comme sur macOS
+        if (!copyImageToClipboard(hwnd_, shots[main].second)) log::warn(L"Capture d'écran : presse-papiers indisponible");
+        return;
+    }
+    const std::wstring dir = desktopFolder();
+    if (dir.empty()) {
+        log::warn(L"Capture d'écran : Bureau introuvable");
+        return;
+    }
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    const std::wstring base = screenshotBaseName(now);
+    std::vector<std::wstring> paths;
+    for (std::size_t i = 0; i < shots.size(); ++i)
+        paths.push_back(uniqueScreenshotPath(dir, base, int(i) + 1, [&](const std::wstring& p) {
+            return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES || std::find(paths.begin(), paths.end(), p) != paths.end();
+        }));
+    shotThumb_.show(instance_, shots[main].second, paths[main], shots[main].first);   // tout de suite, depuis la mémoire
+    std::erase_if(shotJobs_, [](std::future<void>& f) { return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready; });
+    std::vector<BgraImage> images;
+    for (auto& s : shots) images.push_back(std::move(s.second));
+    const HWND target = hwnd_;
+    shotJobs_.push_back(std::async(std::launch::async, [images = std::move(images), paths, target] {
+        const HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        for (std::size_t i = 0; i < images.size(); ++i) {
+            const bool ok = saveScreenshotPng(images[i], paths[i]);
+            auto* p = new std::wstring(paths[i]);
+            if (!PostMessageW(target, WM_APP_SHOT_SAVED, ok ? 1 : 0, reinterpret_cast<LPARAM>(p))) delete p;
+        }
+        if (SUCCEEDED(co)) CoUninitialize();
+    }));
 }
 
 void DockApp::onBackdrop() {
@@ -1696,6 +1857,32 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const unsigned vk = k->vkCode & 0xFF;
         const bool repeat = down && held[vk];
         held[vk] = down;
+        // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
+        if (self_->shotSession_) {
+            const ShotSessionKey s = screenshotSessionKey(vk, down, repeat);
+            if (s == ShotSessionKey::Cancel || s == ShotSessionKey::ToggleWindow)
+                PostMessageW(self_->hwnd_, WM_APP_SHOT_KEY, WPARAM(s), 0);
+            if (s != ShotSessionKey::Pass) return 1;
+        }
+        if ((vk == '3' || vk == '4') && self_->shotKeysOn_) {
+            static bool taken[2] = {};   // fil du crochet seulement : appui pris, relâchement avalé aussi
+            bool& t = taken[vk - '3'];
+            auto pressed = [](int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; };
+            ShotKeyEvent e;
+            e.vk = vk;
+            e.down = down;
+            e.repeat = repeat;
+            e.injected = (k->flags & LLKHF_INJECTED) != 0 && !diagnosticCapture();   // acceptées en diagnostic (essais)
+            e.mods = ShotMods{pressed(VK_LWIN) || pressed(VK_RWIN), pressed(VK_SHIFT), pressed(VK_CONTROL), pressed(VK_MENU)};
+            e.taken = t;
+            const ShotKey a = screenshotKey(e);
+            if (!down) t = false;
+            if (a == ShotKey::Screen || a == ShotKey::Region) {
+                t = true;
+                PostMessageW(self_->hwnd_, WM_APP_SHOT, a == ShotKey::Screen ? 1 : 2, e.mods.ctrl ? 1 : 0);
+            }
+            if (a != ShotKey::Pass) return 1;
+        }
         // Coup d'œil : Espace dans la liste des fichiers ; pendant l'aperçu, Espace, Échap et Entrée lui reviennent.
         if ((vk == VK_SPACE || vk == VK_ESCAPE || vk == VK_RETURN) && k->dwExtraInfo != kQuickLookReplay) {
             // Frappes simulées ignorées (une app qui tape un texte) ; acceptées en diagnostic pour les essais.
@@ -1906,6 +2093,28 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case WM_APP_SHOT: {
+            // Touche neutre : ⊞ relâchée sans autre frappe visible ouvrirait le menu Démarrer.
+            INPUT in[2] = {};
+            in[0].type = in[1].type = INPUT_KEYBOARD;
+            in[0].ki.wVk = in[1].ki.wVk = 0xE8;
+            in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, in, sizeof(INPUT));
+            if (wp == 1) takeScreenShot(lp != 0);
+            else startRegionShot(lp != 0);
+            return 0;
+        }
+        case WM_APP_SHOT_KEY:
+            viewfinder_.key(ShotSessionKey(wp));
+            return 0;
+        case WM_APP_SHOT_SAVED: {
+            std::unique_ptr<std::wstring> path(reinterpret_cast<std::wstring*>(lp));
+            if (!path) return 0;
+            shotThumb_.fileSaved(*path, wp != 0);
+            if (wp) log::info(L"Capture d'écran : %s", path->c_str());
+            else log::warn(L"Capture d'écran : écriture impossible (%s)", path->c_str());
+            return 0;
+        }
         case WM_APP_QUICKLOOK_KEY:   // Espace, Échap, ou Entrée (passée aussi à l'Explorateur) : fermeture
             quickLook_.close();
             quickLookWatch_.reset();
@@ -1944,6 +2153,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
+            if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
+                KillTimer(hwnd_, kShotResumeTimer);
+                resumeCapture();
+                return 0;
+            }
             if (wp == kQuickLookTimer) {   // l'aperçu suit la sélection (flèches, clics dans l'Explorateur)
                 const HWND owner = quickLook_.owner();
                 // Fermé si l'Explorateur (ou le bureau) n'est plus au premier plan : l'aperçu flotte au-dessus de tout.
@@ -2263,6 +2477,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(hwnd_, spotlightMsg_, MSGFLT_ALLOW, nullptr);
     registerSpotlightHotkey();
     missionMsg_ = RegisterWindowMessageW(L"MacDockMissionControl");
+    shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
     switcher_.onClick = [this](std::size_t i) {   // clic sur une icône : cette app, tout de suite
@@ -2390,6 +2605,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         dropTarget_->Release();
         dropTarget_ = nullptr;
     }
+    viewfinder_.cancel();
+    shotThumb_.close();
+    for (auto& job : shotJobs_) job.wait();   // captures en cours d'écriture : jamais de fichier coupé
     capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();

@@ -170,9 +170,9 @@ TEST_CASE(screenshot_premultiplied_for_png) {
 }
 
 TEST_CASE(screenshot_thumbnail_pixels_rounded_with_margin) {
-    const md::BgraImage small = solid(200, 120, 90, 90, 90);
+    const md::BgraImage reduced = solid(200, 120, 90, 90, 90);
     int w = 0, h = 0, margin = 0;
-    const auto px = md::thumbnailPixels(small, 1.0, w, h, margin);
+    const auto px = md::thumbnailPixels(reduced, 1.0, w, h, margin);
     CHECK(margin > 0 && w == 200 + 2 * margin && h == 120 + 2 * margin);
     CHECK(px.size() == std::size_t(w) * h * 4);
     auto a = [&](int x, int y) { return int(px[(std::size_t(y) * w + x) * 4 + 3]); };

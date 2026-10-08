@@ -62,7 +62,7 @@ BgraImage withShadow(const BgraImage& img, const ShadowSpec& spec);   // ombre n
 std::vector<std::uint8_t> premultiply(const BgraImage& img);          // BGRA prémultiplié (PNG, fenêtres en couches)
 // Vignette : image déjà réduite → coins arrondis, liseré, petite ombre ; BGRA prémultiplié de w × h pixels, l'image
 // commençant à (margin, margin).
-std::vector<std::uint8_t> thumbnailPixels(const BgraImage& small, double scale, int& w, int& h, int& margin);
+std::vector<std::uint8_t> thumbnailPixels(const BgraImage& reduced, double scale, int& w, int& h, int& margin);
 // Curseur appareil photo du mode fenêtre (corps noir, contour blanc), dessiné par le code : BGRA non prémultiplié.
 std::vector<std::uint8_t> cameraCursorPixels(int size);
 
