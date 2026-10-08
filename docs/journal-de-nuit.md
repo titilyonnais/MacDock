@@ -709,6 +709,60 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - le Dock réécrit encore tout settings.json lors de ses propres changements (fenêtre de 200 ms) ;
   - les branches `IsZoomed`, inatteignables, sont gardées.
 
+### Correctifs du 8 octobre, fin de soirée — fenêtres, pastilles, police des boîtes de dialogue
+
+- **Réduction qui saccade** :
+  - cause : les pastilles recouvrent le bouton « réduire » de Windows, que le Dock surveillait pour préparer le génie
+    pendant l'appui ; la capture partait donc au relâchement, en retard ;
+  - correction : l'appui sur la pastille jaune prévient le Dock (`MacDockGenieArm`), qui prépare la capture tout de
+    suite.
+- **Agrandir et restaurer instantanés** :
+  - cause : MacDock coupait l'animation de Windows pour tout le système (`iMinAnimate = 0`) pendant que le génie
+    tournait, ce qui supprimait aussi l'agrandissement, la restauration et l'ouverture des fenêtres ;
+  - mesure (enregistrement image par image d'une fenêtre d'essai, MacDock arrêté) : l'animation de DWM d'une seule
+    fenêtre se coupe depuis un autre processus (`DWMWA_TRANSITIONS_FORCEDISABLED`), mais seulement si l'attribut est
+    posé avant le changement d'état. Posé 5 ou 30 ms après, Windows joue quand même sa réduction ;
+  - correction : ta préférence d'animation est gardée. Seule la fenêtre que le génie va réduire ou restaurer perd son
+    animation, puis la retrouve (`TransitionGate`, testée) ;
+  - annonces avant la réduction : pastille jaune, bouton réduire, Win+↓, Réduire et Masquer depuis la barre de menus
+    (`MacDockWillMinimize`), départ du génie ;
+  - les pastilles attendent la fin de l'animation d'agrandissement (≈ 290 ms mesurées) avant de réapparaître.
+- **Pastilles sur toutes les fenêtres** :
+  - avant, seule la fenêtre active en avait : les autres gardaient les boutons de Windows jusqu'au clic ;
+  - maintenant, un calque par fenêtre à barre de titre, juste au-dessus d'elle. Les pastilles des fenêtres inactives
+    sont grises et reprennent leurs couleurs au survol ; elles ferment ou réduisent sans activer la fenêtre, comme sur
+    macOS ;
+  - vérifié en réel : cinq fenêtres, chaque calque juste au-dessus de la sienne, pastilles grises sur Claude inactive.
+- **« Glitch sur les contours » en sortant du plein écran** :
+  - l'enregistreur a montré tout l'écran arrondi aux quatre coins, sur fond noir, pendant le plein écran de Brave ;
+  - cause : l'apparence macOS impose des coins arrondis à Brave, qui garde la même fenêtre en plein écran ;
+  - correction : une fenêtre qui couvre son écran sans être agrandie est rendue à Windows (coins carrés), puis
+    retrouve ses coins arrondis à la sortie.
+- **Police « dégueulasse » dans les boîtes de dialogue** (Exécuter, Ouvrir, Enregistrer sous) :
+  - c'était la vieille police bitmap « System » de Windows ;
+  - cause, prouvée par une boîte d'essai : Windows vérifie avec `GetTextFaceAliasW` que la police d'une boîte de
+    dialogue porte le nom demandé (« Segoe UI », « MS Shell Dlg 2 »). Le mod répondait « SF Pro Text », la
+    vérification échouait, et Windows prenait « System » ;
+  - correction (mod 1.3.0) : le mod se souvient du nom demandé pour les polices qu'il remplace et le rend à cette
+    vérification. La police dessinée reste SF Pro ;
+  - **à faire de ton côté** : relance le raccourci « Installer le mod macOS Look (Windhawk) » et réponds O pour
+    redémarrer l'Explorateur (c'est lui qui affiche Exécuter).
+- **Relecture indépendante** : aucun défaut critique ; les points importants sont corrigés et testés :
+  - le génie ne prend que les réductions annoncées ; les autres (bouton de la barre des tâches, ⊞M, app qui se
+    réduit seule) gardent l'animation de Windows seule, sans double animation ;
+  - une seconde réduction pendant un génie est retenue à temps ; « Masquer les autres » prévient le Dock ;
+  - l'ordre des calques est recalé à chaque changement de fenêtre active et à chaque réordonnancement du bureau
+    (⎇⎋), sinon des pastilles pouvaient flotter sur une autre fenêtre ;
+  - mineurs corrigés aussi : fenêtres marquées pour qu'un Dock relancé après un plantage leur rende leurs
+    animations, minuteur arrêté quand tout est réduit, fenêtre active hors plafond de calques, fenêtres « toujours
+    au-dessus », attente des pastilles après une restauration animée par Windows.
+- **Mineurs reportés** :
+  - sur une fenêtre inactive à moitié recouverte, la couleur sous les pastilles peut être prise sur la fenêtre du
+    dessus ;
+  - un processus dont toutes les fenêtres sont masquées garde son crochet de déplacements ;
+  - « Masquer » enchaîne un génie par fenêtre (comme avant) au lieu de les faire disparaître d'un coup comme macOS ;
+  - le test `uia_menus_read_and_invoke_fake_app` est lent quand la machine est chargée (10 s pour 15 s permises).
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
