@@ -69,8 +69,8 @@ TEST_CASE(menu_layout_reserves_icon_space) {
 TEST_CASE(menu_layout_reserves_shortcut_width) {
     md::MenuModel m;
     m.items.push_back({1, L"Enregistrer"});
-    CHECK_NEAR(md::layoutMenu(m, 150).width, 208, 1e-9);            // 2×5 + 20 + 150 + 28
-    CHECK_NEAR(md::layoutMenu(m, 150, 40).width, 272, 1e-9);        // + 24 d'écart + 40 de raccourci
+    CHECK_NEAR(md::layoutMenu(m, 150).width, 199, 1e-9);            // 2×5 + 11 (sans coche) + 150 + 28
+    CHECK_NEAR(md::layoutMenu(m, 150, 40).width, 263, 1e-9);        // + 24 d'écart + 40 de raccourci
     CHECK_NEAR(md::layoutMenu(m, 100, 0).width, md::kMenuMinWidth, 1e-9);
 }
 
@@ -88,4 +88,17 @@ TEST_CASE(bar_title_at_skips_current) {
     CHECK_EQ(md::barTitleAt(titles, POINT{120, 23}, 1), 2);
     CHECK_EQ(md::barTitleAt(titles, POINT{120, 24}, 1), -1);  // sous la barre
     CHECK_EQ(md::barTitleAt(titles, POINT{200, 10}, 1), -1);
+}
+
+TEST_CASE(menu_layout_text_close_to_edge_without_checks) {
+    // macOS 27 (menu Édition) : sans coche, le texte commence à ~15 pt du bord ; la colonne de coche n'est réservée
+    // que dans un menu qui en a.
+    md::MenuModel plain;
+    plain.items = {md::MenuItem{1, L"Couper"}, md::MenuItem{2, L"Copier"}};
+    md::MenuModel checks = plain;
+    checks.items[1].checked = true;
+    const auto a = md::layoutMenu(plain, 200), b = md::layoutMenu(checks, 200);
+    CHECK_NEAR(md::kMenuPadding + a.textLeft, 16, 1.0);
+    CHECK_NEAR(b.textLeft, md::kMenuTextLeft, 1e-9);
+    CHECK(a.width < b.width);
 }

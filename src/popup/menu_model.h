@@ -18,6 +18,7 @@ constexpr double kMenuItemHeight = 24;
 constexpr double kMenuSeparatorHeight = 11;   // trait de 1 pt et 5 pt de marge de chaque côté
 constexpr double kMenuPadding = 5;            // marge intérieure du panneau
 constexpr double kMenuTextLeft = 20;          // place de la coche
+constexpr double kMenuTextLeftCompact = 11;   // menu sans coche : texte à ~15 pt du bord (macOS 27)
 constexpr double kMenuTextRight = 28;         // place de la flèche de sous-menu
 constexpr double kMenuRadius = 12;            // rayon du panneau
 constexpr double kMenuHighlightRadius = 6;    // rayon de la capsule de survol
@@ -92,6 +93,7 @@ struct MenuLayout {
     double width = 0, height = 0;
     std::vector<double> top;       // haut de chaque entrée, depuis le haut du panneau
     double iconSpace = 0;          // place des icônes devant le texte (0 si aucune entrée n'en a)
+    double textLeft = kMenuTextLeft;   // colonne de coche, réduite dans un menu sans coche
 };
 
 // textWidthMax, shortcutWidthMax : largeurs du texte et du raccourci les plus longs (points), mesurées par l'appelant.

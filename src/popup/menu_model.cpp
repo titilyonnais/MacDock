@@ -71,9 +71,11 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWi
     double text = std::isfinite(textWidthMax) ? std::max(0.0, textWidthMax) : 0.0;
     if (std::any_of(m.items.begin(), m.items.end(), [](const MenuItem& it) { return it.icon != nullptr; }))
         l.iconSpace = kMenuIconSize + kMenuIconGap;
+    if (std::none_of(m.items.begin(), m.items.end(), [](const MenuItem& it) { return it.checked; }))
+        l.textLeft = kMenuTextLeftCompact;
     double shortcut = std::isfinite(shortcutWidthMax) && shortcutWidthMax > 0 ? kMenuShortcutGap + shortcutWidthMax : 0.0;
     l.width = std::max(kMenuMinWidth,
-                       std::ceil(2 * kMenuPadding + kMenuTextLeft + l.iconSpace + text + shortcut + kMenuTextRight));
+                       std::ceil(2 * kMenuPadding + l.textLeft + l.iconSpace + text + shortcut + kMenuTextRight));
     if (m.width > 0) l.width = m.width;
     return l;
 }

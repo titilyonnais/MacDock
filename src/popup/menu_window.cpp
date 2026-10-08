@@ -397,7 +397,7 @@ void Session::drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& pane
         }
         if (it.checked && symbolFormat)
             d->DrawTextW(L"✓", 1, symbolFormat.Get(), D2D1::RectF(x0 + 5 * sc, top, x0 + 20 * sc, top + rowH), ink);
-        const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+        const float textX = x0 + float(p.layout.textLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
         if (it.icon) {
             if (p.icons.size() < p.model->items.size()) p.icons.resize(p.model->items.size());
             if (!p.icons[i]) {
@@ -622,7 +622,7 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
             break;
         }
         case MenuRow::Toggle: {
-            const float textX = x0 + float(kMenuTextLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
+            const float textX = x0 + float(p.layout.textLeft) * sc - float(kMenuPadding) * sc + 4 * sc;
             if (i < p.texts.size() && p.texts[i]) {
                 DWRITE_TEXT_METRICS tm{};
                 p.texts[i]->GetMetrics(&tm);
