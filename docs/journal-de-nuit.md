@@ -560,6 +560,22 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - Même principe que pour les menus : visibles aux captures le temps de la copie, verre gelé jusqu'à 150 ms après. Spotlight (Dock) et la pastille du volume et de la luminosité (barre) apparaissent maintenant sur ⊞⇧3 et ⊞⇧4.
 - **Non vérifié en vrai**, pour la même raison qu'au plan 35.
 
+### Plan 37 — Moteur Liquid Glass v2 et moteur d'animations
+
+- **Recréés par nous**, à partir des présentations publiques d'Apple et de mesures à l'écran, sans aucun code d'Apple.
+- **Animations** (`src/anim/motion.*`) :
+  - des ressorts réglés comme ceux de SwiftUI, par la réponse (durée d'une oscillation) et la fraction d'amortissement : 1 sans rebond, moins de 1 avec rebond ;
+  - une animation interrompue repart de sa vitesse, sans saut ;
+  - des courbes de Bézier comme les fonctions de temps de Core Animation (`default`, `easeInOut`, `easeIn`, `easeOut`) ;
+  - des préréglages macOS : apparition et fermeture des menus, agrandissement du Dock, rebond, glissement d'un panneau, métamorphose du verre.
+- **Verre v2** (`glass_ps.hlsl`, `GlassRenderer`) :
+  - **fusion des formes** : jusqu'à 8 formes de verre se rejoignent par un pont arrondi quand elles se rapprochent (paramètre `merge`), comme les boutons de verre de macOS 26 qui se séparent ou se réunissent ; c'est la base des métamorphoses ;
+  - **lumière des reflets réglable** (`lightX`, `lightY`). Par défaut, elle vient d'en haut, et le rendu est exactement celui calé au plan 26.
+- **Vérifié** :
+  - par un rendu hors écran sur la carte graphique logicielle : deux carrés distants de 16 px se relient avec la fusion, pas sans, et le reflet passe en bas quand la lumière vient d'en bas ;
+  - le verre du Dock est inchangé à l'écran.
+- **Suite** : brancher la fusion et les ressorts dans l'interface (infobulle qui naît du Dock, menus qui jaillissent de la barre). Les captures d'un vrai Mac permettraient de régler finement les réponses et amortissements.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
