@@ -4,6 +4,7 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
 
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.
+- **Réglages MacDock** (`MacDockSettings.exe`) : une app façon Réglages Système de macOS pour tout régler, appliqué en direct. On l'ouvre par  > « Réglages MacDock… », par le clic droit sur le Dock (« Réglages du Dock… ») ou sur la barre (« Réglages de la barre des menus… »).
 - **Coup d'œil** : dans l'Explorateur ou sur le bureau, **Espace** sur un fichier sélectionné l'affiche dans une fenêtre flottante, qui s'ouvre en zoom depuis son icône.
   - **Ce qu'elle montre** :
     - les photos ;
@@ -151,6 +152,15 @@ Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
 - **Logo** : par défaut celui de Windows. Pour le remplacer, mets une image `menubar-logo.png` dans `%APPDATA%\MacDock\` ; seule sa transparence compte, elle prend la couleur du texte.
 
 ## Réglages
+
+Le plus simple : l'app **Réglages MacDock** ( > « Réglages MacDock… »).
+- Barre latérale de sections.
+- Interrupteurs, curseurs et menus appliqués tout de suite.
+- Clair ou sombre selon Windows.
+
+Sections déjà prêtes : Dock, Barre des menus et Fenêtres. Les autres suivent : Général, Mission Control, Clavier, Captures, Sons, Police, Mods Windhawk, À propos.
+
+Elle écrit les mêmes fichiers que ceux décrits ci-dessous, et seulement la clé changée : rien de ce que le Dock y a écrit n'est perdu.
 
 Tout est dans `%APPDATA%\MacDock\`, rechargé à chaud quand tu enregistres :
 

@@ -25,7 +25,9 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **⊞⇧5 et enregistrement de l'écran** (plan 39).
 
 ## À faire, par ordre d'effet
-1. **App Réglages de MacDock** : une vraie app façon Réglages Système pour tout régler (Dock, barre, fenêtres, raccourcis, captures, sons, police…), belle et entièrement fonctionnelle, à la place des fichiers JSON.
+1. **App Réglages de MacDock** (plan 41 fait : fenêtre, sections Dock, Barre des menus, Fenêtres, liens) :
+   - **plan 42** : Général (démarrage avec Windows, sauvegarde), Mission Control et coins actifs, Clavier (raccourcis modifiables), Captures, Sons, Police, Mods Windhawk, À propos, recherche ;
+   - **plan 43** : finitions et icône de l'exécutable.
 2. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
    - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;

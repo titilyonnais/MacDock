@@ -673,6 +673,24 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   NVIDIA, Discord), les vignettes et les fenêtres outils sont ignorés.
 - **Vérifié en réel** : vidéo en plein écran, travail sur l'autre écran, la barre de l'écran principal reste cachée.
 
+### Plan 41 — app Réglages MacDock (1/3)
+
+- **`MacDockSettings.exe`**, façon Réglages Système de macOS 27.
+  - Barre latérale translucide (acrylique de Windows) : sections sur tuiles colorées dessinées par nous.
+  - Pastilles de la fenêtre à gauche.
+  - Groupes arrondis, interrupteurs à ressort, curseurs, menus qui s'ouvrent sur l'élément coché, contrôle segmenté.
+  - Clair et sombre, défilement, clavier (Tab, flèches, Espace, Échap, Ctrl+W).
+- **Sections prêtes :** Dock, Barre des menus, Fenêtres. Les autres affichent « Bientôt » (plan 42).
+- **Écriture :** chaque changement relit le fichier puis n'écrit que la clé modifiée (fusion par différence, testée). Le Dock et la barre l'appliquent en direct.
+- **Ouverture :**
+  -  > « Réglages MacDock… » ;
+  - « Réglages du Dock… » et « Réglages de la barre des menus… » (repli sur le fichier JSON si l'app manque) ;
+  - une seule instance ; `--pane` choisit la section.
+- **Vérifié en réel :**
+  - captures en clair et en sombre ;
+  - un interrupteur (masquage du Dock) et un menu (effet de réduction) écrivent bien `settings.json`, rétablis ensuite.
+- **Piège noté :** un PowerShell qui n'est pas conscient du DPI voit ses clics envoyés mis à l'échelle de l'écran par Windows. Le script d'essai se déclare donc conscient du DPI.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

@@ -92,14 +92,14 @@ Calculs des contrôles et du clavier :
 - Les autres sections (Général, Clavier, Mods, etc.) apparaissent dans la barre latérale avec « Bientôt » (plan 42).
 
 ## Tâches
-- [ ] 1. `settings_doc` : modèle, fusion par différence, `commit` atomique (tests : clés inconnues et épingles gardées,
+- [x] 1. `settings_doc` : modèle, fusion par différence, `commit` atomique (tests : clés inconnues et épingles gardées,
   seule la clé changée est écrite, fichier absent).
-- [ ] 2. `panes` : sections et lignes Dock, Barre des menus, Fenêtres (tests : chaque `set`/`get` fait l'aller-retour,
+- [x] 2. `panes` : sections et lignes Dock, Barre des menus, Fenêtres (tests : chaque `set`/`get` fait l'aller-retour,
   `enabled` de la taille agrandie, choix de position et d'effet, `--pane`).
-- [ ] 3. `ui_theme` et `ui_layout` (tests : hauteurs, positions, curseur, segments, focus, barre latérale).
-- [ ] 4. `ui_draw` : contrôles, tuiles, menu, pastilles (rendu hors écran en clair et en sombre : couleurs aux bons
+- [x] 3. `ui_theme` et `ui_layout` (tests : hauteurs, positions, curseur, segments, focus, barre latérale).
+- [x] 4. `ui_draw` : contrôles, tuiles, menu, pastilles (rendu hors écran en clair et en sombre : couleurs aux bons
   endroits).
-- [ ] 5. `MacDockSettings.exe` : cible de build, fenêtre, rendu, entrée, défilement, focus, clair/sombre, instance
+- [x] 5. `MacDockSettings.exe` : cible de build, fenêtre, rendu, entrée, défilement, focus, clair/sombre, instance
   unique, `--pane`.
-- [ ] 6. Liens depuis le Dock et la barre ; essai réel en diagnostic (captures de chaque section en clair et en sombre,
+- [x] 6. Liens depuis le Dock et la barre ; essai réel en diagnostic (captures de chaque section en clair et en sombre,
   un réglage change le Dock) ; documentation ; fusion.
