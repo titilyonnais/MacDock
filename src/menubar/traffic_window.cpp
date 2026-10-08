@@ -95,6 +95,8 @@ LightsWindowInfo readInfo(HWND h) {
     w.elevated = !w.ownProcess && higherIntegrity(pid);
     TITLEBARINFO tb{sizeof tb};
     if (GetTitleBarInfo(h, &tb) && tb.rcTitleBar.bottom > tb.rcTitleBar.top) w.captionBottom = tb.rcTitleBar.bottom;
+    MONITORINFO mi{sizeof mi};
+    if (GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) w.monitor = mi.rcMonitor;
     return w;
 }
 

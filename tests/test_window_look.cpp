@@ -53,6 +53,22 @@ TEST_CASE(window_look_skips_special_windows) {
     CHECK(!md::macWindowLook(elevated, false, 96).has_value());
 }
 
+// Fenêtre qui couvre tout son écran sans être agrandie (vidéo en plein écran dans Chrome, jeu sans bordure) : coins
+// rendus à Windows, sinon l'écran entier garde quatre coins arrondis sur fond noir.
+TEST_CASE(window_look_leaves_fullscreen_windows_square) {
+    auto video = notepad();
+    video.monitor = RECT{0, 0, 1920, 1080};
+    video.frame = video.monitor;
+    video.client = video.monitor;
+    CHECK(!md::macWindowLook(video, false, 96).has_value());
+    auto maximized = video;   // agrandie sous une barre masquée : elle garde son apparence
+    maximized.zoomed = true;
+    CHECK(md::macWindowLook(maximized, false, 96).has_value());
+    auto windowed = notepad();
+    windowed.monitor = RECT{0, 0, 1920, 1080};
+    CHECK(md::macWindowLook(windowed, false, 96).has_value());
+}
+
 TEST_CASE(window_look_setting_defaults_on_and_roundtrips) {
     md::MenuBarSettings s = md::menuBarSettingsFromJson(md::json::Value(md::json::Object{}));
     CHECK(s.macWindows);

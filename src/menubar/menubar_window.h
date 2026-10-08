@@ -78,6 +78,7 @@ private:
         Visibility visibility;
         bool fullscreen = false, visibilityTimer = false;
         FullscreenWatch fullscreenWatch;   // la fenêtre en plein écran de cet écran : sa sortie est vue tout de suite
+        HWND fullscreenWindow = nullptr;   // pour lui rendre ses coins arrondis à la sortie
         int renderFailures = 0;
         std::size_t trayFirst = 0;   // icônes d'apps affichées : trayLaid_[trayFirst…] (les autres n'ont pas la place)
     };

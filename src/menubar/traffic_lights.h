@@ -20,6 +20,7 @@ struct LightsWindowInfo {
     bool zoomed = false, iconic = false, ownProcess = false;
     LONG captionBottom = 0;   // bas de la barre de titre (GetTitleBarInfo) ; 0 = inconnu (on prend client.top)
     bool elevated = false;    // processus d'intégrité plus élevée : nos messages seraient refusés (UIPI)
+    RECT monitor{};           // écran de la fenêtre (rcMonitor) ; vide = inconnu
 };
 
 // Fenêtres à barre de titre (ni outil, ni shell, ni élevées…) ; les pastilles prennent ensuite la place de leurs
