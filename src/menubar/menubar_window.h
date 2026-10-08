@@ -30,6 +30,7 @@
 #include "status_hub.h"
 #include "status_menus.h"
 #include "traffic_window.h"
+#include "window_look.h"
 #include "tray_model.h"
 #include "uia_menu.h"
 
@@ -168,6 +169,7 @@ private:
     RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
     TrafficWindow lights_;   // feux tricolores de la fenêtre active
+    WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)
     WindowTracker tracker_;
     AppModel model_;
     SystemActions sys_;

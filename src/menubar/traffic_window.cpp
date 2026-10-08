@@ -23,6 +23,8 @@ constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
 constexpr double kBounceMs = 240;
 constexpr UINT_PTR kDeferTimer = 4;   // activation ou événement arrivé pendant une sonde
 
+} // namespace
+
 // DPI réel de l'écran de la fenêtre (une app non consciente du DPI répond 96 à GetDpiForWindow).
 UINT effectiveDpi(HWND h) {
     UINT x = 96, y = 96;
@@ -31,7 +33,7 @@ UINT effectiveDpi(HWND h) {
 }
 
 // Processus d'intégrité plus élevée que la nôtre (ou illisible) : UIPI refuserait nos messages.
-bool higherIntegrity(DWORD pid) {
+static bool higherIntegrity(DWORD pid) {
     auto level = [](HANDLE process) -> std::optional<DWORD> {
         HANDLE token = nullptr;
         if (!OpenProcessToken(process, TOKEN_QUERY, &token)) return std::nullopt;
@@ -78,7 +80,6 @@ LightsWindowInfo readInfo(HWND h) {
     if (GetTitleBarInfo(h, &tb) && tb.rcTitleBar.bottom > tb.rcTitleBar.top) w.captionBottom = tb.rcTitleBar.bottom;
     return w;
 }
-} // namespace
 
 bool TrafficWindow::create(HINSTANCE instance) {
     if (hwnd_) return true;

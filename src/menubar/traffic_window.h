@@ -13,6 +13,9 @@
 
 namespace md {
 
+UINT effectiveDpi(HWND h);            // DPI réel de l'écran de la fenêtre
+LightsWindowInfo readInfo(HWND h);    // style, cadre, zone client, processus… d'une fenêtre de premier niveau
+
 class TrafficWindow {
 public:
     ~TrafficWindow() { destroy(); }
