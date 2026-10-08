@@ -207,3 +207,114 @@ TEST_CASE(ui_sidebar_rows_and_palette) {
     CHECK(light.accent.b > 0.9f && light.accent.r < 0.1f);  // bleu système
     CHECK(light.text.a > 0.8f && light.text.r < 0.1f);
 }
+
+#include <d2d1.h>
+#include <dwrite.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+
+#include "../src/settings/pane_icons.h"
+#include "../src/ui/ui_draw.h"
+
+namespace {
+// Bitmap hors écran (1 px = 1 pt), fond de fenêtre ; on dessine, puis on lit les pixels.
+struct Canvas {
+    Microsoft::WRL::ComPtr<IWICBitmap> bmp;
+    Microsoft::WRL::ComPtr<ID2D1RenderTarget> rt;
+    Microsoft::WRL::ComPtr<IDWriteFactory> dwrite;
+    UINT w, h;
+    std::vector<BYTE> px;
+    Canvas(UINT width, UINT height) : w(width), h(height) {
+        Microsoft::WRL::ComPtr<IWICImagingFactory> wic;
+        CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic));
+        Microsoft::WRL::ComPtr<ID2D1Factory> d2d;
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf());
+        wic->CreateBitmap(w, h, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp);
+        d2d->CreateWicBitmapRenderTarget(bmp.Get(), D2D1::RenderTargetProperties(), &rt);
+        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()));
+    }
+    void read() {
+        px.resize(std::size_t(w) * h * 4);
+        WICRect all{0, 0, int(w), int(h)};
+        bmp->CopyPixels(&all, w * 4, UINT(px.size()), px.data());
+    }
+    const BYTE* at(int x, int y) const { return &px[(std::size_t(y) * w + x) * 4]; }   // B, G, R, A
+};
+bool bluish(const BYTE* p) { return p[0] > 200 && p[2] < 80; }
+bool whiteish(const BYTE* p) { return p[0] > 235 && p[1] > 235 && p[2] > 235; }
+bool grayish(const BYTE* p) { return p[0] < 245 && p[0] > 150 && std::abs(int(p[0]) - int(p[2])) < 12; }
+} // namespace
+
+TEST_CASE(ui_draw_switch_and_slider) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(240, 80);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+        md::ui::drawSwitch(p, D2D1::RectF(10, 10, 42, 28), 1.0f, false);   // allumé
+        md::ui::drawSwitch(p, D2D1::RectF(60, 10, 92, 28), 0.0f, false);   // éteint
+        md::ui::drawSlider(p, 10, 210, 60, 0.5f, false);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        CHECK(bluish(c.at(15, 19)));      // piste allumée : accent, à gauche du bouton
+        CHECK(whiteish(c.at(33, 19)));    // bouton à droite
+        CHECK(grayish(c.at(87, 19)));     // piste éteinte : grise, à droite du bouton
+        CHECK(whiteish(c.at(69, 19)));    // bouton à gauche
+        CHECK(bluish(c.at(40, 60)));      // curseur : rempli jusqu'au bouton (milieu à 110)
+        CHECK(grayish(c.at(190, 60)));    // reste de la piste
+        CHECK(whiteish(c.at(110, 60)));   // bouton
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_draw_segments_menu_and_lights) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(320, 200);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+        md::ui::drawSegmented(p, D2D1::RectF(10, 10, 220, 32), {L"Gauche", L"Bas", L"Droite"}, 1);
+        md::ui::drawMenu(p, D2D1::RectF(10, 60, 200, 60 + 2 * 6 + 3 * 22), {L"Génie", L"Échelle", L"Windows"}, 0, 1);
+        md::ui::drawWindowLights(p, D2D1::Point2F(250, 30), true, false, -1);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        // Segment choisi (milieu) : blanc ; les autres : fond gris du contrôle. Points pris hors du texte.
+        CHECK(whiteish(c.at(84, 13)));
+        CHECK(grayish(c.at(14, 13)));
+        // Menu : l'élément survolé (deuxième) sur l'accent, à gauche de son texte.
+        CHECK(bluish(c.at(20, 60 + 6 + 22 + 11)));
+        CHECK(!bluish(c.at(20, 60 + 6 + 11)));
+        // Pastilles de la fenêtre : rouge au premier centre.
+        const BYTE* red = c.at(250, 30);
+        CHECK(red[2] > 180 && red[1] < 140);
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_draw_every_pane_tile) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(true);
+        for (const md::PaneInfo& info : md::paneList()) {
+            Canvas c(40, 40);   // tuile de 20 pt à l'échelle 2 : 40 px
+            md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+            c.rt->BeginDraw();
+            c.rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+            c.rt->SetTransform(D2D1::Matrix3x2F::Scale(2, 2));
+            md::drawPaneTile(p, D2D1::RectF(0, 0, 20, 20), info.tile, info.icon);
+            REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+            c.read();
+            int white = 0;
+            for (std::size_t i = 0; i < c.px.size(); i += 4) white += c.px[i] > 230 && c.px[i + 1] > 230 && c.px[i + 2] > 230;
+            if (white < 20) fprintf(stderr, "tuile %ls : pictogramme vide (%d)\n", info.title.c_str(), white);
+            CHECK(white >= 20);                       // pictogramme blanc dessiné
+            CHECK(c.at(20, 2)[3] > 200);              // tuile opaque (bord du haut, au milieu)
+            CHECK(c.at(0, 0)[3] < 100);               // coin arrondi
+        }
+    }
+    CoUninitialize();
+}
