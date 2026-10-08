@@ -7,7 +7,7 @@ param([switch]$Uninstall, [string]$OutDir)
 $ErrorActionPreference = 'Stop'
 
 $id = 'local@macdock-look'
-$version = '1.0.0'
+$version = '1.0.0'   # remplacée plus bas par le @version de la source
 $wh = Join-Path $env:ProgramFiles 'Windhawk'
 $compiler = Join-Path $wh 'Compiler'
 $source = Join-Path $PSScriptRoot 'macdock-look.wh.cpp'
@@ -24,6 +24,8 @@ if (-not $admin -and -not $OutDir) {
 }
 
 if (-not (Test-Path (Join-Path $compiler 'bin\clang++.exe'))) { throw "Windhawk est introuvable ($wh)." }
+$found = [regex]::Match((Get-Content $source -Raw), '(?m)^// @version\s+(\S+)')
+if ($found.Success) { $version = $found.Groups[1].Value }
 
 if ($Uninstall) {
     $old = (Get-ItemProperty $key -ErrorAction SilentlyContinue).LibraryFileName
@@ -94,4 +96,13 @@ Write-Host ''
 Write-Host 'Mod « MacDock - macOS Look » installé et activé dans Windhawk.'
 Write-Host 'Les apps prennent la police SF Pro à leur prochain lancement (il faut que SF Pro soit installée).'
 Write-Host 'Jeux en ligne : ajoute-les aussi à Windhawk > Paramètres > Avancé > Process exclusion list.'
+Write-Host ''
+# L'Explorateur (fenêtres de dossiers, bureau) garde ses polices jusqu'à son redémarrage ; ses fenêtres se rouvrent vides.
+$answer = Read-Host "Redémarrer l'Explorateur maintenant pour qu'il prenne SF Pro ? (O/N)"
+if ($answer -match '^[oOyY]') {
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }
+    Write-Host "Explorateur redémarré. Les autres apps prennent SF Pro à leur prochain lancement."
+}
 Read-Host 'Entrée pour fermer'

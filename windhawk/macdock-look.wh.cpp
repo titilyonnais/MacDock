@@ -2,7 +2,7 @@
 // @id              macdock-look
 // @name            MacDock - macOS Look
 // @description     The macOS system font (SF Pro) in every app, for MacDock
-// @version         1.0.0
+// @version         1.1.0
 // @author          MacDock
 // @include         *
 // @exclude         MacDock.exe
@@ -164,7 +164,7 @@ inline Role roleForSize(Role role, double points) {
 
 #ifndef MACDOCK_LOOK_TEST
 
-#include <dwrite.h>
+#include <dwrite_3.h>
 
 namespace {
 
@@ -237,6 +237,35 @@ using CreateTextFormat_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFactory*, const WC
                                                        const WCHAR*, IDWriteTextFormat**);
 CreateTextFormat_t CreateTextFormat_Original;
 
+// IDWriteFactory6::CreateTextFormat, avec axes : le chemin de XAML (Bloc-notes, Explorateur, Paramètres) pour la police
+// variable Segoe UI Variable (épaisseur, taille optique). SF Pro n'est pas variable : l'épaisseur choisit la graisse,
+// la taille optique est sans effet.
+using CreateTextFormat6_t = HRESULT(STDMETHODCALLTYPE*)(IDWriteFactory6*, const WCHAR*, IDWriteFontCollection*,
+                                                        const DWRITE_FONT_AXIS_VALUE*, UINT32, FLOAT, const WCHAR*,
+                                                        IDWriteTextFormat3**);
+CreateTextFormat6_t CreateTextFormat6_Original;
+
+HRESULT STDMETHODCALLTYPE CreateTextFormat6_Hook(IDWriteFactory6* self, const WCHAR* family, IDWriteFontCollection* collection,
+                                                 const DWRITE_FONT_AXIS_VALUE* axes, UINT32 count, FLOAT size,
+                                                 const WCHAR* locale, IDWriteTextFormat3** out) {
+    if (g_directWrite) {
+        const look::Mapping m = look::mappingFor(family);
+        if (const wchar_t* to = replacementFor(look::roleForSize(m.role, size * 72.0 / 96.0))) {
+            // Graisse tirée du nom (« Segoe UI Semibold ») si les axes n'en donnent pas.
+            DWRITE_FONT_AXIS_VALUE local[8];
+            UINT32 n = 0;
+            bool weight = false;
+            for (UINT32 i = 0; i < count && n < 7; ++i) {
+                local[n++] = axes[i];
+                weight = weight || axes[i].axisTag == DWRITE_FONT_AXIS_TAG_WEIGHT;
+            }
+            if (!weight && m.weight) local[n++] = {DWRITE_FONT_AXIS_TAG_WEIGHT, float(m.weight)};
+            return CreateTextFormat6_Original(self, to, collection, n ? local : nullptr, n, size, locale, out);
+        }
+    }
+    return CreateTextFormat6_Original(self, family, collection, axes, count, size, locale, out);
+}
+
 HRESULT STDMETHODCALLTYPE CreateTextFormat_Hook(IDWriteFactory* self, const WCHAR* family, IDWriteFontCollection* collection,
                                                 DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STYLE style,
                                                 DWRITE_FONT_STRETCH stretch, FLOAT size, const WCHAR* locale,
@@ -290,6 +319,13 @@ BOOL Wh_ModInit() {
         void** factoryVtable = *reinterpret_cast<void***>(factory);
         Wh_SetFunctionHook(factoryVtable[15], reinterpret_cast<void*>(CreateTextFormat_Hook),
                            reinterpret_cast<void**>(&CreateTextFormat_Original));   // IDWriteFactory::CreateTextFormat
+        IDWriteFactory6* factory6 = nullptr;   // Windows 10 1903 et plus : le chemin de XAML
+        if (SUCCEEDED(factory->QueryInterface(__uuidof(IDWriteFactory6), reinterpret_cast<void**>(&factory6))) && factory6) {
+            void** vtable6 = *reinterpret_cast<void***>(factory6);
+            Wh_SetFunctionHook(vtable6[54], reinterpret_cast<void*>(CreateTextFormat6_Hook),
+                               reinterpret_cast<void**>(&CreateTextFormat6_Original));   // IDWriteFactory6::CreateTextFormat
+            factory6->Release();
+        }
         IDWriteFontCollection* system = nullptr;
         if (SUCCEEDED(factory->GetSystemFontCollection(&system, FALSE)) && system) {
             void** collectionVtable = *reinterpret_cast<void***>(system);

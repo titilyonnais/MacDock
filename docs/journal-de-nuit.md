@@ -610,6 +610,18 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - Même principe que pour Spotlight : visible aux captures le temps de la copie, verre gelé jusqu'à 150 ms après.
 - Essayé en diagnostic : l'écran Apps ouvert, puis ⊞⇧3. La capture le contient, MacDock continue de tourner, et la capture est partie à la Corbeille.
 
+### Correctif — le mod de police et les apps XAML (version 1.1.0)
+
+- **Constat** : après l'installation, aucune police n'avait changé à l'écran.
+- **Enquête** :
+  - le mod était bien chargé partout, y compris dans l'Explorateur ;
+  - dans une app neuve, GDI et tous les chemins classiques de DirectWrite donnaient bien SF Pro Text ;
+  - mais la version « à axes » de `CreateTextFormat` (`IDWriteFactory6`) rendait toujours Segoe UI Variable. C'est par elle que XAML (Bloc-notes, Explorateur, Paramètres) demande cette police variable, avec son épaisseur et sa taille optique.
+- **Correction** :
+  - cette méthode est accrochée aussi, avec un test sur la vraie fonction de Windows ;
+  - l'installateur lit la version dans la source du mod, et propose de redémarrer l'Explorateur, qui garde sinon ses polices jusqu'à la prochaine session.
+- **À faire de ton côté** : relancer le raccourci d'installation, répondre O pour redémarrer l'Explorateur, puis rouvrir les apps.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

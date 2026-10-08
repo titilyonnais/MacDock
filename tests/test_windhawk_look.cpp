@@ -101,3 +101,29 @@ TEST_CASE(look_hooks_on_real_gdi_and_directwrite) {
     system->Release();
     factory->Release();
 }
+
+TEST_CASE(look_xaml_variable_font_path_with_axes) {
+    // XAML (Bloc-notes, Explorateur, Paramètres) demande Segoe UI Variable par IDWriteFactory6::CreateTextFormat, avec
+    // ses axes (épaisseur, taille optique) : ce chemin doit aussi donner SF Pro.
+    loadSettings();
+    if (!g_textAvailable) return;
+    IDWriteFactory6* f6 = nullptr;
+    REQUIRE(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory6), reinterpret_cast<IUnknown**>(&f6))));
+    CreateTextFormat6_Original = reinterpret_cast<CreateTextFormat6_t>((*reinterpret_cast<void***>(f6))[54]);
+    DWRITE_FONT_AXIS_VALUE axes[] = {{DWRITE_FONT_AXIS_TAG_WEIGHT, 400}, {DWRITE_FONT_AXIS_TAG_OPTICAL_SIZE, 10.5f}};
+    auto familyOf = [&](const wchar_t* name, float size) {
+        IDWriteTextFormat3* f = nullptr;
+        std::wstring got;
+        if (SUCCEEDED(CreateTextFormat6_Hook(f6, name, nullptr, axes, 2, size, L"fr-FR", &f)) && f) {
+            wchar_t buf[64] = {};
+            f->GetFontFamilyName(buf, 64);
+            got = buf;
+            f->Release();
+        }
+        return got;
+    };
+    CHECK(familyOf(L"Segoe UI Variable", 14) == L"SF Pro Text");
+    CHECK(familyOf(L"Segoe UI Variable Display", 40) == (g_displayAvailable ? L"SF Pro Display" : L"SF Pro Text"));
+    CHECK(familyOf(L"Cascadia Code", 14) == L"Cascadia Code");   // le reste n'est jamais touché
+    f6->Release();
+}
