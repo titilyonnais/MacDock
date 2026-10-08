@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "mods.h"
 #include "settings_doc.h"
 
 namespace md {
@@ -30,11 +31,31 @@ const std::vector<int>& sidebarGroups();
 const PaneInfo& paneInfo(PaneId id);
 std::optional<PaneId> paneFromKey(std::string_view key);
 
-enum class RowKind { Switch, Slider, Choice, Segmented, Info };
+// Info : un texte seul ; Value : un texte gris à droite ; Buttons : boutons d'action ; Shortcut : un raccourci saisi.
+enum class RowKind { Switch, Slider, Choice, Segmented, Info, Buttons, Shortcut, Value };
+
+// Actions des boutons, exécutées par la fenêtre (arg : identifiant du mod…).
+enum class PaneAction { None, Launch, Restart, Quit, Export, Import, Reset, InstallMod, UninstallMod, GetWindhawk, ShowFolder, ShowLogs };
+struct ButtonSpec {
+    std::wstring label;
+    PaneAction action = PaneAction::None;
+    std::wstring arg;
+};
+
+struct ModEnv {
+    ModInfo info;
+    std::optional<InstalledMod> installed;
+    std::optional<std::wstring> available;   // version de la source livrée
+};
 
 struct PaneEnv {
     std::vector<std::wstring> screens;     // noms affichés des écrans branchés
-    std::vector<std::wstring> screenIds;   // leurs noms GDI (\\.\DISPLAY1…), tels que le réglage les garde
+    std::vector<std::wstring> screenIds;   // leurs noms GDI, tels que le réglage les garde
+    std::vector<std::wstring> fonts;       // familles proposées (installées)
+    bool windhawk = false;                 // Windhawk installé
+    std::vector<ModEnv> mods;
+    bool running = true;                   // MacDock tourne
+    std::wstring version, dataDir;
 };
 
 struct RowSpec {
@@ -48,6 +69,10 @@ struct RowSpec {
     std::function<void(SettingsModel&, double)> set;
     std::function<bool(const SettingsModel&)> enabled;   // vide : toujours disponible
     std::function<std::wstring(double)> format;          // curseur : valeur affichée (vide : aucune)
+    std::vector<ButtonSpec> buttons;                      // Buttons
+    // Value : texte gris à droite ; Shortcut : le réglage (« ctrl+alt+up » ou « off »).
+    std::function<std::wstring(const SettingsModel&)> text;
+    std::function<void(SettingsModel&, const std::wstring&)> setText;   // Shortcut
 };
 
 struct GroupSpec {
@@ -57,5 +82,9 @@ struct GroupSpec {
 };
 
 std::vector<GroupSpec> paneGroups(PaneId id, const PaneEnv& env);
+
+// Une autre fonction (Spotlight, Mission Control, Fenêtres de l'app) utilise-t-elle le même raccourci que `name` ?
+// Son nom, ou vide.
+std::wstring shortcutConflict(const SettingsModel& m, const std::wstring& name);
 
 } // namespace md

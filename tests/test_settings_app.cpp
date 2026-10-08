@@ -82,7 +82,7 @@ TEST_CASE(settings_panes_list_and_keys) {
     CHECK(md::paneFromKey("windows") == md::PaneId::Windows);
     CHECK(!md::paneFromKey("nope").has_value());
     CHECK(md::paneInfo(md::PaneId::Dock).ready);
-    CHECK(!md::paneInfo(md::PaneId::Mods).ready);   // plan 42
+    CHECK(md::paneInfo(md::PaneId::Mods).ready);   // toutes prêtes depuis le plan 42
     int total = 0;   // les groupes de la barre latérale couvrent toutes les sections
     for (int n : md::sidebarGroups()) total += n;
     CHECK_EQ(std::size_t(total), md::paneList().size());
