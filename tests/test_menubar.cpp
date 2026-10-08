@@ -495,3 +495,8 @@ TEST_CASE(menubar_settings_hud) {
     s.hud = false;
     CHECK(!md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s)).hud);
 }
+
+TEST_CASE(menubar_volume_feedback_on_by_default) {
+    CHECK(md::menuBarSettingsFromJson(*md::json::parse("{}")).volumeFeedback);
+    CHECK(!md::menuBarSettingsFromJson(*md::json::parse("{\"volumeFeedback\":false}")).volumeFeedback);
+}

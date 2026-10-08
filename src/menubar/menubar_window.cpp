@@ -13,6 +13,7 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/diag.h"
+#include "../sound/sound_play.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../tracker/app_identity.h"
@@ -897,6 +898,7 @@ void MenuBarApp::onVolumeKey(int id) {
     } else {
         const bool up = id == kHotVolUp || id == kHotVolUpFine;
         audio_.setVolume(volumeStep(v, up ? 1 : -1, id == kHotVolUpFine || id == kHotVolDownFine));   // enlève la sourdine
+        if (settings_.volumeFeedback) playSystemSound(SystemSound::Volume);   // au nouveau volume, comme sur macOS
     }
     updateStatusItems();
     if (!menuOpen_ && !menuSession_) showHud(volumeContent());

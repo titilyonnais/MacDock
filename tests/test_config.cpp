@@ -230,3 +230,11 @@ TEST_CASE(settings_app_expose_hotkey) {
     s.appExposeHotkey = L"off";
     CHECK(md::settingsFromJson(md::settingsToJson(s)).appExposeHotkey == L"off");
 }
+
+TEST_CASE(settings_system_sounds_on_by_default) {
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).sounds);
+    CHECK(!md::settingsFromJson(*md::json::parse("{\"sounds\":false}")).sounds);
+    md::Settings s;
+    s.sounds = false;
+    CHECK(!md::settingsFromJson(md::settingsToJson(s)).sounds);
+}

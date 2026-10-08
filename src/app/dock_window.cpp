@@ -22,6 +22,7 @@
 #include "../quicklook/quicklook_logic.h"
 #include "../quicklook/quicklook_shell.h"
 #include "../screenshot/screen_grab.h"
+#include "../sound/sound_play.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../popup/menu_window.h"
@@ -562,6 +563,7 @@ void DockApp::deliverShots(std::vector<std::pair<HMONITOR, BgraImage>> shots, HM
         log::warn(L"Capture d'écran : aucune image");
         return;
     }
+    if (settings_.sounds) playSystemSound(SystemSound::Screenshot);   // déclic d'appareil photo
     std::size_t main = 0;
     for (std::size_t i = 0; i < shots.size(); ++i)
         if (shots[i].first == thumbOn) main = i;
@@ -746,6 +748,7 @@ void DockApp::onPointerUp(POINT client) {
             if (model_.unpin(o.key)) savePinned();
             if (trace_) log::info(L"[trace] glisser : %s retirée%s", o.key.c_str(), o.poof ? L" (poof)" : L"");
             if (o.poof) {
+                if (settings_.sounds) playSystemSound(SystemSound::Poof);
                 GetCursorPos(&poofCenter_);
                 poofStart_ = nowSeconds();
             }
@@ -1577,7 +1580,9 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             break;
         }
         case kCmdTrashOpen: openRecycleBin(); break;
-        case kCmdTrashEmpty: emptyRecycleBin(hwnd_); break;
+        case kCmdTrashEmpty:   // froissement de papier à la place du son de Windows
+            if (emptyRecycleBin(hwnd_, settings_.sounds) && settings_.sounds) playSystemSound(SystemSound::EmptyTrash);
+            break;
         case kCmdRemove:
             if (model_.unpin(item.key)) savePinned();
             break;

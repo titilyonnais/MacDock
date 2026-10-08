@@ -243,10 +243,11 @@ bool recycleBinHasItems() {
     return info.i64NumItems > 0;
 }
 
-void emptyRecycleBin(HWND owner) {
-    HRESULT hr = SHEmptyRecycleBinW(owner, nullptr, 0);
+bool emptyRecycleBin(HWND owner, bool quiet) {
+    HRESULT hr = SHEmptyRecycleBinW(owner, nullptr, quiet ? SHERB_NOSOUND : 0);
     if (FAILED(hr) && hr != HRESULT_FROM_WIN32(ERROR_CANCELLED) && hr != E_UNEXPECTED)
         log::warn(L"Vidage de la Corbeille impossible (0x%08lx)", static_cast<unsigned long>(hr));
+    return hr == S_OK;
 }
 
 std::wstring downloadsFolder() {
