@@ -1,0 +1,33 @@
+// Informations de version des exécutables (plan 52), lues dans Propriétés > Détails et par l'installateur. Chaque .rc
+// définit MD_FILE_DESCRIPTION et MD_ORIGINAL_FILENAME avant de l'inclure ; la version vient de version_defs.h.
+#include <winver.h>
+#include "version_defs.h"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION MACDOCK_VERSION_MAJOR, MACDOCK_VERSION_MINOR, MACDOCK_VERSION_PATCH, 0
+PRODUCTVERSION MACDOCK_VERSION_MAJOR, MACDOCK_VERSION_MINOR, MACDOCK_VERSION_PATCH, 0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040C04B0"
+        BEGIN
+            VALUE "CompanyName", "titilyonnais"
+            VALUE "FileDescription", MD_FILE_DESCRIPTION
+            VALUE "FileVersion", MACDOCK_VERSION_STRING
+            VALUE "InternalName", MD_ORIGINAL_FILENAME
+            VALUE "LegalCopyright", "Copyright (c) 2026 titilyonnais, licence MIT"
+            VALUE "OriginalFilename", MD_ORIGINAL_FILENAME
+            VALUE "ProductName", "MacDock"
+            VALUE "ProductVersion", MACDOCK_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x040C, 1200
+    END
+END
