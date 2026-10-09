@@ -1,0 +1,145 @@
+// Mises à jour automatiques (plan 53), logique pure : réponses de l'API de GitHub (forme réelle de
+// releases/latest et de releases), choix de la version, empreintes, état gardé, décision au démarrage.
+#include <string>
+
+#include "minitest.h"
+#include "../src/update/update_logic.h"
+
+namespace {
+
+// Réponse de releases (un tableau), réduite aux champs utiles, comme les renvoie l'API (champs en plus ignorés).
+const char* kReleases = R"([
+  {"url": "https://api.github.com/repos/titilyonnais/MacDock/releases/3", "tag_name": "v0.53.1-rc.1",
+   "name": "MacDock 0.53.1-rc.1", "draft": false, "prerelease": true, "body": "Préversion d'essai\r\n",
+   "assets": [
+     {"name": "MacDock-Setup-0.53.1-rc.1.exe", "size": 3500000, "content_type": "application/x-msdownload",
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.1-rc.1/MacDock-Setup-0.53.1-rc.1.exe"},
+     {"name": "SHA256SUMS.txt", "size": 99,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.1-rc.1/SHA256SUMS.txt"},
+     {"name": "SHA256SUMS.txt.sig", "size": 88,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.1-rc.1/SHA256SUMS.txt.sig"}]},
+  {"tag_name": "v0.53.0", "draft": false, "prerelease": false, "body": "Notes \"citées\" et \u00e9chappées",
+   "assets": [
+     {"name": "MacDock-Setup-0.53.0.exe", "size": 3450000,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.0/MacDock-Setup-0.53.0.exe"},
+     {"name": "SHA256SUMS.txt", "size": 92,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.0/SHA256SUMS.txt"},
+     {"name": "SHA256SUMS.txt.sig", "size": 88,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.53.0/SHA256SUMS.txt.sig"}]},
+  {"tag_name": "v0.54.0", "draft": true, "prerelease": false, "assets": []},
+  {"tag_name": "nightly", "draft": false, "prerelease": false, "assets": []},
+  {"tag_name": "v0.52.0", "draft": false, "prerelease": false,
+   "assets": [
+     {"name": "MacDock-Setup-0.52.0.exe", "size": 3437108,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.52.0/MacDock-Setup-0.52.0.exe"},
+     {"name": "SHA256SUMS.txt", "size": 92,
+      "browser_download_url": "https://github.com/titilyonnais/MacDock/releases/download/v0.52.0/SHA256SUMS.txt"}]}
+])";
+
+md::Version ver(const wchar_t* s) { return *md::parseVersion(s); }
+
+} // namespace
+
+TEST_CASE(update_parse_releases) {
+    const auto r = md::parseReleases(kReleases);
+    REQUIRE(r.size() == 4);   // « nightly » écartée : pas une version
+    CHECK(r[0].tag == L"v0.53.1-rc.1");
+    CHECK(r[0].prerelease);
+    CHECK(r[0].version == ver(L"0.53.1-rc.1"));
+    REQUIRE(r[1].assets.size() == 3);
+    CHECK(r[1].assets[0].name == L"MacDock-Setup-0.53.0.exe");
+    CHECK(r[1].assets[0].size == 3450000u);
+    CHECK(r[1].assets[0].url == L"https://github.com/titilyonnais/MacDock/releases/download/v0.53.0/MacDock-Setup-0.53.0.exe");
+    CHECK(r[2].draft);
+    // releases/latest renvoie un seul objet.
+    const auto latest = md::parseReleases(R"({"tag_name": "v0.52.0", "draft": false, "prerelease": false, "assets": []})");
+    REQUIRE(latest.size() == 1);
+    CHECK(latest[0].version == ver(L"0.52.0"));
+    CHECK(md::parseReleases("pas du JSON").empty());
+    CHECK(md::parseReleases(R"({"message": "API rate limit exceeded"})").empty());   // limite de l'API atteinte
+}
+
+TEST_CASE(update_pick_newest_published) {
+    const auto r = md::parseReleases(kReleases);
+    const auto offer = md::pickUpdate(r, ver(L"0.52.0"), false);
+    REQUIRE(offer.has_value());
+    CHECK(offer->version == ver(L"0.53.0"));           // ni la préversion, ni le brouillon
+    CHECK(offer->installer.name == L"MacDock-Setup-0.53.0.exe");
+    CHECK(offer->sums.name == L"SHA256SUMS.txt");
+    CHECK(offer->signature.name == L"SHA256SUMS.txt.sig");
+    const auto pre = md::pickUpdate(r, ver(L"0.52.0"), true);
+    REQUIRE(pre.has_value());
+    CHECK(pre->version == ver(L"0.53.1-rc.1"));        // essais : préversions comprises
+    CHECK(!md::pickUpdate(r, ver(L"0.53.0"), false).has_value());   // déjà à jour
+    CHECK(!md::pickUpdate(r, ver(L"0.60.0"), true).has_value());    // compilée à la main, plus récente
+    // Sans installateur, sans empreintes ou sans signature : rien à proposer. 0.52.0, publiée avant les signatures,
+    // n'est pas une mise à jour signée.
+    const auto bare = md::parseReleases(R"([{"tag_name": "v0.99.0", "draft": false, "prerelease": false,
+        "assets": [{"name": "MacDock-Setup-0.99.0.exe", "size": 1, "browser_download_url": "https://github.com/x"}]}])");
+    CHECK(!md::pickUpdate(bare, ver(L"0.52.0"), false).has_value());
+    const auto unsigned_ = md::parseReleases(R"([{"tag_name": "v0.99.0", "draft": false, "prerelease": false, "assets": [
+        {"name": "MacDock-Setup-0.99.0.exe", "size": 1, "browser_download_url": "https://github.com/a.exe"},
+        {"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": "https://github.com/s.txt"}]}])");
+    CHECK(!md::pickUpdate(unsigned_, ver(L"0.52.0"), false).has_value());
+    // Une adresse qui n'est pas en HTTPS n'est jamais suivie.
+    const auto http = md::parseReleases(R"([{"tag_name": "v0.99.0", "draft": false, "prerelease": false, "assets": [
+        {"name": "MacDock-Setup-0.99.0.exe", "size": 1, "browser_download_url": "http://github.com/a.exe"},
+        {"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": "https://github.com/s.txt"},
+        {"name": "SHA256SUMS.txt.sig", "size": 1, "browser_download_url": "https://github.com/s.sig"}]}])");
+    CHECK(!md::pickUpdate(http, ver(L"0.52.0"), false).has_value());
+}
+
+TEST_CASE(update_expected_sha256) {
+    const std::string sums = "d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257  MacDock-Setup-0.52.0.exe\r\n"
+                             "D3E3C2A044962A450DB1A6B4C66999507D319D2AC887BAF314BEADBA00300258 *Autre.exe\n";
+    CHECK(md::expectedSha256(sums, L"MacDock-Setup-0.52.0.exe") ==
+          std::optional<std::string>("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257"));
+    CHECK(md::expectedSha256(sums, L"Autre.exe") ==   // « * » (binaire) accepté, minuscules
+          std::optional<std::string>("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300258"));
+    CHECK(!md::expectedSha256(sums, L"MacDock-Setup-0.53.0.exe").has_value());
+    CHECK(!md::expectedSha256("abc  MacDock-Setup-0.52.0.exe", L"MacDock-Setup-0.52.0.exe").has_value());   // trop court
+    CHECK(!md::expectedSha256("", L"x.exe").has_value());
+}
+
+TEST_CASE(update_check_due) {
+    const std::int64_t h = 3600;
+    CHECK(md::checkDue(0, 1000));                        // jamais cherché
+    CHECK(!md::checkDue(100 * h, 100 * h + 11 * h));
+    CHECK(md::checkDue(100 * h, 100 * h + 12 * h));
+    CHECK(md::checkDue(100 * h, 50 * h));                // horloge reculée
+}
+
+TEST_CASE(update_state_round_trip) {
+    md::UpdateState s;
+    s.automatic = false;
+    s.lastCheck = 1791500000;
+    s.readyVersion = L"0.53.0";
+    s.readyPath = L"C:\\Users\\alice\\AppData\\Local\\MacDock\\updates\\MacDock-Setup-0.53.0.exe";
+    s.readySha256 = "d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257";
+    s.attemptedVersion = L"0.53.0";
+    s.lastError = L"GitHub injoignable";
+    const md::UpdateState back = md::parseUpdateState(md::updateStateJson(s));
+    CHECK(!back.automatic);
+    CHECK(back.lastCheck == s.lastCheck);
+    CHECK(back.readyVersion == s.readyVersion);
+    CHECK(back.readyPath == s.readyPath);
+    CHECK(back.readySha256 == s.readySha256);
+    CHECK(back.attemptedVersion == s.attemptedVersion);
+    CHECK(back.lastError == s.lastError);
+    const md::UpdateState empty = md::parseUpdateState("n'importe quoi");   // fichier abîmé : valeurs par défaut
+    CHECK(empty.automatic);
+    CHECK(empty.readyVersion.empty());
+}
+
+TEST_CASE(update_startup_action) {
+    md::UpdateState s;
+    s.readyVersion = L"0.53.0";
+    s.readyPath = L"x.exe";
+    s.readySha256 = "aa";
+    CHECK(md::startupAction(s, ver(L"0.52.0"), true) == md::StartupAction::Install);
+    CHECK(md::startupAction(s, ver(L"0.52.0"), false) == md::StartupAction::DropStale);   // installateur effacé
+    CHECK(md::startupAction(s, ver(L"0.53.0"), true) == md::StartupAction::DropStale);    // déjà installée
+    s.attemptedVersion = L"0.53.0";   // lancée au démarrage précédent, et pourtant toujours 0.52.0 : abandon
+    CHECK(md::startupAction(s, ver(L"0.52.0"), true) == md::StartupAction::DropAttempt);
+    CHECK(md::startupAction(md::UpdateState{}, ver(L"0.52.0"), false) == md::StartupAction::None);
+}

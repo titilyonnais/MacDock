@@ -41,7 +41,7 @@ $LogicSources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\l
                   'src\menubar\shortcut.cpp', 'src\menubar\app_menus.cpp', 'src\menubar\menu_catalog.cpp', 'src\menubar\foreground_rules.cpp', 'src\menubar\menubar_settings.cpp',
                   'src\menubar\bar_actions.cpp', 'src\menubar\bar_renderer.cpp', 'src\menubar\win32_menu.cpp', 'src\menubar\uia_menu.cpp', 'src\menubar\recent_items.cpp',
                   'src\menubar\status_audio.cpp', 'src\menubar\status_power.cpp', 'src\menubar\status_network.cpp', 'src\menubar\status_winrt.cpp', 'src\menubar\status_brightness.cpp', 'src\menubar\status_hub.cpp', 'src\menubar\status_menus.cpp', 'src\menubar\tray_model.cpp', 'src\menubar\bar_screens.cpp', 'src\menubar\traffic_lights.cpp', 'src\menubar\window_look.cpp',
-                  'src\settings\*.cpp', 'src\ui\*.cpp')
+                  'src\settings\*.cpp', 'src\ui\*.cpp', 'src\update\*.cpp')
 
 $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\popup\popup_glass.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\screenshot\screen_recorder.cpp'); Subsystem = 'CONSOLE'; Includes = @('tests\stubs');
@@ -61,11 +61,11 @@ $Targets = @{
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'shcore.lib', 'dxguid.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib',
                       'powrprof.lib', 'secur32.lib', 'winmm.lib') }
-    launcher = @{ Exe = 'MacDockLauncher.exe'; Res = 'res\launcher.rc'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
+    launcher = @{ Exe = 'MacDockLauncher.exe'; Res = 'res\launcher.rc'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp', 'src\update\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
     settings = @{ Exe = 'MacDockSettings.exe'; Res = 'res\settings.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
                       'src\settings_app\*.cpp', 'src\anim\spring.cpp', 'src\anim\motion.cpp', 'src\menubar\menubar_settings.cpp', 'src\interact\hotkey.cpp',
-                      'src\menubar\clock_format.cpp'); Subsystem = 'WINDOWS';
+                      'src\menubar\clock_format.cpp', 'src\update\update_logic.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'dwmapi.lib',
                       'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'gdi32.lib', 'advapi32.lib',
                       'shcore.lib', 'version.lib', 'dxguid.lib', 'wtsapi32.lib') }
