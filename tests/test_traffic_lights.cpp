@@ -98,25 +98,44 @@ TEST_CASE(lights_dominant_color) {
 }
 
 TEST_CASE(lights_caption_sample_points) {
-    // Points de la barre de titre lus pour la couleur sous les pastilles : de droite à gauche depuis le calque, les
-    // neuf premiers où la fenêtre elle-même est visible (plan 45 : une fenêtre du dessus n'en donne plus la couleur).
-    const auto all = md::captionSampleXs(500, 100, 3, [](LONG) { return true; });
+    // Points de la barre de titre lus pour la couleur sous les pastilles : de droite à gauche depuis le calque, sur
+    // 64 pt au plus, les neuf premiers où la fenêtre elle-même est visible (plan 45 : une fenêtre du dessus n'en donne
+    // plus la couleur) ; moins de trois : aucun, la couleur d'avant reste.
+    const auto any = [](LONG) { return true; };
+    const auto all = md::captionSampleXs(500, 100, 3, 64, any);
     REQUIRE(all.size() == 9u);
     CHECK_EQ(all.front(), 500L);
     CHECK_EQ(all.back(), 476L);   // comme avant : 500 - 8 × 3
-    // Les plus proches recouverts par une autre fenêtre (x > 440) : les suivants vers la gauche.
-    const auto covered = md::captionSampleXs(500, 100, 3, [](LONG x) { return x <= 440; });
+    // Les plus proches recouverts par une autre fenêtre (x > 470) : les suivants vers la gauche.
+    const auto covered = md::captionSampleXs(500, 100, 3, 64, [](LONG x) { return x <= 470; });
     REQUIRE(covered.size() == 9u);
-    CHECK(covered.front() <= 440 && covered.back() == covered.front() - 24);
-    CHECK(md::captionSampleXs(500, 100, 3, [](LONG) { return false; }).empty());   // tout recouvert
-    CHECK(md::captionSampleXs(99, 100, 3, [](LONG) { return true; }).empty());     // cadre trop étroit
-    CHECK_EQ(md::captionSampleXs(108, 100, 3, [](LONG) { return true; }).size(), size_t(3));   // étroit : moins de neuf
-    const auto edge = md::captionSampleXs(120, 100, 3, [](LONG) { return true; });  // jusqu'au bord gauche, pas au-delà
+    CHECK(covered.front() <= 470 && covered.back() == covered.front() - 24);
+    // Recouverts sur plus de 64 pt : rien, même si la barre est visible plus loin (titre, recherche d'Office…).
+    CHECK(md::captionSampleXs(500, 100, 3, 64, [](LONG x) { return x < 430; }).empty());
+    // Trois points sûrs suffisent, deux non.
+    CHECK_EQ(md::captionSampleXs(500, 100, 3, 64, [](LONG x) { return x >= 440 && x <= 446; }).size(), size_t(3));
+    CHECK(md::captionSampleXs(500, 100, 3, 64, [](LONG x) { return x >= 443 && x <= 446; }).empty());
+    CHECK(md::captionSampleXs(500, 100, 3, 64, [](LONG) { return false; }).empty());   // tout recouvert
+    CHECK(md::captionSampleXs(99, 100, 3, 64, any).empty());                           // cadre trop étroit
+    CHECK_EQ(md::captionSampleXs(108, 100, 3, 64, any).size(), size_t(3));             // étroit : moins de neuf
+    const auto edge = md::captionSampleXs(120, 100, 3, 64, any);                       // jusqu'au bord gauche
     CHECK(!edge.empty() && edge.back() >= 100);
-    // Recouverte sur une grande largeur : au plus 128 points essayés, puis rien.
-    int tried = 0;
-    CHECK(md::captionSampleXs(2000, 0, 1, [&](LONG) { return ++tried, false; }).empty());
-    CHECK(tried <= 128);
+    int tried = 0;   // recouverte sur une grande largeur : seulement les points des 64 pt essayés
+    CHECK(md::captionSampleXs(2000, 0, 1, 64, [&](LONG) { return ++tried, false; }).empty());
+    CHECK(tried <= 65);
+}
+
+TEST_CASE(lights_layer_only_for_visible_windows) {
+    // Relecture du plan 45 : une fenêtre masquée (zone de notification) qui passe au premier plan pour son menu ne
+    // reçoit pas de calque, qu'aucun HIDE ne viendrait retirer. Réduite, elle reste visible : suivie.
+    CHECK(md::lightsLayerWanted(classic(), md::LightsMode::Standard, 96));
+    auto hidden = classic();
+    hidden.style &= ~WS_VISIBLE;
+    CHECK(!md::lightsLayerWanted(hidden, md::LightsMode::Standard, 96));
+    CHECK(md::wantsLights(hidden, md::LightsMode::Standard, 96));   // l'apparence macOS, elle, ne change pas
+    auto minimized = classic();
+    minimized.style |= WS_MINIMIZE;
+    CHECK(md::lightsLayerWanted(minimized, md::LightsMode::Standard, 96));
 }
 
 TEST_CASE(lights_target_hidden) {

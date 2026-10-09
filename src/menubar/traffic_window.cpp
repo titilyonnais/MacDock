@@ -287,7 +287,7 @@ TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
     // Encore réduite quand elle devient active (restauration depuis le Dock) : suivie quand même, ses pastilles
     // arrivent quand elle réapparaît (place() la masque tant qu'elle est réduite).
     info.iconic = false;
-    if (!wantsLights(info, mode_, effectiveDpi(target))) {
+    if (!lightsLayerWanted(info, mode_, effectiveDpi(target))) {
         if (diagnosticCapture() && target == active_)
             log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
                       info.style, int(info.elevated));
@@ -496,17 +496,21 @@ void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
     const LONG y = (l.layout.window.top + l.layout.window.bottom) / 2;
     const LONG step = std::max(1L, LONG(std::lround(3.0 * dpi / 96)));
     const HWND target = l.target;
-    const std::vector<LONG> xs = captionSampleXs(l.layout.window.left - 4, frame.left + 9, step, [&](LONG x) {
+    // Rien de sûr à lire : la couleur d'avant reste ; jamais mesurée, celle de son thème.
+    const auto fallback = [&] {
+        if (l.painted || l.sampled) return;
+        BOOL dark = FALSE;
+        if (SUCCEEDED(DwmGetWindowAttribute(target, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof dark))) {
+            l.state.patchColor = dark ? 0x202020 : 0xF3F3F3;
+            l.state.dark = dark != FALSE;
+        }
+    };
+    const LONG span = std::lround(64.0 * dpi / 96);
+    const std::vector<LONG> xs = captionSampleXs(l.layout.window.left - 4, frame.left + 9, step, span, [&](LONG x) {
         return GetAncestor(WindowFromPoint(POINT{x, y}), GA_ROOT) == target;
     });
-    if (xs.empty()) {   // recouverte là : la couleur d'avant reste ; jamais mesurée, celle de son thème
-        if (!l.painted && !l.sampled) {
-            BOOL dark = FALSE;
-            if (SUCCEEDED(DwmGetWindowAttribute(target, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof dark))) {
-                l.state.patchColor = dark ? 0x202020 : 0xF3F3F3;
-                l.state.dark = dark != FALSE;
-            }
-        }
+    if (xs.empty()) {   // recouverte là
+        fallback();
         return;
     }
     const LONG right = xs.front(), left = xs.back();
@@ -530,7 +534,10 @@ void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
     if (bmp) DeleteObject(bmp);
     DeleteDC(mem);
     ReleaseDC(nullptr, screen);
-    if (samples.empty()) return;
+    if (samples.empty()) {   // copie de l'écran impossible (session verrouillée…)
+        fallback();
+        return;
+    }
     l.sampled = true;
     const std::uint32_t color = dominantColor(samples);
     if (color == l.state.patchColor && l.painted) return;

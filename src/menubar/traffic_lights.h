@@ -26,6 +26,9 @@ struct LightsWindowInfo {
 // Fenêtres à barre de titre (ni outil, ni shell, ni élevées…) ; les pastilles prennent ensuite la place de leurs
 // boutons réduire / agrandir / fermer (captionButtons), qu'il y en ait de Windows ou dessinés par l'app.
 bool wantsLights(const LightsWindowInfo& w, LightsMode mode, UINT dpi);
+// Un calque pour cette fenêtre : éligible et visible (réduite compte comme visible). Une fenêtre masquée qui passe au
+// premier plan (menu de son icône de notification) n'en reçoit pas : aucun HIDE ne viendrait le retirer.
+bool lightsLayerWanted(const LightsWindowInfo& w, LightsMode mode, UINT dpi);
 
 struct LightsLayout {
     RECT window{};       // le calque (pixels écran), sur les boutons de la fenêtre
@@ -65,10 +68,11 @@ UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, 
 // Couleur la plus fréquente (à 8 niveaux près par canal), 0xRRGGBB ; 0 sans échantillon.
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);
 // Points de la barre de titre lus pour cette couleur (sur une même ligne) : de `right` vers la gauche par pas de
-// `step`, jusqu'à `minLeft` compris et au plus 128 essais ; les `want` premiers où la fenêtre elle-même est visible
-// (`ours` : une fenêtre du dessus n'en donne pas la couleur). Vide : aucun point sûr, la couleur d'avant reste.
-std::vector<LONG> captionSampleXs(LONG right, LONG minLeft, LONG step, const std::function<bool(LONG)>& ours,
-                                  int want = 9);
+// `step`, jusqu'à `minLeft` compris et sur `maxSpan` pixels au plus (plus loin : titre, onglets, recherche d'Office) ;
+// les `want` premiers où la fenêtre elle-même est visible (`ours` : une fenêtre du dessus n'en donne pas la couleur).
+// Moins de `minCount` : vide, aucun point sûr, la couleur d'avant reste.
+std::vector<LONG> captionSampleXs(LONG right, LONG minLeft, LONG step, LONG maxSpan, const std::function<bool(LONG)>& ours,
+                                  int want = 9, int minCount = 3);
 // Fenêtre suivie masquée (EVENT_OBJECT_HIDE) : calque caché tout de suite, puis relue par la boucle du fil
 // (`deferred`) : encore masquée, calque retiré (avec le crochet de déplacements de son processus, s'il était le
 // dernier ; elle en retrouve un à son prochain SHOW) ; revenue, calque replacé.

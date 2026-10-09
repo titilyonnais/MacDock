@@ -92,12 +92,19 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     return l;
 }
 
-std::vector<LONG> captionSampleXs(LONG right, LONG minLeft, LONG step, const std::function<bool(LONG)>& ours, int want) {
+std::vector<LONG> captionSampleXs(LONG right, LONG minLeft, LONG step, LONG maxSpan, const std::function<bool(LONG)>& ours,
+                                  int want, int minCount) {
     std::vector<LONG> xs;
     step = std::max(1L, step);
-    for (int tries = 0; right >= minLeft && tries < 128 && int(xs.size()) < want; ++tries, right -= step)
-        if (ours(right)) xs.push_back(right);
+    const LONG stop = std::max(minLeft, right - std::max(0L, maxSpan));
+    for (LONG x = right; x >= stop && int(xs.size()) < want; x -= step)
+        if (ours(x)) xs.push_back(x);
+    if (int(xs.size()) < minCount) xs.clear();
     return xs;
+}
+
+bool lightsLayerWanted(const LightsWindowInfo& w, LightsMode mode, UINT dpi) {
+    return (w.style & WS_VISIBLE) && wantsLights(w, mode, dpi);
 }
 
 HiddenLayer onTargetHidden(bool deferred, bool visible) {
