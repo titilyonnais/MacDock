@@ -1,0 +1,39 @@
+# Publication (plan 52) : une étiquette vX.Y.Z (ou vX.Y.Z-rc.N, préversion) envoyée sur GitHub construit
+# l'installateur et le joint à une release, avec son empreinte SHA-256 (SHA256SUMS.txt), que les mises à jour de
+# MacDock vérifient. L'étiquette doit correspondre à src/core/version_defs.h. Seul le jeton fourni par GitHub sert.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+
+      - name: Installateur
+        shell: pwsh
+        run: ./tools/make-installer.ps1 -Tag "${{ github.ref_name }}" -BinDir build/Release
+
+      - name: Publication
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.Substring(1)
+          $notes = "docs/releases/$version.md"
+          $publish = @($tag, "build/installer/MacDock-Setup-$version.exe", "build/installer/SHA256SUMS.txt", '--title', "MacDock $version")
+          $publish += if (Test-Path $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
+          if ($version.Contains('-')) { $publish += '--prerelease' }
+          gh release create @publish

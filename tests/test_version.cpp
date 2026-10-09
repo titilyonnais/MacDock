@@ -43,7 +43,7 @@ TEST_CASE(version_current_is_readable) {
     CHECK(current->major == MACDOCK_VERSION_MAJOR);
     CHECK(current->minor == MACDOCK_VERSION_MINOR);
     CHECK(current->patch == MACDOCK_VERSION_PATCH);
-    CHECK(current->pre.empty());
+    CHECK(md::versionText(*current) == std::wstring(L"" MACDOCK_VERSION_STRING));   // préversion comprise
     CHECK(md::versionText(*current) == md::kMacDockVersion);
     CHECK(md::versionText(v(0, 53, 0, L"rc.1")) == L"0.53.0-rc.1");
 }

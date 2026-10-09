@@ -18,7 +18,9 @@ $parts = foreach ($n in 'MAJOR', 'MINOR', 'PATCH') {
     if (-not $m.Success) { throw "MACDOCK_VERSION_$n introuvable dans version_defs.h" }
     $m.Groups[1].Value
 }
-$version = $parts -join '.'
+$suffix = [regex]::Match($defs, '#define MACDOCK_VERSION_SUFFIX "([^"]*)"')
+if (-not $suffix.Success) { throw 'MACDOCK_VERSION_SUFFIX introuvable dans version_defs.h' }
+$version = ($parts -join '.') + $suffix.Groups[1].Value
 if ($Tag -and $Tag -ne "v$version") { throw "L'étiquette $Tag ne correspond pas à la version $version (version_defs.h)." }
 
 $bin = if ([IO.Path]::IsPathRooted($BinDir)) { $BinDir } else { Join-Path $Root $BinDir }
