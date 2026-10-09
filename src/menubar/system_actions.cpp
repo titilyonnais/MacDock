@@ -2,6 +2,7 @@
 // MacMenuBar.exe seulement : les tests utilisent de fausses actions.
 #include <windows.h>
 #include <powrprof.h>
+#include <shellapi.h>
 
 #include "../core/log.h"
 #include "bar_actions.h"
@@ -42,6 +43,16 @@ SystemActions realSystemActions() {
     s.signOut = [] { exitWindows(EWX_LOGOFF, L"fermeture de session"); };
     s.restart = [] { exitWindows(EWX_REBOOT, L"redémarrage"); };
     s.shutdown = [] { exitWindows(EWX_POWEROFF, L"extinction"); };
+    s.forceQuit = [] {   // la fenêtre du Dock, au premier plan ; sans Dock, ou Dock figé, le Gestionnaire des tâches
+        HWND dock = FindWindowW(L"MacDockWindow", nullptr);
+        if (dockResponds(dock)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(dock, &pid);
+            AllowSetForegroundWindow(pid);
+            if (PostMessageW(dock, RegisterWindowMessageW(L"MacDockForceQuit"), 0, 0)) return;
+        }
+        ShellExecuteW(nullptr, L"open", L"taskmgr.exe", nullptr, nullptr, SW_SHOWNORMAL);
+    };
     s.confirm = [](const std::wstring& question) {
         return MessageBoxW(nullptr, question.c_str(), L"MacDock", MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND) == IDYES;
     };

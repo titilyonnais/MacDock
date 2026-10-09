@@ -19,6 +19,8 @@
 //               Mission Control hors écran avec des fenêtres factices (aucune fenêtre réelle touchée)
 //   MacDock.exe --switcher-snapshot f.png [--count n] [--select i] [--theme light|dark]
 //               sélecteur d'apps hors écran avec des apps factices (aucun raccourci enregistré)
+//   MacDock.exe --force-quit-snapshot f.png [--sheet] [--theme light|dark]
+//               fenêtre « Forcer à quitter » hors écran avec des apps factices (--sheet : sa confirmation)
 #include <windows.h>
 #include <objbase.h>
 #include <ole2.h>
@@ -40,6 +42,7 @@
 #include "../switcher/switcher_window.h"
 #include "../spotlight/spotlight_window.h"
 #include "../config/config_store.h"
+#include "../forcequit/force_quit_window.h"
 #include "../core/crash_report.h"
 #include "../core/log.h"
 #include "cli_args.h"
@@ -89,6 +92,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
                     args.find(L"--spotlight-snapshot") != std::wstring::npos ||
                     args.find(L"--mission-snapshot") != std::wstring::npos ||
                     args.find(L"--switcher-snapshot") != std::wstring::npos ||
+                    args.find(L"--force-quit-snapshot") != std::wstring::npos ||
                     args.find(L"--genie-capture-probe") != std::wstring::npos;
     HANDLE mutex = snapshot ? nullptr : CreateMutexW(nullptr, TRUE, L"Local\\MacDock");
     if (!snapshot && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
@@ -110,6 +114,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         }
         std::wstring captureProbe;
         std::wstring captureTest, genieSnapshot, appsSnapshot, appsQuery, spotSnapshot, missionSnapshot, switcherSnapshot;
+        std::wstring forceQuitShot;
         int countArg = -1, missionHover = -1, switcherSelect = 1;   // countArg < 0 : nombre par défaut
         int appsPage = 0;
         md::MinimizeEffect effect = md::MinimizeEffect::Genie;
@@ -122,6 +127,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             if (wcscmp(argv[i], L"--spotlight-snapshot") == 0) spotSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--mission-snapshot") == 0) missionSnapshot = argv[i + 1];
             if (wcscmp(argv[i], L"--switcher-snapshot") == 0) switcherSnapshot = argv[i + 1];
+            if (wcscmp(argv[i], L"--force-quit-snapshot") == 0) forceQuitShot = argv[i + 1];
             if (wcscmp(argv[i], L"--select") == 0) switcherSelect = std::max(0, _wtoi(argv[i + 1]));
             if (wcscmp(argv[i], L"--count") == 0) countArg = std::clamp(_wtoi(argv[i + 1]), 0, 60);
             if (wcscmp(argv[i], L"--hover") == 0) missionHover = _wtoi(argv[i + 1]);
@@ -138,6 +144,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
             md::log::init(md::appDataDir() + L"\\logs");
             code = md::genieCaptureProbe(GetModuleHandleW(nullptr), captureProbe) && md::genieLiveProbe(GetModuleHandleW(nullptr)) &&
                            md::genieFrameProbe(GetModuleHandleW(nullptr))
+                       ? 0
+                       : 1;
+        } else if (!forceQuitShot.empty()) {
+            code = md::forceQuitSnapshot(forceQuitShot, options.dark.value_or(false), args.find(L"--sheet") != std::wstring::npos)
                        ? 0
                        : 1;
         } else if (!switcherSnapshot.empty()) {

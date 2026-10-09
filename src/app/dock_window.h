@@ -14,6 +14,7 @@
 #include "../apps/apps_window.h"
 #include "../config/metrics.h"
 #include "../config/settings.h"
+#include "../forcequit/force_quit_window.h"
 #include "../glass/backdrop_capture.h"
 #include "../interact/command_key.h"
 #include "../icons/icon_provider.h"
@@ -103,6 +104,8 @@ private:
     // Les fenêtres d'une seule app (réduites en rangée en bas) ; false : rien à montrer (autre bureau virtuel…).
     bool openAppExpose(const std::wstring& appId);
     void registerSwitcherHotkey();                             // Alt+Tab et Alt+Maj+Tab (réglage appSwitcherHotkey)
+    void registerForceQuitHotkey();                            // raccourci du réglage forceQuitHotkey (⌥⌘⎋)
+    void openForceQuit();                                      // « Forcer des applications à quitter »
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
     void endSwitch(bool activate);                             // fin de session ; active l'app choisie
@@ -190,7 +193,9 @@ private:
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
     UINT genieArmMsg_ = 0;               // « MacDockGenieArm » : appui sur la pastille jaune (wParam fenêtre, lParam point)
     UINT willMinimizeMsg_ = 0;           // « MacDockWillMinimize » : réduction par la barre de menus (wParam fenêtre)
-    HotkeySlot missionHotkey_, appExposeHotkey_, spotlightHotkey_;   // refusés : réessayés (kHotkeyRetryTimer)
+    UINT forceQuitMsg_ = 0;              // « MacDockForceQuit » : menu  > Forcer à quitter…
+    HotkeySlot missionHotkey_, appExposeHotkey_, spotlightHotkey_, forceQuitHotkey_;   // refusés : réessayés (kHotkeyRetryTimer)
+    ForceQuitWindow forceQuit_;          // Forcer à quitter (⌥⌘⎋)
     std::wstring switcherHotkeyOn_;      // raccourci enregistré (vide : aucun)
     AppMru mru_;                         // apps de la plus récemment activée à la plus ancienne
     SwitchSession switch_;               // Alt+Tab en cours

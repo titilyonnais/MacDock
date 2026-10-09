@@ -26,49 +26,6 @@ std::wstring className(HWND hwnd) {
     return cls;
 }
 
-HWND findCoreWindow(HWND frame) {
-    HWND found = nullptr;
-    DWORD framePid = 0;
-    GetWindowThreadProcessId(frame, &framePid);
-    struct Ctx { HWND* found; DWORD framePid; } ctx{&found, framePid};
-    EnumChildWindows(
-        frame,
-        [](HWND child, LPARAM lp) -> BOOL {
-            auto* c = reinterpret_cast<Ctx*>(lp);
-            DWORD pid = 0;
-            GetWindowThreadProcessId(child, &pid);
-            if (pid != c->framePid && className(child) == L"Windows.UI.Core.CoreWindow") {
-                *c->found = child;
-                return FALSE;
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&ctx));
-    return found;
-}
-
-std::wstring processPath(DWORD pid) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return {};
-    wchar_t path[MAX_PATH * 2];
-    DWORD size = DWORD(std::size(path));
-    std::wstring out;
-    if (QueryFullProcessImageNameW(p, 0, path, &size)) out.assign(path, size);
-    CloseHandle(p);
-    return out;
-}
-
-std::wstring processAumid(DWORD pid) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return {};
-    wchar_t buf[APPLICATION_USER_MODEL_ID_MAX_LENGTH];
-    UINT32 len = APPLICATION_USER_MODEL_ID_MAX_LENGTH;
-    std::wstring out;
-    if (GetApplicationUserModelId(p, &len, buf) == ERROR_SUCCESS) out = buf;
-    CloseHandle(p);
-    return out;
-}
-
 std::wstring windowAumid(HWND hwnd) {
     ComPtr<IPropertyStore> store;
     if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&store)))) return {};
@@ -99,6 +56,49 @@ bool isCloakedForGood(HWND hwnd) {
 
 } // namespace
 
+HWND coreWindowOf(HWND frame) {
+    HWND found = nullptr;
+    DWORD framePid = 0;
+    GetWindowThreadProcessId(frame, &framePid);
+    struct Ctx { HWND* found; DWORD framePid; } ctx{&found, framePid};
+    EnumChildWindows(
+        frame,
+        [](HWND child, LPARAM lp) -> BOOL {
+            auto* c = reinterpret_cast<Ctx*>(lp);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(child, &pid);
+            if (pid != c->framePid && className(child) == L"Windows.UI.Core.CoreWindow") {
+                *c->found = child;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&ctx));
+    return found;
+}
+
+std::wstring processImagePath(DWORD pid) {
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return {};
+    wchar_t path[MAX_PATH * 2];
+    DWORD size = DWORD(std::size(path));
+    std::wstring out;
+    if (QueryFullProcessImageNameW(p, 0, path, &size)) out.assign(path, size);
+    CloseHandle(p);
+    return out;
+}
+
+std::wstring processAppUserModelId(DWORD pid) {
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return {};
+    wchar_t buf[APPLICATION_USER_MODEL_ID_MAX_LENGTH];
+    UINT32 len = APPLICATION_USER_MODEL_ID_MAX_LENGTH;
+    std::wstring out;
+    if (GetApplicationUserModelId(p, &len, buf) == ERROR_SUCCESS) out = buf;
+    CloseHandle(p);
+    return out;
+}
+
 bool isDockEligibleWindow(HWND hwnd) {
     if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return false;
     if (GetAncestor(hwnd, GA_ROOT) != hwnd) return false;
@@ -124,7 +124,7 @@ bool isDockEligibleWindow(HWND hwnd) {
     if (isCloakedForGood(hwnd)) return false;
     // Cadre d'app du Store sans contenu : Windows détache la CoreWindow d'une app réduite.
     // On ne garde un tel cadre que s'il est réduit et porte un AUMID (sinon : app suspendue ou en chargement).
-    if (cls == L"ApplicationFrameWindow" && !findCoreWindow(hwnd) && (!IsIconic(hwnd) || windowAumid(hwnd).empty()))
+    if (cls == L"ApplicationFrameWindow" && !coreWindowOf(hwnd) && (!IsIconic(hwnd) || windowAumid(hwnd).empty()))
         return false;
     return true;
 }
@@ -158,9 +158,9 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
     GetWindowThreadProcessId(hwnd, &pid);
     AppIdentity id;
     if (className(hwnd) == L"ApplicationFrameWindow") {
-        if (HWND core = findCoreWindow(hwnd)) {
+        if (HWND core = coreWindowOf(hwnd)) {
             GetWindowThreadProcessId(core, &pid);
-            id.aumid = processAumid(pid);
+            id.aumid = processAppUserModelId(pid);
         } else {
             id.aumid = windowAumid(hwnd);   // app du Store réduite
             if (id.aumid.empty()) return std::nullopt;
@@ -168,9 +168,10 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
         }
     } else {
         id.aumid = windowAumid(hwnd);
-        if (id.aumid.empty()) id.aumid = processAumid(pid);
+        if (id.aumid.empty()) id.aumid = processAppUserModelId(pid);
     }
-    id.exePath = pid ? processPath(pid) : std::wstring();
+    id.pid = pid;
+    id.exePath = pid ? processImagePath(pid) : std::wstring();
     if (id.exePath.empty() && id.aumid.empty()) return std::nullopt;
     id.appId = makeAppId(id.aumid, id.exePath);
 
@@ -179,9 +180,11 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
         id.displayName = shellDisplayName(id.launch);
     }
     if (id.launch.empty() || id.displayName.empty()) {
-        // AUMID explicite d'une app de bureau (Chrome, Edge…) : on relance l'exe.
+        // Pas d'AUMID, ou AUMID explicite d'une app de bureau que Windows ne connaît pas (Chrome lancé par un outil…) :
+        // nom, relance et icône par l'exe (shell:AppsFolder\<AUMID> ne mènerait nulle part). Une app empaquetée garde
+        // son AUMID : son exe ne se lance pas directement ; sans exe (app du Store réduite), l'AUMID reste la cible.
         if (id.displayName.empty()) id.displayName = exeDisplayName(id.exePath);
-        if (id.aumid.empty() || id.launch.empty()) id.launch = id.exePath;
+        if (!id.exePath.empty() && (id.aumid.empty() || processAppUserModelId(pid).empty())) id.launch = id.exePath;
     }
     return id;
 }

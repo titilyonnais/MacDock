@@ -14,6 +14,7 @@ namespace md {
 
 struct SystemActions {
     std::function<void()> sleep, lock, signOut, restart, shutdown;
+    std::function<void()> forceQuit;   // fenêtre Forcer à quitter du Dock ; sans Dock, le Gestionnaire des tâches
     std::function<bool(const std::wstring& question)> confirm;   // Oui → true
 };
 SystemActions realSystemActions();   // system_actions.cpp (exécutable seulement : jamais dans les tests)
@@ -32,6 +33,10 @@ struct ActionContext {
     std::vector<HWND>* hidden = nullptr; // fenêtres masquées par « Masquer… », rétablies par « Tout afficher »
     std::wstring exePath;                // À propos
 };
+
+// Le Dock répond-il (WM_NULL rendu dans le délai) ? Forcer à quitter ne lui est demandé qu'alors ; sinon le
+// Gestionnaire des tâches, qui marche justement quand plus rien ne répond.
+bool dockResponds(HWND dock, unsigned timeoutMs = 300);
 
 // false si l'action n'a rien fait (fenêtre disparue, raccourci invalide, refus d'une confirmation).
 bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys);

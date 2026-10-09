@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,6 +33,7 @@ enum class ActionKind {
     OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
     Tile,             // fenêtre active rangée (macOS 26) ; arg : action (« left », « fill »… : window_tile.h)
     Arrange,          // fenêtre active et les suivantes organisées (macOS 26) ; arg : « left-right », « quarters »…
+    ForceQuit,        // fenêtre « Forcer des applications à quitter » du Dock (plan 54)
 };
 
 enum class MenuSource { Generic, Win32, Uia };
@@ -65,6 +67,7 @@ struct BarContext {
     std::vector<RawMenuItem> real;
     std::uint64_t menuOwner = 0;   // fenêtre qui possède le menu
     std::vector<RecentEntry> recentApps, recentDocs;   // Éléments récents du menu du système
+    std::wstring forceQuitShortcut;   // raccourci de Forcer à quitter réglé pour le Dock (« ⌥⊞⎋ ») ; vide : aucun
 };
 
 struct BarMenus {
@@ -73,6 +76,10 @@ struct BarMenus {
 };
 
 BarMenus buildBarMenus(const BarContext& c);
+
+// Raccourci de Forcer à quitter réglé pour le Dock, lu dans le texte de son settings.json (BOM accepté) : symboles de
+// l'app Réglages (« ⌥⊞⎋ »), vide s'il est désactivé ; fichier illisible : le raccourci par défaut.
+std::wstring forceQuitShortcutLabel(std::string_view settingsJson);
 
 // Menu de la pastille verte (macOS 26, plan 51) : « Déplacer et redimensionner » (moitiés ; ⌥ : quarts), « Remplir et
 // organiser » (Remplir, la fenêtre et les suivantes ; ⌥ : Centrer, dispositions inversées), puis Plein écran.

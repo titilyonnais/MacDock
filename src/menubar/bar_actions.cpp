@@ -88,6 +88,11 @@ BarTarget keepTarget(const BarTarget& current, HWND foreground, ForegroundKind k
     return {foreground, appId};
 }
 
+bool dockResponds(HWND dock, unsigned timeoutMs) {
+    return dock && IsWindow(dock) &&
+           SendMessageTimeoutW(dock, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, timeoutMs, nullptr) != 0;
+}
+
 bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) {
     HWND target = c.target.window;
     switch (a.kind) {
@@ -183,6 +188,7 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         case ActionKind::ClearRecent: return false;   // exécutées par la barre
         case ActionKind::Sleep: call(sys.sleep); return true;
         case ActionKind::Lock: call(sys.lock); return true;
+        case ActionKind::ForceQuit: call(sys.forceQuit); return true;
         case ActionKind::SignOut:
             if (!confirmed(sys, L"Voulez-vous vraiment fermer la session ? Les apps ouvertes seront fermées.")) return false;
             call(sys.signOut);

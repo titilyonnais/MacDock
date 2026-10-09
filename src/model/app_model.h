@@ -20,6 +20,7 @@ struct AppIdentity {
     std::wstring aumid;
     std::wstring displayName;
     std::wstring launch;       // cible de relance (exe, .lnk, shell:AppsFolder\AUMID)
+    unsigned long pid = 0;     // processus de la fenêtre identifiée (celui de la CoreWindow pour une app du Store) ; 0 : inconnu
 };
 
 enum class ItemKind { App, AppsButton, Separator, Stack, MinimizedWindow, Trash };

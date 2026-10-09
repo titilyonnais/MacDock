@@ -2,6 +2,9 @@
 
 #include <cwctype>
 
+#include "../config/settings.h"
+#include "../core/json.h"
+#include "../interact/hotkey.h"
 #include "menu_catalog.h"
 
 namespace md {
@@ -84,7 +87,7 @@ void logoMenu(Builder& b, const BarContext& c) {
     Builder::separator(m);
     m.model.items.push_back(recentMenu(b, c));
     Builder::separator(m);
-    b.key(m, L"Forcer à quitter…", L"Ctrl+Maj+Échap");
+    b.add(m, L"Forcer à quitter…", {ActionKind::ForceQuit}, c.forceQuitShortcut);
     Builder::separator(m);
     b.add(m, L"Suspendre", {ActionKind::Sleep});
     b.add(m, L"Redémarrer…", {ActionKind::Restart});
@@ -382,6 +385,14 @@ BarMenus buildZoomMenu(const ZoomMenuContext& c) {
     Builder::separator(m);
     b.add(m, c.zoomed ? L"Quitter le plein écran" : L"Plein écran", {ActionKind::Zoom});   // comme un clic sur la pastille
     return out;
+}
+
+std::wstring forceQuitShortcutLabel(std::string_view settingsJson) {
+    if (settingsJson.starts_with("\xEF\xBB\xBF")) settingsJson.remove_prefix(3);   // BOM d'un fichier édité à la main
+    const auto doc = json::parse(settingsJson);
+    const Settings s = doc && doc->isObject() ? settingsFromJson(*doc) : Settings{};
+    const auto spec = parseHotkey(s.forceQuitHotkey);
+    return spec ? hotkeyLabel(*spec) : std::wstring();
 }
 
 BarMenus buildBarMenus(const BarContext& c) {

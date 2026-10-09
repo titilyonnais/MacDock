@@ -285,6 +285,16 @@ TEST_CASE(menus_logo_has_system_actions) {
     auto settings = actionOf(b, findItem(logo, L"Réglages MacDock…"));
     CHECK(settings.kind == md::ActionKind::OpenSettings);
     CHECK(settings.arg.empty());   // la section par défaut de l'app
+    // Plan 54 : « Forcer à quitter… » ouvre la fenêtre du Dock, avec le raccourci réglé (mêmes symboles que Réglages).
+    md::BarContext c = appContext();
+    c.forceQuitShortcut = L"⌥⊞⎋";
+    const auto withShortcut = md::buildBarMenus(c);
+    const md::MenuItem* forceQuit = findItem(withShortcut.menus[0], L"Forcer à quitter…");
+    REQUIRE(forceQuit != nullptr);
+    CHECK(actionOf(withShortcut, forceQuit).kind == md::ActionKind::ForceQuit);
+    CHECK(forceQuit->shortcut == L"⌥⊞⎋");
+    CHECK(md::macShortcutLabel(forceQuit->shortcut) == L"⌥⊞⎋");
+    CHECK(findItem(logo, L"Forcer à quitter…")->shortcut.empty());   // raccourci désactivé : rien d'affiché
 }
 
 TEST_CASE(menus_app_named_and_bold) {
@@ -402,6 +412,15 @@ TEST_CASE(bar_target_window_kept_from_open) {
     CHECK(app.window == notes);
 }
 
+TEST_CASE(bar_actions_force_quit_asks_dock) {   // plan 54
+    int asked = 0;
+    md::SystemActions sys;
+    sys.forceQuit = [&] { ++asked; };
+    md::ActionContext ctx;   // sans fenêtre cible : l'app figée n'a pas à passer au premier plan
+    CHECK(md::runAction({md::ActionKind::ForceQuit}, ctx, sys));
+    CHECK_EQ(asked, 1);
+}
+
 TEST_CASE(bar_actions_system_confirmed) {
     int restarts = 0, shutdowns = 0, signOuts = 0, sleeps = 0, locks = 0, questions = 0;
     bool answer = false;
@@ -444,6 +463,52 @@ TEST_CASE(bar_actions_ignore_missing_window) {
     CHECK(!md::runAction({md::ActionKind::Shortcut, L"Ctrl+S"}, ctx, sys));
     CHECK(!md::runAction({md::ActionKind::CloseWindow}, ctx, sys));
     CHECK(!md::runAction({md::ActionKind::Minimize}, ctx, sys));
+}
+
+TEST_CASE(bar_force_quit_shortcut_from_dock_settings) {   // relecture du plan 54
+    // Raccourci affiché dans le menu , lu dans settings.json du Dock : BOM accepté, « off » rien, illisible le défaut.
+    CHECK(md::forceQuitShortcutLabel("{\"forceQuitHotkey\": \"ctrl+alt+k\"}") == L"⌃⌥K");
+    CHECK(md::forceQuitShortcutLabel("\xEF\xBB\xBF{\"forceQuitHotkey\": \"ctrl+alt+k\"}") == L"⌃⌥K");
+    CHECK(md::forceQuitShortcutLabel("{\"forceQuitHotkey\": \"off\"}").empty());
+    CHECK(md::forceQuitShortcutLabel("pas du JSON") == L"⌥⊞⎋");
+    CHECK(md::forceQuitShortcutLabel("") == L"⌥⊞⎋");
+}
+
+TEST_CASE(bar_force_quit_needs_responding_dock) {   // relecture du plan 54, important 4
+    // Menu  > Forcer à quitter… : la fenêtre du Dock seulement s'il répond ; figé, le Gestionnaire des tâches (qui
+    // marche justement quand plus rien ne répond).
+    CHECK(!md::dockResponds(nullptr));
+    for (const bool stuck : {false, true}) {
+        HANDLE created = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HANDLE release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HWND dock = nullptr;
+        std::thread owner([&] {
+            dock = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"STATIC", L"", WS_POPUP, -3000, -3000, 10, 10, nullptr,
+                                   nullptr, nullptr, nullptr);
+            SetEvent(created);
+            if (stuck) {
+                WaitForSingleObject(release, 5000);   // fil figé
+            } else {
+                for (MSG m; WaitForSingleObject(release, 0) == WAIT_TIMEOUT;) {
+                    while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+                    Sleep(5);
+                }
+            }
+            MSG m;
+            while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+            DestroyWindow(dock);
+        });
+        WaitForSingleObject(created, 2000);
+        const ULONGLONG t0 = GetTickCount64();
+        const bool responds = md::dockResponds(dock, 300);
+        const ULONGLONG elapsed = GetTickCount64() - t0;
+        SetEvent(release);
+        owner.join();
+        CloseHandle(created);
+        CloseHandle(release);
+        CHECK(responds == !stuck);
+        CHECK(elapsed < 1500);   // jamais d'attente sans fin
+    }
 }
 
 TEST_CASE(bar_actions_dont_wait_for_hung_window) {

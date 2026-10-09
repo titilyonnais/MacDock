@@ -30,7 +30,9 @@
 #include "../stack/stack_icon.h"
 #include "../stack/stack_list.h"
 #include "../theme/theme_system.h"
+#include "../forcequit/force_quit_system.h"
 #include "../shell/default_pins.h"
+#include "../shell/explorer_restart.h"
 #include "../shell/shell_actions.h"
 #include "../tracker/app_identity.h"
 #include "../mission/mission_view.h"
@@ -99,7 +101,7 @@ std::vector<MonitorInfo> enumMonitors() {
 constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotlight = 4, kHotMission = 5;
 // Sélecteur d'apps : Alt+Tab, Alt+Maj+Tab, puis le temps d'une session Alt+Échap, Alt+←, Alt+→, Alt+Q, Alt+H.
 constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchLeft = 9, kHotSwitchRight = 10,
-              kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotAppExpose = 14;
+              kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotForceQuit = 13, kHotAppExpose = 14;
 constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
 constexpr UINT_PTR kHotkeyRetryTimer = 0x484B;   // "HK" : raccourci pris par une autre app, réessayé
 // Instant de la dernière touche d'un nom tapé dans la liste des fichiers (0 : aucune) : fil des crochets seulement.
@@ -197,6 +199,7 @@ void DockApp::applySettings() {
         release(spotlightHotkey_, kHotSpotlight, settings_.spotlightHotkey);
         release(missionHotkey_, kHotMission, settings_.missionControlHotkey);
         release(appExposeHotkey_, kHotAppExpose, settings_.appExposeHotkey);
+        release(forceQuitHotkey_, kHotForceQuit, settings_.forceQuitHotkey);
     }
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
@@ -204,6 +207,7 @@ void DockApp::applySettings() {
         registerAppExposeHotkey();
         registerSwitcherHotkey();
     }
+    if (forceQuitMsg_) registerForceQuitHotkey();
     requestFrame();
 }
 
@@ -1210,6 +1214,45 @@ void DockApp::registerSpotlightHotkey() {
     // Refusé : la loupe de la barre reste disponible.
     registerHotkey(spotlightHotkey_, kHotSpotlight, settings_.spotlightHotkey, parseSpotlightHotkey(settings_.spotlightHotkey),
                    L"Spotlight");
+}
+
+void DockApp::registerForceQuitHotkey() {
+    registerHotkey(forceQuitHotkey_, kHotForceQuit, settings_.forceQuitHotkey, parseHotkey(settings_.forceQuitHotkey),
+                   L"Forcer à quitter");
+}
+
+// « Forcer des applications à quitter » : les apps ouvertes, l'app au premier plan choisie d'abord. Forcer à quitter
+// arrête ses processus (jamais l'Explorateur, ApplicationFrameHost ni MacDock) ; « Relancer » relance l'Explorateur.
+void DockApp::openForceQuit() {
+    ForceQuitWindow::Env env;
+    env.list = [] {
+        const ULONGLONG start = GetTickCount64();
+        auto apps = forceQuitApps(forceQuitWindows(), sessionExplorer());
+        if (const ULONGLONG ms = GetTickCount64() - start; ms > 60)
+            log::warn(L"Forcer à quitter : liste relue en %llu ms", ms);
+        return apps;
+    };
+    env.iconSetup = [style = appsIconStyle()](IconProvider& icons) {
+        icons.setStrictTahoe(style.strict);
+        icons.setDark(style.dark);
+        icons.setGrid(style.shapeRatio, style.cornerRatio, style.jailInset, style.shadowOpacity);
+        if (!style.customDir.empty()) icons.setCustomDir(style.customDir);
+    };
+    env.forceQuit = [](const FqApp& app, std::wstring* error) {
+        if (app.explorer) {   // le Finder de Windows : relancé, sur un autre fil (jusqu'à 5 s)
+            std::thread([] {
+                wchar_t win[MAX_PATH] = {};
+                GetWindowsDirectoryW(win, MAX_PATH);
+                restartExplorer(win);
+            }).detach();
+            return true;
+        }
+        log::info(L"Forcer à quitter : « %s »", app.name.c_str());
+        return forceQuitNow(app.appId, error);   // relue maintenant : jamais un PID repris depuis l'ouverture de la feuille
+    };
+    const auto spec = parseHotkey(settings_.forceQuitHotkey);
+    env.shortcutLabel = spec ? hotkeyLabel(*spec) : std::wstring();
+    forceQuit_.open(instance_, std::move(env), forceQuitAppIdOf(GetForegroundWindow()));
 }
 
 void DockApp::registerSwitcherHotkey() {
@@ -2259,6 +2302,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         openSpotlight();
         return 0;
     }
+    if (msg == forceQuitMsg_ && forceQuitMsg_) {
+        openForceQuit();
+        return 0;
+    }
     if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
         announceMinimize(reinterpret_cast<HWND>(wp), lp == kAnnounceHide);
         return 0;
@@ -2516,8 +2563,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     registerMissionHotkey();
                     registerAppExposeHotkey();
                 }
+                if (forceQuitMsg_) registerForceQuitHotkey();
                 const auto waiting = [](const HotkeySlot& h) { return h.refused && h.retries < kHotkeyRetries; };
-                if (!waiting(spotlightHotkey_) && !waiting(missionHotkey_) && !waiting(appExposeHotkey_))
+                if (!waiting(spotlightHotkey_) && !waiting(missionHotkey_) && !waiting(appExposeHotkey_) &&
+                    !waiting(forceQuitHotkey_))
                     KillTimer(hwnd_, kHotkeyRetryTimer);
                 return 0;
             }
@@ -2672,6 +2721,10 @@ void DockApp::onHotKey(int id) {
         openSpotlight();
         return;
     }
+    if (id == kHotForceQuit) {
+        openForceQuit();
+        return;
+    }
     if (id == kHotOverlay) {
         if (overlay_) {
             overlay_.reset();
@@ -2815,6 +2868,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
     registerAppExposeHotkey();
+    forceQuitMsg_ = RegisterWindowMessageW(L"MacDockForceQuit");
+    ChangeWindowMessageFilterEx(hwnd_, forceQuitMsg_, MSGFLT_ALLOW, nullptr);
+    registerForceQuitHotkey();
     switcher_.onClick = [this](std::size_t i) {   // clic sur une icône : cette app, tout de suite
         switch_.select(i);
         endSwitch(true);

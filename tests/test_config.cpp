@@ -197,6 +197,50 @@ TEST_CASE(settings_mission_hotkey) {
     CHECK(md::settingsFromJson(md::settingsToJson(s)).missionControlHotkey == L"ctrl+up");
 }
 
+TEST_CASE(settings_free_hotkeys_round_trip) {   // plan 54 : raccourcis enregistrés librement dans Réglages
+    // Réglages enregistre n'importe quel raccourci : il est relu tel quel (avant, il revenait en silence à sa valeur par
+    // défaut, dans le Dock comme dans Réglages).
+    md::Settings s;
+    s.spotlightHotkey = L"ctrl+alt+k";
+    s.missionControlHotkey = L"win+alt+m";
+    s.appExposeHotkey = L"ctrl+shift+f2";
+    const md::Settings back = md::settingsFromJson(md::settingsToJson(s));
+    CHECK(back.spotlightHotkey == L"ctrl+alt+k");
+    CHECK(back.missionControlHotkey == L"win+alt+m");
+    CHECK(back.appExposeHotkey == L"ctrl+shift+f2");
+    // Illisible, sans modificateur ou gardé par Windows (Ctrl+Maj+Échap) : la valeur par défaut.
+    CHECK(md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"ctrl+shift+escape\"}")).spotlightHotkey == L"alt+space");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"k\"}")).missionControlHotkey == L"ctrl+alt+up");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appExposeHotkey\":\"ctrl+\"}")).appExposeHotkey == L"ctrl+alt+down");
+}
+
+TEST_CASE(settings_never_common_app_shortcuts) {   // relecture du plan 54
+    // Un fichier édité ou une sauvegarde importée ne fait jamais de Ctrl+C ou de Maj+A un raccourci de tout le système
+    // (l'enregistreur de Réglages les refuse aussi) ; les anciennes valeurs documentées restent acceptées.
+    const auto spot = [](const char* v) {
+        return md::settingsFromJson(*md::json::parse(std::string("{\"spotlightHotkey\":\"") + v + "\"}")).spotlightHotkey;
+    };
+    CHECK(spot("ctrl+c") == L"alt+space");
+    CHECK(spot("shift+a") == L"alt+space");
+    CHECK(spot("ctrl+shift+v") == L"alt+space");
+    CHECK(spot("ctrl+space") == L"ctrl+space");   // ancienne valeur documentée
+    CHECK(spot("f3") == L"f3");                   // touche F seule
+    CHECK(spot("ctrl+alt+k") == L"ctrl+alt+k");
+    CHECK(spot("win+shift+k") == L"win+shift+k");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"missionControlHotkey\":\"ctrl+up\"}")).missionControlHotkey == L"ctrl+up");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"appExposeHotkey\":\"ctrl+down\"}")).appExposeHotkey == L"ctrl+down");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"forceQuitHotkey\":\"ctrl+w\"}")).forceQuitHotkey == L"alt+win+escape");
+}
+
+TEST_CASE(settings_force_quit_hotkey) {   // plan 54 : ⌥⌘⎋, Alt et ⊞ aux places de ⌘ et ⌥ sur un clavier de PC
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).forceQuitHotkey == L"alt+win+escape");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"forceQuitHotkey\":\"OFF\"}")).forceQuitHotkey == L"off");
+    CHECK(md::settingsFromJson(*md::json::parse("{\"forceQuitHotkey\":\"bizarre\"}")).forceQuitHotkey == L"alt+win+escape");
+    md::Settings s;
+    s.forceQuitHotkey = L"ctrl+alt+escape";
+    CHECK(md::settingsFromJson(md::settingsToJson(s)).forceQuitHotkey == L"ctrl+alt+escape");
+}
+
 TEST_CASE(settings_switcher_hotkey) {
     CHECK(md::settingsFromJson(*md::json::parse("{}")).appSwitcherHotkey == L"alt+tab");
     CHECK(md::settingsFromJson(*md::json::parse("{\"appSwitcherHotkey\":\"OFF\"}")).appSwitcherHotkey == L"off");
