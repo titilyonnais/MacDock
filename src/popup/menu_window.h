@@ -27,8 +27,9 @@ public:
         bool trace = false;
     };
     // Côté d'ouverture par rapport à l'ancrage : au-dessus (Dock en bas), à droite (Dock à gauche), à gauche,
-    // ou en dessous (barre de menus : bord gauche du panneau sur l'ancrage).
-    enum class Side { Above, Right, Left, Below };
+    // en dessous (barre de menus : bord gauche du panneau sur l'ancrage) ou en dessous vers la gauche (pastille verte :
+    // bord droit du panneau sur l'ancrage).
+    enum class Side { Above, Right, Left, Below, BelowLeft };
     // Barre de menus : titres voisins (écran) et titre ouvert. Survoler un autre titre, ou les flèches gauche et
     // droite au premier niveau, ferment le menu : track renvoie alors menuSwitchResult(k).
     struct BarLink {

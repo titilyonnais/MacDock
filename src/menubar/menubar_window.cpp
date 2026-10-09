@@ -44,6 +44,7 @@ constexpr UINT WM_APP_STATUS = WM_APP + 4;       // lParam : StatusSnapshot* (à
 constexpr UINT WM_APP_SCREENS = WM_APP + 7;      // DPI d'un écran changé : barres refaites
 constexpr UINT WM_APP_TRAY = WM_APP + 6;         // lParam : ipc::Message* (à libérer) ; wParam 1 : connexion
 constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sortie par défaut changée
+constexpr UINT WM_APP_ZOOM_MENU = WM_APP + 8;    // pastille verte survolée : wParam la fenêtre, lParam l'ancrage
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
 
@@ -1278,6 +1279,45 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
     afterMenu();
 }
 
+void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
+    if (menuOpen_ || menuSession_ || !window || !IsWindow(window) || IsIconic(window) || IsHungAppWindow(window)) return;
+    const HMONITOR mon = MonitorFromPoint(anchor, MONITOR_DEFAULTTONEAREST);
+    Screen* s = nullptr;
+    for (auto& x : screens_)
+        if (x->monitor == mon) s = x.get();
+    for (auto& x : screens_)
+        if (!s && x->primary) s = x.get();
+    if (!s && !screens_.empty()) s = screens_.front().get();
+    if (!s) return;
+    MenuWindow::Env env = menuEnv(*s);
+    UINT dpiX = 96, dpiY = 96;   // écran de la pastille (sans barre : l'échelle d'une autre barre ne convient pas)
+    if (SUCCEEDED(GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY))) env.scale = float(dpiX) / 96.0f;
+    ZoomMenuContext c;
+    c.resizable = (GetWindowLongPtrW(window, GWL_STYLE) & WS_THICKFRAME) != 0;
+    c.zoomed = IsZoomed(window) != FALSE;
+    c.option = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    const BarMenus menu = buildZoomMenu(c);   // copie gardée : MenuWindow le lit pendant toute sa boucle
+    const HWND before = GetForegroundWindow();
+    stopSamples();
+    menuOpen_ = true;   // le device de la barre sert au menu ; la barre elle-même ne se montre pas (menuScreen_ nul)
+    menuSession_ = true;
+    if (trace_) log::info(L"[trace] barre : menu de la pastille verte (fenêtre %p, ⌥ %d)", static_cast<void*>(window), int(c.option));
+    const int r = MenuWindow::track(env, menu.menus.front().model, anchor, MenuWindow::Side::BelowLeft);
+    afterMenu();
+    const auto it = r > 0 ? menu.actions.find(r) : menu.actions.end();
+    if (it == menu.actions.end()) {   // rien de choisi : le premier plan d'avant revient
+        if (before && IsWindow(before) && GetForegroundWindow() != before) SetForegroundWindow(before);
+        return;
+    }
+    ActionContext ctx;
+    ctx.target.window = window;
+    const bool done = runAction(it->second, ctx, sys_);
+    if (done && IsWindow(window) && !IsIconic(window)) SetForegroundWindow(window);   // la fenêtre rangée passe devant
+    if (trace_)
+        log::info(L"[trace] barre : pastille verte, action %d (%s) %s", int(it->second.kind), it->second.arg.c_str(),
+                  done ? L"exécutée" : L"sans effet");
+}
+
 void MenuBarApp::onTray(WPARAM wp, LPARAM lp) {
     std::unique_ptr<ipc::Message> m(reinterpret_cast<ipc::Message*>(lp));
     if (wp == 1) {
@@ -1488,6 +1528,9 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     switch (msg) {
         case WM_APP_UIA_TITLES: onUiaTitles(lp); return 0;
+        case WM_APP_ZOOM_MENU:
+            onZoomMenu(reinterpret_cast<HWND>(wp), POINT{short(LOWORD(lp)), short(HIWORD(lp))});
+            return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
         case WM_APP_TRAY: onTray(wp, lp); return 0;
         case WM_APP_VOLUME:
@@ -1695,6 +1738,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
     ChangeWindowMessageFilterEx(ctl_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
     lights_.create(instance);
+    lights_.setZoomMenuSink(ctl_, WM_APP_ZOOM_MENU);
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);

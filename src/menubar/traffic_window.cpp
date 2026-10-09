@@ -25,6 +25,7 @@ constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois 
 // nouvelle taille ; les pastilles attendent, pour ne pas flotter sur l'ancienne image.
 constexpr UINT_PTR kRevealTimer = 5;
 constexpr ULONGLONG kRevealMs = 120;
+constexpr UINT_PTR kZoomMenuTimer = 6;   // pastille verte survolée : menu de macOS 26 (kZoomMenuDelayMs)
 // Messages postés au fil des pastilles (sans fenêtre : les calques vont et viennent). kMsgEvent : WinEvent reporté
 // (wParam l'événement, lParam la fenêtre) ; kMsgRecreate : calque à refaire (wParam sa fenêtre cible).
 constexpr UINT kMsgAttach = WM_APP + 1, kMsgQuit = WM_APP + 4, kMsgRecreate = WM_APP + 5, kMsgCapture = WM_APP + 6,
@@ -767,6 +768,15 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             }
             const POINT p = screenPoint();
             const bool hover = overGroup(p);
+            // Pastille verte : le délai du menu part quand le pointeur entre sur elle (pas à chaque mouvement) ; un
+            // menu refermé ne revient qu'après une sortie.
+            if (const bool onZoom = hitLight(l.layout, p) == 2; onZoom != l.overZoom) {
+                l.overZoom = onZoom;
+                if (onZoom && zoomMenuHover(2, l.pressed, l.dragging, l.state.enabled))
+                    SetTimer(from, kZoomMenuTimer, kZoomMenuDelayMs, nullptr);
+                else
+                    KillTimer(from, kZoomMenuTimer);
+            }
             // Pastille appuyée : enfoncée seulement tant que le doigt reste dessus, comme sur macOS.
             const int pressed = l.pressed >= 0 && hitLight(l.layout, p) == l.pressed ? l.pressed : -1;
             if (hover != l.state.hover || pressed != l.state.pressed) {
@@ -778,6 +788,8 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_MOUSELEAVE:
             l.tracking = false;
+            l.overZoom = false;
+            KillTimer(from, kZoomMenuTimer);
             if (l.state.hover) {
                 l.state.hover = false;
                 paint(l);
@@ -788,6 +800,7 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             const POINT p = screenPoint();
             const int hit = hitLight(l.layout, p);
             l.pressed = -1;
+            KillTimer(from, kZoomMenuTimer);   // un clic, pas de menu (il revient après une sortie de la pastille)
             switch (lightsMouse(msg == WM_LBUTTONDBLCLK, hit, l.state.enabled)) {
                 case LightsMouse::Press:   // sur une fenêtre inactive aussi, sans l'activer (macOS)
                     l.pressed = hit;
@@ -851,6 +864,16 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             } else if (wp == kProbeTimer) {
                 KillTimer(from, kProbeTimer);
                 place(l, true, true);
+            } else if (wp == kZoomMenuTimer) {   // toujours sur la pastille verte : la barre ouvre le menu
+                KillTimer(from, kZoomMenuTimer);
+                POINT c{};
+                const HWND sink = zoomSink_.load();
+                if (sink && l.shown && l.overZoom && GetCursorPos(&c) && hitLight(l.layout, c) == 2 &&
+                    zoomMenuHover(2, l.pressed, l.dragging, l.state.enabled) && IsWindow(l.target) && !IsIconic(l.target)) {
+                    const POINT a = zoomMenuAnchor(l.layout, l.scale);
+                    PostMessageW(sink, zoomMessage_.load(), reinterpret_cast<WPARAM>(l.target),
+                                 MAKELPARAM(WORD(SHORT(a.x)), WORD(SHORT(a.y))));
+                }
             }
             return 0;
         default: break;

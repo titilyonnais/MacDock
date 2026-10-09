@@ -64,6 +64,12 @@ LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]);
 UINT captionDoubleClick(bool maximizable, bool zoomed);   // 0 : rien
 
 int hitLight(const LightsLayout& l, POINT screen);   // 0 fermer, 1 réduire, 2 zoom, -1 ailleurs
+// Menu de la pastille verte (macOS 26, plan 51) : ouvert après ce délai de survol de la pastille verte (`hit` 2)
+// disponible, sans appui ni glisser en cours. Ancré sous elle, son bord droit juste après elle : les pastilles sont en
+// haut à droite des fenêtres, le menu s'étend vers la gauche, au-dessus de la fenêtre.
+constexpr unsigned kZoomMenuDelayMs = 700;
+bool zoomMenuHover(int hit, int pressed, bool dragging, const bool enabled[3]);
+POINT zoomMenuAnchor(const LightsLayout& l, double scale);
 UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, SC_MAXIMIZE ou SC_RESTORE
 // Couleur la plus fréquente (à 8 niveaux près par canal), 0xRRGGBB ; 0 sans échantillon.
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);

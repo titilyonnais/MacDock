@@ -609,3 +609,81 @@ TEST_CASE(bar_actions_arrange_needs_window) {
     ctx.target.window = nullptr;
     CHECK(!md::runAction({md::ActionKind::Arrange, L"quarters"}, ctx, sys));
 }
+
+TEST_CASE(menus_zoom_button_menu) {
+    // Plan 51 : menu de la pastille verte, comme macOS 26 : deux rangées de quatre icônes, puis Plein écran.
+    auto tileAction = [](const md::BarMenus& b, const md::MenuTile& t) {
+        auto f = b.actions.find(t.id);
+        return f == b.actions.end() ? md::MenuAction{} : f->second;
+    };
+    const auto b = md::buildZoomMenu({});
+    REQUIRE(b.menus.size() == 1);
+    const auto& items = b.menus[0].model.items;
+    REQUIRE(items.size() == 6);
+    CHECK(items[0].row == md::MenuRow::Header);
+    CHECK(items[0].text == L"Déplacer et redimensionner");
+    CHECK(items[2].row == md::MenuRow::Header);
+    CHECK(items[2].text == L"Remplir et organiser");
+    REQUIRE(items[1].row == md::MenuRow::Layouts);
+    REQUIRE(items[1].tiles.size() == 4);
+    REQUIRE(items[3].row == md::MenuRow::Layouts);
+    REQUIRE(items[3].tiles.size() == 4);
+    CHECK(items[4].separator());
+    const wchar_t* halves[] = {L"left", L"right", L"top", L"bottom"};
+    std::set<int> ids;
+    for (int k = 0; k < 4; ++k) {
+        const md::MenuAction a = tileAction(b, items[1].tiles[std::size_t(k)]);
+        CHECK(a.kind == md::ActionKind::Tile);
+        CHECK(a.arg == halves[k]);
+        CHECK(items[1].tiles[std::size_t(k)].enabled);
+        CHECK(!items[1].tiles[std::size_t(k)].title.empty());   // nom de l'icône (accessibilité, trace)
+        CHECK_EQ(items[1].tiles[std::size_t(k)].boxes.size(), std::size_t(1));
+    }
+    const std::pair<md::ActionKind, const wchar_t*> fill[] = {{md::ActionKind::Tile, L"fill"},
+                                                              {md::ActionKind::Arrange, L"left-right"},
+                                                              {md::ActionKind::Arrange, L"top-bottom"},
+                                                              {md::ActionKind::Arrange, L"quarters"}};
+    for (int k = 0; k < 4; ++k) {
+        const md::MenuAction a = tileAction(b, items[3].tiles[std::size_t(k)]);
+        CHECK(a.kind == fill[k].first);
+        CHECK(a.arg == fill[k].second);
+    }
+    CHECK_EQ(items[3].tiles[1].boxes.size(), std::size_t(2));   // la fenêtre et la suivante
+    CHECK_EQ(items[3].tiles[3].boxes.size(), std::size_t(4));
+    for (const auto* row : {&items[1], &items[3]})
+        for (const auto& t : row->tiles) {
+            CHECK(t.id != 0);
+            ids.insert(t.id);
+        }
+    CHECK_EQ(ids.size(), std::size_t(8));
+    CHECK(items[5].text == L"Plein écran");
+    CHECK(actionOf(b, &items[5]).kind == md::ActionKind::Zoom);
+
+    // ⌥ : 7 icônes sur 8 changent (quarts, Centrer, dispositions inversées) ; Quarts reste.
+    md::ZoomMenuContext alt;
+    alt.option = true;
+    const auto bo = md::buildZoomMenu(alt);
+    const auto& oi = bo.menus[0].model.items;
+    REQUIRE(oi.size() == 6);
+    const wchar_t* quarters[] = {L"top-left", L"top-right", L"bottom-left", L"bottom-right"};
+    for (int k = 0; k < 4; ++k) CHECK(tileAction(bo, oi[1].tiles[std::size_t(k)]).arg == quarters[k]);
+    const wchar_t* altFill[] = {L"center", L"right-left", L"bottom-top", L"quarters"};
+    for (int k = 0; k < 4; ++k) CHECK(tileAction(bo, oi[3].tiles[std::size_t(k)]).arg == altFill[k]);
+
+    md::ZoomMenuContext zoomed;
+    zoomed.zoomed = true;
+    CHECK(md::buildZoomMenu(zoomed).menus[0].model.items[5].text == L"Quitter le plein écran");
+
+    // Taille fixe : rien ne s'étire ; avec ⌥, Centrer seul ; Plein écran reste.
+    md::ZoomMenuContext fixed;
+    fixed.resizable = false;
+    const auto bf = md::buildZoomMenu(fixed);
+    for (const auto* row : {&bf.menus[0].model.items[1], &bf.menus[0].model.items[3]})
+        for (const auto& t : row->tiles) CHECK(!t.enabled);
+    CHECK(bf.menus[0].model.items[5].enabled);
+    fixed.option = true;
+    const auto bfo = md::buildZoomMenu(fixed);
+    CHECK(bfo.menus[0].model.items[3].tiles[0].enabled);   // Centrer
+    CHECK(!bfo.menus[0].model.items[3].tiles[1].enabled);
+    CHECK(!bfo.menus[0].model.items[1].tiles[0].enabled);
+}

@@ -74,4 +74,13 @@ struct BarMenus {
 
 BarMenus buildBarMenus(const BarContext& c);
 
+// Menu de la pastille verte (macOS 26, plan 51) : « Déplacer et redimensionner » (moitiés ; ⌥ : quarts), « Remplir et
+// organiser » (Remplir, la fenêtre et les suivantes ; ⌥ : Centrer, dispositions inversées), puis Plein écran.
+struct ZoomMenuContext {
+    bool resizable = true;   // taille fixe : rien ne s'étire (⌥ : Centrer seul)
+    bool zoomed = false;     // agrandie : « Quitter le plein écran »
+    bool option = false;     // ⌥ (Alt) maintenue à l'ouverture
+};
+BarMenus buildZoomMenu(const ZoomMenuContext& c);
+
 } // namespace md

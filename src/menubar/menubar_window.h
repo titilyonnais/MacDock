@@ -131,6 +131,9 @@ private:
     void onStatus(LPARAM snapshot);
     void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
     void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
+    // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
+    // choisie vise cette fenêtre, même inactive.
+    void onZoomMenu(HWND window, POINT anchor);
     void trayClickAt(Screen& s, std::size_t k, int button);
     void openSettingsFile();
     void execute(const MenuAction& a);

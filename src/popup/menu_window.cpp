@@ -285,6 +285,9 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         } else if (side == MenuWindow::Side::Below) {
             left = anchor.x - LONG(p->margin);
             top = anchor.y - LONG(p->margin);
+        } else if (side == MenuWindow::Side::BelowLeft) {
+            left = anchor.x - w + LONG(p->margin);
+            top = anchor.y - LONG(p->margin);
         }
     }
     left = std::clamp(left, m.left - LONG(p->margin), std::max(m.left, m.right - w + LONG(p->margin)));
