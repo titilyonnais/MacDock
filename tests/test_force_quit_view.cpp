@@ -124,6 +124,31 @@ TEST_CASE(force_quit_draws_selection_hung_and_button) {
     }
 }
 
+TEST_CASE(force_quit_preselection_revealed_after_layout) {   // relecture du plan 54, important 3
+    // Première ouverture : la liste est lue (l'app du premier plan choisie) avant la première mise en page ; dès que
+    // celle-ci est connue, la ligne choisie est montrée, même la 18e sur 20.
+    md::FqListState s;
+    s.preselect = L"app17";
+    std::vector<md::FqApp> apps(20);
+    for (std::size_t i = 0; i < apps.size(); ++i) apps[i].appId = L"app" + std::to_wstring(i);
+    s.reload(apps);
+    CHECK(s.selected == 17);
+    md::FqLayout l;
+    l.list = D2D1::RectF(20, 80, 360, 364);   // 284 pt de haut, comme la vraie fenêtre
+    s.afterLayout(l);
+    const D2D1_RECT_F r = md::rowRect(l, 17, s.scroll);
+    CHECK(r.top >= l.list.top);
+    CHECK(r.bottom <= l.list.bottom);
+    // Molette bornée ; la sélection au clavier reste visible.
+    s.wheel(-10000, l);
+    CHECK(std::abs(s.scroll - md::maxScroll(l, 20)) < 0.5f);
+    s.select(0);
+    s.afterLayout(l);
+    CHECK(s.scroll == 0);
+    s.select(99);   // bornée à la dernière
+    CHECK(s.selected == 19);
+}
+
 TEST_CASE(force_quit_button_greyed_without_selection) {
     Canvas c(380, 420);
     const md::ui::Palette pal = md::ui::palette(false);

@@ -26,27 +26,6 @@ std::wstring className(HWND hwnd) {
     return cls;
 }
 
-HWND findCoreWindow(HWND frame) {
-    HWND found = nullptr;
-    DWORD framePid = 0;
-    GetWindowThreadProcessId(frame, &framePid);
-    struct Ctx { HWND* found; DWORD framePid; } ctx{&found, framePid};
-    EnumChildWindows(
-        frame,
-        [](HWND child, LPARAM lp) -> BOOL {
-            auto* c = reinterpret_cast<Ctx*>(lp);
-            DWORD pid = 0;
-            GetWindowThreadProcessId(child, &pid);
-            if (pid != c->framePid && className(child) == L"Windows.UI.Core.CoreWindow") {
-                *c->found = child;
-                return FALSE;
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&ctx));
-    return found;
-}
-
 std::wstring windowAumid(HWND hwnd) {
     ComPtr<IPropertyStore> store;
     if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&store)))) return {};
@@ -76,6 +55,27 @@ bool isCloakedForGood(HWND hwnd) {
 }
 
 } // namespace
+
+HWND coreWindowOf(HWND frame) {
+    HWND found = nullptr;
+    DWORD framePid = 0;
+    GetWindowThreadProcessId(frame, &framePid);
+    struct Ctx { HWND* found; DWORD framePid; } ctx{&found, framePid};
+    EnumChildWindows(
+        frame,
+        [](HWND child, LPARAM lp) -> BOOL {
+            auto* c = reinterpret_cast<Ctx*>(lp);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(child, &pid);
+            if (pid != c->framePid && className(child) == L"Windows.UI.Core.CoreWindow") {
+                *c->found = child;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&ctx));
+    return found;
+}
 
 std::wstring processImagePath(DWORD pid) {
     HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -124,7 +124,7 @@ bool isDockEligibleWindow(HWND hwnd) {
     if (isCloakedForGood(hwnd)) return false;
     // Cadre d'app du Store sans contenu : Windows détache la CoreWindow d'une app réduite.
     // On ne garde un tel cadre que s'il est réduit et porte un AUMID (sinon : app suspendue ou en chargement).
-    if (cls == L"ApplicationFrameWindow" && !findCoreWindow(hwnd) && (!IsIconic(hwnd) || windowAumid(hwnd).empty()))
+    if (cls == L"ApplicationFrameWindow" && !coreWindowOf(hwnd) && (!IsIconic(hwnd) || windowAumid(hwnd).empty()))
         return false;
     return true;
 }
@@ -158,7 +158,7 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
     GetWindowThreadProcessId(hwnd, &pid);
     AppIdentity id;
     if (className(hwnd) == L"ApplicationFrameWindow") {
-        if (HWND core = findCoreWindow(hwnd)) {
+        if (HWND core = coreWindowOf(hwnd)) {
             GetWindowThreadProcessId(core, &pid);
             id.aumid = processAppUserModelId(pid);
         } else {

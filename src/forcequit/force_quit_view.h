@@ -53,6 +53,21 @@ int lightAt(const FqLayout& l, float x, float y);   // 0 fermer, 1 réduire ; -1
 
 void drawForceQuit(ui::Painter& p, const FqLayout& l, const FqView& v);
 
+// Liste de la fenêtre (apps, sélection, défilement), sans fenêtre. La sélection est montrée dès que la mise en page est
+// connue : à la première ouverture, la liste est lue (l'app du premier plan choisie) avant la première mise en page.
+struct FqListState {
+    std::vector<FqApp> apps;
+    int selected = -1;
+    float scroll = 0;
+    std::wstring preselect;   // appId à choisir à la première liste non vide
+    bool reveal = false;      // montrer la sélection à la prochaine mise en page
+
+    void reload(std::vector<FqApp> next);   // l'app choisie suit sa ligne ; partie, la suivante (selectionAfter)
+    void select(int i);                     // bornée à la liste
+    void wheel(float points, const FqLayout& l);
+    void afterLayout(const FqLayout& l);    // sélection montrée, défilement borné
+};
+
 // Feuille de confirmation : « Voulez-vous forcer « X » à quitter ? » [Annuler] [Forcer à quitter], ou « Relancer » pour
 // l'Explorateur ; `alsoQuitting` : les autres apps qui partagent son processus, nommées (elles quitteront aussi).
 ui::SheetSpec forceQuitConfirm(const FqApp& app, const std::vector<std::wstring>& alsoQuitting);

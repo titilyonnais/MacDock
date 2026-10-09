@@ -113,6 +113,34 @@ void drawForceQuit(ui::Painter& p, const FqLayout& l, const FqView& v) {
     }
 }
 
+void FqListState::reload(std::vector<FqApp> next) {
+    int sel = -1;
+    if (!preselect.empty()) {
+        for (std::size_t i = 0; i < next.size(); ++i)
+            if (next[i].appId == preselect) sel = int(i);
+        if (!next.empty()) preselect.clear();
+    } else {
+        sel = selectionAfter(apps, selected, next);
+    }
+    reveal = reveal || (sel != selected && sel >= 0);
+    apps = std::move(next);
+    selected = sel;
+}
+
+void FqListState::select(int i) {
+    if (apps.empty()) return;
+    selected = std::clamp(i, 0, int(apps.size()) - 1);
+    reveal = true;
+}
+
+void FqListState::wheel(float points, const FqLayout& l) { scroll = std::clamp(scroll - points, 0.f, maxScroll(l, apps.size())); }
+
+void FqListState::afterLayout(const FqLayout& l) {
+    if (reveal && selected >= 0) scroll = scrollToShow(l, apps.size(), scroll, selected);
+    reveal = false;
+    scroll = std::clamp(scroll, 0.f, maxScroll(l, apps.size()));
+}
+
 ui::SheetSpec forceQuitConfirm(const FqApp& app, const std::vector<std::wstring>& alsoQuitting) {
     if (app.explorer)
         return {L"Voulez-vous relancer l'Explorateur de fichiers ?", L"Ses fenêtres ouvertes seront fermées, puis le bureau reviendra.",

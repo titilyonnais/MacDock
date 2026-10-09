@@ -58,14 +58,17 @@ std::vector<FqWindow> forceQuitWindows() {
     EnumWindows(
         [](HWND hwnd, LPARAM lp) -> BOOL {
             auto& windows = *reinterpret_cast<std::vector<FqWindow>*>(lp);
-            wchar_t cls[16] = {};
-            GetClassNameW(hwnd, cls, 16);
+            wchar_t cls[32] = {};
+            GetClassNameW(hwnd, cls, 32);
             if (wcscmp(cls, L"Ghost") == 0) {   // l'app figée qu'elle cache
                 if (!IsWindowVisible(hwnd)) return TRUE;
                 if (HWND hung = hungWindowOf(hwnd)) addWindow(windows, hung, true);
                 return TRUE;
             }
-            if (isDockEligibleWindow(hwnd)) addWindow(windows, hwnd, IsHungAppWindow(hwnd) != FALSE);
+            // App du Store : le cadre d'ApplicationFrameHost répond toujours ; c'est sa CoreWindow qui se fige.
+            if (!isDockEligibleWindow(hwnd)) return TRUE;
+            HWND core = wcscmp(cls, L"ApplicationFrameWindow") == 0 ? coreWindowOf(hwnd) : nullptr;
+            addWindow(windows, hwnd, IsHungAppWindow(hwnd) || (core && IsHungAppWindow(core)));
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&out));

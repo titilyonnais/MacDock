@@ -43,8 +43,8 @@ public:
     HWND hwnd() const { return hwnd_; }
 
     // État vu de l'extérieur : essais réels et journal.
-    const std::vector<FqApp>& apps() const { return apps_; }
-    int selected() const { return selected_; }
+    const std::vector<FqApp>& apps() const { return list_.apps; }
+    int selected() const { return list_.selected; }
     bool sheetOpen() const { return sheet_.has_value(); }
     std::wstring sheetTitle() const { return sheet_ ? sheet_->spec.title : std::wstring(); }
     RECT rowOnScreen(int i) const;          // pixels de l'écran
@@ -82,10 +82,7 @@ private:
     Env env_;
     float scale_ = 1;
     bool dark_ = false, active_ = true;
-    std::vector<FqApp> apps_;
-    int selected_ = -1;
-    float scroll_ = 0;
-    std::wstring preselect_;
+    FqListState list_;   // apps, sélection, défilement
     FqLayout layout_;
     std::optional<Sheet> sheet_;
     bool lightsHover_ = false, buttonPressed_ = false;

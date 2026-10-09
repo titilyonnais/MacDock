@@ -81,7 +81,7 @@ bool ForceQuitWindow::open(HINSTANCE instance, Env env, const std::wstring& pres
         return true;
     }
     instance_ = instance;
-    preselect_ = preselect;
+    list_.preselect = preselect;
     static bool registered = false;
     if (!registered) {
         WNDCLASSEXW wc{sizeof wc};
@@ -117,7 +117,7 @@ bool ForceQuitWindow::open(HINSTANCE instance, Env env, const std::wstring& pres
     SetTimer(hwnd_, kReloadTimer, 1000, nullptr);
     ShowWindow(hwnd_, SW_SHOW);
     SetForegroundWindow(hwnd_);
-    log::info(L"Forcer à quitter : fenêtre ouverte (%zu apps)", apps_.size());
+    log::info(L"Forcer à quitter : fenêtre ouverte (%zu apps)", list_.apps.size());
     return true;
 }
 
@@ -135,9 +135,7 @@ void ForceQuitWindow::close() {
     bitmaps_.clear();
     images_.clear();
     sheet_.reset();
-    apps_.clear();
-    selected_ = -1;
-    scroll_ = 0;
+    list_ = FqListState{};
     lightsHover_ = buttonPressed_ = false;
     lightPressed_ = -1;
     DestroyWindow(h);
@@ -186,6 +184,12 @@ LRESULT ForceQuitWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             InvalidateRect(h, nullptr, FALSE);
             return 0;
         }
+        case WM_GETMINMAXINFO: {   // taille fixe : ni bord tiré, ni Aero Snap, ni « Taille » du menu système
+            auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
+            const POINT size{LONG(std::lround(kFqWidth * scale_)), LONG(std::lround(kFqHeight * scale_))};
+            mm->ptMinTrackSize = mm->ptMaxTrackSize = mm->ptMaxSize = size;
+            return 0;
+        }
         case WM_SIZE:
             if (rt_) rt_->Resize(D2D1::SizeU(LOWORD(lp), HIWORD(lp)));
             InvalidateRect(h, nullptr, FALSE);
@@ -213,13 +217,11 @@ LRESULT ForceQuitWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_MOUSEWHEEL:
             if (!sheet_) {
-                scroll_ = std::clamp(scroll_ - float(GET_WHEEL_DELTA_WPARAM(wp)) / WHEEL_DELTA * kFqRow * 3, 0.f,
-                                     maxScroll(layout_, apps_.size()));
+                list_.wheel(float(GET_WHEEL_DELTA_WPARAM(wp)) / WHEEL_DELTA * kFqRow * 3, layout_);
                 InvalidateRect(h, nullptr, FALSE);
             }
             return 0;
-        case WM_KEYDOWN:
-        case WM_SYSKEYDOWN:
+        case WM_KEYDOWN:   // Alt+F4 et les autres touches système restent à Windows
             onKey(UINT(wp), (lp & (1 << 30)) != 0);
             return 0;
         case WM_TIMER:
@@ -278,7 +280,7 @@ bool ForceQuitWindow::createTarget() {
 void ForceQuitWindow::render() {
     if (!createTarget()) return;
     FqView v;
-    for (const FqApp& a : apps_) {
+    for (const FqApp& a : list_.apps) {
         ID2D1Bitmap* icon = nullptr;
         if (auto im = images_.find(a.appId); im != images_.end() && im->second) {
             auto& b = bitmaps_[a.appId];
@@ -287,13 +289,14 @@ void ForceQuitWindow::render() {
         }
         v.rows.push_back({a.name, a.hung, icon});
     }
-    v.selected = selected_;
+    v.selected = list_.selected;
     v.active = active_;
     v.lightsHover = lightsHover_;
     v.lightPressed = lightPressed_;
-    const bool explorer = selected_ >= 0 && selected_ < int(apps_.size()) && apps_[std::size_t(selected_)].explorer;
+    const bool explorer =
+        list_.selected >= 0 && list_.selected < int(list_.apps.size()) && list_.apps[std::size_t(list_.selected)].explorer;
     v.buttonLabel = explorer ? L"Relancer" : L"Forcer à quitter";
-    v.buttonEnabled = selected_ >= 0;
+    v.buttonEnabled = list_.selected >= 0;
     v.buttonPressed = buttonPressed_;
     v.hint = hintFor(env_.shortcutLabel);
     const ui::Palette pal = ui::palette(dark_);
@@ -302,8 +305,8 @@ void ForceQuitWindow::render() {
     {
         ui::Painter p(rt_.Get(), dwrite_.Get(), pal, font_, &formats_);
         layout_ = layoutForceQuit(p, v);
-        scroll_ = std::clamp(scroll_, 0.f, maxScroll(layout_, apps_.size()));
-        v.scroll = scroll_;
+        list_.afterLayout(layout_);   // la sélection montrée, dès la première image
+        v.scroll = list_.scroll;
         drawForceQuit(p, layout_, v);
         if (sheet_) {
             sheet_->layout = ui::layoutSheet(p, kFqWidth, kFqTitleBar, sheet_->spec);
@@ -319,19 +322,7 @@ void ForceQuitWindow::render() {
 
 void ForceQuitWindow::reload() {
     if (!hwnd_) return;
-    std::vector<FqApp> next = env_.list ? env_.list() : std::vector<FqApp>{};
-    int sel = -1;
-    if (!preselect_.empty()) {   // première liste : l'app qui était au premier plan
-        for (std::size_t i = 0; i < next.size(); ++i)
-            if (next[i].appId == preselect_) sel = int(i);
-        if (!next.empty()) preselect_.clear();
-    } else {
-        sel = selectionAfter(apps_, selected_, next);
-    }
-    const bool moved = sel != selected_;
-    apps_ = std::move(next);
-    selected_ = sel;
-    if (moved && sel >= 0) scroll_ = scrollToShow(layout_, apps_.size(), scroll_, sel);
+    list_.reload(env_.list ? env_.list() : std::vector<FqApp>{});
     requestIcons();
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -371,24 +362,22 @@ void ForceQuitWindow::requestIcons() {
         }).detach();
     }
     std::lock_guard lock(loader_->mutex);
-    for (const FqApp& a : apps_)
+    for (const FqApp& a : list_.apps)
         if (!images_.count(a.appId) && loader_->requested.insert(a.appId).second)
             loader_->queue.emplace_back(a.appId, a.launch.empty() ? a.exePath : a.launch);
     loader_->cv.notify_all();
 }
 
 void ForceQuitWindow::select(int i) {
-    if (apps_.empty()) return;
-    selected_ = std::clamp(i, 0, int(apps_.size()) - 1);
-    scroll_ = scrollToShow(layout_, apps_.size(), scroll_, selected_);
+    list_.select(i);
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void ForceQuitWindow::openConfirm() {
-    if (selected_ < 0 || selected_ >= int(apps_.size())) return;
+    if (list_.selected < 0 || list_.selected >= int(list_.apps.size())) return;
     Sheet s;
-    s.target = apps_[std::size_t(selected_)];
-    s.spec = forceQuitConfirm(s.target, appsSharingProcesses(apps_, selected_));
+    s.target = list_.apps[std::size_t(list_.selected)];
+    s.spec = forceQuitConfirm(s.target, appsSharingProcesses(list_.apps, list_.selected));
     sheet_ = std::move(s);
     buttonPressed_ = false;
     SetTimer(hwnd_, kSheetTimer, 16, nullptr);
@@ -464,9 +453,9 @@ void ForceQuitWindow::onMouse(UINT msg, float x, float y) {
         SetCapture(hwnd_);
         if (light >= 0) {
             lightPressed_ = light;
-        } else if (const int row = rowAt(layout_, apps_.size(), scroll_, x, y); row >= 0) {
+        } else if (const int row = rowAt(layout_, list_.apps.size(), list_.scroll, x, y); row >= 0) {
             select(row);
-        } else if (selected_ >= 0 && inside(layout_.button, x, y)) {
+        } else if (list_.selected >= 0 && inside(layout_.button, x, y)) {
             buttonPressed_ = true;
         }
         InvalidateRect(hwnd_, nullptr, FALSE);
@@ -496,10 +485,10 @@ void ForceQuitWindow::onKey(UINT vk, bool repeat) {
         else if (vk == VK_ESCAPE) choose(sheet_->kind == Sheet::Kind::Error ? 0 : -1);
         return;
     }
-    const int last = int(apps_.size()) - 1;
+    const int last = int(list_.apps.size()) - 1;
     switch (vk) {
-        case VK_UP: select(selected_ < 0 ? last : selected_ - 1); break;
-        case VK_DOWN: select(selected_ < 0 ? 0 : selected_ + 1); break;
+        case VK_UP: select(list_.selected < 0 ? last : list_.selected - 1); break;
+        case VK_DOWN: select(list_.selected < 0 ? 0 : list_.selected + 1); break;
         case VK_HOME: select(0); break;
         case VK_END: select(last); break;
         case VK_RETURN:
@@ -526,7 +515,7 @@ RECT ForceQuitWindow::toScreen(D2D1_RECT_F r) const {
     return out;
 }
 
-RECT ForceQuitWindow::rowOnScreen(int i) const { return toScreen(rowRect(layout_, i, scroll_)); }
+RECT ForceQuitWindow::rowOnScreen(int i) const { return toScreen(rowRect(layout_, i, list_.scroll)); }
 RECT ForceQuitWindow::buttonOnScreen() const { return toScreen(layout_.button); }
 RECT ForceQuitWindow::sheetButtonOnScreen(int i) const {
     if (!sheet_ || i < 0 || i >= int(sheet_->layout.buttons.size())) return RECT{};
