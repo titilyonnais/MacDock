@@ -17,6 +17,8 @@ TEST_CASE(cli_diagnostic_without_value) {   // relecture finale, important 3
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--spotlight-snapshot"}) == L"--spotlight-snapshot");
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--mission-snapshot"}) == L"--mission-snapshot");
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--switcher-snapshot"}) == L"--switcher-snapshot");
+    CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--force-quit-snapshot"}) == L"--force-quit-snapshot");   // plan 54
+    CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--force-quit-snapshot", L"f.png", L"--sheet"}).empty());
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--theme-snapshot"}) == L"--theme-snapshot");
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--capture-test"}) == L"--capture-test");
     CHECK(md::diagnosticMissingValue(V{L"MacDock.exe", L"--trace-windows"}).empty());   // option sans valeur
