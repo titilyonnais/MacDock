@@ -743,6 +743,14 @@ void DockApp::setTransparent(bool transparent) {
 }
 
 void DockApp::onMouse(POINT screen) {
+    // Pointeur confiné ailleurs par une autre app : le curseur ne peut pas être sur le Dock, même si sa dernière
+    // position y est restée (ClipCursor ne le déplace qu'au mouvement suivant).
+    const bool confined = pointerConfinedElsewhere();
+    if (confined != confinedLogged_) {
+        confinedLogged_ = confined;
+        if (trace_) log::info(L"[trace] pointeur %s", confined ? L"confiné ailleurs par une autre app : hors du Dock" : L"libre");
+    }
+    if (confined) screen = POINT{-1000000, -1000000};
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     controller_.setCursor(client);   // ne marque le Dock à redessiner que si son état change
     const bool inside = controller_.pointerInside();
@@ -1611,6 +1619,16 @@ void DockApp::noteForeground() {
     if (fg && !IsIconic(fg) && visibleBounds(fg, r)) lastSeen_[toId(fg)] = r;
 }
 
+void DockApp::syncActiveApp() {
+    const HWND fg = GetForegroundWindow();
+    std::wstring app = model_.appOfWindow(toId(fg));
+    if (app.empty() && fg)
+        if (HWND owner = GetAncestor(fg, GA_ROOTOWNER)) app = model_.appOfWindow(toId(owner));
+    if (app == controller_.activeApp()) return;
+    if (trace_) log::info(L"[trace] app active : %s", app.empty() ? L"(aucune)" : app.c_str());
+    controller_.setActiveApp(app);
+}
+
 bool DockApp::startGenie(HWND window, bool restore) {
     if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !hwnd_) return false;
     if (genieMustRestoreFirst(genieRun())) {   // une restauration interrompue aboutit quand même
@@ -2379,13 +2397,29 @@ void DockApp::startMouseThread() {
         CursorRelay relay;
         HWND foreground = nullptr;
         bool elevated = false;
-        unsigned interval = relay.intervalMs(false);
+        ULONGLONG installedAt = GetTickCount64();   // le silence du crochet se compte depuis son installation
+        unsigned interval = relay.intervalMs(installedAt);
         UINT_PTR timer = SetTimer(nullptr, 0, interval, nullptr);
+        int polls = 0;
+        ULONGLONG pollsSince = installedAt;
+        RECT lastClip{};
+        bool clipKnown = false;
         MSG msg;
         while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
             if (msg.message != WM_TIMER || msg.hwnd) continue;
+            const ULONGLONG now = GetTickCount64();
+            if (trace_ && (++polls, now - pollsSince >= 5000)) {
+                log::info(L"[perf] relais de la souris : %d lectures en 5 s (intervalle %u ms)", polls, interval);
+                polls = 0;
+                pollsSince = now;
+            }
             POINT c{};
             if (!GetCursorPos(&c)) continue;   // bureau sécurisé (invite de l'UAC) : rien à livrer
+            if (RECT clip{}; GetClipCursor(&clip) && (!clipKnown || !EqualRect(&clip, &lastClip))) {
+                if (clipKnown) deliverMouse(c);   // confinement changé par une app : le Dock réévalue où est le pointeur
+                lastClip = clip;
+                clipKnown = true;
+            }
             if (const HWND fg = GetForegroundWindow(); fg != foreground) {
                 foreground = fg;
                 elevated = windowElevated(fg);
@@ -2393,9 +2427,8 @@ void DockApp::startMouseThread() {
             CursorSample s;
             s.cursor = c;
             s.known = POINT{mouseX_.load(), mouseY_.load()};
-            s.nowMs = GetTickCount64();
-            const ULONGLONG hookAt = hookMoveAt_.load();
-            s.hookAgeMs = hookAt ? s.nowMs - hookAt : s.nowMs;
+            s.nowMs = now;
+            s.hookAgeMs = CursorRelay::silenceMs(now, hookMoveAt_.load(), installedAt);
             s.elevatedForeground = elevated;
             const bool wasActive = relay.active();
             const RelayStep step = relay.poll(s);
@@ -2403,12 +2436,13 @@ void DockApp::startMouseThread() {
             if (step.reinstallHook) {   // repasse en tête de la chaîne des crochets
                 if (hook) UnhookWindowsHookEx(hook);
                 hook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, instance_, 0);
+                installedAt = now;
                 log::info(L"Crochet souris réinstallé (muet depuis %llu ms alors que la souris bougeait)", s.hookAgeMs);
             }
             if (trace_ && relay.active() != wasActive)
                 log::info(L"[trace] relais de la souris %s%s", relay.active() ? L"actif" : L"arrêté",
                           relay.active() && elevated ? L" (app en administrateur au premier plan)" : L"");
-            if (const unsigned want = relay.intervalMs(elevated); want != interval) {
+            if (const unsigned want = relay.intervalMs(now); want != interval) {
                 interval = want;
                 timer = SetTimer(nullptr, timer, interval, nullptr);
             }
@@ -2450,6 +2484,47 @@ std::wstring describeWindow(HWND h) {
     return exe + elevation + L" [" + cls + L"]";
 }
 } // namespace
+
+namespace {
+RECT virtualDesktop() {
+    const int x = GetSystemMetrics(SM_XVIRTUALSCREEN), y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    return RECT{x, y, x + GetSystemMetrics(SM_CXVIRTUALSCREEN), y + GetSystemMetrics(SM_CYVIRTUALSCREEN)};
+}
+} // namespace
+
+bool DockApp::pointerConfinedElsewhere() const {
+    RECT clip{}, dock{};
+    if (!hwnd_ || !GetClipCursor(&clip) || !GetWindowRect(hwnd_, &dock)) return false;
+    return pointerConfinedAway(clip, virtualDesktop(), dock);
+}
+
+std::wstring DockApp::pointerState() const {
+    RECT clip{};
+    GetClipCursor(&clip);
+    const RECT desk = virtualDesktop();
+    CURSORINFO ci{sizeof ci};
+    GetCursorInfo(&ci);
+    GUITHREADINFO gti{sizeof gti};
+    const HWND fg = GetForegroundWindow();
+    if (!fg || !GetGUIThreadInfo(GetWindowThreadProcessId(fg, nullptr), &gti)) gti.hwndCapture = nullptr;
+    wchar_t buf[160];
+    if (EqualRect(&clip, &desk)) swprintf_s(buf, L"libre");
+    else swprintf_s(buf, L"confiné à %ld,%ld,%ld,%ld (bureau %ld,%ld,%ld,%ld)", clip.left, clip.top, clip.right, clip.bottom,
+                    desk.left, desk.top, desk.right, desk.bottom);
+    wchar_t pos[64];
+    swprintf_s(pos, L"curseur %ld,%ld ", ci.ptScreenPos.x, ci.ptScreenPos.y);
+    return std::wstring(pos) +
+           ((ci.flags & CURSOR_SHOWING) ? L"affiché" : (ci.flags & CURSOR_SUPPRESSED) ? L"supprimé (tactile)" : L"caché") +
+           L" ; " + buf + L" ; capture : " + (gti.hwndCapture ? describeWindow(gti.hwndCapture) : L"aucune") +
+           L" ; premier plan : " + describeWindow(fg);
+}
+
+void DockApp::tracePointer(const wchar_t* why) {
+    std::wstring s = pointerState();
+    if (s == lastPointerState_) return;
+    log::info(L"[trace] pointeur (%s) : %s", why, s.c_str());
+    lastPointerState_ = std::move(s);
+}
 
 // Mode diagnostic : un fil relève toutes les 200 ms la souris vue par le crochet et l'avancée de la boucle, et note
 // le début et la fin de chaque anomalie (crochet muet, boucle bloquée, boucle endormie malgré un mouvement en attente).
@@ -2774,6 +2849,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kFullscreenTimer) {
                 checkFullscreen();
                 noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
+                if (trace_ && cursorInDock_) tracePointer(L"sur le Dock");
                 return 0;
             }
             if (wp == kTransitionTimer) {   // génie armé ou en cours, ou masquée : retenue ; sinon animations rendues
@@ -3056,30 +3132,30 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         RECT r{};
         if (!IsIconic(h) && IsWindowVisible(h) && visibleBounds(h, r)) lastSeen_[toId(h)] = r;
     };
-    ev.foreground = [this](HWND h) {
-        // App active, comme sur macOS : celle de la fenêtre au premier plan, ou de sa propriétaire (dialogue) ; aucune
-        // pour le bureau. Ses clignotements ne font pas rebondir son icône.
-        std::wstring app = model_.appOfWindow(toId(h));
-        if (app.empty())
-            if (HWND owner = GetAncestor(h, GA_ROOTOWNER)) app = model_.appOfWindow(toId(owner));
-        if (trace_ && controller_.isBouncing(app)) log::info(L"[trace] %s au premier plan : fin du rebond", app.c_str());
-        controller_.setActiveApp(app);
+    ev.foreground = [this](HWND) {
+        syncActiveApp();
+        if (trace_) tracePointer(L"premier plan");
         requestFrame();
     };
     ev.activated = [this](HWND h) {
         mru_.touch(model_.appOfWindow(toId(h)));
-        controller_.setActiveApp(model_.appOfWindow(toId(h)));   // arrête son rebond d'attention
+        syncActiveApp();   // arrête le rebond d'attention de l'app activée
         checkFullscreen();
         noteForeground();
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
+        syncActiveApp();
         const std::wstring app = model_.appOfWindow(toId(h));
-        const bool before = controller_.isBouncing(app);
+        const bool before = controller_.isBouncing(app), episode = controller_.attentionEpisode(app);
         controller_.setAttention(app, true);
         if (trace_)
-            log::info(L"[trace] attention %p (%s) : %s", h, app.c_str(),
-                      !controller_.isBouncing(app) ? L"ignorée (app active)" : before ? L"rebond en cours" : L"début du rebond");
+            log::info(L"[trace] attention %p (%s) : %s ; app active : %s", h, app.c_str(),
+                      app == controller_.activeApp() ? L"ignorée (app active)"
+                      : !before && !episode           ? L"début du rebond"
+                      : controller_.isBouncing(app)   ? L"rebond en cours"
+                                                      : L"même épisode, train fini",
+                      controller_.activeApp().empty() ? L"(aucune)" : controller_.activeApp().c_str());
         requestFrame();
     };
     tracker_.setTrace(trace_);
@@ -3087,6 +3163,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!snapshot_)   // un Dock précédent (planté, tué) a pu laisser des fenêtres sans animations
         if (const int n = releaseOrphanTransitions()) log::info(L"Animations de Windows rendues à %d fenêtres", n);
     tracker_.start(hwnd_, ev);
+    syncActiveApp();   // une app déjà au premier plan au démarrage ne rebondit pas
 
     if (snapshot_) {
         int code = runSnapshot(options);

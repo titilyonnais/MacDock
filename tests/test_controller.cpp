@@ -109,15 +109,60 @@ TEST_CASE(controller_launch_bounce_times_out) {
     CHECK(!f.c.isBouncing(L"c:\\b.exe"));
 }
 
-TEST_CASE(controller_attention_until_cleared) {
+TEST_CASE(controller_attention_cleared_stops_the_train) {
     Fixture f;
     f.model.windowOpened(1, idOf(L"C:\\a.exe"));   // l'attention vient toujours d'une fenêtre ouverte
     f.c.setAttention(L"c:\\a.exe", true);
-    for (int i = 0; i < 600; ++i) f.c.tick(1.0 / 60);
+    for (int i = 0; i < 30; ++i) f.c.tick(1.0 / 60);
     CHECK(f.c.isBouncing(L"c:\\a.exe"));
-    f.c.setAttention(L"c:\\a.exe", false);
+    f.c.setAttention(L"c:\\a.exe", false);   // vue (app activée, clic sur l'icône) : fin du rebond en cours
+    for (int i = 0; i < 40; ++i) f.c.tick(1.0 / 60);
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+}
+
+TEST_CASE(controller_attention_one_train_per_episode) {
+    // Comme requestUserAttention en mode informatif sur macOS : un seul train de rebonds, même si l'app continue de
+    // clignoter (Windows fait clignoter sans fin le bouton d'une app à qui le premier plan a été refusé).
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    double t = 0, nextFlash = 0;
+    bool bouncedAtStart = false;
+    while (t < 15) {
+        if (t >= nextFlash) {
+            f.c.setAttention(L"c:\\a.exe", true);
+            nextFlash += 1.06;
+        }
+        f.c.tick(1.0 / 60);
+        t += 1.0 / 60;
+        if (t > 0.3 && t < 0.4) bouncedAtStart = bouncedAtStart || f.c.isBouncing(L"c:\\a.exe");
+        if (t > 4) CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    }
+    CHECK(bouncedAtStart);
+}
+
+TEST_CASE(controller_attention_new_train_after_silence) {
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);
+    for (int i = 0; i < 60 * 12; ++i) f.c.tick(1.0 / 60);   // train fini, puis plus de 10 s sans clignotement
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);   // nouvel épisode
+    f.c.tick(1.0 / 60);
+    CHECK(f.c.isBouncing(L"c:\\a.exe"));
+}
+
+TEST_CASE(controller_attention_new_train_after_activation) {
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);
+    for (int i = 0; i < 30; ++i) f.c.tick(1.0 / 60);
+    f.c.setActiveApp(L"c:\\a.exe");   // activée : fin de l'épisode
+    f.c.setActiveApp(L"");
     for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 60);
     CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);   // de nouveau en arrière-plan : nouveau train, sans attendre 10 s
+    f.c.tick(1.0 / 60);
+    CHECK(f.c.isBouncing(L"c:\\a.exe"));
 }
 
 TEST_CASE(controller_frame_has_indicator_for_running_app) {
@@ -182,8 +227,8 @@ TEST_CASE(controller_attention_stops_when_app_closes) {
     f.c.tick(0.01);
     f.c.setAttention(L"c:\\a.exe", true);
     f.c.tick(0.1);
-    f.model.windowClosed(1);   // l'app est fermée sans avoir été activée
-    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 60);
+    f.model.windowClosed(1);   // l'app est fermée sans avoir été activée : arrêt tout de suite, train pas fini
+    for (int i = 0; i < 6; ++i) f.c.tick(1.0 / 60);
     CHECK(!f.c.isBouncing(L"c:\\a.exe"));
     CHECK(!f.c.tick(1.0 / 60));
 }

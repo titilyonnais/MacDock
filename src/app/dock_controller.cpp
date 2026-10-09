@@ -246,17 +246,24 @@ void DockController::setActiveApp(const std::wstring& appId) {
 void DockController::setAttention(const std::wstring& appId, bool on) {
     if (appId.empty()) return;
     auto it = bounces_.find(appId);
-    if (on && appId == activeApp_) return;   // déjà au premier plan : un clignotement tardif ne relance rien
     if (on) {
-        if (it == bounces_.end() || !it->second.attention) bounces_[appId] = Bounce{0, true, -1};
+        if (appId == activeApp_) return;   // déjà au premier plan : un clignotement ne fait rien
+        // Un seul train de rebonds par épisode, comme requestUserAttention en mode informatif sur macOS : les
+        // clignotements suivants prolongent l'épisode sans relancer le rebond (Windows fait clignoter sans fin le
+        // bouton d'une app à qui le premier plan a été refusé). L'épisode se termine quand l'app devient active ou se
+        // ferme, ou après kAttentionSilence sans clignotement.
+        const bool open = attentionFlash_.contains(appId);
+        attentionFlash_[appId] = clock_;
+        if (open) return;
+        const double train = metrics_.attentionBouncePeriod * std::max(1.0, metrics_.attentionBounceCount);
+        if (it == bounces_.end() || !it->second.attention) bounces_[appId] = Bounce{0, true, train};
         dirty_ = true;
-    } else if (it != bounces_.end() && it->second.attention && it->second.stopAt < 0) {
-        double period = metrics_.attentionBouncePeriod;
-        double active = period * std::max(1.0, metrics_.attentionBounceCount);
-        double cycle = active + std::max(0.0, metrics_.attentionPause);
-        double t = std::fmod(it->second.elapsed, cycle);
-        // Pendant la pause : arrêt immédiat ; sinon on finit le rebond en cours.
-        it->second.stopAt = t >= active ? it->second.elapsed : std::ceil(it->second.elapsed / period) * period;
+        return;
+    }
+    attentionFlash_.erase(appId);   // vue (app activée, clic sur l'icône) : fin de l'épisode
+    if (it != bounces_.end() && it->second.attention) {
+        const double end = std::ceil(it->second.elapsed / metrics_.attentionBouncePeriod) * metrics_.attentionBouncePeriod;
+        if (end < it->second.stopAt) it->second.stopAt = end;   // on finit le rebond en cours
     }
 }
 
@@ -276,10 +283,15 @@ bool DockController::tick(double dt) {
     refreshItems();
     bool animating = amount_.step(dt);
 
+    clock_ += dt;
+    for (auto it = attentionFlash_.begin(); it != attentionFlash_.end();) {   // épisodes d'attention finis
+        if (clock_ - it->second >= kAttentionSilence || !appRunning(it->first)) it = attentionFlash_.erase(it);
+        else ++it;
+    }
     for (auto it = bounces_.begin(); it != bounces_.end();) {
         Bounce& b = it->second;
         b.elapsed += dt;
-        if (b.attention && b.stopAt < 0 && !appRunning(it->first)) b.stopAt = b.elapsed;   // app fermée
+        if (b.attention && !appRunning(it->first) && (b.stopAt < 0 || b.stopAt > b.elapsed)) b.stopAt = b.elapsed;   // fermée
         if (!b.attention && b.stopAt < 0 && (appRunning(it->first) || b.elapsed >= metrics_.launchTimeout)) {
             double period = metrics_.launchBouncePeriod;
             b.stopAt = std::ceil(b.elapsed / period) * period;
@@ -699,12 +711,12 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     return f;
 }
 
-// Repère local → fenêtre réelle (Dock à gauche ou à droite).
 double DockController::shrinkOf(const LayoutResult& r) const {
     const double full = dockGeometry(settings_.tileSize, metrics_).thickness;
     return full > 0 && r.thickness > 0 ? std::min(1.0, r.thickness / full) : 1.0;
 }
 
+// Repère local → fenêtre réelle (Dock à gauche ou à droite).
 void DockController::toWindow(RenderFrame& f) const {
     auto a = edge_.toWindow(f.bgLeft, f.bgTop), b = edge_.toWindow(f.bgRight, f.bgBottom);
     f.bgLeft = float(std::min(a.x, b.x));

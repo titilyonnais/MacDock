@@ -269,6 +269,9 @@ private:
     double genieSettleUntil_ = -1;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre restaurée
     std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
+    // App active (rebond d'attention) : celle du vrai premier plan, lu par GetForegroundWindow et ramené à sa fenêtre
+    // propriétaire ; jamais le hwnd d'un événement de premier plan, qu'une demande refusée produit aussi.
+    void syncActiveApp();
     GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
@@ -293,6 +296,13 @@ private:
     std::atomic<UINT> dispatching_{0};    // message en cours (0 : aucun)
     std::thread sentinel_;
     void startSentinel();
+    // Pointeur confiné ailleurs par une autre app (VMware qui prend la souris…) : le Dock fait comme s'il était hors de
+    // lui. Trace du mode diagnostic : confinement, curseur affiché ou caché, fenêtre qui capture la souris.
+    bool pointerConfinedElsewhere() const;
+    bool confinedLogged_ = false;
+    std::wstring pointerState() const;
+    void tracePointer(const wchar_t* why);
+    std::wstring lastPointerState_;
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi

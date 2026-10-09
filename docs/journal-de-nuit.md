@@ -1137,6 +1137,14 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   cette mesure. Corrigé : quand le Dock rétrécit pour tenir sur l'écran (Dock vertical sur un portable), le séparateur
   sortait du verre et les icônes n'étaient plus centrées.
 
+## Décisions prises sans toi (plan 62)
+- **Rebond d'attention : un seul train par épisode**, comme une demande « informative » sur macOS. Une app qui continue
+  de clignoter (Claude, quand Windows lui a refusé le premier plan, clignote sans fin) ne rebondit plus jusqu'au matin.
+  L'épisode se termine quand l'app devient active ou se ferme, ou après 10 s sans clignotement. Réversible : dis-moi si
+  tu préfères un rebond jusqu'à ce que tu regardes l'app (demande « critique » sur macOS).
+- **Pointeur confiné ailleurs par une autre app** (ClipCursor dans une zone qui ne contient pas tout le Dock) : le Dock
+  fait comme si le pointeur était hors de lui.
+
 ## Mineurs reportés — plan 61
 - Le point n'est à 5 pt de la forme de l'icône qu'à partir de la taille 47 (3,5 pt à 32, 2,0 à 16) : à trancher avec la
   mesure à 48.

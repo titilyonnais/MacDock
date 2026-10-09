@@ -94,6 +94,8 @@ public:
     // active, et arrêté quand l'app le devient.
     void setAttention(const std::wstring& appId, bool on);
     void setActiveApp(const std::wstring& appId);   // app au premier plan ; vide : aucune (bureau…)
+    const std::wstring& activeApp() const { return activeApp_; }
+    bool attentionEpisode(const std::wstring& appId) const { return attentionFlash_.contains(appId); }
     bool isBouncing(const std::wstring& appId) const { return bounces_.contains(appId); }
 
     // Hauteur réservée à l'écran (AppBar) et hauteur totale de la fenêtre, en pixels.
@@ -166,6 +168,11 @@ private:
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône
+    // Épisodes d'attention ouverts : dernier clignotement de chaque app (horloge du Dock, en secondes). Un épisode fait
+    // un seul train de rebonds ; il se termine 10 s après le dernier clignotement.
+    std::map<std::wstring, double> attentionFlash_;
+    double clock_ = 0;
+    static constexpr double kAttentionSilence = 10;
     double tooltipOpacity_ = 0;
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;

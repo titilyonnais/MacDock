@@ -28,16 +28,25 @@ public:
     static constexpr unsigned long long kReinstallSilentMs = 2000;  // muet si longtemps : réinstallation
     static constexpr unsigned long long kReinstallEveryMs = 10000;  // au plus une fois par période
 
+    static constexpr unsigned long long kFastMs = 1000;             // lecture rapide après un mouvement
+
     RelayStep poll(const CursorSample& s);
     bool active() const { return active_; }
-    // Lecture rapide pendant le relais ou sous une app élevée (~60 Hz), lente sinon (~10 Hz).
-    unsigned intervalMs(bool elevatedForeground) const;
+    unsigned intervalMs(unsigned long long nowMs) const;   // ~60 Hz dans la seconde qui suit un mouvement, ~10 Hz sinon
+    // Silence du crochet : depuis son dernier mouvement vu, ou depuis son installation s'il est plus récent (0 : jamais).
+    static unsigned long long silenceMs(unsigned long long nowMs, unsigned long long lastEventMs,
+                                        unsigned long long installedMs);
 
 private:
     std::optional<POINT> lastPolled_;
+    std::optional<unsigned long long> lastMoved_;
     bool active_ = false;
     unsigned long long lastDelivery_ = 0;
     std::optional<unsigned long long> lastReinstall_;
 };
+
+// Pointeur confiné par une autre app (GetClipCursor plus petit que le bureau) dans une zone qui ne contient pas tout
+// le Dock : le Dock fait comme si le pointeur était ailleurs. MacDock n'appelle jamais ClipCursor lui-même.
+bool pointerConfinedAway(const RECT& clip, const RECT& desktop, const RECT& dock);
 
 } // namespace md

@@ -1,5 +1,7 @@
 #include "cursor_relay.h"
 
+#include <algorithm>
+
 namespace md {
 
 RelayStep CursorRelay::poll(const CursorSample& s) {
@@ -15,7 +17,7 @@ RelayStep CursorRelay::poll(const CursorSample& s) {
         active_ = true;
         lastDelivery_ = s.nowMs;
         // Muet si longtemps sans app élevée pour l'expliquer : retiré par Windows, ou un autre crochet ne passe pas la
-        // main (VMware au premier plan) ; réinstallé, il repasse en tête de la chaîne.
+        // main ; réinstallé, il repasse en tête de la chaîne.
         if (!s.elevatedForeground && s.hookAgeMs >= kReinstallSilentMs &&
             (!lastReinstall_ || s.nowMs - *lastReinstall_ >= kReinstallEveryMs)) {
             out.reinstallHook = true;
@@ -24,9 +26,26 @@ RelayStep CursorRelay::poll(const CursorSample& s) {
     } else if (active_ && ((!silent && !s.elevatedForeground) || s.nowMs - lastDelivery_ >= kIdleMs)) {
         active_ = false;   // crochet revenu, ou souris au repos : lecture lente
     }
+    if (moved) lastMoved_ = s.nowMs;
     return out;
 }
 
-unsigned CursorRelay::intervalMs(bool elevatedForeground) const { return active_ || elevatedForeground ? 16 : 100; }
+unsigned CursorRelay::intervalMs(unsigned long long nowMs) const {
+    return lastMoved_ && nowMs - *lastMoved_ < kFastMs ? 16 : 100;
+}
+
+unsigned long long CursorRelay::silenceMs(unsigned long long nowMs, unsigned long long lastEventMs,
+                                          unsigned long long installedMs) {
+    const unsigned long long since = std::max(lastEventMs, installedMs);
+    return nowMs > since ? nowMs - since : 0;
+}
+
+bool pointerConfinedAway(const RECT& clip, const RECT& desktop, const RECT& dock) {
+    const bool confined = clip.left > desktop.left || clip.top > desktop.top || clip.right < desktop.right ||
+                          clip.bottom < desktop.bottom;
+    const bool holdsDock =
+        clip.left <= dock.left && clip.top <= dock.top && clip.right >= dock.right && clip.bottom >= dock.bottom;
+    return confined && !holdsDock;
+}
 
 } // namespace md
