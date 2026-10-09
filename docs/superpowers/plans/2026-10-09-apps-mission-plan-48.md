@@ -21,10 +21,11 @@
   - `appsHit` ne répond que dans cette zone ; le dessin du halo s'en sert aussi.
 
   Tests : centre de l'icône et nom : l'app ; entre deux icônes : -1.
-- [ ] 2. **Mission Control : miniatures sur le cadre visible** (`DWMWA_EXTENDED_FRAME_BOUNDS`, repli sur
-  `GetWindowRect`).
+- [x] 2. **Mission Control : miniatures sur le cadre visible**.
 
-  Test : la fonction de cadre de départ, avec et sans cadre DWM.
+  Décision : `genieVisibleRect(rectangle Windows, taille de la miniature DWM)`, déjà utilisée et testée pour le génie
+  (`test_genie`), au lieu de `DWMWA_EXTENDED_FRAME_BOUNDS` : sur la fenêtre d'essai mesurée, elle donne exactement le
+  cadre visible, (311, 300)-(1089, 789). Câblage seul, sans nouveau test unitaire.
 - [ ] 3. **Mission Control : un seul contour** (survol retiré des autres écrans) **et flèches** :
   - `missionNeighbor(rects, from, dx, dy)` : la fenêtre la plus proche dans la direction ; aucune sélection : la
     première en haut à gauche ;

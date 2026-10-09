@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 
+#include "../anim/genie.h"
 #include "../anim/tahoe_timing.h"
 #include "../calib/png_io.h"
 #include "../core/log.h"
@@ -480,9 +481,13 @@ std::optional<HWND> MissionView::track(const MenuWindow::Env& env, const Request
         th.src = w.hwnd;
         th.title = w.title;
         th.screen = k;
+        if (FAILED(DwmRegisterThumbnail(s.screens[k].hwnd, w.hwnd, &th.id))) continue;
+        // La miniature n'a que la partie visible (sans les bordures invisibles de ~11 px) : calée dessus, ni étirée ni
+        // décalée sous son contour.
+        SIZE src{};
+        if (SUCCEEDED(DwmQueryThumbnailSourceSize(th.id, &src))) r = genieVisibleRect(r, src);
         th.from = {double(r.left - s.screens[k].rc.left), double(r.top - s.screens[k].rc.top), double(r.right - r.left),
                    double(r.bottom - r.top)};
-        if (FAILED(DwmRegisterThumbnail(s.screens[k].hwnd, w.hwnd, &th.id))) continue;
         s.thumbs.push_back(std::move(th));
     }
     // Exposé d'une app : ses fenêtres réduites, sur l'écran du curseur, à leur taille normale (pas l'icône de -32000).
