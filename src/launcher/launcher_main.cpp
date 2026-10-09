@@ -17,6 +17,7 @@
 
 #include "../core/log.h"
 #include "../update/updater.h"
+#include "launcher_args.h"
 #include "supervisor.h"
 #include "update_notifier.h"
 
@@ -139,23 +140,29 @@ void stopChild(Child& c) {
 
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
-    std::wstring args(cmdLine ? cmdLine : L"");
-    if (args.find(L"--install") != std::wstring::npos) return install();
-    if (args.find(L"--uninstall") != std::wstring::npos) return uninstall();
-    if (args.find(L"--quit") != std::wstring::npos) return quitRunning();
-    if (args.find(L"--check-update") != std::wstring::npos) {
-        md::log::init(logDir());
-        switch (md::update::check(md::update::defaultPaths(), md::update::optionsFromEnvironment())) {
-            case md::update::CheckResult::UpToDate: return 0;
-            case md::update::CheckResult::Ready: return 10;
-            case md::update::CheckResult::Failed: return 1;
-        }
-        return 1;
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    std::vector<std::wstring> argv;
+    int argc = 0;
+    if (LPWSTR* list = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        argv.assign(list, list + argc);
+        LocalFree(list);
     }
-    if (args.find(L"--install-update") != std::wstring::npos) {
-        md::log::init(logDir());
-        return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
+    switch (md::launcherCommand(argv)) {
+        case md::LauncherCommand::Install: return install();
+        case md::LauncherCommand::Uninstall: return uninstall();
+        case md::LauncherCommand::Quit: return quitRunning();
+        case md::LauncherCommand::CheckUpdate:
+            md::log::init(logDir());
+            switch (md::update::check(md::update::defaultPaths(), md::update::optionsFromEnvironment())) {
+                case md::update::CheckResult::UpToDate: return 0;
+                case md::update::CheckResult::Ready: return 10;
+                case md::update::CheckResult::Failed: return 1;
+            }
+            return 1;
+        case md::LauncherCommand::InstallUpdate:
+            md::log::init(logDir());
+            return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
+        case md::LauncherCommand::Run: break;
     }
 
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kLauncherMutex);
