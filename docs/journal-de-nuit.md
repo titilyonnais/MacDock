@@ -1119,6 +1119,28 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   (et celles de MacDock) pour ses captures : restaurées, sauf le Gestionnaire des tâches et Windhawk (en
   administrateur).
 
+### Plan 61 — Proportions du Dock de macOS 26, 9 octobre au soir (avec toi)
+
+- **Comparé à taille d'icône égale** avec le Dock de ta VM : les icônes de MacDock étaient plus espacées, le Dock
+  plus épais, les séparateurs plus courts et plus serrés, les points un peu bas.
+- **Mesuré** (forme d'une icône P) : marge 0,306·P tout autour (icônes centrées), pas 1,303·P, séparateur long de
+  1,178·P qui ajoute 0,596·P au pas, point centré à 0,123·P du bas, écart sous le Dock 0,101·P. Les extrémités
+  sont le plus grand coin continu qui tient dans la hauteur : MacDock dessinait déjà cette forme.
+- **Changé** (taille 48) : marge 8 → 7,1, écart 4 → 2,3, marge du séparateur 7 → 9,9, longueur 0,80 → 0,95, point
+  4 → 4,7, écart sous le Dock 5 → 3,9 ; ton `dock-metrics.json` est passé en version 7.
+- **Vérifié sur le rendu** : pas de 100,5 px à l'échelle 2 (1,301·P, contre 1,303 sur la VM).
+- **Reste à savoir** : si macOS garde ces proportions à d'autres tailles du Dock (une mesure de la VM à une autre
+  taille, avec toi) ; et le verre, que la VM ne montre pas (pas d'accélération graphique).
+- **Relecture** (10 octobre, nuit) : le Dock de ta VM était réglé vers 64–65 pt, pas à 48 ; les valeurs à 48 supposent
+  donc que macOS garde les proportions. **À faire avec toi** : dans la VM, `defaults write com.apple.dock tilesize -int
+  48; killall Dock`, puis une capture. Le point est resté à 4 pt (il ferait ~3 pt converti comme le reste) jusqu'à
+  cette mesure. Corrigé : quand le Dock rétrécit pour tenir sur l'écran (Dock vertical sur un portable), le séparateur
+  sortait du verre et les icônes n'étaient plus centrées.
+
+## Mineurs reportés — plan 61
+- Le point n'est à 5 pt de la forme de l'icône qu'à partir de la taille 47 (3,5 pt à 32, 2,0 à 16) : à trancher avec la
+  mesure à 48.
+
 ## Mineurs reportés — plan 60
 - Forcer à quitter : la case d'attente d'une icône (20 pt pleins, rayon 5) n'a pas la forme de l'icône qui arrive
   (16,1 pt, rayon 4,2) : petit saut au chargement.

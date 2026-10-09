@@ -7,9 +7,9 @@ TEST_CASE(metrics_migrate_v1_updates_old_defaults) {
     auto v = md::migrateMetricsJson(*md::json::parse(
         R"({"iconGap":6,"dockCornerRadius":24,"separatorLengthRatio":0.72,"tooltipGap":12,"indicatorInset":3})"));
     auto m = md::metricsFromJson(v);
-    CHECK_NEAR(m.iconGap, 4, 1e-9);
+    CHECK_NEAR(m.iconGap, 2.3, 1e-9);   // 6 → 4 (v2) → 2,3 (v7, plan 61)
     CHECK_NEAR(m.dockCornerRadius, 0, 1e-9);
-    CHECK_NEAR(m.separatorLengthRatio, 0.80, 1e-9);
+    CHECK_NEAR(m.separatorLengthRatio, 0.95, 1e-9);   // 0,72 → 0,80 (v2) → 0,95 (v7)
     CHECK_NEAR(m.tooltipGap, 10, 1e-9);
     CHECK(v.find("indicatorInset") == nullptr);
     CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
@@ -71,6 +71,29 @@ TEST_CASE(metrics_migrate_v5_tahoe_icon_corner) {   // plan 60 : rayon des icôn
     const md::Metrics fresh;
     CHECK_NEAR(fresh.iconCornerRatio, 0.259, 1e-9);
     CHECK_NEAR(md::kIconCornerRatio, 0.259, 1e-9);   // forme par défaut (masques, plaque grise, icônes de MacDock)
+}
+
+TEST_CASE(metrics_migrate_v6_tahoe_dock_geometry) {   // plan 61 : proportions du Dock mesurées sur macOS 26
+    auto v = md::migrateMetricsJson(*md::json::parse(
+        R"({"version":6,"dockPadding":8,"iconGap":4,"separatorMargin":7,"separatorLengthRatio":0.8,)"
+        R"("indicatorCenterFromBottom":4,"dockScreenMargin":5,"indicatorDiameter":4})"));
+    auto m = md::metricsFromJson(v);
+    CHECK_NEAR(m.dockPadding, 7.1, 1e-9);
+    CHECK_NEAR(m.iconGap, 2.3, 1e-9);
+    CHECK_NEAR(m.separatorMargin, 9.9, 1e-9);
+    CHECK_NEAR(m.separatorLengthRatio, 0.95, 1e-9);
+    CHECK_NEAR(m.indicatorCenterFromBottom, 4.7, 1e-9);
+    CHECK_NEAR(m.dockScreenMargin, 3.9, 1e-9);
+    CHECK_NEAR(m.indicatorDiameter, 4, 1e-9);   // inchangé
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
+    // Des valeurs choisies restent.
+    auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":6,"dockPadding":10,"iconGap":6})")));
+    CHECK_NEAR(kept.dockPadding, 10, 1e-9);
+    CHECK_NEAR(kept.iconGap, 6, 1e-9);
+    const md::Metrics fresh;
+    CHECK_NEAR(fresh.dockPadding, 7.1, 1e-9);
+    CHECK_NEAR(fresh.iconGap, 2.3, 1e-9);
+    CHECK_NEAR(fresh.separatorLengthRatio, 0.95, 1e-9);
 }
 
 TEST_CASE(metrics_migrate_chain_keeps_value_chosen_before) {

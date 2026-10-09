@@ -64,7 +64,7 @@ TEST_CASE(settings_stack_options_roundtrip) {
 TEST_CASE(metrics_partial_override) {
     auto m = md::metricsFromJson(*md::json::parse(R"({"dockCornerRadius":30,"unknown":1})"));
     CHECK_NEAR(m.dockCornerRadius, 30, 1e-9);
-    CHECK_NEAR(m.iconGap, 4, 1e-9);
+    CHECK_NEAR(m.iconGap, 2.3, 1e-9);   // défaut (plan 61)
 }
 
 TEST_CASE(metrics_roundtrip) {
