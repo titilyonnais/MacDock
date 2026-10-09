@@ -1,4 +1,8 @@
-# Feuille de route : Windows aussi proche que possible de macOS 27 Golden Gate
+# Feuille de route : Windows aussi proche que possible de macOS 26 Tahoe
+
+> Depuis le 8 octobre 2026, la référence est **macOS 26 Tahoe** : macOS 27 ne tourne pas en machine virtuelle, et ta VM
+> macOS 26 sert de point de comparaison. Les choix faits pour Golden Gate passent à Tahoe au fil des plans (plan 43 :
+> pastilles plates, barre latérale flottante).
 
 Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - tests d'abord ;
@@ -8,7 +12,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 
 ## Fait
 - Dock, barre de menus, Spotlight (« Rechercher ou demander »), Mission Control, Launchpad, sélecteur d'apps, coins actifs, génie.
-- Verre Liquid Glass et fond d'écran recalés sur des captures de macOS 27 (plan 26).
+- Verre Liquid Glass et fond d'écran recalés sur des captures de macOS 27 (plan 26), à revoir sur Tahoe.
 - Feux tricolores sur toutes les fenêtres, à la place des boutons réduire / agrandir / fermer de Windows (plans 25 et 27, puis ta demande du 8 octobre).
 - Apparence macOS des fenêtres des autres apps : coins arrondis, plus de liseré, barre de titre grise (plan 26).
 - Menus de la barre lus dans chaque app ; raccourcis en symboles macOS (plan 27).

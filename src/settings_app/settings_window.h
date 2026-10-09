@@ -152,6 +152,7 @@ private:
     bool draggingSlider_ = false, tracking_ = false;
     bool lightsHover_ = false;
     int lightsPressed_ = -1;
+    bool lightsPressedInside_ = true;   // pastille enfoncée : le doigt est encore dessus
     std::optional<OpenMenu> menu_;
     std::optional<double> pending_;   // valeur de curseur pas encore écrite
     ULONGLONG lastCommit_ = 0, lastFrame_ = 0;

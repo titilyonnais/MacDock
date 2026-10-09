@@ -28,6 +28,7 @@ Palette palette(bool dark) {
         p.dim = rgb(0x000000, 0.22f);
         p.sheetBackground = rgb(0xF6F6F8, 0.98f);
         p.sheetEdge = rgb(0x000000, 0.10f);
+        p.sidebarEdge = rgb(0xFFFFFF, 0.55f);
     } else {
         p.window = rgb(0x1E1E1E);
         p.sidebarTint = rgb(0x262628, 0.55f);
@@ -52,6 +53,7 @@ Palette palette(bool dark) {
         p.dim = rgb(0x000000, 0.40f);
         p.sheetBackground = rgb(0x2C2C2E, 0.98f);
         p.sheetEdge = rgb(0xFFFFFF, 0.12f);
+        p.sidebarEdge = rgb(0xFFFFFF, 0.12f);
     }
     p.onAccent = rgb(0xFFFFFF);
     p.knob = rgb(0xFFFFFF);

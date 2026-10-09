@@ -246,6 +246,11 @@ struct Canvas {
 bool bluish(const BYTE* p) { return p[0] > 200 && p[2] < 80; }
 bool whiteish(const BYTE* p) { return p[0] > 235 && p[1] > 235 && p[2] > 235; }
 bool grayish(const BYTE* p) { return p[0] < 245 && p[0] > 150 && std::abs(int(p[0]) - int(p[2])) < 12; }
+// Pixel (B, G, R, A) proche de la teinte 0xRRGGBB, à `tol` niveaux près par canal.
+bool closeTo(const BYTE* p, std::uint32_t rgb, int tol = 8) {
+    return std::abs(int(p[2]) - int((rgb >> 16) & 0xFF)) <= tol && std::abs(int(p[1]) - int((rgb >> 8) & 0xFF)) <= tol &&
+           std::abs(int(p[0]) - int(rgb & 0xFF)) <= tol;
+}
 } // namespace
 
 TEST_CASE(ui_draw_switch_and_slider) {
@@ -291,9 +296,12 @@ TEST_CASE(ui_draw_segments_menu_and_lights) {
         // Menu : l'élément survolé (deuxième) sur l'accent, à gauche de son texte.
         CHECK(bluish(c.at(20, 60 + 6 + 22 + 11)));
         CHECK(!bluish(c.at(20, 60 + 6 + 11)));
-        // Pastilles de la fenêtre : rouge au premier centre.
+        // Pastilles de la fenêtre, plates comme dans macOS 26 Tahoe (teintes à 8 niveaux près), sans reflet en haut.
         const BYTE* red = c.at(250, 30);
-        CHECK(red[2] > 180 && red[1] < 140);
+        CHECK(closeTo(red, 0xFF5F57));
+        CHECK(closeTo(c.at(250, 27), 0xFF5F57));
+        CHECK(closeTo(c.at(250 + int(md::ui::kLightSpacing), 30), 0xFEBC2E));
+        CHECK(closeTo(c.at(250 + 2 * int(md::ui::kLightSpacing), 30), 0x28C840));
     }
     CoUninitialize();
 }
@@ -426,4 +434,84 @@ TEST_CASE(ui_sheet_layout_and_buttons) {
         CHECK(c.at(int(l.card.left) + 40, int(l.card.bottom) - 8)[0] > 200);
     }
     CoUninitialize();
+}
+
+TEST_CASE(ui_floating_sidebar_panel_geometry) {
+    // macOS 26 Tahoe : barre latérale flottante, en retrait de 8 pt (haut, gauche, bas), rayon 18 pt (26 − 8).
+    const md::ui::Panel panel = md::ui::sidebarPanel(600);
+    CHECK_NEAR(panel.left, 8.0, 1e-6);
+    CHECK_NEAR(panel.top, 8.0, 1e-6);
+    CHECK_NEAR(panel.bottom, 592.0, 1e-6);
+    CHECK(panel.right < md::ui::metrics::sidebarWidth);
+    CHECK_NEAR(panel.radius, 18.0, 1e-6);
+    // Pastilles, champ de recherche et lignes à l'intérieur du panneau, coins arrondis compris.
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::lightsX - md::ui::kLightRadius, md::ui::metrics::lightsY - md::ui::kLightRadius));
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::sidebarInset, md::ui::metrics::sidebarTop));
+    CHECK(md::ui::insidePanel(panel, md::ui::metrics::sidebarWidth - md::ui::metrics::sidebarInset, md::ui::metrics::sidebarTop));
+    CHECK(!md::ui::insidePanel(panel, 9, 9));    // coin du haut à gauche : hors de l'arrondi
+    CHECK(!md::ui::insidePanel(panel, 4, 300));  // marge : le contenu
+}
+
+TEST_CASE(ui_draw_floating_sidebar_panel) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (bool dark : {false, true}) {
+        const md::ui::Palette pal = md::ui::palette(dark);
+        Canvas c(500, 400);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        for (int frame = 0; frame < 2; ++frame) {   // deux images : la géométrie gardée d'une image à l'autre sert aussi
+            c.rt->BeginDraw();
+            c.rt->Clear(D2D1::ColorF(0, 0, 0, 0));   // transparent : le fond acrylique de la fenêtre
+            md::ui::drawWindowBackground(p, 500, 400);
+            REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        }
+        c.read();
+        const std::uint32_t window = (std::uint32_t(pal.window.r * 255 + 0.5f) << 16) |
+                                     (std::uint32_t(pal.window.g * 255 + 0.5f) << 8) | std::uint32_t(pal.window.b * 255 + 0.5f);
+        CHECK(c.at(300, 200)[3] == 255);   // contenu : opaque, de la couleur de la fenêtre
+        CHECK(closeTo(c.at(300, 200), window, 2));
+        CHECK(c.at(3, 200)[3] == 255);     // marge autour du panneau : peinte comme le contenu (ombre légère comprise)
+        CHECK(closeTo(c.at(3, 200), window, 40));
+        // Panneau : le voile de la barre latérale, le fond acrylique transparaît (alpha du voile, à 6 près).
+        CHECK(std::abs(int(c.at(100, 200)[3]) - int(pal.sidebarTint.a * 255 + 0.5f)) <= 6);
+        CHECK(c.at(9, 9)[3] > 200);        // coin arrondi du panneau : peint (hors du verre)
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_window_lights_states) {
+    // Relecture du plan 43 : liseré assombri sous le doigt (comme la barre), fenêtre inactive en couleur au survol.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        auto edgeOf = [&](int pressed, bool active, bool hover, int light) {
+            Canvas c(200, 160);
+            md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+            c.rt->BeginDraw();
+            c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+            c.rt->SetTransform(D2D1::Matrix3x2F::Scale(4, 4));   // pastilles de 28 px de rayon : liseré mesurable
+            md::ui::drawWindowLights(p, D2D1::Point2F(20, 20), active, hover, pressed);
+            c.rt->EndDraw();
+            c.read();
+            const int cx = int((20 + light * md::ui::kLightSpacing) * 4);
+            std::vector<BYTE> out(c.at(cx + 27, 80), c.at(cx + 27, 80) + 4);   // dans le liseré (rayon 25,6 à 28 px)
+            out.insert(out.end(), c.at(cx, 62), c.at(cx, 62) + 4);   // puis l'intérieur, hors des symboles ×, −, +
+            return out;
+        };
+        const auto normal = edgeOf(-1, true, false, 1), pressed = edgeOf(1, true, false, 1);
+        CHECK(pressed[2] + 25 < normal[2]);   // liseré enfoncé plus sombre (rouge du jaune : 222 → ~173)
+        CHECK(pressed[6] + 25 < normal[6]);   // centre aussi
+        const auto inactive = edgeOf(-1, false, false, 0), inactiveHover = edgeOf(-1, false, true, 0);
+        CHECK(std::abs(int(inactive[6]) - int(inactive[4])) < 12);   // inactive : centre gris
+        CHECK(inactiveHover[6] > inactiveHover[5] + 80);             // survolée : rouge
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_sidebar_fits_a_short_window) {
+    // Relecture du plan 43 : à la hauteur minimale, la dernière section tient au-dessus de la limite visible du panneau
+    // (la même que celle des clics), sans être coupée.
+    const auto tops = md::ui::sidebarRowTops(md::sidebarGroups());
+    REQUIRE(!tops.empty());
+    CHECK(tops.back() + md::ui::metrics::sidebarRow <= md::ui::sidebarVisibleBottom(md::ui::metrics::minHeight));
+    CHECK(md::ui::sidebarVisibleBottom(600) < md::ui::sidebarPanel(600).bottom);
 }

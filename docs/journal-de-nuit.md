@@ -814,6 +814,26 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - le bouton par défaut de l'installation redémarre l'Explorateur (c'est ce qu'il faut pour sa police).
 - **Mineur reporté** : à l'import, l'option de garder ses épingles actuelles.
 
+### Plan 43 — passage à macOS 26 Tahoe, nuit du 9 octobre
+
+- **Cible de design : macOS 26 Tahoe** (ta demande), la version que ta VM permet de comparer.
+- **Pastilles plates** dans la barre et dans l'app Réglages :
+  - teintes de Tahoe (#FF5F57, #FEBC2E, #28C840) avec un liseré plus sombre, sans reflet ;
+  - le verre façon Aqua n'existe que dans macOS 27 ;
+  - vérifiées sur une vraie fenêtre.
+- **Barre latérale flottante** dans l'app Réglages, comme Réglages Système de Tahoe :
+  - panneau de verre en retrait de 8 pt, arrondi à 18 pt, avec liseré et ombre douce ;
+  - pastilles, recherche et sections dedans ;
+  - captures réelles en clair et en sombre.
+- **Feuille de route** passée à Tahoe.
+- **Relecture indépendante** : aucun défaut critique ni important. Mineurs corrigés :
+  - pastille enfoncée et inactive survolée ;
+  - symboles qui clignotaient entre deux pastilles ;
+  - formes du fond gardées d'une image à l'autre ;
+  - texte de recherche arrêté avant ⓧ ;
+  - tests plus serrés.
+- **Limite** : le rayon de 26 des fenêtres de Tahoe est impossible avec le cadre de Windows (8 px).
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

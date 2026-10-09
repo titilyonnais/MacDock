@@ -1,4 +1,4 @@
-// Dessin des contrôles de l'app Réglages en Direct2D, façon macOS 27 : interrupteur, curseur, menu déroulant, contrôle
+// Dessin des contrôles de l'app Réglages en Direct2D, façon macOS 26 Tahoe : interrupteur, curseur, menu déroulant, contrôle
 // segmenté, groupes arrondis, menu ouvert, champ de recherche, pastilles de la fenêtre. Coordonnées en points : la cible
 // porte l'échelle (DPI). Aucune ressource Apple : tout est tracé ici.
 #pragma once
@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ui_layout.h"
 #include "ui_theme.h"
 
 namespace md::ui {
@@ -57,6 +58,10 @@ private:
 // Police de l'interface : SF Pro si elle est installée, puis Inter, puis Segoe UI Variable.
 std::wstring interfaceFont(IDWriteFactory* dwrite);
 
+// Fond de la fenêtre façon Tahoe : la couleur du contenu partout, sauf le panneau flottant de la barre latérale (voile
+// sur le fond acrylique, liseré, ombre douce autour).
+void drawWindowBackground(Painter& p, float width, float height);
+
 // Interrupteur dans r (32 × 18 pt) ; progress de 0 (éteint) à 1 (allumé), animé par l'appelant.
 void drawSwitch(Painter& p, D2D1_RECT_F r, float progress, bool pressed);
 // Curseur : piste de left à right sur la ligne cy, bouton à t (0 à 1).
@@ -70,12 +75,12 @@ float segmentedWidth(Painter& p, const std::vector<std::wstring>& labels);
 // Menu ouvert : `checked` coché, `hover` sur l'accent ; éléments de metrics::menuItem.
 void drawMenu(Painter& p, D2D1_RECT_F r, const std::vector<std::wstring>& items, int checked, int hover);
 float menuWidth(Painter& p, const std::vector<std::wstring>& items);
-// Champ de recherche en capsule, loupe et texte (ou « Rechercher » en gris).
-void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused);
+// Champ de recherche en capsule, loupe et texte (ou « Rechercher » en gris) ; `trailing` : place gardée à droite (ⓧ).
+void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused, float trailing = 0);
 // Anneau de focus autour de r.
 void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius);
-// Pastilles de la fenêtre (fermer, réduire, agrandir), le premier centre en `first` ; grises si inactive ; symboles au
-// survol ; `disabled` : indice grisé (agrandir), -1 sinon.
+// Pastilles de la fenêtre (fermer, réduire, agrandir), le premier centre en `first` ; grises si inactive (en couleur au
+// survol, comme la barre de menus) ; symboles au survol ; `disabled` : indice grisé (agrandir), -1 sinon.
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled = -1);
 constexpr float kLightRadius = 7, kLightSpacing = 23;
 

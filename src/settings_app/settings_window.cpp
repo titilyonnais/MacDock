@@ -36,8 +36,8 @@ constexpr UINT_PTR kAnimTimer = 1, kReloadTimer = 2, kCommitTimer = 3, kEnvTimer
 constexpr UINT kMsgRecordKey = WM_APP + 10, kMsgActionDone = WM_APP + 11, kMsgUnhook = WM_APP + 12;
 constexpr UINT_PTR kUnhookTimer = 5;   // touches gardées jamais relâchées (bureau sécurisé…) : le crochet part quand même
 constexpr ULONGLONG kCommitEveryMs = 120;            // curseur tiré : une écriture au plus toutes les 120 ms
-constexpr float kLightsX = 20, kLightsY = 20;        // premier centre des pastilles
-constexpr D2D1_RECT_F kSearch{10, 46, mt::sidebarWidth - 10, 46 + mt::searchHeight};
+constexpr float kLightsX = mt::lightsX, kLightsY = mt::lightsY;   // premier centre des pastilles (dans le panneau)
+constexpr D2D1_RECT_F kSearch{mt::sidebarInset, 46, mt::sidebarWidth - mt::sidebarInset, 46 + mt::searchHeight};
 
 bool appsDark() {
     // MACDOCK_SETTINGS_THEME=light|dark (essais) : sinon le mode des applications de Windows.
@@ -317,6 +317,7 @@ void SettingsWindow::render() {
     dc_->Clear(D2D1::ColorF(0, 0, 0, 0));
     {
         ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_);
+        ui::drawWindowBackground(p, w, h);   // Tahoe : barre latérale de verre flottante, le contenu tout autour
         computeGeometry(p, w);
         drawSidebar(p, h);
         drawContent(p, w, h);
@@ -353,12 +354,14 @@ void SettingsWindow::recreateGraphics() {
 
 void SettingsWindow::drawSidebar(ui::Painter& p, float h) {
     const ui::Palette& pal = p.pal();
-    p.rt()->FillRectangle(D2D1::RectF(0, 0, mt::sidebarWidth, h), p.brush(pal.sidebarTint));
-    p.rt()->DrawLine(D2D1::Point2F(mt::sidebarWidth - 0.5f, 0), D2D1::Point2F(mt::sidebarWidth - 0.5f, h), p.brush(pal.separator), 1);
-    ui::drawWindowLights(p, D2D1::Point2F(kLightsX, kLightsY), active_, lightsHover_, lightsPressed_, 2);
-    ui::drawSearchField(p, kSearch, query_, searchFocused_);
-    if (searchFocused_) {   // curseur d'insertion après le texte
-        const float x = kSearch.left + 27 + (query_.empty() ? 0.f : p.textWidth(query_, mt::fontBody)) + 1;
+    const ui::Panel panel = ui::sidebarPanel(h);   // les sections restent dans le panneau (défilement de la fenêtre)
+    p.rt()->PushAxisAlignedClip(D2D1::RectF(panel.left, panel.top, panel.right, ui::sidebarVisibleBottom(h)),
+                                D2D1_ANTIALIAS_MODE_ALIASED);
+    ui::drawWindowLights(p, D2D1::Point2F(kLightsX, kLightsY), active_, lightsHover_, lightsPressedInside_ ? lightsPressed_ : -1, 2);
+    ui::drawSearchField(p, kSearch, query_, searchFocused_, query_.empty() ? 0.f : kSearch.right - searchClear().left);
+    if (searchFocused_) {   // curseur d'insertion après le texte, jamais sur ⓧ
+        const float x = std::min(kSearch.left + 27 + (query_.empty() ? 0.f : p.textWidth(query_, mt::fontBody)) + 1,
+                                 query_.empty() ? kSearch.right - 8 : searchClear().left - 2);
         p.rt()->DrawLine(D2D1::Point2F(x, kSearch.top + 7), D2D1::Point2F(x, kSearch.bottom - 7), p.brush(pal.accent), 1.2f);
     }
     if (!query_.empty()) {   // ⓧ : efface la recherche
@@ -385,6 +388,7 @@ void SettingsWindow::drawSidebar(ui::Painter& p, float h) {
         p.text(panes[i].title, D2D1::RectF(row.left + 36, top, row.right - 6, top + mt::sidebarRow), mt::fontBody,
                selected && active_ ? pal.onAccent : pal.text);
     }
+    p.rt()->PopAxisAlignedClip();
 }
 
 // ---- Contenu ----
@@ -529,8 +533,7 @@ void SettingsWindow::drawRow(ui::Painter& p, int i) {
 }
 
 void SettingsWindow::drawContent(ui::Painter& p, float w, float h) {
-    const ui::Palette& pal = p.pal();
-    p.rt()->FillRectangle(D2D1::RectF(mt::sidebarWidth, 0, w, h), p.brush(pal.window));
+    const ui::Palette& pal = p.pal();   // fond déjà peint (drawWindowBackground)
     const PaneInfo& info = paneInfo(pane_);
     if (info.ready) {
         p.rt()->PushAxisAlignedClip(D2D1::RectF(mt::sidebarWidth, mt::titleBar, w, h), D2D1_ANTIALIAS_MODE_ALIASED);
@@ -864,6 +867,7 @@ int SettingsWindow::controlAt(float x, float y) const {
 
 int SettingsWindow::sidebarAt(float x, float y) const {
     if (x < mt::sidebarInset || x > mt::sidebarWidth - mt::sidebarInset) return -1;
+    if (y > ui::sidebarVisibleBottom(heightPt())) return -1;   // sous la limite visible du panneau : rien n'est cliquable
     return ui::sidebarRowAt(y, sidebarTops_);
 }
 
@@ -898,6 +902,7 @@ void SettingsWindow::onMouseDown(float x, float y) {
     }
     if (const int l = lightAt(x, y); l >= 0 && l < 2) {
         lightsPressed_ = l;
+        lightsPressedInside_ = true;
         InvalidateRect(hwnd_, nullptr, FALSE);
         return;
     }
@@ -971,6 +976,13 @@ void SettingsWindow::onMouseMove(float x, float y, bool buttonDown) {
                               : -1;
         if (hover != menu_->hover) {
             menu_->hover = hover;
+            dirty = true;
+        }
+    }
+    if (lightsPressed_ >= 0) {   // pastille enfoncée : sombre seulement tant que le doigt reste dessus
+        const bool insideLight = lightAt(x, y) == lightsPressed_;
+        if (insideLight != lightsPressedInside_) {
+            lightsPressedInside_ = insideLight;
             dirty = true;
         }
     }
@@ -1220,7 +1232,10 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (pt.y < edge) return HTTOP;
                 if (pt.y >= LONG(pxH_) - edge) return HTBOTTOM;
             }
-            if (y < mt::titleBar && lightAt(x, y) < 0 && !inside(kSearch, x, y)) return HTCAPTION;
+            // Le rectangle de survol des pastilles reste à nous : entre deux cercles, une zone de titre ferait quitter la
+            // fenêtre au pointeur (WM_MOUSELEAVE) et clignoter leurs symboles.
+            const bool overLights = x < kLightsX + 2 * ui::kLightSpacing + 12 && y < kLightsY + 12;
+            if (y < mt::titleBar && !overLights && !inside(kSearch, x, y)) return HTCAPTION;
             return HTCLIENT;
         }
         case WM_GETMINMAXINFO: {
