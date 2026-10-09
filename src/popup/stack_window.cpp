@@ -433,7 +433,9 @@ void Session::renderGrid(ID2D1DeviceContext* d) {
     Com<ID2D1SolidColorBrush> ink, hot, accent;
     d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &ink);
     d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.14f * opacity) : rgba(0, 0, 0, 0.09f * opacity), &hot);
-    d->CreateSolidColorBrush(env.dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);
+    const std::uint32_t tint = accentRgb(env.accent, env.dark);   // couleur d'accentuation
+    d->CreateSolidColorBrush(rgba(float((tint >> 16) & 255) / 255, float((tint >> 8) & 255) / 255, float(tint & 255) / 255, opacity),
+                             &accent);
     const float pad = pt(grid.padding);
     if (title) {
         DWRITE_TEXT_METRICS tm{};

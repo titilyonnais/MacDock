@@ -38,6 +38,7 @@ public:
 // Même dessin hors écran (Direct2D sur une bitmap, aucune fenêtre) : fond d'écran Tahoe, panneau dépoli, cases de
 // couleur à la place des icônes.
 BgraImage spotlightSnapshot(const std::wstring& query, const std::vector<AppEntry>& apps,
-                            const std::vector<SpotItem>& files, bool dark, int width, int height);
+                            const std::vector<SpotItem>& files, bool dark, int width, int height,
+                            AccentColor accent = AccentColor::Blue);
 
 } // namespace md

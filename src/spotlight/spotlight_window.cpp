@@ -67,6 +67,10 @@ double now() {
 }
 
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
+// Teinte 0xRRGGBB (couleur d'accentuation) en couleur Direct2D.
+D2D1_COLOR_F hexColor(std::uint32_t c, float a) {
+    return D2D1::ColorF(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, a);
+}
 
 float panelHeight(const std::vector<SpotSection>& sections) {
     if (sections.empty()) return kFieldH;
@@ -100,6 +104,7 @@ struct View {
     float opacity = 1;
     // Tuiles des sections de Réglages MacDock : forme et rayon des icônes d'apps (AppsIconStyle), pour la même allure.
     float tileShape = 824.0f / 1024, tileCorner = 185.4f / 824;
+    AccentColor accent = AccentColor::Blue;   // couleur d'accentuation (plan 57)
 };
 
 using IconDraw = std::function<void(ID2D1DeviceContext*, const SpotItem&, std::size_t index, const D2D1_RECT_F&)>;
@@ -161,13 +166,14 @@ struct Painter {
 
     void paint(ID2D1DeviceContext* d, const View& v, const IconDraw& icon) {
         const float a = std::clamp(v.opacity, 0.0f, 1.0f);
-        Com<ID2D1SolidColorBrush> ink, grey, line, accent, white;
+        Com<ID2D1SolidColorBrush> ink, grey, line, accent, onAccent, white;
         d->CreateSolidColorBrush(v.dark ? rgba(1, 1, 1, 0.92f * a) : rgba(0, 0, 0, 0.86f * a), &ink);
         d->CreateSolidColorBrush(v.dark ? rgba(1, 1, 1, 0.50f * a) : rgba(0, 0, 0, 0.45f * a), &grey);
         d->CreateSolidColorBrush(v.dark ? rgba(1, 1, 1, 0.10f * a) : rgba(0, 0, 0, 0.08f * a), &line);
-        d->CreateSolidColorBrush(rgba(0x0A / 255.0f, 0x84 / 255.0f, 1.0f, a), &accent);   // bleu système #0A84FF
+        d->CreateSolidColorBrush(hexColor(accentRgb(v.accent, v.dark), a), &accent);   // couleur d'accentuation
+        d->CreateSolidColorBrush(hexColor(onAccentRgb(v.accent, v.dark), a), &onAccent);
         d->CreateSolidColorBrush(rgba(1, 1, 1, a), &white);
-        if (!ink || !grey || !line || !accent || !white) return;
+        if (!ink || !grey || !line || !accent || !onAccent || !white) return;
 
         // Champ : loupe, texte ou invite grisée, curseur.
         const float my = kFieldH / 2, mx = 25;
@@ -209,12 +215,12 @@ struct Painter {
                     icon(d, it, index, ir);
                 }
                 const float right = kPanelW - kRowInset - 12;
-                const float tw = text(d, title.Get(), it.title, kTextX, top, right - kTextX, kRowH, sel ? white.Get() : ink.Get());
+                const float tw = text(d, title.Get(), it.title, kTextX, top, right - kTextX, kRowH, sel ? onAccent.Get() : ink.Get());
                 if (!it.subtitle.empty()) {
-                    white->SetOpacity(0.8f * a);
+                    onAccent->SetOpacity(0.8f * a);
                     const float sx = kTextX + tw + 10;
-                    text(d, sub.Get(), L"— " + it.subtitle, sx, top + 1, right - sx, kRowH, sel ? white.Get() : grey.Get());
-                    white->SetOpacity(a);
+                    text(d, sub.Get(), L"— " + it.subtitle, sx, top + 1, right - sx, kRowH, sel ? onAccent.Get() : grey.Get());
+                    onAccent->SetOpacity(a);
                 }
                 top += kRowH;
                 ++index;
@@ -315,6 +321,7 @@ LRESULT CALLBACK spotProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 bool Session::init() {
     sc = env.scale;
     view.dark = env.dark;
+    view.accent = env.accent;
     view.tileShape = float(req->icons.shapeRatio);
     view.tileCorner = float(req->icons.cornerRatio);
     if (!painter.init(env.font) || !env.device) return false;
@@ -755,7 +762,7 @@ std::optional<SpotlightWindow::Choice> SpotlightWindow::track(const MenuWindow::
 }
 
 BgraImage spotlightSnapshot(const std::wstring& query, const std::vector<AppEntry>& apps,
-                            const std::vector<SpotItem>& files, bool dark, int width, int height) {
+                            const std::vector<SpotItem>& files, bool dark, int width, int height, AccentColor accent) {
     BgraImage out{width, height, std::vector<std::uint8_t>(std::size_t(std::max(width, 0)) * std::max(height, 0) * 4, 0)};
     if (width <= 0 || height <= 0) return out;
     Com<ID3D11Device> dev;
@@ -799,6 +806,7 @@ BgraImage spotlightSnapshot(const std::wstring& query, const std::vector<AppEntr
     View v;
     v.query = query;
     v.dark = dark;
+    v.accent = accent;
     v.caret = true;
     v.sections = spotTrim(spotlightResults(query, apps, files), kMaxRows);
     v.selected = spotCount(v.sections) ? 0 : -1;

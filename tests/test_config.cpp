@@ -176,6 +176,13 @@ TEST_CASE(settings_accent_color) {   // plan 57 : couleur d'accentuation, bleu p
     CHECK(md::json::serialize(j, false).find("\"accentColor\":\"graphite\"") != std::string::npos);
 }
 
+TEST_CASE(settings_accent_color_of_raw_json) {   // plan 57 : la barre lit l'accent dans le settings.json du Dock
+    CHECK(md::accentColorOf(R"({"accentColor":"orange"})") == md::AccentColor::Orange);
+    CHECK(md::accentColorOf("") == md::AccentColor::Blue);
+    CHECK(md::accentColorOf("{pas du json") == md::AccentColor::Blue);
+    CHECK(md::accentColorOf(R"({"accentColor":"mauve"})") == md::AccentColor::Blue);
+}
+
 TEST_CASE(settings_spotlight_hotkey) {
     md::Settings s = md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"ctrl+space\"}"));
     CHECK(s.spotlightHotkey == L"ctrl+space");

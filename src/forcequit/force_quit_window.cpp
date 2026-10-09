@@ -303,7 +303,7 @@ void ForceQuitWindow::render() {
     v.buttonEnabled = list_.selected >= 0;
     v.buttonPressed = buttonPressed_;
     v.hint = hintFor(env_.shortcutLabel);
-    const ui::Palette pal = ui::palette(dark_);
+    const ui::Palette pal = ui::palette(dark_, env_.accent);
     rt_->BeginDraw();
     rt_->SetTransform(D2D1::Matrix3x2F::Identity());
     {

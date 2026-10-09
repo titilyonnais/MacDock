@@ -121,7 +121,8 @@ void LayeredPanel::hide() {
 
 // ---- Barre de ⊞⇧5 ----
 
-bool ShotToolbar::open(HINSTANCE instance, Done done) {
+bool ShotToolbar::open(HINSTANCE instance, Done done, AccentColor accent) {
+    accent_ = accent;
     if (!panel_.ensure(instance, kToolbarClass, proc, this)) return false;
     done_ = std::move(done);
     POINT cursor;
@@ -161,8 +162,11 @@ void ShotToolbar::render() {
         rt->CreateSolidColorBrush(rgba(1, 1, 1, 0.22f), &sel);
         rt->CreateSolidColorBrush(rgba(1, 1, 1, 0.10f), &hot);
         rt->CreateSolidColorBrush(rgba(1.0f, 0.27f, 0.23f, 1), &red);
-        rt->CreateSolidColorBrush(rgba(0.04f, 0.52f, 1.0f, 1), &accent);
-        rt->CreateSolidColorBrush(rgba(1, 1, 1, 1), &white);
+        const std::uint32_t tint = accentRgb(accent_, true), label = onAccentRgb(accent_, true);   // barre sombre
+        rt->CreateSolidColorBrush(rgba(float((tint >> 16) & 255) / 255, float((tint >> 8) & 255) / 255, float(tint & 255) / 255, 1),
+                                  &accent);
+        rt->CreateSolidColorBrush(rgba(float((label >> 16) & 255) / 255, float((label >> 8) & 255) / 255, float(label & 255) / 255, 1),
+                                  &white);
         const D2D1_RECT_F all{0.5f, 0.5f, float(layout_.width) - 0.5f, float(layout_.height) - 0.5f};
         rt->FillRoundedRectangle({all, 14 * sc, 14 * sc}, bg.Get());
         for (std::size_t i = 0; i < layout_.buttons.size(); ++i) {

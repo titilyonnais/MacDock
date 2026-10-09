@@ -139,6 +139,7 @@ private:
     void execute(const MenuAction& a);
     BarContext context(bool recentDocs = false, float scale = 1) const;   // recentDocs : lit le dossier Récents
     MenuWindow::Env menuEnv(const Screen& s) const;
+    AccentColor dockAccent() const;   // couleur d'accentuation réglée pour le Dock (plan 57)
     std::vector<HWND> appWindows() const;
     void scheduleClock();
     void updateClock();
@@ -174,6 +175,8 @@ private:
     FILETIME settingsTime_{};
     mutable FILETIME forceQuitTime_{};   // settings.json du Dock lu pour le raccourci de Forcer à quitter (menu )
     mutable std::wstring forceQuitLabel_ = forceQuitShortcutLabel("");
+    mutable FILETIME accentTime_{};   // settings.json du Dock lu pour la couleur d'accentuation des menus
+    mutable AccentColor accent_ = AccentColor::Blue;
     Metrics glassMetrics_;   // mesures du verre des menus (dock-metrics.json, en lecture seule)
     LogoImage logo_;         // menubar-logo.png, donné au rendu de chaque barre
 

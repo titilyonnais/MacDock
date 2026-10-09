@@ -132,6 +132,11 @@ Settings settingsFromJson(const json::Value& v) {
     return s;
 }
 
+AccentColor accentColorOf(std::string_view settingsJson) {
+    const auto v = json::parse(settingsJson);
+    return v ? settingsFromJson(*v).accentColor : AccentColor::Blue;
+}
+
 json::Value settingsToJson(const Settings& s) {
     json::Value v = json::Object{};
     v.set("version", kSettingsVersion);
