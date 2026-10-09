@@ -9,14 +9,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <memory>
-#include <sstream>
 
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
-#include "../config/settings.h"
-#include "../interact/hotkey.h"
 #include "../core/diag.h"
 #include "../sound/sound_play.h"
 #include "../core/log.h"
@@ -52,15 +48,22 @@ constexpr UINT WM_APP_ZOOM_MENU = WM_APP + 8;    // pastille verte survolée : w
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
 
-// Raccourci de Forcer à quitter réglé pour le Dock (settings.json, lu sans rien écrire) : affiché dans le menu  avec les
-// symboles de l'app Réglages (« ⌥⊞⎋ ») ; vide s'il est désactivé.
-std::wstring forceQuitShortcut(const std::wstring& dataDir) {
-    std::ifstream f(dataDir + L"\\settings.json", std::ios::binary);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    const auto doc = json::parse(ss.str());
-    const auto spec = parseHotkey(doc && doc->isObject() ? settingsFromJson(*doc).forceQuitHotkey : Settings{}.forceQuitHotkey);
-    return spec ? hotkeyLabel(*spec) : std::wstring();
+// Fichier d'un autre processus (settings.json du Dock) lu en entier sans jamais le gêner : partage complet, y compris la
+// suppression, pour que son enregistrement (remplacement atomique) réussisse même pendant cette lecture.
+std::string readShared(const std::wstring& path) {
+    std::string out;
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return out;
+    LARGE_INTEGER size{};
+    if (GetFileSizeEx(f, &size) && size.QuadPart > 0 && size.QuadPart < 16 * 1024 * 1024) {
+        out.resize(std::size_t(size.QuadPart));
+        DWORD got = 0;
+        if (!ReadFile(f, out.data(), DWORD(out.size()), &got, nullptr)) got = 0;
+        out.resize(got);
+    }
+    CloseHandle(f);
+    return out;
 }
 
 struct UiaTitles {
@@ -713,7 +716,13 @@ BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     }
     c.source = active_.source;
     c.real = active_.real;
-    c.forceQuitShortcut = forceQuitShortcut(dataDir_);
+    // Raccourci de Forcer à quitter réglé pour le Dock : relu seulement quand settings.json change.
+    const std::wstring dockSettings = dataDir_ + L"\\settings.json";
+    if (FILETIME t{}; fileTime(dockSettings, t) && CompareFileTime(&t, &forceQuitTime_) != 0) {
+        forceQuitTime_ = t;
+        forceQuitLabel_ = forceQuitShortcutLabel(readShared(dockSettings));
+    }
+    c.forceQuitShortcut = forceQuitLabel_;
     c.menuOwner = toId(active_.menuOwner);
     c.recentApps = withIcons(recent_.apps, false, scale);
     PWSTR folder = nullptr;

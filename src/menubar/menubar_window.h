@@ -172,6 +172,8 @@ private:
     std::wstring dataDir_;
     MenuBarSettings settings_;
     FILETIME settingsTime_{};
+    mutable FILETIME forceQuitTime_{};   // settings.json du Dock lu pour le raccourci de Forcer à quitter (menu )
+    mutable std::wstring forceQuitLabel_ = forceQuitShortcutLabel("");
     Metrics glassMetrics_;   // mesures du verre des menus (dock-metrics.json, en lecture seule)
     LogoImage logo_;         // menubar-logo.png, donné au rendu de chaque barre
 

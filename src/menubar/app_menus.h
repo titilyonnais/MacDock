@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -75,6 +76,10 @@ struct BarMenus {
 };
 
 BarMenus buildBarMenus(const BarContext& c);
+
+// Raccourci de Forcer à quitter réglé pour le Dock, lu dans le texte de son settings.json (BOM accepté) : symboles de
+// l'app Réglages (« ⌥⊞⎋ »), vide s'il est désactivé ; fichier illisible : le raccourci par défaut.
+std::wstring forceQuitShortcutLabel(std::string_view settingsJson);
 
 // Menu de la pastille verte (macOS 26, plan 51) : « Déplacer et redimensionner » (moitiés ; ⌥ : quarts), « Remplir et
 // organiser » (Remplir, la fenêtre et les suivantes ; ⌥ : Centrer, dispositions inversées), puis Plein écran.

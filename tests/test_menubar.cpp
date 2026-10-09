@@ -465,6 +465,15 @@ TEST_CASE(bar_actions_ignore_missing_window) {
     CHECK(!md::runAction({md::ActionKind::Minimize}, ctx, sys));
 }
 
+TEST_CASE(bar_force_quit_shortcut_from_dock_settings) {   // relecture du plan 54
+    // Raccourci affiché dans le menu , lu dans settings.json du Dock : BOM accepté, « off » rien, illisible le défaut.
+    CHECK(md::forceQuitShortcutLabel("{\"forceQuitHotkey\": \"ctrl+alt+k\"}") == L"⌃⌥K");
+    CHECK(md::forceQuitShortcutLabel("\xEF\xBB\xBF{\"forceQuitHotkey\": \"ctrl+alt+k\"}") == L"⌃⌥K");
+    CHECK(md::forceQuitShortcutLabel("{\"forceQuitHotkey\": \"off\"}").empty());
+    CHECK(md::forceQuitShortcutLabel("pas du JSON") == L"⌥⊞⎋");
+    CHECK(md::forceQuitShortcutLabel("") == L"⌥⊞⎋");
+}
+
 TEST_CASE(bar_force_quit_needs_responding_dock) {   // relecture du plan 54, important 4
     // Menu  > Forcer à quitter… : la fenêtre du Dock seulement s'il répond ; figé, le Gestionnaire des tâches (qui
     // marche justement quand plus rien ne répond).
