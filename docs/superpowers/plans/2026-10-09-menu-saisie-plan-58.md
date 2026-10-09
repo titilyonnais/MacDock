@@ -51,3 +51,22 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   - menu ouvert par un clic envoyé à la seule barre : « Français (France) » coché, « Anglais (États-Unis) »,
     émojis, clavier visuel, réglages Clavier ; refermé par Échap sans rien choisir ; captures effacées.
 - Non essayé en réel : le changement de disposition depuis le menu, sur tes apps ; à faire avec toi.
+
+## Relecture indépendante
+Rien de critique ; deux importants et dix mineurs. Corrigés en une passe, chacun avec un test vu en échec avant
+(798 tests verts) :
+- **Importants** :
+  - deux dispositions d'une même langue (AZERTY et BÉPO, US et US-International, ou une langue sur deux claviers)
+    avaient le même nom dans le menu : elles prennent leur nom complet, langue et clavier, lu dans le registre
+    (« Français (France) – Français (Standard, BÉPO) ») ;
+  - une console conhost était lue sur le fil de son processus client (cmd, pwsh), qui ne traite pas le clavier :
+    elle est lue sur celui de sa fenêtre IME, qui appartient à conhost (vérifié en lecture seule sur deux consoles
+    de ce PC).
+- **Mineurs regradés** :
+  - « Afficher les émojis et symboles » et le clavier visuel rendent d'abord le premier plan à l'app (sinon
+    l'émoji allait à la fenêtre que Windows choisissait) ;
+  - au démarrage, l'icône est là dès la première image (plus de « ? » ni de glissement après 500 ms).
+- **Choix gardé** : deux claviers d'un même pays gardent le même code (« FR ») ; le menu les distingue.
+- **Essais réels refaits** : barre recompilée et relancée, « FR » sur les deux écrans, menu inchangé pour tes deux
+  dispositions, refermé par Échap ; captures effacées.
+- Mineurs reportés : voir le journal (« Mineurs reportés — plan 58 »).

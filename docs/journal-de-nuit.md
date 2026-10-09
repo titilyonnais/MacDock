@@ -1066,6 +1066,24 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Essais réels** : barre relancée ; « FR » affiché, comme la disposition de Brave lue en parallèle ; menu ouvert
   par un clic envoyé à la seule barre, capturé, refermé par Échap sans rien choisir ; captures effacées.
 - **À essayer avec toi** : changer de disposition depuis le menu (je ne l'ai pas fait sur tes apps).
+- **Relecture indépendante** : rien de critique ; corrigés : deux claviers d'une même langue (AZERTY et BÉPO)
+  avaient le même nom dans le menu, une console conhost était lue sur le mauvais fil, les émojis partaient sans
+  rendre le premier plan à l'app, et l'icône glissait au démarrage.
+- **Vu en passant** : le test `uia_menus_read_and_invoke_fake_app` a échoué deux fois (appel UI Automation
+  bloqué), puis est passé : instable selon l'état du système, sans lien avec ce plan.
+
+## Mineurs reportés — plan 58
+- La liste relue à l'ouverture du menu ne met pas l'icône à jour (le passage à une seule disposition se voit par
+  un effet de bord).
+- App lancée en administrateur : Windows refuse le changement de disposition, sans retour (écrit dans le README).
+- Fenêtres d'autres processus au premier plan (Démarrer, Recherche, Spotlight) non suivies ; jusqu'à 500 ms de
+  retard au changement d'app.
+- Boîte : mesures codées en dur hors de `MenuBarMetrics`, trait de 1,2 pt sur un demi-pixel (un peu flou à 125 %).
+- Un rendu de trop par minute au plus (texte de l'horloge comparé) ; minuterie de 500 ms active même sans icône.
+- Tests : le menu rafraîchi et son rendu ne sont pas testés ; un test exige un code à deux lettres pour toutes les
+  dispositions du poste.
+- À essayer avec toi : choisir une disposition dans Brave et le Bloc-notes, une app du Store, Windows Terminal et
+  une console, une app en administrateur, le bureau, les émojis dans un champ de texte.
 
 ## Mineurs reportés — plan 57
 - L'anneau du clavier (Tab dans Réglages) suit l'accent à 50 % ; pour le Bleu, les teintes relevées sur macOS
