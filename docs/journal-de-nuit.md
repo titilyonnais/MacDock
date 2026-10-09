@@ -914,6 +914,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   normale et agrandie.
 - **Relecture indépendante** : rien de critique ; noms longs, plusieurs écrans et fenêtres agrandies corrigés.
 
+### Plan 49 — icônes des exécutables, nuit du 9 octobre
+
+- **Les exécutables ont leur icône**, dessinée par le code (aucune ressource Apple) : engrenage blanc sur tuile grise
+  pour l'app Réglages, Dock et barre des menus blancs sur tuile sombre. L'app Réglages n'apparaît plus dans le Dock, la
+  barre des tâches ou l'Explorateur avec l'icône générique de Windows.
+- Plein cadre, au rayon de la grille d'Apple : le Dock (« Icônes uniformes ») les traite comme des icônes de macOS.
+- Générées par `tools/make_icons.cpp` (cible `icons`), rangées dans `res/`, liées par `build.ps1` (rc.exe).
+- **Relecture indépendante** : rien de critique ; le double cadre dans le Dock et l'icône de fenêtre trop sombre sur les
+  bords corrigés.
+- **À savoir** : l'Explorateur garde parfois l'ancienne icône en cache ; elle se met à jour d'elle-même.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
