@@ -26,7 +26,10 @@ jobs:
 
       - name: Étiquette sur main
         shell: pwsh
+        # Une version vise un commit de main ; une préversion (vX.Y.Z-rc.N, essais des mises à jour) peut venir d'une
+        # autre branche : les mises à jour ne la prennent jamais, sauf MACDOCK_UPDATE_PRERELEASE=1.
         run: |
+          if ($env:TAG.Contains('-')) { 'Préversion : branche libre.'; exit 0 }
           git fetch --no-tags origin main
           git merge-base --is-ancestor $env:GITHUB_SHA FETCH_HEAD
           if ($LASTEXITCODE -ne 0) { throw "L'étiquette $env:TAG ne vise pas un commit de main." }
