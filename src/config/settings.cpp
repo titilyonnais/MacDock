@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "../core/strings.h"
+#include "../interact/hotkey.h"
 
 namespace md {
 namespace {
@@ -77,15 +78,17 @@ Settings settingsFromJson(const json::Value& v) {
     else if (effect == L"windows") s.minimizeEffect = MinimizeEffect::Windows;
     s.font = readString(v, "font");
     s.screen = readString(v, "screen");
-    const std::wstring hotkey = toLower(readString(v, "spotlightHotkey"));
-    if (hotkey == L"alt+space" || hotkey == L"ctrl+space" || hotkey == L"off") s.spotlightHotkey = hotkey;
-    const std::wstring mission = toLower(readString(v, "missionControlHotkey"));
-    if (mission == L"ctrl+alt+up" || mission == L"ctrl+up" || mission == L"f3" || mission == L"off")
-        s.missionControlHotkey = mission;
+    // Raccourcis saisis librement dans l'app Réglages : tout ce que parseHotkey accepte, ou « off » ; sinon le défaut.
+    const auto readHotkey = [&v](const char* key, std::wstring& out) {
+        const std::wstring text = toLower(readString(v, key));
+        if (text == L"off" || parseHotkey(text)) out = text;
+    };
+    readHotkey("spotlightHotkey", s.spotlightHotkey);
+    readHotkey("missionControlHotkey", s.missionControlHotkey);
+    readHotkey("appExposeHotkey", s.appExposeHotkey);
+    readHotkey("forceQuitHotkey", s.forceQuitHotkey);
     const std::wstring switcher = toLower(readString(v, "appSwitcherHotkey"));
     if (switcher == L"alt+tab" || switcher == L"off") s.appSwitcherHotkey = switcher;
-    const std::wstring expose = toLower(readString(v, "appExposeHotkey"));
-    if (expose == L"ctrl+alt+down" || expose == L"ctrl+down" || expose == L"off") s.appExposeHotkey = expose;
     s.screenshots = readBool(v, "screenshots", s.screenshots);
     s.sounds = readBool(v, "sounds", s.sounds);
     s.altAsCommand = readBool(v, "altAsCommand", s.altAsCommand);
@@ -142,6 +145,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("missionControlHotkey", toUtf8(s.missionControlHotkey));
     v.set("appSwitcherHotkey", toUtf8(s.appSwitcherHotkey));
     v.set("appExposeHotkey", toUtf8(s.appExposeHotkey));
+    v.set("forceQuitHotkey", toUtf8(s.forceQuitHotkey));
     v.set("screenshots", s.screenshots);
     v.set("sounds", s.sounds);
     v.set("altAsCommand", s.altAsCommand);

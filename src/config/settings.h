@@ -42,10 +42,12 @@ struct Settings {
     MinimizeEffect minimizeEffect = MinimizeEffect::Genie;   // réduction des fenêtres dans le Dock
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
-    std::wstring spotlightHotkey = L"alt+space";   // Spotlight : alt+space, ctrl+space ou off
-    std::wstring missionControlHotkey = L"ctrl+alt+up";   // Mission Control : ctrl+alt+up, ctrl+up, f3 ou off
+    // Raccourcis globaux : tout raccourci que parseHotkey accepte (saisi dans l'app Réglages), ou off.
+    std::wstring spotlightHotkey = L"alt+space";          // Spotlight
+    std::wstring missionControlHotkey = L"ctrl+alt+up";   // Mission Control
     std::wstring appSwitcherHotkey = L"alt+tab";          // sélecteur d'apps : alt+tab ou off
-    std::wstring appExposeHotkey = L"ctrl+alt+down";      // Exposé de l'app au premier plan : ctrl+alt+down, ctrl+down, off
+    std::wstring appExposeHotkey = L"ctrl+alt+down";      // Exposé de l'app au premier plan
+    std::wstring forceQuitHotkey = L"alt+win+escape";     // Forcer à quitter (⌥⌘⎋ : Alt et ⊞ aux places de ⌘ et ⌥)
     bool screenshots = true;
     bool sounds = true;
     bool altAsCommand = false;   // Alt de gauche joue ⌘ (⌘C, ⌘V, ⌘Q…) ; Alt Gr jamais touché        // sons système originaux : capture, Corbeille vidée, nuage « poof »   // ⊞⇧3 et ⊞⇧4 : captures d'écran façon macOS (false : rendus à Windows)
