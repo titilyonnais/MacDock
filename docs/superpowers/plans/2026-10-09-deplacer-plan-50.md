@@ -29,9 +29,23 @@ Celui de MacDock n'envoie que Win+← et Win+→.
   - menu Fenêtre : Remplir, Centrer, sous-menu « Déplacer et redimensionner » (`ActionKind::Tile`).
 
   Tests : les entrées du menu et leurs actions ; placement réel d'une fenêtre d'essai (sonde).
-- [ ] 3. Essai réel, documentation, relecture, fusion.
+- [x] 3. Essai réel, documentation, relecture, fusion.
 
 ## Essai réel
 Sonde sur une fenêtre d'essai à moi, écran 4K à 200 % (marge de 16 px) : Gauche, En bas à droite, Revenir (au tout
 premier cadre après deux rangements), Remplir depuis l'état agrandi (restaurée d'abord), Centrer : cadre visible
 obtenu exactement égal au cadre voulu.
+
+## Relecture
+Rien de critique. Corrigés :
+- fenêtre agrandie puis réduite : restaurée « agrandie », mesurée telle quelle, laissée agrandie à la taille d'une
+  moitié ; maintenant : réduite ou figée, rien (entrées grisées) ; agrandie, restaurée de façon synchrone avant la
+  mesure ;
+- cadre gardé = cadre demandé : une app à largeur minimale débordait et faussait « Revenir » ; maintenant le cadre
+  obtenu est mesuré et recalé contre le bord visé (`anchorTile`) — vérifié en réel (largeur minimale de 2200 px :
+  bord droit exact) ;
+- dialogue de taille fixe étiré par Remplir : Centrer seul ;
+- marge au DPI de l'écran ; cadres gardés purgés, liés au processus, écrits après succès ; sonde rangée dans
+  `tests/real/window_tile_probe.cpp`.
+
+Mineur reporté : une app qui a son propre menu Fenêtre (Notepad++) n'a pas encore ces entrées.
