@@ -1097,6 +1097,23 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Vu en passant** : le test `uia_menus_read_and_invoke_fake_app` échoue tant que la fenêtre transparente de l'outil
   de pilotage de Claude couvre l'écran (UI Automation bloqué 15 s) ; il passait ce soir sur le même code.
 
+### Plan 60 — Forme des icônes de macOS 26, 9 octobre au soir (avec toi)
+
+- **Ta demande** : « bonnes icônes, bon arrondi, tout pareil », d'après le gabarit d'icônes d'Apple sur Figma.
+- **Le gabarit Figma n'est pas utilisé** : sa licence (Apple Design Resources) réserve ces ressources aux
+  maquettes d'apps pour les systèmes d'Apple et interdit de les intégrer à un logiciel ; MacDock est une app
+  Windows publique. La référence légale : ta VM macOS 26, mesurée à l'écran.
+- **Mesure** : contour de cinq icônes du Dock de la VM (Apps, Safari, Téléphone, Rappels, Notes), ajusté au coin
+  continu d'Apple ; après étalonnage de la méthode, rayon de **25,9 % du côté** (± 0,2 %). MacDock suivait la
+  grille de Big Sur à Sequoia (22,5 %) : les icônes de Tahoe sont plus rondes.
+- **Changé** : la forme par défaut, `dock-metrics.json` (version 6 : ton 0,225 est passé à 0,259), les rayons écrits
+  en dur (Apps, sélecteur d'apps, tuiles de Spotlight), et les icônes de MacDock (`res/*.ico`), refaites.
+- **Vu en mesurant** : chez toi, « Tahoe strict » est désactivé ; les icônes Windows rondes (Chrome, Telegram,
+  Discord, Steam, Brave) gardent leur forme, alors que macOS 26 les met toutes dans le même carré arrondi.
+- **Pilotage de la VM** : VMware ignore les clics et touches simulés ; l'outil de pilotage avait réduit tes fenêtres
+  (et celles de MacDock) pour ses captures : restaurées, sauf le Gestionnaire des tâches et Windhawk (en
+  administrateur).
+
 ## Mineurs reportés — plan 59
 - Menu déjà ouvert dans l'app : le premier plan est refusé (rebond d'attention dans le Dock) ; sur macOS, `` ⌘` ``
   ne fait rien.

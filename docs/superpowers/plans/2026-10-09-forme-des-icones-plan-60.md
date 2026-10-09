@@ -24,11 +24,22 @@ macOS 26 Tahoe. MacDock suivait la grille de Big Sur à Sequoia (rayon de 22,5 %
 - Les icônes de MacDock (`res/*.ico`, dessinées par le code) sont refaites avec la nouvelle forme.
 
 ## Tâches
-- [ ] 1. **Forme et mesures** (`icons/squircle.h`, `config/metrics.*`, `apps/apps_window.cpp`,
+- [x] 1. **Forme et mesures** (`icons/squircle.h`, `config/metrics.*`, `apps/apps_window.cpp`,
   `switcher/switcher_window.cpp`, `spotlight/spotlight_window.cpp`) : constante, défaut, migration v6, rayons en dur.
   Tests (migration, défauts, masque).
-- [ ] 2. **Icônes de MacDock** : `make_icons` relancé, `res/*.ico` refaits ; contrôle de leur forme.
-- [ ] 3. **Essais réels** : MacDock recompilé et relancé ; son Dock capturé (sa seule fenêtre) et mesuré par la même
+- [x] 2. **Icônes de MacDock** : `make_icons` relancé, `res/*.ico` refaits ; contrôle de leur forme.
+- [x] 3. **Essais réels** : MacDock recompilé et relancé ; son Dock capturé (sa seule fenêtre) et mesuré par la même
   méthode (rendu direct, sans étirement : attendu ≈ 0,257) ; comparaison côte à côte avec le Dock de la VM.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- Suite : 811 tests sur 812 (seul `uia_menus_read_and_invoke_fake_app` échoue : UI Automation bloqué par la
+  fenêtre transparente de l'outil de pilotage de Claude, sans rapport avec le plan) ; tout compilé en Release.
+- **Contrôles** :
+  - `res/*.ico` à 256 px, mesurés par la même méthode : rapport 0,2538 (avant : 0,2207), écart attendu pour 0,259 ;
+  - le `dock-metrics.json` de l'utilisateur, migré au démarrage : version 6, `iconCornerRatio` 0,259 ;
+  - contours tracés sur l'icône Notes du Dock de la VM (agrandie ×6) : le nouveau suit le bord d'Apple, l'ancien
+    passe à côté.
+- Non mesurable sur le Dock de MacDock lui-même : « Tahoe strict » est désactivé chez l'utilisateur, la plupart de
+  ses icônes gardent leur forme Windows (plan suivant).

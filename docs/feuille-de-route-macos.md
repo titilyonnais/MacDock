@@ -44,6 +44,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Couleur d'accentuation** de Réglages Système (huit accents), appliquée partout dans MacDock (plan 57).
 - **Menu de saisie** du clavier dans la barre de menus (« FR », « US »), comme celui de macOS (plan 58).
 - **Fenêtre suivante de l'app** au clavier (`` ⌥` ``, comme `` ⌘` `` de macOS) (plan 59).
+- **Forme des icônes de macOS 26**, mesurée sur la VM (rayon de 25,9 % du côté) (plan 60).
 
 ## À faire, par ordre d'effet
 1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
