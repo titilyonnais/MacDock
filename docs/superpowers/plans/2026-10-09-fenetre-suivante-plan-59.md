@@ -1,8 +1,8 @@
-# Fenêtre suivante de l'app au clavier (⌥`) — plan 59
+# Fenêtre suivante de l'app au clavier (`` ⌥` ``) — plan 59
 
 > **Pour les agents :** exécution en ligne, tâche par tâche, tests d'abord. Reprendre à la première tâche non cochée.
 
-**But :** ⌘` de macOS (« Déplacer la cible vers la fenêtre suivante ») : Alt + la touche sous Échap fait passer devant
+**But :** `` ⌘` `` de macOS (« Déplacer la cible vers la fenêtre suivante ») : Alt + la touche sous Échap fait passer devant
 la fenêtre suivante de l'app au premier plan, Alt+Maj la précédente. Aujourd'hui, passer d'une fenêtre de Brave à une
 autre demande la souris, le menu Fenêtre de la barre ou Alt+Tab de Windows (que MacDock remplace par son sélecteur
 d'apps). Proposé par l'agent de la nuit (n° 2 de sa liste).
@@ -11,7 +11,7 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
 
 ## Choix
 - **Touche** : Alt + la touche sous Échap, reconnue à sa place (code de balayage 0x29, non étendu) et non à son
-  caractère : ` sur un clavier US, ² sur un AZERTY, ^ sur un QWERTZ ; comme macOS, qui garde la touche à gauche de 1
+  caractère : `` ` `` sur un clavier US, ² sur un AZERTY, ^ sur un QWERTZ ; comme macOS, qui garde la touche à gauche de 1
   quelle que soit la disposition. Maj : sens inverse. Jamais avec Ctrl (Alt Gr = Ctrl+Alt) ni ⊞. Un appui tenu ne
   répète pas. Les frappes simulées passent, sauf en diagnostic (essais), comme pour ⊞⇧3.
 - **Fenêtres** : celles que le Dock suit pour l'app au premier plan (sa fenêtre racine propriétaire), visibles, non
@@ -24,11 +24,11 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   casserait l'appui suivant).
 - **Rien à faire** (une seule fenêtre, app non suivie, bureau, menu ou sélecteur ouvert) : la frappe est prise quand
   même, comme ⌥⇥ ; rien ne bouge.
-- **Pendant le sélecteur d'apps** (⌥⇥ tenu) : la touche recule d'une case (Maj : avance), comme ⌘` pendant ⌘⇥ sur
+- **Pendant le sélecteur d'apps** (⌥⇥ tenu) : la touche recule d'une case (Maj : avance), comme `` ⌘` `` pendant ⌘⇥ sur
   macOS.
 - **Alt de gauche joue ⌘** (option) : Alt de gauche + ` fait de même (Alt rendu à Windows, comme pour ⌥⇥).
 - **Réglage** : `windowCycleHotkey` dans `settings.json` : `alt+backtick` (par défaut) ou `off` ; Réglages > Clavier >
-  Raccourcis > « Fenêtre suivante de l'app » : « ⌥` façon macOS » ou « Désactivée », avec « La touche sous Échap (²
+  Raccourcis > « Fenêtre suivante de l'app » : « `` ⌥` `` façon macOS » ou « Désactivée », avec « La touche sous Échap (²
   sur un clavier AZERTY) » en dessous. Spotlight : « fenêtre suivante » mène à Réglages > Clavier.
 
 ## Interfaces
@@ -40,7 +40,7 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
     d'une frappe prise (taken) : avalé ;
   - `std::optional<std::size_t> cycleTarget(const std::vector<bool>& eligible, std::optional<std::size_t> current, bool back);`
   - `bool parseWindowCycleHotkey(const std::wstring& text);` — vrai pour « alt+backtick » seulement.
-- `DockSettings::windowCycleHotkey` (`std::wstring`, `L"alt+backtick"`), clé JSON `windowCycleHotkey`.
+- `Settings::windowCycleHotkey` (`std::wstring`, `L"alt+backtick"`), clé JSON `windowCycleHotkey`.
 - Dock : `kHotCycle = 15`, `kHotCycleBack = 16` (WM_APP_SWITCHKEY), `DockApp::cycleWindows(bool back)`,
   `std::atomic<bool> cycleKeysOn_`.
 
@@ -71,3 +71,20 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   fenêtre suivante ; le journal du Dock montrait des cibles justes. Sonde corrigée (`SW_SHOWMINNOACTIVE`).
 - Non essayés en réel : la touche pendant le sélecteur d'apps (il ignore les touches simulées) et Alt de gauche en ⌘ ;
   à faire avec toi.
+
+## Relecture indépendante
+Rien de critique ; deux importants et huit mineurs. Corrigés en une passe, chacun avec un test vu en échec avant :
+- **Importants** :
+  - la touche neutre partait du fil du Dock : Alt relâché vite pouvait ouvrir le menu de l'app, et le premier plan
+    était alors refusé ; elle part maintenant du crochet, à l'appui (`CycleKeyGate`, `sendNeutralKey`) ;
+  - avec « Alt de gauche joue ⌘ », `` ⌘` `` rendait Alt à Windows : ⌘V juste après envoyait Alt+V ; la touche est
+    prise sans rendre Alt (`CommandKeys::onKey(…, macDockKey)`), ⌘ reste ⌘.
+- **Mineurs regradés** :
+  - en session ⌥⇥, la touche pose une case à gauche ou à droite, sans effet si la session vient de finir (avant :
+    « reculer », qui pouvait rouvrir un sélecteur) ;
+  - Alt lâché avant la touche : ses répétitions sont avalées (avant : tapées dans la nouvelle fenêtre) ;
+  - session lue une fois par frappe ; un appui pris l'est jusqu'à son relâchement même si le réglage change ; plus
+    de gestionnaire de bureaux virtuels sur le chemin de la frappe (le voile du DWM couvre les autres bureaux).
+- **Documentation** : limites dans le README (JetBrains, IME japonais, apps en administrateur) ; accents graves
+  seuls corrigés (ils ouvraient des bouts de code en Markdown).
+- Essai réel après les corrections : non refait (l'utilisateur se servait du PC) ; mineurs reportés : voir le journal.

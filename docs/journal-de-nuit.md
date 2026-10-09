@@ -1072,20 +1072,39 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Vu en passant** : le test `uia_menus_read_and_invoke_fake_app` a échoué deux fois (appel UI Automation
   bloqué), puis est passé : instable selon l'état du système, sans lien avec ce plan.
 
-### Plan 59 — Fenêtre suivante de l'app (⌥`), 9 octobre en soirée (session autonome)
+### Plan 59 — Fenêtre suivante de l'app (`` ⌥` ``), 9 octobre en soirée (session autonome)
 
-- **Raccourci** : Alt + la touche sous Échap (² sur ton clavier, ` en QWERTY) fait passer devant la fenêtre suivante
-  de l'app active, comme ⌘` sur macOS ; Alt+Maj, la précédente. La touche est reconnue à sa place, quelle que soit
+- **Raccourci** : Alt + la touche sous Échap (² sur ton clavier, `` ` `` en QWERTY) fait passer devant la fenêtre suivante
+  de l'app active, comme `` ⌘` `` sur macOS ; Alt+Maj, la précédente. La touche est reconnue à sa place, quelle que soit
   la disposition du clavier.
 - **Ordre stable**, celui d'ouverture : des appuis successifs passent par toutes les fenêtres ouvertes et reviennent
   à la première ; les fenêtres réduites sont sautées, comme sur macOS. Un appui tenu n'avance que d'une fenêtre.
-- **Pendant le sélecteur d'apps** (Alt+Tab tenu), la même touche recule d'une case, comme ⌘` pendant ⌘⇥.
+- **Pendant le sélecteur d'apps** (Alt+Tab tenu), la même touche passe à la case de gauche, comme `` ⌘` `` pendant ⌘⇥.
 - **Réglage** : Réglages > Clavier > Raccourcis > « Fenêtre suivante de l'app » (`windowCycleHotkey` dans
   `settings.json`) ; Spotlight trouve « fenêtre suivante ».
 - **Essai réel** par une sonde : trois fenêtres à elle, vraies touches envoyées seulement si l'une a le premier plan ;
   onze contrôles exacts (1 → 2 → 3 → 1, retour arrière, fenêtre réduite sautée, appui tenu, touche jamais arrivée
   aux fenêtres, aucun menu ouvert). Ton Dock recompilé et relancé.
 - **À essayer avec toi** : ² dans Brave avec plusieurs fenêtres, ² pendant Alt+Tab, et avec « Alt de gauche joue ⌘ ».
+- **Relecture indépendante** : rien de critique ; corrigés, chacun avec un test vu en échec avant :
+  - la touche neutre partait du fil du Dock : relâcher Alt très vite pouvait encore ouvrir le menu de l'app ; elle
+    part maintenant du crochet clavier, à l'appui ;
+  - avec « Alt de gauche joue ⌘ », ⌘² rendait Alt à Windows : ⌘V juste après devenait Alt+V ; ⌘ reste maintenant ⌘ ;
+  - pendant Alt+Tab, la touche pouvait rouvrir un sélecteur qui venait de se fermer ; Alt lâché avant ², ses
+    répétitions étaient tapées dans la nouvelle fenêtre.
+- **Essai réel après les corrections** : non refait, tu te servais du PC (la sonde vole le premier plan et tape au
+  clavier) ; avant elles, onze contrôles exacts.
+- **Vu en passant** : le test `uia_menus_read_and_invoke_fake_app` échoue tant que la fenêtre transparente de l'outil
+  de pilotage de Claude couvre l'écran (UI Automation bloqué 15 s) ; il passait ce soir sur le même code.
+
+## Mineurs reportés — plan 59
+- Menu déjà ouvert dans l'app : le premier plan est refusé (rebond d'attention dans le Dock) ; sur macOS, `` ⌘` ``
+  ne fait rien.
+- Fenêtre visée avec un dialogue modal ouvert (Enregistrer sous) : c'est sa propriétaire, désactivée, qui passe
+  devant (Alt+Tab de Windows vise le dialogue) ; fenêtre suivie possédée par une autre : mal reconnue comme courante.
+- Appui arrivé juste avant le début d'une session Alt+Tab : ignoré.
+- Tests : la touche neutre et l'identifiant posté par le crochet ne sont vérifiés qu'à travers la porte
+  (`CycleKeyGate`) ; session avec Ctrl ou ⊞ non testée.
 
 ## Mineurs reportés — plan 58
 - La liste relue à l'ouverture du menu ne met pas l'icône à jour (le passage à une seule disposition se voit par
