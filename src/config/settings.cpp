@@ -96,6 +96,8 @@ Settings settingsFromJson(const json::Value& v) {
     readHotkey("forceQuitHotkey", s.forceQuitHotkey);
     const std::wstring switcher = toLower(readString(v, "appSwitcherHotkey"));
     if (switcher == L"alt+tab" || switcher == L"off") s.appSwitcherHotkey = switcher;
+    const std::wstring cycle = toLower(readString(v, "windowCycleHotkey"));
+    if (cycle == L"alt+backtick" || cycle == L"off") s.windowCycleHotkey = cycle;
     s.screenshots = readBool(v, "screenshots", s.screenshots);
     s.sounds = readBool(v, "sounds", s.sounds);
     s.altAsCommand = readBool(v, "altAsCommand", s.altAsCommand);
@@ -161,6 +163,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("appSwitcherHotkey", toUtf8(s.appSwitcherHotkey));
     v.set("appExposeHotkey", toUtf8(s.appExposeHotkey));
     v.set("forceQuitHotkey", toUtf8(s.forceQuitHotkey));
+    v.set("windowCycleHotkey", toUtf8(s.windowCycleHotkey));
     v.set("screenshots", s.screenshots);
     v.set("sounds", s.sounds);
     v.set("altAsCommand", s.altAsCommand);

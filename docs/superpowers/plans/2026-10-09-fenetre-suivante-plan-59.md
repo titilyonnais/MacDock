@@ -35,8 +35,9 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
 - `src/switcher/window_cycle.h` (logique pure, dans les tests) :
   - `bool isCycleKey(unsigned scanCode, bool extended);` — 0x29 non étendu ;
   - `enum class CycleKey { Pass, Swallow, Next, Prev, SwitcherBack, SwitcherNext };`
-  - `CycleKey cycleKeyAction(bool down, bool repeat, bool alt, bool ctrl, bool win, bool shift, bool injected, bool taken, bool session);`
-    — appelée pour la seule touche 0x29 ; relâchement d'une frappe prise (taken) : avalé ;
+  - `CycleKey cycleKeyAction(const CycleKeyEvent& e);` — `CycleKeyEvent` : `down`, `repeat`, `alt`, `ctrl`, `win`,
+    `shift`, `injected`, `taken`, `session` (comme `ShotKeyEvent`) ; appelée pour la seule touche 0x29 ; relâchement
+    d'une frappe prise (taken) : avalé ;
   - `std::optional<std::size_t> cycleTarget(const std::vector<bool>& eligible, std::optional<std::size_t> current, bool back);`
   - `bool parseWindowCycleHotkey(const std::wstring& text);` — vrai pour « alt+backtick » seulement.
 - `DockSettings::windowCycleHotkey` (`std::wstring`, `L"alt+backtick"`), clé JSON `windowCycleHotkey`.
