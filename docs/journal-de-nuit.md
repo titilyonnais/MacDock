@@ -925,6 +925,15 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   bords corrigés.
 - **À savoir** : l'Explorateur garde parfois l'ancienne icône en cache ; elle se met à jour d'elle-même.
 
+### Plan 50 — « Déplacer et redimensionner » de macOS 26, nuit du 9 octobre
+
+- **Menu Fenêtre de la barre** : *Remplir*, *Centrer*, et *Déplacer et redimensionner* (moitiés, quarts, revenir à la
+  taille précédente), avec les marges de macOS (8 pt). La fenêtre agrandie est restaurée d'abord ; un dialogue de
+  taille fixe se centre seulement ; une app qui impose une largeur minimale est recalée contre le bord visé.
+- **Essai réel** sur des fenêtres d'essai à moi (`tests/real/window_tile_probe.cpp`) : chaque cadre obtenu, au pixel
+  près, sur ton écran 4K à 200 %.
+- **Relecture indépendante** : rien de critique ; restauration, cadre réellement obtenu et dialogues fixes corrigés.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

@@ -528,3 +528,38 @@ TEST_CASE(bar_desktop_focus_follows_macos) {
     c = {};
     CHECK(md::desktopFocus(c) == F::ShowExplorer);   // le bureau pris autrement : on suit Windows
 }
+
+TEST_CASE(menus_window_move_and_resize) {
+    // Plan 50 : comme dans macOS 26, le menu Fenêtre range la fenêtre active (Remplir, Centrer, moitiés, quarts).
+    auto b = md::buildBarMenus(appContext());
+    const md::BarMenu* w = findMenu(b, L"Fenêtre");
+    REQUIRE(w != nullptr);
+    CHECK(actionOf(b, findItem(*w, L"Remplir")).kind == md::ActionKind::Tile);
+    CHECK(actionOf(b, findItem(*w, L"Remplir")).arg == L"fill");
+    CHECK(actionOf(b, findItem(*w, L"Centrer")).arg == L"center");
+    const md::MenuItem* mr = findItem(*w, L"Déplacer et redimensionner");
+    REQUIRE(mr != nullptr);
+    auto sub = [&](const wchar_t* text) -> md::MenuAction {
+        for (auto& it : mr->submenu)
+            if (it.text == text) return actionOf(b, &it);
+        return {};
+    };
+    CHECK(sub(L"Gauche").kind == md::ActionKind::Tile && sub(L"Gauche").arg == L"left");
+    CHECK(sub(L"Droite").arg == L"right");
+    CHECK(sub(L"En bas à droite").arg == L"bottom-right");
+    CHECK(sub(L"Revenir à la taille précédente").arg == L"previous");
+    CHECK(!findItem(*w, L"Placer à gauche de l'écran"));   // remplacé par les moitiés
+    // Relecture : un dialogue de taille fixe se centre mais ne s'étire pas ; une fenêtre réduite ne se range pas.
+    auto fixed = appContext();
+    fixed.targetResizable = false;
+    auto bf = md::buildBarMenus(fixed);
+    const md::BarMenu* wf = findMenu(bf, L"Fenêtre");
+    REQUIRE(wf != nullptr);
+    CHECK(!findItem(*wf, L"Remplir")->enabled);
+    CHECK(findItem(*wf, L"Centrer")->enabled);
+    auto iconic = appContext();
+    iconic.targetIconic = true;
+    auto bi = md::buildBarMenus(iconic);
+    CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Centrer")->enabled);
+    CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Déplacer et redimensionner")->enabled);
+}

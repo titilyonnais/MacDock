@@ -140,7 +140,7 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
 | Type | Exécution |
 |---|---|
 | Raccourci | Premier plan rendu à l'app, pause de 40 ms, puis `SendInput` des touches. |
-| Fenêtre | `ShowWindow` (réduire, zoom = agrandir ou restaurer), Win+←/→ (placer à gauche ou à droite), activation d'une fenêtre de la liste, « Tout ramener au premier plan ». |
+| Fenêtre | `ShowWindow` (réduire, zoom = agrandir ou restaurer), Remplir, Centrer, Déplacer et redimensionner (moitiés, quarts, taille précédente : `tileWindow`, plan 50), activation d'une fenêtre de la liste, « Tout ramener au premier plan ». |
 | App | Masquer (réduire toutes ses fenêtres), Masquer les autres, Tout afficher, Quitter (`WM_CLOSE` à chaque fenêtre, comme le Dock), À propos (propriétés de l'exécutable). |
 | URI | `ShellExecute` (`ms-settings:`, `ms-windows-store:`, dossiers connus). |
 | Système | Suspendre, Verrouiller l'écran, Fermer la session, Redémarrer, Éteindre. Les trois dernières demandent une confirmation (boîte de dialogue). Ces actions passent par une interface injectée : **les tests n'éteignent jamais rien**. |
@@ -152,7 +152,7 @@ clic sur un titre ─► MenuWindow (Below + BarLink) ─► action ─► premi
   - **Fichier** : Nouvelle fenêtre `Ctrl+N` · Nouvel onglet `Ctrl+T` · Ouvrir… `Ctrl+O` · Fermer l'onglet `Ctrl+W` · Fermer la fenêtre `Alt+F4` · Enregistrer `Ctrl+S` · Enregistrer sous… `Ctrl+Maj+S` · Imprimer… `Ctrl+P`.
   - **Édition** : Annuler `Ctrl+Z` · Rétablir `Ctrl+Y` · Couper `Ctrl+X` · Copier `Ctrl+C` · Coller `Ctrl+V` · Tout sélectionner `Ctrl+A` · Rechercher… `Ctrl+F` · Emoji et symboles `Win+.`.
   - **Présentation** : Actualiser `F5` · Plein écran `F11` · Zoom avant `Ctrl+Plus` · Zoom arrière `Ctrl+Moins` · Taille réelle `Ctrl+0`.
-  - **Fenêtre** : Réduire · Zoom · Placer à gauche de l'écran · Placer à droite de l'écran · Tout ramener au premier plan · liste des fenêtres de l'app (coche sur l'active).
+  - **Fenêtre** : Réduire · Zoom · Remplir · Centrer · Déplacer et redimensionner (plan 50) · Tout ramener au premier plan · liste des fenêtres de l'app (coche sur l'active).
   - **Aide** : Aide sur *App* `F1`.
 - **Explorateur** : Fichier (Nouvelle fenêtre, Nouveau dossier `Ctrl+Maj+N`, Fermer la fenêtre) · Édition (générique) · Présentation (générique) · Aller (Précédent `Alt+←`, Suivant `Alt+→`, Dossier parent `Alt+↑`, Récents, Documents, Bureau, Téléchargements, Accueil, Ce PC, Réseau, Applications, Corbeille) · Fenêtre · Aide. Depuis le bureau, les entrées d'« Aller » ouvrent une nouvelle fenêtre de l'Explorateur.
 - **Vrais menus (plan 7)** : quand l'app en a, ils remplacent les menus génériques. Le menu de l'app (en gras) reste.

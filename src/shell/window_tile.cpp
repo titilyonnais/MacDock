@@ -1,0 +1,157 @@
+#include "window_tile.h"
+
+#include <dwmapi.h>
+#include <shellscalingapi.h>
+
+#include <algorithm>
+#include <map>
+
+#pragma comment(lib, "shcore.lib")
+
+namespace md {
+
+namespace {
+struct Named {
+    TileAction action;
+    const wchar_t* name;
+};
+constexpr Named kNames[] = {{TileAction::Left, L"left"},          {TileAction::Right, L"right"},
+                            {TileAction::Top, L"top"},            {TileAction::Bottom, L"bottom"},
+                            {TileAction::TopLeft, L"top-left"},   {TileAction::TopRight, L"top-right"},
+                            {TileAction::BottomLeft, L"bottom-left"}, {TileAction::BottomRight, L"bottom-right"},
+                            {TileAction::Fill, L"fill"},          {TileAction::Center, L"center"},
+                            {TileAction::Previous, L"previous"}};
+
+// Cadres gardés par fenêtre, sur le fil de la barre des menus : celui d'avant le premier rangement, et le dernier cadre
+// obtenu (une fenêtre qui n'a pas bougé depuis garde son cadre d'avant). Le processus va avec : un HWND repris par une
+// autre fenêtre ne reçoit pas le cadre de la précédente.
+struct Kept {
+    RECT frame{};
+    DWORD pid = 0;
+};
+std::map<HWND, Kept>& before() {
+    static std::map<HWND, Kept> m;
+    return m;
+}
+std::map<HWND, Kept>& placed() {
+    static std::map<HWND, Kept> m;
+    return m;
+}
+DWORD processOf(HWND h) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    return pid;
+}
+// Fenêtres fermées, ou HWND repris par un autre processus : oubliées.
+void purge() {
+    for (auto* m : {&before(), &placed()})
+        for (auto it = m->begin(); it != m->end();) it = !IsWindow(it->first) || processOf(it->first) != it->second.pid ? m->erase(it) : std::next(it);
+}
+RECT visibleFrame(HWND h, const RECT& window) {
+    RECT v{};
+    if (FAILED(DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, &v, sizeof v)) || IsRectEmpty(&v)) return window;
+    return v;
+}
+bool resizes(TileAction a) { return a != TileAction::Center && a != TileAction::Previous; }
+} // namespace
+
+std::optional<TileAction> parseTileAction(std::wstring_view name) {
+    for (const Named& n : kNames)
+        if (name == n.name) return n.action;
+    return std::nullopt;
+}
+
+std::wstring tileActionName(TileAction a) {
+    for (const Named& n : kNames)
+        if (n.action == a) return n.name;
+    return L"";
+}
+
+RECT tileRect(TileAction a, const RECT& work, const RECT& current, int margin) {
+    const RECT in{work.left + margin, work.top + margin, work.right - margin, work.bottom - margin};
+    const LONG w = in.right - in.left, h = in.bottom - in.top;
+    const LONG halfW = (w - margin) / 2, halfH = (h - margin) / 2;
+    const LONG leftR = in.left + halfW, rightL = in.right - halfW, topB = in.top + halfH, bottomT = in.bottom - halfH;
+    switch (a) {
+        case TileAction::Left: return {in.left, in.top, leftR, in.bottom};
+        case TileAction::Right: return {rightL, in.top, in.right, in.bottom};
+        case TileAction::Top: return {in.left, in.top, in.right, topB};
+        case TileAction::Bottom: return {in.left, bottomT, in.right, in.bottom};
+        case TileAction::TopLeft: return {in.left, in.top, leftR, topB};
+        case TileAction::TopRight: return {rightL, in.top, in.right, topB};
+        case TileAction::BottomLeft: return {in.left, bottomT, leftR, in.bottom};
+        case TileAction::BottomRight: return {rightL, bottomT, in.right, in.bottom};
+        case TileAction::Fill: return in;
+        case TileAction::Center: {
+            const LONG cw = std::min(w, current.right - current.left), ch = std::min(h, current.bottom - current.top);
+            const LONG x = in.left + (w - cw) / 2, y = in.top + (h - ch) / 2;
+            return {x, y, x + cw, y + ch};
+        }
+        case TileAction::Previous: return current;
+    }
+    return current;
+}
+
+RECT anchorTile(TileAction a, const RECT& target, const RECT& got) {
+    const LONG w = got.right - got.left, h = got.bottom - got.top;
+    const bool right = a == TileAction::Right || a == TileAction::TopRight || a == TileAction::BottomRight;
+    const bool bottom = a == TileAction::Bottom || a == TileAction::BottomLeft || a == TileAction::BottomRight;
+    const LONG x = right ? target.right - w : target.left, y = bottom ? target.bottom - h : target.top;
+    return {x, y, x + w, y + h};
+}
+
+bool tileWindow(HWND h, TileAction a) {
+    purge();
+    if (!IsWindow(h) || IsIconic(h) || IsHungAppWindow(h)) return false;   // réduite : macOS grise ces entrées
+    if (resizes(a) && !(GetWindowLongPtrW(h, GWL_STYLE) & WS_THICKFRAME)) return false;   // taille fixe : Centrer seul
+    if (IsZoomed(h)) {   // synchrone : son cadre et ses bordures sont ceux d'une fenêtre restaurée ensuite
+        ShowWindow(h, SW_RESTORE);
+        if (IsZoomed(h) || IsIconic(h)) return false;
+    }
+    RECT win{};
+    if (!GetWindowRect(h, &win)) return false;
+    const RECT vis = visibleFrame(h, win);
+    MONITORINFO mi{sizeof mi};
+    const HMONITOR mon = MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST);
+    if (!GetMonitorInfoW(mon, &mi)) return false;
+    const DWORD pid = processOf(h);
+    RECT target{};
+    if (a == TileAction::Previous) {
+        const auto it = before().find(h);
+        if (it == before().end()) return false;
+        target = it->second.frame;
+    } else {
+        UINT dpi = 96, dpiY = 96;   // celui de l'écran : les coordonnées sont physiques
+        if (FAILED(GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpi, &dpiY))) dpi = 96;
+        target = tileRect(a, mi.rcWork, vis, MulDiv(8, int(dpi), 96));
+    }
+    // Rectangle de Windows = cadre visible + bordures invisibles (celles de maintenant).
+    const auto place = [&](const RECT& t, UINT flags) {
+        const RECT r{t.left - (vis.left - win.left), t.top - (vis.top - win.top), t.right + (win.right - vis.right),
+                     t.bottom + (win.bottom - vis.bottom)};
+        return SetWindowPos(h, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, flags) != FALSE;
+    };
+    if (!place(target, SWP_NOZORDER | SWP_NOACTIVATE)) return false;   // refus (UIPI) : rien de gardé
+    RECT got = visibleFrame(h, win);
+    if (RECT now{}; GetWindowRect(h, &now)) got = visibleFrame(h, now);
+    if (resizes(a) && !EqualRect(&got, &target)) {   // taille minimale de l'app : recalée contre le bord visé
+        const RECT anchored = anchorTile(a, target, got);
+        RECT now{};
+        GetWindowRect(h, &now);
+        const RECT v = visibleFrame(h, now);
+        SetWindowPos(h, nullptr, now.left + (anchored.left - v.left), now.top + (anchored.top - v.top), 0, 0,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+        if (GetWindowRect(h, &now)) got = visibleFrame(h, now);
+    }
+    if (a == TileAction::Previous) {
+        before().erase(h);
+        placed().erase(h);
+    } else {
+        const auto last = placed().find(h);
+        if (before().count(h) == 0 || last == placed().end() || !EqualRect(&last->second.frame, &vis)) before()[h] = {vis, pid};
+        placed()[h] = {got, pid};
+    }
+    return true;
+}
+
+} // namespace md

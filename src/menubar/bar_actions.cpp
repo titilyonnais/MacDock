@@ -11,6 +11,7 @@
 
 #include "../core/log.h"
 #include "../shell/shell_actions.h"
+#include "../shell/window_tile.h"
 #include "../tracker/app_identity.h"
 #include "shortcut.h"
 
@@ -116,6 +117,10 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             ShowWindowAsync(target, IsZoomed(target) ? SW_RESTORE : SW_MAXIMIZE);
             forceForeground(target);
             return true;
+        case ActionKind::Tile:   // macOS 26 : Remplir, Centrer, moitiés, quarts, taille précédente
+            if (!liveWindow(target)) return false;
+            if (const auto action = parseTileAction(a.arg)) return tileWindow(target, *action);
+            return false;
         case ActionKind::BringAllToFront:
             if (c.appWindows.empty()) return false;
             activateApp(c.appWindows);

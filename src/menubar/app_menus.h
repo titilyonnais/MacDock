@@ -30,6 +30,7 @@ enum class ActionKind {
     LaunchApp,        // arg : cible de relance d'une app récente (exe, .lnk, shell:AppsFolder\AUMID)
     ClearRecent,      // Éléments récents : Effacer le menu (exécutée par la barre, qui garde la liste)
     OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
+    Tile,             // fenêtre active rangée (macOS 26) ; arg : action (« left », « fill »… : window_tile.h)
 };
 
 enum class MenuSource { Generic, Win32, Uia };
@@ -56,6 +57,8 @@ struct BarContext {
     bool desktop = false;    // le bureau lui-même : pas de fenêtre à fermer ni d'historique
     std::vector<std::pair<std::uint64_t, std::wstring>> windows;   // fenêtres de l'app (id, titre)
     std::uint64_t activeWindow = 0;
+    bool targetResizable = true;   // fenêtre visée redimensionnable (sinon : Centrer seul, pas Remplir ni les moitiés)
+    bool targetIconic = false;     // fenêtre visée réduite : rien à ranger
     // Vrais menus de l'app (titres et leurs entrées), à la place des menus génériques.
     MenuSource source = MenuSource::Generic;
     std::vector<RawMenuItem> real;
