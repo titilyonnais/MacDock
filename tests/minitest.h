@@ -2,6 +2,7 @@
 #pragma once
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <sstream>
 #include <string>
@@ -16,6 +17,17 @@ inline int& failures() { static int f = 0; return f; }
 
 struct Registrar { Registrar(const char* n, void (*f)()) { registry().push_back({n, f}); } };
 struct RequireFailed {};
+struct Skipped {};
+
+// Machine d'intégration continue (GitHub Actions définit CI=true) : un test qui dépend de ce PC (sortie audio, app du
+// Microsoft Store) y est sauté s'il manque ce qu'il lui faut ; ailleurs, il échoue comme d'habitude.
+inline bool onCi() {
+    char* v = nullptr;
+    std::size_t n = 0;
+    const bool set = _dupenv_s(&v, &n, "CI") == 0 && v && *v;
+    std::free(v);
+    return set;
+}
 
 template <class T>
 std::string show(const T& v) {
@@ -32,19 +44,23 @@ inline void fail(const char* file, int line, const std::string& msg) {
 }
 
 inline int runAll(const char* filter) {
-    int failedCases = 0, ran = 0;
+    int failedCases = 0, ran = 0, skipped = 0;
     for (auto& c : registry()) {
         if (filter && !std::string(c.name).contains(filter)) continue;
         ++ran;
         int before = failures();
+        bool skip = false;
         try { c.fn(); } catch (RequireFailed&) {
+        } catch (Skipped&) { skip = true;
         } catch (std::exception& e) { fail(__FILE__, __LINE__, std::string("exception: ") + e.what()); }
         catch (...) { fail(__FILE__, __LINE__, "exception inconnue"); }
         bool ok = failures() == before;
         if (!ok) ++failedCases;
-        std::printf("[%s] %s\n", ok ? "PASS" : "FAIL", c.name);
+        if (skip && ok) ++skipped;
+        std::printf("[%s] %s\n", !ok ? "FAIL" : skip ? "SKIP" : "PASS", c.name);
     }
-    std::printf("\n%d cas, %d en echec\n", ran, failedCases);
+    if (skipped) std::printf("\n%d cas, %d en echec, %d sautes (CI)\n", ran, failedCases, skipped);
+    else std::printf("\n%d cas, %d en echec\n", ran, failedCases);
     return failedCases;
 }
 
@@ -59,6 +75,11 @@ inline int runAll(const char* filter) {
 
 #define CHECK(expr)                                                            \
     do { if (!(expr)) minitest::fail(__FILE__, __LINE__, "CHECK(" #expr ")"); } while (0)
+
+// Sur la CI seulement : saute le test si `cond` (ce qu'il lui faut manque sur la machine).
+#define SKIP_ON_CI_IF(cond, reason)                                            \
+    do { if (minitest::onCi() && (cond)) { std::printf("    saute : %s\n", reason); \
+                                            throw minitest::Skipped{}; } } while (0)
 
 #define REQUIRE(expr)                                                          \
     do { if (!(expr)) { minitest::fail(__FILE__, __LINE__, "REQUIRE(" #expr ")"); \

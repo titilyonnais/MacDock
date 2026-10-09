@@ -1,6 +1,7 @@
 // Actions système : logique pure (sans toucher au registre de l'utilisateur).
 #include <windows.h>
 #include <objbase.h>
+#include <shobjidl.h>
 
 #include "minitest.h"
 #include "../src/shell/shell_actions.h"
@@ -37,12 +38,22 @@ TEST_CASE(startup_shortcut_name_strips_forbidden) {
 
 TEST_CASE(packaged_login_shortcut_roundtrip) {
     // Dans un dossier temporaire : le dossier Démarrage de l'utilisateur n'est jamais touché par les tests.
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    struct Com {   // libéré même si le test est sauté
+        Com() { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); }
+        ~Com() { CoUninitialize(); }
+    } com;
+    const std::wstring aumid = L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+    {
+        IShellItem* app = nullptr;   // la Calculatrice installée (absente de Windows Server, la machine de CI)
+        const bool installed = SUCCEEDED(SHCreateItemFromParsingName((L"shell:AppsFolder\\" + aumid).c_str(), nullptr,
+                                                                      IID_PPV_ARGS(&app)));
+        if (app) app->Release();
+        SKIP_ON_CI_IF(!installed, "Calculatrice absente de la machine de CI");
+    }
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
     std::wstring dir = std::wstring(tmp) + L"macdock-startup-test-" + std::to_wstring(GetCurrentProcessId());
     CreateDirectoryW(dir.c_str(), nullptr);
-    const std::wstring aumid = L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
     CHECK(!md::isPackagedOpenAtLogin(L"Calculatrice", dir));
     CHECK(md::setPackagedOpenAtLogin(aumid, L"Calculatrice", true, dir));
     CHECK(md::isPackagedOpenAtLogin(L"Calculatrice", dir));
@@ -50,7 +61,6 @@ TEST_CASE(packaged_login_shortcut_roundtrip) {
     CHECK(md::setPackagedOpenAtLogin(aumid, L"Calculatrice", false, dir));
     CHECK(!md::isPackagedOpenAtLogin(L"Calculatrice", dir));
     RemoveDirectoryW(dir.c_str());
-    CoUninitialize();
 }
 
 namespace {

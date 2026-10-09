@@ -72,10 +72,15 @@ TEST_CASE(status_wifi_bars_and_sort) {
 }
 
 TEST_CASE(status_audio_reads_default_output) {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    struct Com {   // libéré même si le test est sauté
+        Com() { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); }
+        ~Com() { CoUninitialize(); }
+    } com;
     {
         md::AudioStatus a;
-        REQUIRE(a.init());   // ce poste a des sorties audio
+        const bool ready = a.init();
+        SKIP_ON_CI_IF(!ready, "aucune sortie audio sur la machine de CI");
+        REQUIRE(ready);   // ce poste a des sorties audio
         const float v = a.volume();
         CHECK(v >= 0 && v <= 1);
         auto outs = a.outputs();
@@ -89,7 +94,6 @@ TEST_CASE(status_audio_reads_default_output) {
         CHECK_EQ(defaults, 1);
         CHECK(!a.setDefault(L"{identifiant-inexistant}"));   // rien n'est changé
     }
-    CoUninitialize();
 }
 
 TEST_CASE(status_network_reads_without_crash) {

@@ -2,6 +2,8 @@
 //   MacDockLauncher.exe              lance et surveille le Dock et la barre de menus
 //   MacDockLauncher.exe --install    démarrage automatique à l'ouverture de session
 //   MacDockLauncher.exe --uninstall  retire le démarrage automatique
+//   MacDockLauncher.exe --quit       ordre d'arrêt : le lanceur ferme le Dock et la barre, sans rien relancer
+//                                    (l'installateur s'en sert avant une mise à jour)
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -16,6 +18,24 @@ namespace {
 
 constexpr wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr wchar_t kRunValue[] = L"MacDock";
+// Ordre d'arrêt (installateur, --quit) : le lanceur ferme le Dock puis la barre, et ne relance plus rien.
+constexpr wchar_t kQuitEvent[] = L"Local\\MacDockQuit";
+constexpr wchar_t kLauncherMutex[] = L"Local\\MacDockLauncher";
+
+// --quit : l'ordre d'arrêt est donné, puis on attend la fin du lanceur (au plus 15 s). 0 : plus de lanceur.
+int quitRunning() {
+    if (HANDLE quit = OpenEventW(EVENT_MODIFY_STATE, FALSE, kQuitEvent)) {
+        SetEvent(quit);
+        CloseHandle(quit);
+    }
+    for (int i = 0; i < 150; ++i) {
+        HANDLE m = OpenMutexW(SYNCHRONIZE, FALSE, kLauncherMutex);
+        if (!m) return 0;
+        CloseHandle(m);
+        Sleep(100);
+    }
+    return 1;
+}
 
 std::wstring exeDir() {
     wchar_t path[MAX_PATH];
@@ -98,12 +118,15 @@ bool startChild(Child& c) {
     return true;
 }
 
-// « Quitter MacDock » : la barre de menus se ferme proprement (elle rend sa zone réservée), sinon on l'arrête.
+// « Quitter MacDock » ou ordre d'arrêt : le Dock et la barre de menus se ferment proprement (la barre rend sa zone
+// réservée, la barre des tâches revient), sinon on les arrête.
 void stopChild(Child& c) {
     if (!c.process) return;
     if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr); bar && c.role == md::ChildRole::MenuBar)
         PostMessageW(bar, WM_CLOSE, 0, 0);
-    if (WaitForSingleObject(c.process, 3000) == WAIT_TIMEOUT) TerminateProcess(c.process, 0);
+    if (HWND dock = FindWindowW(L"MacDockWindow", nullptr); dock && c.role == md::ChildRole::Dock)
+        PostMessageW(dock, WM_CLOSE, 0, 0);
+    if (WaitForSingleObject(c.process, 5000) == WAIT_TIMEOUT) TerminateProcess(c.process, 0);
     CloseHandle(c.process);
     c.process = nullptr;
 }
@@ -114,9 +137,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
     if (args.find(L"--install") != std::wstring::npos) return install();
     if (args.find(L"--uninstall") != std::wstring::npos) return uninstall();
+    if (args.find(L"--quit") != std::wstring::npos) return quitRunning();
 
-    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\MacDockLauncher");
+    HANDLE mutex = CreateMutexW(nullptr, TRUE, kLauncherMutex);
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
+    HANDLE quit = CreateEventW(nullptr, TRUE, FALSE, kQuitEvent);   // manuel : reste levé jusqu'à la sortie
+    if (quit && GetLastError() == ERROR_ALREADY_EXISTS) ResetEvent(quit);   // ordre resté d'un lanceur précédent
 
     std::wstring logs = logDir();
     md::log::init(logs);
@@ -139,7 +165,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
                 index.push_back(i);
             }
         if (handles.empty()) break;
+        if (quit) handles.push_back(quit);   // en dernier : une sortie d'enfant passe avant
         DWORD w = WaitForMultipleObjects(DWORD(handles.size()), handles.data(), FALSE, INFINITE);
+        if (quit && w == WAIT_OBJECT_0 + handles.size() - 1) {   // ordre d'arrêt : rien n'est relancé
+            md::log::info(L"Ordre d'arrêt reçu : arrêt du Dock et de la barre de menus");
+            for (auto& c : children) stopChild(c);
+            break;
+        }
         if (w < WAIT_OBJECT_0 || w >= WAIT_OBJECT_0 + handles.size()) break;
         Child& c = children[index[w - WAIT_OBJECT_0]];
         DWORD code = 1;
@@ -166,6 +198,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
                 break;
         }
     }
+    if (quit) CloseHandle(quit);
     ReleaseMutex(mutex);
     CloseHandle(mutex);
     return 0;

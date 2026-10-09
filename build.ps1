@@ -1,9 +1,11 @@
 ﻿# Construction de MacDock avec MSVC (Visual Studio 2022), sans CMake.
 #   ./build.ps1 -Target tests -Run
 #   ./build.ps1 -Target all -Config Release
+#   ./build.ps1 -Target all -Config Release -OutDir build\Package   (autre dossier : MacDock peut tourner pendant ce temps)
 param(
     [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'all')] [string]$Target = 'all',
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
+    [string]$OutDir = '',
     [switch]$Run
 )
 $ErrorActionPreference = 'Stop'
@@ -13,11 +15,16 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer
 $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $vs) { throw 'Visual Studio avec les outils C++ est introuvable.' }
 $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+# SDK de Windows : 10.0.26100.0 s'il est installé, sinon celui que choisit Visual Studio (machines de GitHub Actions).
+$Sdk = if (Test-Path (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include\10.0.26100.0')) { '10.0.26100.0' } else { '' }
+$OutRoot = if (-not $OutDir) { Join-Path $Root "build\$Config" } elseif ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $Root $OutDir }
 
 $Common = @('/nologo', '/std:c++latest', '/W4', '/permissive-', '/EHsc', '/utf-8', '/MP',
             '/DUNICODE', '/D_UNICODE', '/DNOMINMAX', '/DWIN32_LEAN_AND_MEAN', '/D_WIN32_WINNT=0x0A00')
+# Release : runtime C++ intégré aux exécutables (/MT). Un Windows neuf n'a pas forcément le redistribuable Visual C++,
+# que l'installateur ne peut pas poser sans droits d'administrateur.
 if ($Config -eq 'Debug') { $Common += @('/Zi', '/Od', '/MDd', '/D_DEBUG') }
-else { $Common += @('/O2', '/MD', '/DNDEBUG', '/Zi') }
+else { $Common += @('/O2', '/MT', '/DNDEBUG', '/Zi') }
 
 function Get-Sources([string[]]$Patterns) {
     $files = foreach ($p in $Patterns) { Get-ChildItem -Path (Join-Path $Root $p) -ErrorAction SilentlyContinue }
@@ -54,7 +61,7 @@ $Targets = @{
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'shcore.lib', 'dxguid.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib',
                       'powrprof.lib', 'secur32.lib', 'winmm.lib') }
-    launcher = @{ Exe = 'MacDockLauncher.exe'; Res = 'res\dock.rc'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
+    launcher = @{ Exe = 'MacDockLauncher.exe'; Res = 'res\launcher.rc'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
     settings = @{ Exe = 'MacDockSettings.exe'; Res = 'res\settings.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
                       'src\settings_app\*.cpp', 'src\anim\spring.cpp', 'src\anim\motion.cpp', 'src\menubar\menubar_settings.cpp', 'src\interact\hotkey.cpp',
@@ -68,7 +75,7 @@ $Targets = @{
 }
 
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
-$ShaderDir = Join-Path $Root "build\$Config\shaders"
+$ShaderDir = Join-Path $OutRoot 'shaders'
 function Build-Shaders {
     New-Item -ItemType Directory -Force -Path $ShaderDir | Out-Null
     $files = Get-ChildItem -Path (Join-Path $Root 'src\glass\shaders\*.hlsl') -ErrorAction SilentlyContinue
@@ -79,13 +86,13 @@ function Build-Shaders {
         "fxc /nologo /O3 /T $shaderProfile /E main /Vn g_$name /Fh `"$ShaderDir\$name.h`" `"$($f.FullName)`" >nul"
     }
     Write-Host "== shaders : $($files.Count) fichiers"
-    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && $($cmds -join ' && ')"
+    cmd /c "`"$vcvars`" $Sdk >nul && $($cmds -join ' && ')"
     if ($LASTEXITCODE -ne 0) { throw 'Echec de compilation des shaders' }
 }
 
 function Build-Target([string]$Name) {
     $t = $Targets[$Name]
-    $out = Join-Path $Root "build\$Config"
+    $out = $OutRoot
     $obj = Join-Path $out "obj\$Name"
     New-Item -ItemType Directory -Force -Path $obj | Out-Null
     $sources = Get-Sources $t.Sources
@@ -94,17 +101,18 @@ function Build-Target([string]$Name) {
     $includes = @($t.Includes | Where-Object { $_ } | ForEach-Object { "/I`"$(Join-Path $Root $_)`"" })
     $lines = $Common + $includes + @("/I`"$ShaderDir`"", "/Fo`"$obj\\`"", "/Fd`"$obj\\vc.pdb`"", "/Fe`"$out\$($t.Exe)`"") +
              ($sources | ForEach-Object { "`"$_`"" })
-    $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
+    # /PDBALTPATH : seul le nom du .pdb est inscrit dans l'exécutable, pas le chemin (ni le dossier de l'utilisateur).
+    $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO', '/PDBALTPATH:%_PDB%') + $t.Libs) -join ' '
     Set-Content -Path $rsp -Value $lines -Encoding ascii
     Write-Host "== $Name ($Config) : $($sources.Count) fichiers"
-    # Icône de l'exécutable (res\*.rc, plan 49) : compilée par rc.exe et liée avec le reste.
+    # Icône et version de l'exécutable (res\*.rc, plans 49 et 52) : compilées par rc.exe et liées avec le reste.
     $rc = ''
     if ($t.Res) {
         $res = Join-Path $obj "$Name.res"
-        $rc = "rc /nologo /i `"$(Join-Path $Root 'res')`" /fo `"$res`" `"$(Join-Path $Root $t.Res)`" && "
+        $rc = "rc /nologo /i `"$(Join-Path $Root 'res')`" /i `"$(Join-Path $Root 'src\core')`" /fo `"$res`" `"$(Join-Path $Root $t.Res)`" && "
         $link = "$link `"$res`""
     }
-    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && $rc cl @`"$rsp`" /link $link"
+    cmd /c "`"$vcvars`" $Sdk >nul && $rc cl @`"$rsp`" /link $link"
     if ($LASTEXITCODE -ne 0) { throw "Echec de compilation : $Name" }
 }
 
@@ -113,6 +121,6 @@ if ($names -contains 'tests' -or $names -contains 'dock' -or $names -contains 'm
 foreach ($n in $names) { Build-Target $n }
 
 if ($Run -and ($names -contains 'tests')) {
-    & (Join-Path $Root "build\$Config\tests.exe")
+    & (Join-Path $OutRoot 'tests.exe')
     exit $LASTEXITCODE
 }

@@ -1,2 +1,7 @@
-// Icone de MacDockSettings.exe (plan 49), dessinee par tools/make_icons.cpp.
+#pragma code_page(65001)
+// Icône et version de MacDockSettings.exe (plans 49 et 52) ; icône dessinée par tools/make_icons.cpp.
+#define MD_FILE_DESCRIPTION "Réglages MacDock"
+#define MD_ORIGINAL_FILENAME "MacDockSettings.exe"
+#include "version.rc2"
+
 1 ICON "settings.ico"

@@ -1,0 +1,42 @@
+# Intégration continue (plan 52) : à chaque envoi (toutes les branches), tests et compilation Release sur une machine
+# Windows de GitHub. Aucun secret ; action épinglée par empreinte de commit.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Environnement
+        shell: pwsh
+        run: |
+          "Image : $env:ImageOS $env:ImageVersion"
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property displayName
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Name
+
+      - name: Compilation des tests
+        shell: pwsh
+        run: ./build.ps1 -Target tests -Config Debug
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          ./build/Debug/tests.exe | Tee-Object -FilePath tests.txt
+          if ($LASTEXITCODE -ne 0) { Select-String -Path tests.txt -Pattern '^\[FAIL\]' ; exit 1 }
+
+      - name: Compilation Release
+        shell: pwsh
+        run: foreach ($t in 'dock', 'menubar', 'launcher', 'settings') { ./build.ps1 -Target $t -Config Release }
