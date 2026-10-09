@@ -4,6 +4,10 @@
 //   MacDockLauncher.exe --uninstall  retire le démarrage automatique
 //   MacDockLauncher.exe --quit       ordre d'arrêt : le lanceur ferme le Dock et la barre, sans rien relancer
 //                                    (l'installateur s'en sert avant une mise à jour)
+//   MacDockLauncher.exe --check-update    recherche, télécharge et vérifie une mise à jour (plan 53) ; code de
+//                                         sortie 0 à jour, 10 prête, 1 erreur (update.json dit laquelle)
+//   MacDockLauncher.exe --install-update  installe la mise à jour prête (l'installateur quitte et relance MacDock)
+// Au démarrage, une mise à jour prête est installée avant le Dock ; ensuite, un fil cherche les suivantes.
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -12,7 +16,9 @@
 #include <vector>
 
 #include "../core/log.h"
+#include "../update/updater.h"
 #include "supervisor.h"
+#include "update_notifier.h"
 
 namespace {
 
@@ -133,11 +139,24 @@ void stopChild(Child& c) {
 
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
     if (args.find(L"--install") != std::wstring::npos) return install();
     if (args.find(L"--uninstall") != std::wstring::npos) return uninstall();
     if (args.find(L"--quit") != std::wstring::npos) return quitRunning();
+    if (args.find(L"--check-update") != std::wstring::npos) {
+        md::log::init(logDir());
+        switch (md::update::check(md::update::defaultPaths(), md::update::optionsFromEnvironment())) {
+            case md::update::CheckResult::UpToDate: return 0;
+            case md::update::CheckResult::Ready: return 10;
+            case md::update::CheckResult::Failed: return 1;
+        }
+        return 1;
+    }
+    if (args.find(L"--install-update") != std::wstring::npos) {
+        md::log::init(logDir());
+        return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
+    }
 
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kLauncherMutex);
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
@@ -146,6 +165,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
 
     std::wstring logs = logDir();
     md::log::init(logs);
+    // Mise à jour téléchargée lors d'une session précédente : installée avant que le Dock apparaisse. L'installateur
+    // relance MacDock, même s'il échoue (/RELAUNCH) ; ce lanceur s'arrête tout de suite pour ne pas le gêner.
+    if (md::update::installAtStartup(md::update::defaultPaths())) {
+        if (quit) CloseHandle(quit);
+        ReleaseMutex(mutex);
+        CloseHandle(mutex);
+        return 0;
+    }
     std::vector<Child> children{{md::ChildRole::Dock, exeDir() + L"\\MacDock.exe", L"Le Dock", L"MacDock s'est arrêté",
                                  L"Le Dock a planté plusieurs fois. La barre des tâches Windows a été rétablie."}};
     const std::wstring bar = exeDir() + L"\\MacMenuBar.exe";
@@ -153,8 +180,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
         children.push_back({md::ChildRole::MenuBar, bar, L"La barre de menus", L"La barre de menus s'est arrêtée",
                             L"La barre de menus a planté plusieurs fois et n'est plus relancée."});
     md::Supervisor supervisor;
+    md::UpdateNotifier notifier;   // recherches de fond, notification d'une version prête
     for (auto& c : children)
         if (!startChild(c)) notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
+    notifier.start(instance);
 
     for (;;) {
         std::vector<HANDLE> handles;
@@ -198,6 +227,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
                 break;
         }
     }
+    notifier.stop();
     if (quit) CloseHandle(quit);
     ReleaseMutex(mutex);
     CloseHandle(mutex);
