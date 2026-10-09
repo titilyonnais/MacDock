@@ -2104,6 +2104,7 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
         auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
         self_->mouseX_ = info->pt.x;
         self_->mouseY_ = info->pt.y;
+        self_->hookMoveAt_ = GetTickCount64();
         // Un seul message en attente à la fois : les mouvements sont fusionnés. Message perdu (boucle modale qui vide
         // la file sans distribuer) : au-delà de 250 ms on en renvoie un plutôt que de laisser le Dock sourd.
         const DWORD now = GetTickCount();
@@ -2348,6 +2349,86 @@ void DockApp::startMouseThread() {
         while (GetMessageW(&msg, nullptr, 0, 0) > 0) {}
         if (keys) UnhookWindowsHookEx(keys);
         if (hook) UnhookWindowsHookEx(hook);
+    });
+}
+
+namespace {
+// « exe (élevé) [classe] » d'une fenêtre, pour la sentinelle ; jeton refusé : sans doute élevée.
+std::wstring describeWindow(HWND h) {
+    if (!h) return L"(aucune)";
+    h = GetAncestor(h, GA_ROOT);
+    wchar_t cls[64] = {};
+    GetClassNameW(h, cls, 64);
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    std::wstring exe = L"?", elevation;
+    if (HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
+        wchar_t path[MAX_PATH] = {};
+        DWORD n = MAX_PATH;
+        if (QueryFullProcessImageNameW(p, 0, path, &n)) {
+            exe = path;
+            exe = exe.substr(exe.find_last_of(L'\\') + 1);
+        }
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(p, TOKEN_QUERY, &token)) {
+            elevation = L" (élevé ?)";
+        } else {
+            TOKEN_ELEVATION e{};
+            DWORD got = 0;
+            if (GetTokenInformation(token, TokenElevation, &e, sizeof e, &got) && e.TokenIsElevated) elevation = L" (élevé)";
+            CloseHandle(token);
+        }
+        CloseHandle(p);
+    }
+    return exe + elevation + L" [" + cls + L"]";
+}
+} // namespace
+
+// Mode diagnostic : un fil relève toutes les 200 ms la souris vue par le crochet et l'avancée de la boucle, et note
+// le début et la fin de chaque anomalie (crochet muet, boucle bloquée, boucle endormie malgré un mouvement en attente).
+void DockApp::startSentinel() {
+    sentinel_ = std::thread([this] {
+        ULONGLONG silentSince = 0, stuckSince = 0, asleepSince = 0;
+        POINT prev{};
+        GetCursorPos(&prev);
+        while (WaitForSingleObject(stopEvent_, 200) == WAIT_TIMEOUT) {
+            const ULONGLONG now = GetTickCount64();
+            POINT c{};
+            if (!GetCursorPos(&c)) continue;
+            const bool moved = c.x != prev.x || c.y != prev.y;
+            prev = c;
+            const bool behind = c.x != mouseX_.load() || c.y != mouseY_.load();
+            if (!silentSince && moved && behind && now - hookMoveAt_.load() > 300) {
+                silentSince = now;
+                log::info(L"[sentinelle] crochet souris muet : curseur %ld,%ld, dernier vu %ld,%ld il y a %llu ms ; premier plan %s ; "
+                          L"sous le curseur %s",
+                          c.x, c.y, mouseX_.load(), mouseY_.load(), now - hookMoveAt_.load(),
+                          describeWindow(GetForegroundWindow()).c_str(), describeWindow(WindowFromPoint(c)).c_str());
+            } else if (silentSince && !behind) {
+                log::info(L"[sentinelle] crochet souris revenu après %llu ms ; premier plan %s", now - silentSince,
+                          describeWindow(GetForegroundWindow()).c_str());
+                silentSince = 0;
+            }
+            const int phase = loopPhase_.load();
+            const ULONGLONG loopAge = now - loopAt_.load();
+            if (!stuckSince && phase != 4 && loopAge > 400) {
+                stuckSince = now - loopAge;
+                log::info(L"[sentinelle] boucle du Dock bloquée depuis %llu ms (phase %d, message 0x%04X) ; premier plan %s",
+                          loopAge, phase, dispatching_.load(), describeWindow(GetForegroundWindow()).c_str());
+            } else if (stuckSince && (phase == 4 || loopAge <= 400)) {
+                log::info(L"[sentinelle] boucle du Dock repartie après %llu ms", now - stuckSince);
+                stuckSince = 0;
+            }
+            const DWORD postedAge = GetTickCount() - mousePostedAt_.load();
+            const bool asleep = phase == 4 && mousePending_.load() && postedAge > 300;
+            if (!asleepSince && asleep) {
+                asleepSince = now;
+                log::info(L"[sentinelle] boucle endormie : mouvement de souris en attente depuis %lu ms", postedAge);
+            } else if (asleepSince && !asleep) {
+                log::info(L"[sentinelle] boucle réveillée après %llu ms", now - asleepSince);
+                asleepSince = 0;
+            }
+        }
     });
 }
 
@@ -2968,6 +3049,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     startMouseThread();
     startConfigWatcher();
+    if (trace_) startSentinel();
     watchTrash();
     watchStacks();
     registerDropTarget();
@@ -2996,11 +3078,17 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         }
         const bool timing = diagnosticCapture() && genie_.running() && !genie_.onGpu();
         const double loopStart = timing ? nowSeconds() : 0;
+        if (trace_) {
+            loopAt_ = GetTickCount64();
+            loopPhase_ = 0;
+        }
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { running_ = false; break; }
             const double m0 = timing ? nowSeconds() : 0;
+            if (trace_) dispatching_ = msg.message;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            if (trace_) dispatching_ = 0;
             if (timing && nowSeconds() - m0 > 0.003)
                 log::info(L"[diag] boucle : message 0x%04X traité en %.1f ms", msg.message, (nowSeconds() - m0) * 1000);
         }
@@ -3009,6 +3097,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         double now = nowSeconds();
         double dt = std::min(now - last, 0.1);
         last = now;
+        if (trace_) {
+            loopAt_ = GetTickCount64();
+            loopPhase_ = 1;
+        }
         bool animating = controller_.tick(dt);
         if (stepVisibility(now)) animating = true;
         // Fumée et génie ont leurs propres fenêtres : ils cadencent la boucle sans redessiner le Dock (verre compris)
@@ -3049,6 +3141,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
             }
             wakeAnimation_ = false;
             const double r0 = timing ? nowSeconds() : 0;
+            if (trace_) {
+                loopAt_ = GetTickCount64();
+                loopPhase_ = 2;
+            }
             renderNow();
             if (timing && nowSeconds() - r0 > 0.003)
                 log::info(L"[diag] boucle : image du Dock en %.1f ms (animation %d, modèle %d)", (nowSeconds() - r0) * 1000,
@@ -3056,6 +3152,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         }
         if (timing && nowSeconds() - loopStart > 0.008)
             log::info(L"[diag] boucle : tour en %.1f ms", (nowSeconds() - loopStart) * 1000);
+        if (trace_) {
+            loopAt_ = GetTickCount64();
+            loopPhase_ = animating || overlays ? 3 : 4;
+        }
         if (animating || overlays) {
             DCompositionWaitForCompositorClock(0, nullptr, 50);
         } else {
@@ -3085,6 +3185,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     capture_.stop();
     SetEvent(stopEvent_);
     if (configThread_.joinable()) configThread_.join();
+    if (sentinel_.joinable()) sentinel_.join();
     if (mouseThreadId_) PostThreadMessageW(mouseThreadId_, WM_QUIT, 0, 0);
     if (mouseThread_.joinable()) mouseThread_.join();
     // Après le crochet clavier (il lit l'aperçu) : un aperçu figé (prevhost) n'empêche pas le Dock de s'arrêter.

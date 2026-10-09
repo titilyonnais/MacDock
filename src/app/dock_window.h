@@ -282,6 +282,12 @@ private:
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
     std::atomic<DWORD> mousePostedAt_{0};
+    // Sentinelle du mode diagnostic : souris vue par le crochet, tours de la boucle, message en cours de traitement.
+    std::atomic<ULONGLONG> hookMoveAt_{0}, loopAt_{0};
+    std::atomic<int> loopPhase_{0};       // 0 messages, 1 animation, 2 image, 3 attente de l'horloge, 4 attente d'un message
+    std::atomic<UINT> dispatching_{0};    // message en cours (0 : aucun)
+    std::thread sentinel_;
+    void startSentinel();
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
