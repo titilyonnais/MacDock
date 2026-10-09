@@ -78,10 +78,16 @@ Settings settingsFromJson(const json::Value& v) {
     else if (effect == L"windows") s.minimizeEffect = MinimizeEffect::Windows;
     s.font = readString(v, "font");
     s.screen = readString(v, "screen");
-    // Raccourcis saisis librement dans l'app Réglages : tout ce que parseHotkey accepte, ou « off » ; sinon le défaut.
+    // Raccourcis saisis librement dans l'app Réglages : comme son enregistreur, avec Alt ou ⊞, ou une touche F seule ;
+    // jamais Ctrl+C ou Maj+A (raccourcis des apps), sauf les anciennes valeurs documentées. « off », ou sinon le défaut.
     const auto readHotkey = [&v](const char* key, std::wstring& out) {
         const std::wstring text = toLower(readString(v, key));
-        if (text == L"off" || parseHotkey(text)) out = text;
+        if (text == L"off" || text == L"ctrl+space" || text == L"ctrl+up" || text == L"ctrl+down") {
+            out = text;
+            return;
+        }
+        const auto spec = parseHotkey(text);
+        if (spec && ((spec->mods & (MOD_ALT | MOD_WIN)) != 0 || (spec->vk >= VK_F1 && spec->vk <= VK_F24))) out = text;
     };
     readHotkey("spotlightHotkey", s.spotlightHotkey);
     readHotkey("missionControlHotkey", s.missionControlHotkey);
