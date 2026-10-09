@@ -5,7 +5,8 @@
 namespace md {
 
 constexpr double kIconShapeRatio = 824.0 / 1024.0;   // forme visible / case (grille Apple)
-constexpr double kIconCornerRatio = 185.4 / 824.0;   // rayon / forme visible
+// Rayon / forme visible : 0,259 pour macOS 26 Tahoe, mesuré sur son Dock (plan 60) ; Big Sur à Sequoia : 185,4/824.
+constexpr double kIconCornerRatio = 0.259;
 
 // Point (x, y) en pixels dans un carré de côté size : à l'intérieur de la forme ?
 bool insideSquircle(double x, double y, double size, double cornerRatio = kIconCornerRatio);

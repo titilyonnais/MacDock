@@ -26,6 +26,7 @@
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
 #include "../icons/icon_provider.h"
+#include "../icons/squircle.h"
 #include "../popup/popup_glass.h"
 #include "../settings/pane_catalog.h"
 #include "../settings/pane_icons.h"
@@ -103,7 +104,7 @@ struct View {
     bool caret = true, dark = false;
     float opacity = 1;
     // Tuiles des sections de Réglages MacDock : forme et rayon des icônes d'apps (AppsIconStyle), pour la même allure.
-    float tileShape = 824.0f / 1024, tileCorner = 185.4f / 824;
+    float tileShape = float(kIconShapeRatio), tileCorner = float(kIconCornerRatio);
     AccentColor accent = AccentColor::Blue;   // couleur d'accentuation (plan 57)
 };
 

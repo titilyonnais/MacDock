@@ -21,7 +21,7 @@ namespace md {
     X(indicatorDiameter, 4, 0, 20)                 \
     X(indicatorCenterFromBottom, 4, 0, 30)         \
     X(iconShapeRatio, 0.8046875, 0.5, 1)           \
-    X(iconCornerRatio, 0.225, 0, 0.5)              \
+    X(iconCornerRatio, 0.259, 0, 0.5)              \
     X(iconShadowOpacity, 0.5, 0, 1)                \
     X(launchBounceHeight, 0.55, 0, 3)              \
     X(launchBouncePeriod, 0.62, 0.05, 5)           \
@@ -68,7 +68,7 @@ struct Metrics {
 #undef MD_DECLARE
 };
 
-constexpr int kMetricsVersion = 5;
+constexpr int kMetricsVersion = 6;
 
 Metrics metricsFromJson(const json::Value& v);
 json::Value metricsToJson(const Metrics& m);   // écrit "version": kMetricsVersion

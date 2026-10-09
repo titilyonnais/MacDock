@@ -70,6 +70,8 @@ json::Value migrateMetricsJson(const json::Value& v) {
         {5, "autohideShowSeconds", 0.40, 0.45},
         {5, "autohideHideSeconds", 0.40, 0.45},
         {5, "poofSeconds", 0.31, 0.35},
+        // v6 : rayon des icônes mesuré sur le Dock de macOS 26 (plan 60) ; 0,225 était celui de Big Sur à Sequoia.
+        {6, "iconCornerRatio", 0.225, 0.259},
     };
     const int from = jsonVersion(v);
     json::Value out = json::Object{};

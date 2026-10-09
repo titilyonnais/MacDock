@@ -1,6 +1,7 @@
 #include "minitest.h"
 #include "../src/config/metrics.h"
 #include "../src/config/settings.h"
+#include "../src/icons/squircle.h"
 
 TEST_CASE(metrics_migrate_v1_updates_old_defaults) {
     auto v = md::migrateMetricsJson(*md::json::parse(
@@ -53,10 +54,23 @@ TEST_CASE(metrics_migrate_v4_tahoe_durations) {
     CHECK_NEAR(m.autohideHideSeconds, 0.6, 1e-9);
     CHECK_NEAR(m.poofSeconds, 0.35, 1e-9);
     CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
-    CHECK_EQ(md::jsonVersion(v), 5);
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     const md::Metrics fresh = md::metricsFromJson(md::json::Value(md::json::Object{}));   // défauts : ceux de Tahoe
     CHECK_NEAR(fresh.autohideShowSeconds, 0.45, 1e-9);
     CHECK_NEAR(fresh.poofSeconds, 0.35, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v5_tahoe_icon_corner) {   // plan 60 : rayon des icônes mesuré sur macOS 26
+    // Le fichier de l'utilisateur garde le défaut de Big Sur (0,225, écrit 0.22500000000000001) : il prend celui de Tahoe.
+    auto v = md::migrateMetricsJson(*md::json::parse(R"({"version":5,"iconCornerRatio":0.22500000000000001})"));
+    CHECK_NEAR(md::metricsFromJson(v).iconCornerRatio, 0.259, 1e-9);
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
+    // Un rayon choisi reste.
+    auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":5,"iconCornerRatio":0.24})")));
+    CHECK_NEAR(kept.iconCornerRatio, 0.24, 1e-9);
+    const md::Metrics fresh;
+    CHECK_NEAR(fresh.iconCornerRatio, 0.259, 1e-9);
+    CHECK_NEAR(md::kIconCornerRatio, 0.259, 1e-9);   // forme par défaut (masques, plaque grise, icônes de MacDock)
 }
 
 TEST_CASE(metrics_migrate_chain_keeps_value_chosen_before) {

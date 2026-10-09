@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "squircle.h"
+
 namespace md {
 
 // Fichier et date de modification : un contenu nouveau sous le même chemin donne une autre image.
@@ -56,8 +58,8 @@ private:
 
     bool strict_ = true;
     bool dark_ = false;
-    double shapeRatio_ = 824.0 / 1024.0;
-    double cornerRatio_ = 185.4 / 824.0;
+    double shapeRatio_ = kIconShapeRatio;
+    double cornerRatio_ = kIconCornerRatio;   // forme de macOS 26 (plan 60), remplacée par setGrid
     double jailInset_ = 0.16;
     double shadowOpacity_ = 0.5;
     std::wstring customDir_;

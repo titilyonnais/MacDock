@@ -17,6 +17,7 @@
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
+#include "../icons/squircle.h"
 #include "../popup/popup_glass.h"
 #include "../theme/wallpaper_art.h"
 
@@ -411,7 +412,7 @@ BgraImage switcherSnapshot(const std::vector<std::wstring>& names, std::size_t s
                        const std::uint32_t c = placeholderColor(i);
                        d->CreateSolidColorBrush(
                            rgba(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, 1), &b);
-                       const float k = (r.right - r.left) * 0.225f;
+                       const float k = (r.right - r.left) * float(kIconCornerRatio);   // rayon des icônes de macOS 26
                        if (b) d->FillRoundedRectangle(D2D1::RoundedRect(r, k, k), b.Get());
                    });
         dc->SetTransform(D2D1::Matrix3x2F::Identity());

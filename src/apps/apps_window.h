@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../core/bgra_image.h"
+#include "../icons/squircle.h"
 #include "../popup/menu_window.h"
 #include "app_catalog.h"
 #include "apps_icon_cache.h"
@@ -17,7 +18,7 @@ namespace md {
 
 struct AppsIconStyle {   // réglages des icônes du Dock, pour la même allure
     bool strict = true, dark = false;
-    double shapeRatio = 824.0 / 1024.0, cornerRatio = 185.4 / 824.0, jailInset = 0.16, shadowOpacity = 0.5;
+    double shapeRatio = kIconShapeRatio, cornerRatio = kIconCornerRatio, jailInset = 0.16, shadowOpacity = 0.5;
     std::wstring customDir;
 };
 

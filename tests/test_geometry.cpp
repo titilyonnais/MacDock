@@ -8,9 +8,9 @@ TEST_CASE(geometry_concentric_default) {
     auto g = md::dockGeometry(48, m);
     CHECK_NEAR(g.thickness, 64, 1e-9);
     CHECK_NEAR(g.iconShape, 38.625, 1e-9);
-    CHECK_NEAR(g.iconRadius, 8.690625, 1e-9);
+    CHECK_NEAR(g.iconRadius, 38.625 * 0.259, 1e-9);   // rayon des icônes de macOS 26 (plan 60)
     CHECK_NEAR(g.visibleInset, 4.6875, 1e-9);
-    CHECK_NEAR(g.cornerRadius, 8.690625 + 8 + 4.6875, 1e-9);
+    CHECK_NEAR(g.cornerRadius, 38.625 * 0.259 + 8 + 4.6875, 1e-9);   // coins du Dock concentriques à ceux des icônes
     CHECK_NEAR(g.indicatorCenter, 4, 1e-9);
     // Le point ne touche pas l'icône : au moins 5 pt entre le haut du point et le bas de la forme visible.
     CHECK(m.dockPadding + g.visibleInset - (g.indicatorCenter + m.indicatorDiameter / 2) >= 5);
