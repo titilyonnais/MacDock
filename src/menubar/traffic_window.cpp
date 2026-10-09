@@ -287,7 +287,7 @@ TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
     // Encore réduite quand elle devient active (restauration depuis le Dock) : suivie quand même, ses pastilles
     // arrivent quand elle réapparaît (place() la masque tant qu'elle est réduite).
     info.iconic = false;
-    if (!wantsLights(info, mode_, effectiveDpi(target))) {
+    if (!lightsLayerWanted(info, mode_, effectiveDpi(target))) {
         if (diagnosticCapture() && target == active_)
             log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
                       info.style, int(info.elevated));
@@ -359,6 +359,7 @@ void TrafficWindow::unhookProcess(DWORD pid) {
     if (--it->second.second > 0) return;
     if (it->second.first) UnhookWinEvent(it->second.first);
     processHooks_.erase(it);
+    if (diagnosticCapture()) log::info(L"[diag] pastilles : crochet de déplacements retiré (processus %lu)", pid);
 }
 
 void TrafficWindow::hookGlobal() {
@@ -413,7 +414,21 @@ void CALLBACK TrafficWindow::onEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
 void TrafficWindow::event(DWORD ev, HWND hwnd, bool deferred) {
     switch (ev) {
         case EVENT_OBJECT_DESTROY: remove(hwnd); break;
-        case EVENT_OBJECT_HIDE:
+        case EVENT_OBJECT_HIDE:   // masquée pour de bon (zone de notification…) : calque retiré par la boucle du fil
+            if (Layer* l = layerOf(hwnd)) {
+                switch (onTargetHidden(deferred, IsWindowVisible(hwnd) != FALSE)) {
+                    case HiddenLayer::HideNow:
+                        hide(*l);
+                        PostThreadMessageW(threadId_, kMsgEvent, EVENT_OBJECT_HIDE, reinterpret_cast<LPARAM>(hwnd));
+                        break;
+                    case HiddenLayer::Remove:
+                        if (diagnosticCapture()) log::info(L"[diag] pastilles %p masquée : calque retiré", hwnd);
+                        remove(hwnd);
+                        break;
+                    case HiddenLayer::Replace: place(*l, false); break;
+                }
+            }
+            break;
         case EVENT_SYSTEM_MINIMIZESTART:
         case EVENT_OBJECT_CLOAKED:
             // Reporté : la fenêtre a pu réapparaître depuis (son SHOW servi avant ce message) ; son état est relu.
@@ -475,12 +490,30 @@ void TrafficWindow::hide(Layer& l) {
 }
 
 void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
-    // Ligne à mi-hauteur des boutons, juste à gauche du calque : la barre de titre que les boutons interrompent (Mica
-    // en dégradé : la teinte de leur hauteur). Une seule copie de l'écran pour les neuf points.
+    // Ligne à mi-hauteur des boutons, à gauche du calque : la barre de titre que les boutons interrompent (Mica en
+    // dégradé : la teinte de leur hauteur). Seulement là où la fenêtre est visible : une fenêtre qui la recouvre en
+    // partie n'en donne pas la couleur. Une seule copie de l'écran pour les neuf points.
     const LONG y = (l.layout.window.top + l.layout.window.bottom) / 2;
     const LONG step = std::max(1L, LONG(std::lround(3.0 * dpi / 96)));
-    const LONG right = l.layout.window.left - 4, left = std::max(right - 8 * step, frame.left + 9);
-    if (right <= frame.left + 8) return;
+    const HWND target = l.target;
+    // Rien de sûr à lire : la couleur d'avant reste ; jamais mesurée, celle de son thème.
+    const auto fallback = [&] {
+        if (l.painted || l.sampled) return;
+        BOOL dark = FALSE;
+        if (SUCCEEDED(DwmGetWindowAttribute(target, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof dark))) {
+            l.state.patchColor = dark ? 0x202020 : 0xF3F3F3;
+            l.state.dark = dark != FALSE;
+        }
+    };
+    const LONG span = std::lround(64.0 * dpi / 96);
+    const std::vector<LONG> xs = captionSampleXs(l.layout.window.left - 4, frame.left + 9, step, span, [&](LONG x) {
+        return GetAncestor(WindowFromPoint(POINT{x, y}), GA_ROOT) == target;
+    });
+    if (xs.empty()) {   // recouverte là
+        fallback();
+        return;
+    }
+    const LONG right = xs.front(), left = xs.back();
     const int w = int(right - left + 1);
     std::vector<std::uint32_t> samples;
     HDC screen = GetDC(nullptr);
@@ -494,14 +527,18 @@ void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
         if (BitBlt(mem, 0, 0, w, 1, screen, left, y, SRCCOPY)) {
             GdiFlush();
             const auto* px = static_cast<const std::uint32_t*>(bits);
-            for (LONG x = right; x >= left; x -= step) samples.push_back(px[x - left] & 0xFFFFFF);   // 0xRRGGBB
+            for (LONG x : xs) samples.push_back(px[x - left] & 0xFFFFFF);   // 0xRRGGBB
         }
         SelectObject(mem, old);
     }
     if (bmp) DeleteObject(bmp);
     DeleteDC(mem);
     ReleaseDC(nullptr, screen);
-    if (samples.empty()) return;
+    if (samples.empty()) {   // copie de l'écran impossible (session verrouillée…)
+        fallback();
+        return;
+    }
+    l.sampled = true;
     const std::uint32_t color = dominantColor(samples);
     if (color == l.state.patchColor && l.painted) return;
     l.state.patchColor = color;

@@ -55,6 +55,7 @@ private:
         Spot spot = Spot::None;
         double scale = 1;
         bool shown = false, tracking = false, painted = false;
+        bool sampled = false;           // couleur de la barre de titre mesurée au moins une fois
         int pressed = -1;
         bool dragging = false;          // déplacement de la cible depuis le fond (notre propre boucle)
         POINT dragStart{};
