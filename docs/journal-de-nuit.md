@@ -1028,6 +1028,20 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Entrée essayée en réel** : « dock » ouvre Réglages MacDock sur la section Dock, « son » la page Son des
   Paramètres ; les deux fenêtres ouvertes par l'essai ont été refermées.
 
+### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
+
+- **Défaut vu à l'essai réel du plan 55** : la barre de menus posait ses pastilles en haut à droite de Réglages
+  MacDock et de « Forcer à quitter », par-dessus les leurs ; sur Forcer à quitter, elles cachaient la fin du titre.
+  Ces fenêtres retirent le cadre de Windows mais gardent ses styles : le DWM leur compte des boutons de légende.
+- **Correction** : une marque (propriété de fenêtre `MacDock.OwnLights`) ; la barre n'y pose ni pastilles ni
+  apparence, et ces fenêtres règlent elles-mêmes coins et liseré.
+- **Essais réels** avant et après : Réglages en mode d'essai (dossier temporaire effacé), Forcer à quitter ouvert par
+  son message et fermé par Échap sans rien forcer.
+
+## Mineurs reportés — plan 56
+- Le branchement réel de la marque n'a pas de test automatique (la barre n'est pas dans `tests.exe`) : couvert par
+  l'essai réel.
+
 ## Mineurs reportés — plan 55
 - « Clavier » (Windows) ouvre `ms-settings:keyboard`, rangée par Microsoft avec la langue ; la page Clavier de
   Windows 11 est sous Accessibilité (`ms-settings:easeofaccess-keyboard`). À vérifier en réel.

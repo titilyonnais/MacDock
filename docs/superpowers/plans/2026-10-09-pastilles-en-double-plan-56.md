@@ -29,3 +29,17 @@ droite), et la barre de menus, qui donne des pastilles à toute fenêtre à barr
   effacé) et sur Forcer à quitter (ouvert par son message, fermé par Échap sans rien forcer) : pastilles de la barre
   visibles avant, absentes après, titre entier ; captures de leurs seules fenêtres, effacées.
 - Suite : 768 tests verts.
+
+## Relecture indépendante
+Rien de critique ; un important, quatre mineurs.
+- **Important** : la barre ne réglant plus l'apparence de ces fenêtres, elle ne leur retirait plus le liseré de
+  Windows. Mesuré en réel (option « couleur d'accentuation sur les bordures » activée, fenêtres rendues actives par un
+  clic sur leur propre barre de titre, coins agrandis) : aucun liseré visible, avant comme après. Corrigé quand même,
+  pour ne plus dépendre de la barre : les fenêtres posent elles-mêmes coins arrondis et liseré absent
+  (`applyOwnFrame`) ; test vu en échec avant (coins relus ; le liseré ne se relit pas, seule son acceptation par le
+  DWM est vérifiée). 769 tests verts.
+- **Mineurs corrigés en passant** (commentaires et journal, sans effet sur le comportement) : commentaire de test
+  remis au-dessus du sien ; cause du refus dans le journal `[diag]` de la barre ; contrat de la marque précisé
+  (avant le premier affichage, retirée au plus tard à WM_NCDESTROY).
+- **Mineur gardé** : le branchement réel n'a pas de test automatique (la barre n'est pas dans `tests.exe`) ; couvert
+  par l'essai réel, avant et après.
