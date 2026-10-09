@@ -101,6 +101,7 @@ constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotl
 constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchLeft = 9, kHotSwitchRight = 10,
               kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotAppExpose = 14;
 constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
+constexpr UINT_PTR kHotkeyRetryTimer = 0x484B;   // "HK" : raccourci pris par une autre app, réessayé
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -1152,45 +1153,44 @@ bool DockApp::openAppExpose(const std::wstring& appId) {
     return true;
 }
 
+// Raccourci global (ré)enregistré : réglage changé, ou refusé au dernier essai (pris par une autre app au démarrage,
+// PowerToys…) ; refusé, il est réessayé toutes les 30 s jusqu'à ce que l'autre app le libère.
+void DockApp::registerHotkey(HotkeySlot& slot, int id, const std::wstring& setting, const std::optional<HotkeySpec>& spec,
+                             const wchar_t* what) {
+    if (!hwnd_ || !hotkeyNeedsRegister(slot, setting, spec.has_value())) return;
+    const bool retry = slot.tried && slot.applied == setting;
+    UnregisterHotKey(hwnd_, id);
+    slot = {setting, false, true};
+    if (!spec) {
+        log::info(L"%s : raccourci désactivé", what);
+        return;
+    }
+    slot.registered = RegisterHotKey(hwnd_, id, spec->mods | MOD_NOREPEAT, spec->vk) != FALSE;
+    if (slot.registered) {
+        log::info(retry ? L"%s : raccourci %s libéré par l'autre app, repris" : L"%s : raccourci %s", what, setting.c_str());
+    } else {
+        slot.refused = true;
+        if (!retry)
+            log::warn(L"%s : raccourci %s déjà pris par une autre app (%lu) ; nouvel essai toutes les 30 s", what,
+                      setting.c_str(), GetLastError());
+        SetTimer(hwnd_, kHotkeyRetryTimer, 30000, nullptr);
+    }
+}
+
 void DockApp::registerAppExposeHotkey() {
-    if (settings_.appExposeHotkey == appExposeHotkeyOn_) return;
-    UnregisterHotKey(hwnd_, kHotAppExpose);
-    appExposeHotkeyOn_ = settings_.appExposeHotkey;
-    const auto spec = parseAppExposeHotkey(appExposeHotkeyOn_);
-    if (!spec) log::info(L"Exposé d'une app : raccourci désactivé");
-    else if (!RegisterHotKey(hwnd_, kHotAppExpose, spec->mods | MOD_NOREPEAT, spec->vk))
-        log::warn(L"Exposé d'une app : raccourci %s déjà pris par une autre app (%lu)", appExposeHotkeyOn_.c_str(), GetLastError());
-    else log::info(L"Exposé d'une app : raccourci %s", appExposeHotkeyOn_.c_str());
+    registerHotkey(appExposeHotkey_, kHotAppExpose, settings_.appExposeHotkey, parseAppExposeHotkey(settings_.appExposeHotkey),
+                   L"Exposé d'une app");
 }
 
 void DockApp::registerMissionHotkey() {
-    if (settings_.missionControlHotkey == missionHotkeyOn_) return;
-    UnregisterHotKey(hwnd_, kHotMission);
-    missionHotkeyOn_ = settings_.missionControlHotkey;
-    const auto spec = parseMissionHotkey(missionHotkeyOn_);
-    if (!spec) {
-        log::info(L"Mission Control : raccourci désactivé");
-    } else if (!RegisterHotKey(hwnd_, kHotMission, spec->mods | MOD_NOREPEAT, spec->vk)) {
-        log::warn(L"Mission Control : raccourci %s déjà pris par une autre app (%lu)", missionHotkeyOn_.c_str(),
-                  GetLastError());
-    } else {
-        log::info(L"Mission Control : raccourci %s", missionHotkeyOn_.c_str());
-    }
+    registerHotkey(missionHotkey_, kHotMission, settings_.missionControlHotkey,
+                   parseMissionHotkey(settings_.missionControlHotkey), L"Mission Control");
 }
 
 void DockApp::registerSpotlightHotkey() {
-    if (settings_.spotlightHotkey == spotlightHotkeyOn_) return;
-    UnregisterHotKey(hwnd_, kHotSpotlight);
-    spotlightHotkeyOn_ = settings_.spotlightHotkey;
-    const auto spec = parseSpotlightHotkey(spotlightHotkeyOn_);
-    if (!spec) {
-        log::info(L"Spotlight : raccourci désactivé");
-    } else if (!RegisterHotKey(hwnd_, kHotSpotlight, spec->mods | MOD_NOREPEAT, spec->vk)) {
-        log::warn(L"Spotlight : raccourci %s déjà pris par une autre app (%lu) ; la loupe de la barre reste disponible",
-                  spotlightHotkeyOn_.c_str(), GetLastError());
-    } else {
-        log::info(L"Spotlight : raccourci %s", spotlightHotkeyOn_.c_str());
-    }
+    // Refusé : la loupe de la barre reste disponible.
+    registerHotkey(spotlightHotkey_, kHotSpotlight, settings_.spotlightHotkey, parseSpotlightHotkey(settings_.spotlightHotkey),
+                   L"Spotlight");
 }
 
 void DockApp::registerSwitcherHotkey() {
@@ -2481,6 +2481,16 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 bool waiting = false;
                 for (HWND h : transitions_.windows()) waiting = waiting || (IsWindow(h) && !transitionParked(heldState(h)));
                 if (!waiting) KillTimer(hwnd_, kTransitionTimer);
+                return 0;
+            }
+            if (wp == kHotkeyRetryTimer) {   // raccourcis refusés au démarrage : l'autre app les a peut-être libérés
+                if (spotlightMsg_) registerSpotlightHotkey();
+                if (missionMsg_) {
+                    registerMissionHotkey();
+                    registerAppExposeHotkey();
+                }
+                if (!spotlightHotkey_.refused && !missionHotkey_.refused && !appExposeHotkey_.refused)
+                    KillTimer(hwnd_, kHotkeyRetryTimer);
                 return 0;
             }
             if (wp == kArmTimer) {   // annoncée, mais pas réduite (app qui refuse, ou cache dans la zone de notification)

@@ -149,6 +149,11 @@ std::wstring hotkeyLabel(const HotkeySpec& s) {
     return out + L"?";
 }
 
+bool hotkeyNeedsRegister(const HotkeySlot& slot, const std::wstring& setting, bool parsable) {
+    if (!slot.tried || setting != slot.applied) return true;
+    return parsable && !slot.registered;
+}
+
 bool hotkeyConflict(std::wstring_view a, std::wstring_view b) {
     const auto x = parseHotkey(a, true), y = parseHotkey(b, true);
     return x && y && *x == *y;

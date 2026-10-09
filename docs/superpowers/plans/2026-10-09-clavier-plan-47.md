@@ -20,9 +20,17 @@
 
   Tests : `typeAheadKey` (lettres, chiffres, signes ; pas avec Ctrl, Alt ou ⊞), `typeAheadActive` (999 ms oui, 1 s
   non), `quickLookKey` avec `typeAhead` (passe, appui comme relâchement).
-- [ ] 2. **Raccourcis réessayés** :
+- [x] 2. **Raccourcis réessayés** :
   - `HotkeySlot` (réglage essayé, enregistré ou non) et `hotkeyNeedsRegister` ;
   - enregistrement refusé : nouvel essai toutes les 30 s, avertissement une seule fois, puis « raccourci libéré ».
 
   Tests : réglage changé, même réglage enregistré (rien), même réglage refusé (nouvel essai), raccourci désactivé.
 - [ ] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
+
+## Essais réels
+MacDock en diagnostic, lancé puis arrêté :
+- Ctrl+Alt+↑ retenu par un script avant le lancement : « déjà pris par une autre app (1409) ; nouvel essai toutes les
+  30 s » ; libéré à 05:22:59, repris par le Dock à 05:23:29 ;
+- dossier d'essai ouvert dans l'Explorateur (« mon autre fichier.txt », « mon rapport.txt », « zèbre.txt ») : « mon r »
+  tapé vite sélectionne « mon rapport.txt » sans Coup d'œil ; une espace 1,5 s plus tard l'ouvre. Fenêtre et dossier
+  retirés ensuite.
