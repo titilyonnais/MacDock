@@ -26,9 +26,16 @@ plus espacées, le Dock plus épais, les séparateurs plus courts et plus serré
 - `dock-metrics.json` en version 7 : une valeur encore à l'ancien défaut prend le nouveau ; une valeur choisie reste.
 
 ## Tâches
-- [ ] 1. **Mesures** (`config/metrics.*`) : défauts, migration v7. Tests (défauts, migration, géométrie, point loin de
+- [x] 1. **Mesures** (`config/metrics.*`) : défauts, migration v7. Tests (défauts, migration, géométrie, point loin de
   l'icône).
-- [ ] 2. **Essais réels** : MacDock recompilé et relancé ; son Dock rendu hors écran et comparé à celui de la VM à
+- [x] 2. **Essais réels** : MacDock recompilé et relancé ; son Dock rendu hors écran et comparé à celui de la VM à
   taille d'icône égale ; proportions relevées sur le rendu.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- Suite : 815 tests verts ; tout compilé en Release, MacDock relancé.
+- `dock-metrics.json` de l'utilisateur migré au démarrage : version 7, les six valeurs nouvelles.
+- **Rendu hors écran** (`--snapshot`, taille 48, échelle 2) : pas de 100,5 px (attendu 100,6), soit 1,301·P contre
+  1,303·P sur la VM ; comparaison côte à côte à taille d'icône égale : espacement, épaisseur, séparateurs et points
+  pareils. Le verre diffère (la VM l'affiche en gris plat, faute d'accélération graphique).
