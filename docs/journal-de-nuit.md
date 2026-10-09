@@ -877,6 +877,20 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Mineurs reportés** : couleur de repli d'une fenêtre jamais mesurée (F3F3F3 au lieu du ECECEE de l'apparence
   macOS) ; couleur active gardée par une fenêtre devenue inactive en étant recouverte.
 
+### Plan 46 — app Réglages, les mineurs du plan 41, nuit du 9 octobre
+
+- **Le Dock n'écrase plus tes réglages** : il relit `settings.json` juste avant d'écrire et n'y met que ce qu'il a
+  changé ; un réglage que tu viens de changer dans l'app reste.
+- **Écrans par leur nom** : « Écran du Dock » propose « MAG 272U E16 — 3840 × 2160 (principal) » et « LG ULTRAGEAR —
+  1920 × 1080 » (vérifié sur ton PC).
+- **L'écran choisi s'applique tout de suite** : avant, le Dock ne changeait d'écran qu'au redémarrage, et « Écran
+  principal » le laissait où il était. Vérifié en réel (ton `settings.json` sauvegardé puis restauré à l'octet près).
+- **Menus comme sur macOS** : appuyer, glisser jusqu'à un élément, relâcher ; un clic court laisse le menu ouvert, un
+  appui tenu sans bouger le referme sans rien changer.
+- **Formats de texte** gardés d'une image à l'autre dans l'app.
+- **Relecture indépendante** : rien de critique ; un point important corrigé (appui tenu), un défaut hors périmètre
+  corrigé (écran appliqué à chaud), noms d'écrans plus robustes, fichier temporaire propre à chaque processus.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

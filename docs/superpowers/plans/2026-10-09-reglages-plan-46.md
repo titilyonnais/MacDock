@@ -53,5 +53,21 @@
 
   La police de la fenêtre n'est choisie qu'au démarrage : le cache, rangé par police, n'a pas à être vidé.
   Essai réel : section « À propos » (ligne coupée par « … », paragraphe replié) identique.
-- [ ] 5. Essai réel (app Réglages en mode d'essai `--data`, MacDock lancé pour l'essai puis arrêté), documentation,
+- [x] 5. Essai réel (app Réglages en mode d'essai `--data`, MacDock lancé pour l'essai puis arrêté), documentation,
   relecture, fusion.
+
+## Relecture
+Rien de critique. Corrigés (e4c1147) :
+- **important** : un appui tenu sans glisser appliquait l'élément sous le doigt, qui n'est pas toujours la valeur
+  actuelle (menu recalé au bord, écran débranché montré comme « Écran principal ») : il ferme maintenant le menu sans
+  rien changer ; glissé puis relâché dehors, le menu se ferme ; plus grand écart et `GetMessageTime` ;
+- **relevé d'un cran** (signalé hors périmètre) : l'écran choisi dans l'app ne déplaçait le Dock qu'au redémarrage, et
+  « Écran principal » le laissait sur l'écran courant. Appliqué à chaud (`placedScreen_`), réglage vide = principal
+  (`dockMonitorIndex`). Essai réel : le Dock passe sur l'écran 2 puis revient sur le principal ; `settings.json`
+  sauvegardé avant et restauré à l'octet près ;
+- noms des écrans : nouvel essai de `QueryDisplayConfig`, dalle LVDS ;
+- fichier temporaire propre à chaque processus (le Dock et l'app écrivent le même fichier) ;
+- tests resserrés.
+
+Mineur reporté : un réglage changé par l'app pendant que le Dock écrit le sien, à la milliseconde près, peut encore
+être relu avant la fusion suivante (fenêtre de quelques millisecondes).
