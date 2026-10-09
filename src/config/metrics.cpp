@@ -65,6 +65,11 @@ json::Value migrateMetricsJson(const json::Value& v) {
         {4, "glassTintDark", 0.38, 0.22},
         {4, "glassSaturation", 1.15, 1.50},
         {4, "shadowOpacity", 0.22, 0.07},
+        // v5 : la cible redevient macOS 26 Tahoe (plan 44) ; les durées raccourcies pour Golden Gate reprennent leur
+        // valeur. Le verre de la v4, recalé sur des captures, reste en attendant celles de Tahoe.
+        {5, "autohideShowSeconds", 0.40, 0.45},
+        {5, "autohideHideSeconds", 0.40, 0.45},
+        {5, "poofSeconds", 0.31, 0.35},
     };
     const int from = jsonVersion(v);
     json::Value out = json::Object{};

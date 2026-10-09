@@ -175,7 +175,7 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
                 const double cy = (l.circles[i].top + l.circles[i].bottom) / 2.0 - l.window.top;
                 if (std::abs(x + 0.5 - cx) > l.radius + 1 || std::abs(y + 0.5 - cy) > l.radius + 1) continue;
                 const bool down = s.pressed == i && s.enabled[i];
-                const double radius = l.radius * (down ? 0.94 : i == s.bouncing ? s.bounce : 1.0);   // enfoncée sous le doigt
+                const double radius = l.radius;   // Tahoe : enfoncée, elle s'assombrit sans rétrécir
                 // Fenêtre inactive : grises comme les indisponibles, en couleur au survol (macOS).
                 const bool colored = s.enabled[i] && (!s.inactive || s.hover);
                 const Rgb fill = rgb(colored ? kFill[i] : grayFill), edge = rgb(colored ? kEdge[i] : grayEdge);

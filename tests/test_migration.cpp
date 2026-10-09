@@ -31,9 +31,9 @@ TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
         R"({"version":2,"glassTintLight":0.22,"glassTintDark":0.3,"glassSpecular":0.55,"iconGap":6,)"
         R"("autohideShowSeconds":0.45,"autohideHideSeconds":0.45,"poofSeconds":0.35})"));
     auto m = md::metricsFromJson(v);
-    CHECK_NEAR(m.autohideShowSeconds, 0.40, 1e-9);   // animations ~12 % plus courtes
-    CHECK_NEAR(m.autohideHideSeconds, 0.40, 1e-9);
-    CHECK_NEAR(m.poofSeconds, 0.31, 1e-9);
+    CHECK_NEAR(m.autohideShowSeconds, 0.45, 1e-9);   // v3 les raccourcissait (Golden Gate), v5 rend celles de Tahoe
+    CHECK_NEAR(m.autohideHideSeconds, 0.45, 1e-9);
+    CHECK_NEAR(m.poofSeconds, 0.35, 1e-9);
     CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
     CHECK_NEAR(m.glassTintDark, 0.22, 1e-9);
     CHECK_NEAR(m.glassSpecular, 0.75, 1e-9);
@@ -41,6 +41,22 @@ TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
     CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"glassTintLight":0.5})")));
     CHECK_NEAR(kept.glassTintLight, 0.5, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v4_tahoe_durations) {
+    // v5 (plan 44) : la cible redevient macOS 26 Tahoe. Les durées encore à leur défaut Golden Gate (~12 % plus courtes)
+    // reprennent celles de Tahoe ; une durée choisie par l'utilisateur reste ; le verre (recalé sur des captures) aussi.
+    auto v = md::migrateMetricsJson(*md::json::parse(
+        R"({"version":4,"autohideShowSeconds":0.40,"autohideHideSeconds":0.6,"poofSeconds":0.31,"glassTintLight":0.10})"));
+    auto m = md::metricsFromJson(v);
+    CHECK_NEAR(m.autohideShowSeconds, 0.45, 1e-9);
+    CHECK_NEAR(m.autohideHideSeconds, 0.6, 1e-9);
+    CHECK_NEAR(m.poofSeconds, 0.35, 1e-9);
+    CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
+    CHECK_EQ(md::jsonVersion(v), 5);
+    const md::Metrics fresh = md::metricsFromJson(md::json::Value(md::json::Object{}));   // défauts : ceux de Tahoe
+    CHECK_NEAR(fresh.autohideShowSeconds, 0.45, 1e-9);
+    CHECK_NEAR(fresh.poofSeconds, 0.35, 1e-9);
 }
 
 TEST_CASE(metrics_migrate_chain_keeps_value_chosen_before) {

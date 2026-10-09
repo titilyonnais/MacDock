@@ -117,9 +117,10 @@ TEST_CASE(genie_degenerate_inputs) {
 }
 
 TEST_CASE(genie_durations) {   // Golden Gate : animations ~12 % plus courtes que Tahoe
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, false), 0.48, 1e-9);
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Scale, false), 0.26, 1e-9);
-    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, true), 0.48 * 8, 1e-9);
+    // macOS 26 Tahoe (plan 44) : 0,55 s et 0,30 s ; Golden Gate les raccourcissait de ~12 %.
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, false), 0.55, 1e-9);
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Scale, false), 0.30, 1e-9);
+    CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, true), 0.55 * 8, 1e-9);
     CHECK_EQ(md::minimizeDuration(md::MinimizeEffect::Windows, false), 0.0);
 }
 

@@ -60,7 +60,6 @@ private:
         POINT dragStart{};
         RECT dragFrom{};
         SIZE paintedSize{};
-        ULONGLONG bounceStart = 0;
         int probeRetries = 0;           // sondes interrompues (app occupée) reprises au plus 3 fois
         bool refused = false;           // visible mais sans barre de titre (plein écran) : sa barre peut revenir
         ULONGLONG revealAt = 0;         // pastilles retenues jusqu'à cet instant (sortie du plein écran, zoom)
