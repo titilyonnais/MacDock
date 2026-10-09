@@ -58,6 +58,19 @@ std::wstring shortFolder(const std::wstring& folder);
 // Dossier de recherche du Shell (index de Windows) sur folder : search-ms:query=…&crumb=location:…
 std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder);
 
+// Survol du panneau : Windows envoie aussi WM_MOUSEMOVE quand le panneau grandit sous un pointeur immobile ; seul un
+// vrai déplacement choisit la ligne survolée (sinon Entrée ouvrirait la ligne passée sous le pointeur, pas le meilleur
+// résultat). Positions à l'écran.
+struct HoverGate {
+    POINT last{0, 0};
+    void reset(POINT at) { last = at; }
+    bool moved(POINT at) {
+        const bool changed = at.x != last.x || at.y != last.y;
+        last = at;
+        return changed;
+    }
+};
+
 // Clic sur le Dock (qui n'active jamais) pendant une fenêtre modale : il ferme Spotlight, comme un clic ailleurs ;
 // pendant un menu, une pile ou l'écran Apps, il est ignoré (pas de fenêtre modale dans une autre).
 enum class DockClick { Proceed, CloseSpotlight, Ignore };

@@ -254,6 +254,7 @@ struct Session {
     View view;
     Painter painter;
     DocFeed docs;
+    HoverGate hover;   // survol : seulement un vrai déplacement du pointeur
     std::unique_ptr<FileSearcher> searcher;
     std::size_t maxRows = kMaxRows;
 
@@ -572,6 +573,9 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
         }
         case WM_MOUSEMOVE: {
+            POINT at{};
+            GetCursorPos(&at);
+            if (!hover.moved(at)) return 0;   // le panneau a grandi sous un pointeur immobile
             const auto [x, y] = toPanel(lp);
             const int r = rowAt(view.sections, x, y);
             if (r >= 0 && r != view.selected) {
@@ -661,6 +665,9 @@ std::optional<SpotlightWindow::Choice> SpotlightWindow::track(const MenuWindow::
     Session s;
     s.env = env;
     s.req = &request;
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    s.hover.reset(cursor);   // là où est le pointeur à l'ouverture, rien n'est survolé
     if (!s.init()) {
         log::warn(L"Spotlight : panneau impossible (initialisation graphique)");
         return std::nullopt;

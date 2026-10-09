@@ -282,6 +282,15 @@ TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le
     CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
 }
 
+TEST_CASE(spot_hover_needs_a_real_move) {   // plan 55 : panneau qui grandit sous un pointeur immobile
+    md::HoverGate g;
+    g.reset({4582, 1232});              // pointeur à l'ouverture
+    CHECK(!g.moved({4582, 1232}));      // WM_MOUSEMOVE de Windows : le panneau a grandi, le pointeur n'a pas bougé
+    CHECK(g.moved({4583, 1232}));       // vrai déplacement : la ligne survolée est choisie
+    CHECK(!g.moved({4583, 1232}));
+    CHECK(g.moved({4582, 1232}));       // retour au point de départ : c'est un déplacement
+}
+
 TEST_CASE(spot_action_for_each_kind) {   // plan 55 : ce que le Dock fait du choix
     using K = md::SpotActionKind;
     const auto s = md::spotAction({md::SpotKind::Setting, L"Wi-Fi", L"Paramètres Windows", L"ms-settings:network-wifi"}, false);
