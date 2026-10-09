@@ -30,6 +30,7 @@ enum class ActionKind {
     LaunchApp,        // arg : cible de relance d'une app récente (exe, .lnk, shell:AppsFolder\AUMID)
     ClearRecent,      // Éléments récents : Effacer le menu (exécutée par la barre, qui garde la liste)
     OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
+    Tile,             // fenêtre active rangée (macOS 26) ; arg : action (« left », « fill »… : window_tile.h)
 };
 
 enum class MenuSource { Generic, Win32, Uia };

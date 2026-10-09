@@ -19,14 +19,19 @@ Celui de MacDock n'envoie que Win+← et Win+→.
 - Les entrées Win+← et Win+→ disparaissent, couvertes par les moitiés.
 
 ## Tâches
-- [ ] 1. **Géométrie** (`src/shell/window_tile.*`, pur) :
+- [x] 1. **Géométrie** (`src/shell/window_tile.*`, pur) :
   - `TileAction`, `parseTileAction` et `tileActionName` ;
   - `tileRect(action, zone de travail, cadre actuel, marge)`.
 
   Tests : moitiés, quarts, Remplir, Centrer (taille gardée, puis bornée), marges entre deux moitiés.
-- [ ] 2. **Placement et menu** :
+- [x] 2. **Placement et menu** :
   - `tileWindow(fenêtre, action)` : restaurée si besoin, cadre visible calé, cadre d'avant gardé ;
   - menu Fenêtre : Remplir, Centrer, sous-menu « Déplacer et redimensionner » (`ActionKind::Tile`).
 
   Tests : les entrées du menu et leurs actions ; placement réel d'une fenêtre d'essai (sonde).
 - [ ] 3. Essai réel, documentation, relecture, fusion.
+
+## Essai réel
+Sonde sur une fenêtre d'essai à moi, écran 4K à 200 % (marge de 16 px) : Gauche, En bas à droite, Revenir (au tout
+premier cadre après deux rangements), Remplir depuis l'état agrandi (restaurée d'abord), Centrer : cadre visible
+obtenu exactement égal au cadre voulu.

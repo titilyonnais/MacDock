@@ -151,9 +151,22 @@ void windowMenu(Builder& b, const BarContext& c, const std::vector<CatalogItem>&
     }
     b.add(m, L"Réduire", {ActionKind::Minimize}, {}, hasWindow);
     b.add(m, L"Zoom", {ActionKind::Zoom}, {}, hasWindow);
-    Builder::separator(m);
-    b.key(m, L"Placer à gauche de l'écran", L"Win+←", hasWindow);
-    b.key(m, L"Placer à droite de l'écran", L"Win+→", hasWindow);
+    // Comme macOS 26 : ranger la fenêtre sans la glisser (marges de 8 pt).
+    b.add(m, L"Remplir", {ActionKind::Tile, L"fill"}, {}, hasWindow);
+    b.add(m, L"Centrer", {ActionKind::Tile, L"center"}, {}, hasWindow);
+    MenuItem move;
+    move.text = L"Déplacer et redimensionner";
+    move.enabled = hasWindow;
+    const auto section = [&](const wchar_t* title, std::initializer_list<std::pair<const wchar_t*, const wchar_t*>> items) {
+        move.submenu.push_back(b.item(title, {}, {}, false));   // intitulé grisé
+        for (const auto& [text, action] : items) move.submenu.push_back(b.item(text, {ActionKind::Tile, action}, {}, hasWindow));
+        move.submenu.push_back({});
+    };
+    section(L"Moitiés", {{L"Gauche", L"left"}, {L"Droite", L"right"}, {L"Haut", L"top"}, {L"Bas", L"bottom"}});
+    section(L"Quarts", {{L"En haut à gauche", L"top-left"}, {L"En haut à droite", L"top-right"},
+                        {L"En bas à gauche", L"bottom-left"}, {L"En bas à droite", L"bottom-right"}});
+    move.submenu.push_back(b.item(L"Revenir à la taille précédente", {ActionKind::Tile, L"previous"}, {}, hasWindow));
+    m.model.items.push_back(std::move(move));
     Builder::separator(m);
     b.add(m, L"Tout ramener au premier plan", {ActionKind::BringAllToFront});
     if (c.windows.empty()) return;
