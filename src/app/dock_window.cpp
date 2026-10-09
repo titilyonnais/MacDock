@@ -176,7 +176,8 @@ void DockApp::applySettings() {
     visibility_.setTimings({metrics_.autohideDelay, metrics_.autohideLeaveDelay, metrics_.autohideShowSeconds,
                             metrics_.autohideHideSeconds});
     syncAppBar();
-    if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
+    if (hwnd_ && !snapshot_ && settings_.screen != placedScreen_) onDisplayChanged();   // écran choisi dans l'app
+    else if (hwnd_ && !snapshot_ && settings_.position != placedPosition_) reposition();   // bord changé à chaud
     if (!snapshot_) minAnimate_.apply(settings_.minimizeEffect);   // l'animation de Windows ne double pas la nôtre
     if (!snapshot_) genie_.prepare(instance_);
     updateGlass();   // réglage glass modifié à chaud
@@ -274,12 +275,9 @@ void DockApp::removeAppBar() {
 
 HMONITOR DockApp::dockMonitor() {
     monitors_ = enumMonitors();
-    // Écran enregistré s'il est branché (il revient dès qu'on le rebranche), sinon l'écran courant, sinon le principal.
-    std::wstring wanted = settings_.screen;
-    if (wanted.empty() || std::none_of(monitors_.begin(), monitors_.end(),
-                                       [&](const MonitorInfo& m) { return toLower(m.name) == toLower(wanted); }))
-        wanted = screenName_;
-    std::size_t i = initialMonitor(monitors_, wanted);
+    // Écran enregistré s'il est branché (il revient dès qu'on le rebranche), sinon l'écran courant ; aucun
+    // (« Écran principal ») : le principal.
+    std::size_t i = dockMonitorIndex(monitors_, settings_.screen, screenName_);
     if (i >= monitors_.size()) return MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     if (monitors_[i].name != screenName_) {
         screenName_ = monitors_[i].name;
@@ -365,6 +363,7 @@ void DockApp::reposition() {
         origin_ = POINT{edge == DockPosition::Left ? band.left : band.right - width, band.top};
     }
     placedPosition_ = edge;
+    placedScreen_ = settings_.screen;
     if (trace_) log::info(L"[trace] zone réservée : %d px (bord %d)", appBar_ ? reserve : 0, int(edge));
     SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));

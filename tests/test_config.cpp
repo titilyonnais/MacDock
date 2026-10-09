@@ -272,3 +272,25 @@ TEST_CASE(dock_save_keeps_keys_written_meanwhile) {
     broken.wasInvalid = true;
     CHECK(md::dockSettingsToWrite(broken, lastSaved, md::settingsToJson(now)).find("pinned"));
 }
+
+TEST_CASE(dock_save_screen_removal_both_ways) {
+    // « Écran principal » retire la clé screen. Retirée par l'app pendant que le Dock enregistre autre chose : elle
+    // reste retirée. Retirée par le Dock lui-même : elle disparaît du fichier.
+    md::Settings dock;
+    dock.screen = L"\\\\.\\DISPLAY2";
+    const md::json::Value lastSaved = md::settingsToJson(dock);
+    REQUIRE(lastSaved.find("screen"));
+    md::LoadResult file;
+    file.fromFile = true;
+    file.value = lastSaved;
+    file.value.erase("screen");                        // l'app a choisi « Écran principal »
+    md::Settings pinsOnly = dock;
+    pinsOnly.autohide = !dock.autohide;                // le Dock enregistre autre chose
+    CHECK(!md::dockSettingsToWrite(file, lastSaved, md::settingsToJson(pinsOnly)).find("screen"));
+    md::LoadResult same;
+    same.fromFile = true;
+    same.value = lastSaved;
+    md::Settings cleared = dock;
+    cleared.screen.clear();                            // le Dock retire lui-même l'écran
+    CHECK(!md::dockSettingsToWrite(same, lastSaved, md::settingsToJson(cleared)).find("screen"));
+}

@@ -1,5 +1,7 @@
 #include "monitor_choice.h"
 
+#include <algorithm>
+
 #include "../core/strings.h"
 
 namespace md {
@@ -51,6 +53,13 @@ std::size_t initialMonitor(const std::vector<MonitorInfo>& monitors, const std::
     for (std::size_t i = 0; i < monitors.size(); ++i)
         if (monitors[i].primary) return i;
     return 0;
+}
+
+std::size_t dockMonitorIndex(const std::vector<MonitorInfo>& monitors, const std::wstring& setting, const std::wstring& current) {
+    if (setting.empty()) return initialMonitor(monitors, L"");
+    const std::wstring want = toLower(setting);
+    const bool plugged = std::any_of(monitors.begin(), monitors.end(), [&](const MonitorInfo& m) { return toLower(m.name) == want; });
+    return initialMonitor(monitors, plugged ? setting : current);
 }
 
 std::wstring ScreenPush::update(const std::wstring& target, double now) {

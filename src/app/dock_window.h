@@ -267,6 +267,7 @@ private:
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée
+    std::wstring placedScreen_;   // réglage d'écran au dernier placement : changé dans l'app Réglages, le Dock y va
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

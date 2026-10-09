@@ -155,7 +155,8 @@ private:
     bool lightsPressedInside_ = true;   // pastille enfoncée : le doigt est encore dessus
     std::optional<OpenMenu> menu_;
     std::optional<D2D1_POINT_2F> menuPressAt_;   // appui qui vient d'ouvrir le menu (appuyer-glisser-relâcher)
-    ULONGLONG menuPressTick_ = 0;
+    LONG menuPressTime_ = 0;                     // GetMessageTime de cet appui
+    float menuDragMax_ = 0;                      // plus grand écart du doigt depuis cet appui (pt)
     std::optional<double> pending_;   // valeur de curseur pas encore écrite
     ULONGLONG lastCommit_ = 0, lastFrame_ = 0;
     bool animating_ = false;

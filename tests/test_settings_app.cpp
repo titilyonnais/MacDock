@@ -183,11 +183,15 @@ TEST_CASE(ui_slider_value_and_position) {
 TEST_CASE(ui_menu_press_drag_release) {
     // Plan 46 : comme sur macOS, un menu ouvert par l'appui se choisit en glissant puis en relâchant ; un clic court
     // le laisse ouvert (second clic pour choisir).
-    CHECK_EQ(md::ui::menuReleaseChoice(2, 0.0f, 0.10), -1);   // clic court, sans bouger : reste ouvert
-    CHECK_EQ(md::ui::menuReleaseChoice(2, 12.0f, 0.15), 2);   // glissé jusqu'à l'élément 2 : choisi
-    CHECK_EQ(md::ui::menuReleaseChoice(1, 0.0f, 0.50), 1);    // appui tenu sur l'élément coché : choisi (inchangé)
-    CHECK_EQ(md::ui::menuReleaseChoice(-1, 30.0f, 0.60), -1); // relâché hors du menu : rien, il reste ouvert
-    CHECK_EQ(md::ui::menuReleaseChoice(0, 3.0f, 0.20), -1);   // tremblement de moins de 4 pt : un clic
+    using R = md::ui::MenuRelease;
+    CHECK(md::ui::menuRelease(2, 0.0f, 0.10).kind == R::KeepOpen);   // clic court, sans bouger
+    const auto drag = md::ui::menuRelease(2, 12.0f, 0.15);           // glissé jusqu'à l'élément 2 : choisi
+    CHECK(drag.kind == R::Choose && drag.item == 2);
+    CHECK(md::ui::menuRelease(0, 3.0f, 0.20).kind == R::KeepOpen);   // tremblement de moins de 4 pt : un clic
+    // Relecture : sans glisser, un appui tenu ferme le menu sans rien changer (l'élément sous le doigt n'est pas
+    // toujours la valeur actuelle : menu recalé au bord, valeur inconnue montrée comme le premier élément).
+    CHECK(md::ui::menuRelease(1, 0.0f, 0.50).kind == R::Close);
+    CHECK(md::ui::menuRelease(-1, 30.0f, 0.60).kind == R::Close);    // glissé puis relâché hors du menu : fermé
 }
 
 TEST_CASE(ui_segments_menu_and_focus) {
@@ -495,19 +499,20 @@ TEST_CASE(ui_painter_formats_kept_between_frames) {
         const md::ui::Palette pal = md::ui::palette(false);
         Canvas c(200, 100);
         md::ui::FormatCache cache;
-        IDWriteTextFormat* first = nullptr;
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> first;   // gardé : une adresse libérée ne peut pas être reprise
         {
             md::ui::Painter a(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);
             first = a.format(13);
             CHECK(a.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
         }
         REQUIRE(first != nullptr);
+        CHECK_EQ(cache.size(), std::size_t(2));   // la ligne et le paragraphe, gardés dans le cache de la fenêtre
         md::ui::Painter b(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);   // image suivante
-        CHECK(b.format(13) == first);
+        CHECK(b.format(13) == first.Get());
         const std::size_t kept = cache.size();
         CHECK(b.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
         CHECK_EQ(cache.size(), kept);   // le format du paragraphe est déjà là
-        CHECK(b.format(13, DWRITE_FONT_WEIGHT_BOLD) != first);
+        CHECK(b.format(13, DWRITE_FONT_WEIGHT_BOLD) != first.Get());
     }
     CoUninitialize();
 }

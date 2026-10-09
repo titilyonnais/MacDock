@@ -24,13 +24,20 @@ std::vector<std::wstring> screenLabels(const std::vector<ScreenChoice>& screens)
 
 std::map<std::wstring, std::wstring> monitorNames() {
     std::map<std::wstring, std::wstring> out;
-    UINT32 pathCount = 0, modeCount = 0;
-    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return out;
-    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
-    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
-        return out;
-    paths.resize(pathCount);
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+    for (int attempt = 0;; ++attempt) {   // un écran branché entre les deux appels : tailles relues
+        UINT32 pathCount = 0, modeCount = 0;
+        if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return out;
+        paths.resize(pathCount);
+        modes.resize(modeCount);
+        const LONG r = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr);
+        if (r == ERROR_SUCCESS) {
+            paths.resize(pathCount);
+            break;
+        }
+        if (r != ERROR_INSUFFICIENT_BUFFER || attempt == 2) return out;
+    }
     for (const DISPLAYCONFIG_PATH_INFO& p : paths) {
         DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
         source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
@@ -45,7 +52,7 @@ std::map<std::wstring, std::wstring> monitorNames() {
         target.header.id = p.targetInfo.id;
         if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS) continue;
         const auto tech = p.targetInfo.outputTechnology;
-        const bool builtIn = tech == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL ||
+        const bool builtIn = tech == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL || tech == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS ||
                              tech == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED ||
                              tech == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED;
         const std::wstring name = builtIn ? L"Écran intégré" : std::wstring(target.monitorFriendlyDeviceName);

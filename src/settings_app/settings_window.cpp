@@ -949,7 +949,8 @@ void SettingsWindow::onMouseDown(float x, float y) {
         case RowKind::Choice:
             openMenu(i);
             menuPressAt_ = D2D1::Point2F(x, y);   // le doigt peut glisser jusqu'à un élément et y relâcher
-            menuPressTick_ = GetTickCount64();
+            menuPressTime_ = GetMessageTime();    // l'instant de l'appui, pas celui où il est traité
+            menuDragMax_ = 0;
             break;
         case RowKind::Buttons:
             pressedButton_ = buttonAt(i, x, y);
@@ -981,6 +982,8 @@ void SettingsWindow::onMouseMove(float x, float y, bool buttonDown) {
         return;
     }
     bool dirty = false;
+    if (menuPressAt_ && buttonDown)   // appui qui a ouvert le menu : le plus grand écart compte (aller puis retour)
+        menuDragMax_ = std::max(menuDragMax_, std::hypot(x - menuPressAt_->x, y - menuPressAt_->y));
     if (menu_) {
         const int hover = inside(menu_->rect, x, y)
                               ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
@@ -1038,12 +1041,18 @@ void SettingsWindow::onMouseUp(float x, float y) {
         const int item = inside(menu_->rect, x, y)
                              ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
                              : -1;
-        const float moved = std::hypot(x - menuPressAt_->x, y - menuPressAt_->y);
-        const double held = double(GetTickCount64() - menuPressTick_) / 1000.0;
+        const float moved = std::max(menuDragMax_, std::hypot(x - menuPressAt_->x, y - menuPressAt_->y));
+        const double held = double(DWORD(GetMessageTime()) - DWORD(menuPressTime_)) / 1000.0;
         if (diagnosticCapture())
             log::info(L"[diag] réglages : relâché %.0f,%.0f pt sur le menu (élément %d, %.0f pt, %.2f s)", x, y, item, moved, held);
         menuPressAt_.reset();
-        if (const int chosen = ui::menuReleaseChoice(item, moved, held); chosen >= 0) chooseMenu(chosen);
+        const ui::MenuRelease r = ui::menuRelease(item, moved, held);
+        if (r.kind == ui::MenuRelease::Choose) {
+            chooseMenu(r.item);
+        } else if (r.kind == ui::MenuRelease::Close) {
+            menu_.reset();
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
         return;
     }
     if (light >= 0) {
