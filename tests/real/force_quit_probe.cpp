@@ -274,11 +274,23 @@ int wmain(int argc, wchar_t** argv) {
     check(vivant.pi.hProcess && WaitForSingleObject(vivant.pi.hProcess, 3000) == WAIT_OBJECT_0,
           L"clic sur « Forcer à quitter » : l'app vivante est arrêtée");
 
-    // 5. Échap ferme la fenêtre.
+    // 5. Taille fixe (ni bord tiré, ni Aero Snap) ; Échap ferme la fenêtre ; rouverte, Alt+F4 aussi (posté à elle seule).
     pump(1200);
+    RECT before{}, after{};
+    GetWindowRect(fq.hwnd(), &before);
+    SetWindowPos(fq.hwnd(), nullptr, 0, 0, (before.right - before.left) * 2, (before.bottom - before.top) * 2,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    GetWindowRect(fq.hwnd(), &after);
+    check(after.right - after.left == before.right - before.left && after.bottom - after.top == before.bottom - before.top,
+          L"taille fixe : un agrandissement est refusé");
     key(VK_ESCAPE, fq.hwnd());
     pump(400);
     check(!fq.isOpen(), L"Échap : fenêtre fermée");
+    fq.open(GetModuleHandleW(nullptr), env);
+    pump(800);
+    if (fq.isOpen()) PostMessageW(fq.hwnd(), WM_SYSKEYDOWN, VK_F4, LPARAM(1) | (LPARAM(1) << 29));   // Alt+F4, à elle seule
+    pump(500);
+    check(!fq.isOpen(), L"Alt+F4 : fenêtre fermée");
 
     check(refused.empty(), L"aucune autre app visée (la garde n'a rien refusé)");
     check(stopped == std::vector<std::wstring>({L"essai-fige", L"essai-vivant"}), L"seules les deux apps d'essai arrêtées");
