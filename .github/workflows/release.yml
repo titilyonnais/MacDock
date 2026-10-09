@@ -1,6 +1,7 @@
 # Publication (plan 52) : une étiquette vX.Y.Z (ou vX.Y.Z-rc.N, préversion) envoyée sur GitHub construit
 # l'installateur et le joint à une release, avec son empreinte SHA-256 (SHA256SUMS.txt), que les mises à jour de
-# MacDock vérifient. L'étiquette doit correspondre à src/core/version_defs.h. Seul le jeton fourni par GitHub sert.
+# MacDock vérifient. L'étiquette doit correspondre à src/core/version_defs.h. Seul le jeton fourni par GitHub sert ;
+# l'étiquette passe par une variable d'environnement, jamais recopiée dans le script.
 name: Release
 
 on:
@@ -13,6 +14,8 @@ permissions:
 jobs:
   release:
     runs-on: windows-2025
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v5
 
@@ -23,17 +26,16 @@ jobs:
 
       - name: Installateur
         shell: pwsh
-        run: ./tools/make-installer.ps1 -Tag "${{ github.ref_name }}" -BinDir build/Release
+        run: ./tools/make-installer.ps1 -Tag $env:TAG -BinDir build/Release
 
       - name: Publication
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag.Substring(1)
+          $version = $env:TAG.Substring(1)
           $notes = "docs/releases/$version.md"
-          $publish = @($tag, "build/installer/MacDock-Setup-$version.exe", "build/installer/SHA256SUMS.txt", '--title', "MacDock $version")
+          $publish = @($env:TAG, "build/installer/MacDock-Setup-$version.exe", 'build/installer/SHA256SUMS.txt', '--title', "MacDock $version")
           $publish += if (Test-Path $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
           if ($version.Contains('-')) { $publish += '--prerelease' }
           gh release create @publish

@@ -1,10 +1,10 @@
-# Intégration continue (plan 52) : à chaque envoi sur main, tests et compilation Release sur une machine Windows de
-# GitHub. Aucun secret.
+# Intégration continue (plan 52) : à chaque envoi (toutes les branches), tests et compilation Release sur une machine
+# Windows de GitHub. Aucun secret.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 

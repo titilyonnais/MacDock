@@ -21,13 +21,14 @@ Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
 
 ## Installation
 
-1. **Compiler** (Visual Studio 2022 avec les outils C++ requis) :
-   ```powershell
-   ./build.ps1 -Target all -Config Release
-   ```
-   Les exécutables sont dans `build\Release\`.
+1. **Télécharger et lancer l'installateur** `MacDock-Setup-X.Y.Z.exe`, depuis la [dernière version publiée](https://github.com/titilyonnais/MacDock/releases/latest) :
+   - installation pour ton compte, sans droits d'administrateur, dans `%LOCALAPPDATA%\Programs\MacDock` ;
+   - MacDock démarre ensuite avec Windows (case décochable, réglable aussi dans l'app Réglages) ;
+   - l'installateur n'est pas signé : si Windows SmartScreen affiche « Windows a protégé votre ordinateur », clique sur *Informations complémentaires*, puis *Exécuter quand même* ;
+   - pour mettre à jour, lance l'installateur de la nouvelle version : il quitte MacDock, le remplace et le relance (tes réglages restent) ;
+   - pour désinstaller : Paramètres > Applications > MacDock ; tes réglages (`%APPDATA%\MacDock`) sont gardés.
 
-2. **Installer le mod Windhawk** :
+2. **Installer le mod Windhawk** (facultatif, pour cacher la barre des tâches) :
    - Windhawk → *Créer un nouveau mod*.
    - Remplacer tout le code par le contenu de `windhawk\macdock-hide-taskbar.wh.cpp`.
    - *Compiler le mod*, puis *Quitter l'éditeur* et vérifier qu'il est activé.
@@ -36,13 +37,16 @@ Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
 
    **Police de macOS dans toutes les apps** (facultatif) : double-clic sur `windhawk\installer-macdock-look.cmd` (un raccourci « Installer le mod macOS Look (Windhawk) » est aussi sur le Bureau). Windows demande l'autorisation administrateur, puis le mod est compilé et activé exactement comme par l'éditeur de Windhawk. `retirer-macdock-look.cmd` le retire. On peut aussi faire la même procédure à la main avec `windhawk\macdock-look.wh.cpp`. Il faut que SF Pro (Text et Display) soit installée ; sinon le mod ne change rien. Les polices de l'interface de Windows (Segoe UI, Segoe UI Variable, MS Shell Dlg) deviennent SF Pro Text, et SF Pro Display à partir de 20 pt, dans les apps classiques comme modernes (Explorateur, Bloc-notes, navigateurs, Electron). Les polices d'icônes ne sont jamais touchées. Les jeux, Office et les lecteurs PDF sont exclus (les documents gardent leurs polices). **Anti-triche** : une exclusion du mod n'écarte que le mod, Windhawk lui-même reste chargé. Ajoute chaque jeu en ligne à la liste globale de Windhawk (*Paramètres > Avancé > Process exclusion list*) : injecter du code dans un jeu protégé peut valoir un bannissement. Les apps déjà ouvertes changent de police à leur prochain lancement. Les boîtes de dialogue (Exécuter, Ouvrir, Enregistrer sous) gardent SF Pro depuis la version 1.3.0 ; après une mise à jour du mod, relance l'installateur.
 
-3. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
+### Compiler soi-même
 
-4. **Démarrage automatique** (facultatif) :
+1. **Compiler** (Visual Studio avec les outils C++) :
    ```powershell
-   build\Release\MacDockLauncher.exe --install
+   ./build.ps1 -Target all -Config Release
    ```
-   Pour le retirer : `--uninstall`.
+   Les exécutables sont dans `build\Release\` (`-OutDir` pour un autre dossier).
+2. **Lancer le Dock et la barre de menus** : double-cliquer sur `build\Release\MacDockLauncher.exe`. Le lanceur démarre les deux et relance celui qui plante. *Quitter MacDock* ferme aussi la barre de menus.
+3. **Démarrage automatique** (facultatif) : `build\Release\MacDockLauncher.exe --install` ; pour le retirer : `--uninstall`.
+4. **Installateur** : `./tools/make-installer.ps1` (Inno Setup 6 : `winget install JRSoftware.InnoSetup`) écrit `build\installer\MacDock-Setup-X.Y.Z.exe` et son empreinte. Une étiquette `vX.Y.Z` envoyée sur GitHub le construit et le publie (`.github/workflows/release.yml`) ; la version vient de `src\core\version_defs.h`.
 
 ## Utilisation
 
