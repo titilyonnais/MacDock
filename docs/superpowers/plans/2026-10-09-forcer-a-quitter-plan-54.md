@@ -97,3 +97,34 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   n'a pas été tapé (pas de touche ⊞ simulée cette nuit).
 - **Images** : `MacDock.exe --force-quit-snapshot` clair, sombre et avec la confirmation, regardées ; le titre
   coupé a été corrigé.
+- **Après la relecture** : la sonde vérifie aussi la relecture à la confirmation, la taille fixe, Échap et Alt+F4 :
+  tout exact ; le Dock recompilé ouvre et ferme la fenêtre comme avant.
+
+## Relecture (agent indépendant)
+Corrigés, chacun avec un test vu en échec avant (sauf le dernier, une course de données) :
+- **critiques** :
+  - les processus de même AUMID étaient tous visés : forcer une fenêtre PowerShell 7 (du Store) arrêtait tous les
+    PowerShell 7 de la session. Désormais seulement pour une app du Store réduite (aucune fenêtre à elle) ;
+  - la feuille gardait des PID lus jusqu'à une seconde plus tôt : une app fermée entre-temps, son PID repris, et
+    Entrée arrêtait un autre processus. L'app est relue à la confirmation (forceQuitNow), et chaque processus
+    ouvert est comparé au programme relu ;
+- **importants** : garde fermée (un PID inconnu n'est jamais visé, les processus protégés gardés par leur nom) ;
+  les apps qui partagent le processus (applications web d'un navigateur) nommées dans la confirmation ; la
+  sélection montrée dès la première image ; le Gestionnaire des tâches quand le Dock ne répond pas ;
+- **mineurs remontés** (effet réel) : Alt+F4 sans effet ; fenêtre agrandissable par Aero Snap sans être repeinte ;
+  app du Store figée jamais marquée (sa CoreWindow testée désormais) ; la barre relisait settings.json à chaque
+  changement d'app, en gênant l'enregistrement du Dock ; Ctrl+C acceptable comme raccourci global depuis un
+  fichier ; table des formes d'icônes et fabrique WIC sans verrou entre les fils.
+
+Mineurs gardés pour plus tard :
+- Échap tenue ferme la feuille, puis la fenêtre.
+- Icônes en route perdues (et non libérées) quand la fenêtre se ferme pendant leur chargement.
+- *Relancer* : pas de COM initialisé sur son fil, deux relances de suite possibles, succès annoncé avant d'être
+  réel.
+- Relecture de la liste : l'Explorateur cherché en ouvrant chaque processus (environ 16 ms) ; l'avertissement
+  « liste relue en … ms » répété chaque seconde au-delà de 60 ms.
+- Deux apps de même nom échangent leur place selon l'ordre des fenêtres.
+- L'Explorateur reconnu à son seul nom de fichier (un autre explorer.exe hors de Windows serait rangé avec lui).
+- Le raccourci est affiché dans le menu  même quand Windows l'a refusé au Dock.
+- À essayer quand tu seras là : taper vraiment ⌥⊞⎋ (le menu Démarrer ne doit pas s'ouvrir au relâchement de ⊞),
+  aussi avec « Alt de gauche joue ⌘ ».
