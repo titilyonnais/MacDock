@@ -15,6 +15,7 @@
 
 #include "../calib/png_io.h"
 #include "../core/log.h"
+#include "../core/own_lights.h"
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shcore.lib")
@@ -109,6 +110,7 @@ bool ForceQuitWindow::open(HINSTANCE instance, Env env, const std::wstring& pres
         log::error(L"Forcer à quitter : fenêtre impossible (%lu)", GetLastError());
         return false;
     }
+    markOwnLights(hwnd_);   // la barre de menus n'y pose pas ses pastilles : la fenêtre dessine les siennes
     const DWORD corner = 2;   // DWMWCP_ROUND
     DwmSetWindowAttribute(hwnd_, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner);
     updateTheme();
@@ -149,7 +151,10 @@ LRESULT CALLBACK ForceQuitWindow::proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         created->hwnd_ = h;
     }
     auto* self = reinterpret_cast<ForceQuitWindow*>(GetWindowLongPtrW(h, GWLP_USERDATA));
-    if (msg == WM_NCDESTROY) SetWindowLongPtrW(h, GWLP_USERDATA, 0);
+    if (msg == WM_NCDESTROY) {
+        unmarkOwnLights(h);
+        SetWindowLongPtrW(h, GWLP_USERDATA, 0);
+    }
     if (!self || self->hwnd_ != h) return DefWindowProcW(h, msg, wp, lp);   // fenêtre fermée
     return self->handle(msg, wp, lp);
 }

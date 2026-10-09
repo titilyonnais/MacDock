@@ -4,6 +4,7 @@
 #include "minitest.h"
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/traffic_lights.h"
+#include "../src/core/own_lights.h"
 
 namespace {
 md::LightsWindowInfo classic() {
@@ -195,6 +196,27 @@ TEST_CASE(lights_hover_draws_symbols) {
     UINT w = 0, h = 0;
     auto sheet = md::lightsSheet(w, h);
     CHECK(w > 0 && h > 0 && sheet.size() == std::size_t(w) * h * 4);
+}
+
+TEST_CASE(lights_refuse_macdock_own_lights) {   // plan 56 : Réglages MacDock et Forcer à quitter ont les leurs
+    auto settings = classic();
+    settings.className = L"MacDockSettingsWindow";
+    settings.style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_VISIBLE;
+    CHECK(md::wantsLights(settings, md::LightsMode::All, 96));   // sans la marque : une fenêtre comme une autre
+    settings.ownLights = true;
+    CHECK(!md::wantsLights(settings, md::LightsMode::All, 96));
+    CHECK(!md::lightsLayerWanted(settings, md::LightsMode::All, 96));
+}
+
+TEST_CASE(lights_own_mark_on_a_real_window) {   // plan 56 : la propriété posée, lue puis retirée
+    const HWND h = CreateWindowExW(0, L"STATIC", L"essai", 0, 0, 0, 10, 10, HWND_MESSAGE, nullptr, nullptr, nullptr);
+    REQUIRE(h != nullptr);
+    CHECK(!md::drawsOwnLights(h));
+    md::markOwnLights(h);
+    CHECK(md::drawsOwnLights(h));
+    md::unmarkOwnLights(h);
+    CHECK(!md::drawsOwnLights(h));
+    DestroyWindow(h);
 }
 
 TEST_CASE(lights_refuse_elevated) {        // relecture C2 : messages refusés par UIPI
