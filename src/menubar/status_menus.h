@@ -11,17 +11,19 @@
 #include "menubar_settings.h"
 #include "status_audio.h"
 #include "status_hub.h"
+#include "status_input.h"
 
 namespace md {
 
-enum class StatusKind { Sound, Network, Battery, Search, ControlCenter, Clock };
+// Input : menu de saisie du clavier (plan 58), à gauche des autres icônes.
+enum class StatusKind { Input, Sound, Network, Battery, Search, ControlCenter, Clock };
 
 struct StatusItem {
     StatusKind kind = StatusKind::Clock;
     Glyph glyph = Glyph::None;
     float level = 1;
     bool alt = false;      // sourdine, Wi-Fi coupé, en charge
-    std::wstring text;     // horloge
+    std::wstring text;     // horloge ; code de la disposition (« FR ») pour la saisie
 };
 
 struct StatusState {
@@ -33,6 +35,8 @@ struct StatusState {
     MenuBarSettings settings;
     std::wstring clock;
     int year = 0, month = 0, day = 0, weekday = 0;   // aujourd'hui (weekday : 0 = dimanche), Centre de notifications
+    std::vector<InputLayout> inputs;   // dispositions du clavier de la session
+    std::uint32_t input = 0;           // celle de l'app au premier plan
 };
 
 std::vector<StatusItem> statusItems(const StatusState& s);   // de gauche à droite, horloge en dernier
@@ -50,6 +54,7 @@ enum class StatusAction {
     OpenUri,       // arg
     Shortcut,      // arg : raccourci (« Win+K »)
     BarSettings,   // ouvre menubar.json
+    InputLayout,   // arg : disposition (hklText) donnée à l'app au premier plan
 };
 
 using StatusCommand = std::pair<StatusAction, std::wstring>;
