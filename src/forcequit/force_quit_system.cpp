@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <tlhelp32.h>
 
+#include <algorithm>
+
 #include "../tracker/app_identity.h"
 
 namespace md {
@@ -21,6 +23,18 @@ HWND hungWindowOf(HWND ghost) {
     static const Fn fn =
         reinterpret_cast<Fn>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "HungWindowFromGhostWindow"));
     return fn ? fn(ghost) : nullptr;
+}
+
+// Le processus ouvert est-il bien le programme relu ? Poignée tenue : son identité ne change plus. Chemin complet
+// comparé, ou nom de fichier seul si l'instantané n'avait que lui (processus protégé).
+bool sameProgram(HANDLE process, const std::wstring& expected) {
+    wchar_t path[MAX_PATH * 2];
+    DWORD size = DWORD(std::size(path));
+    if (!QueryFullProcessImageNameW(process, 0, path, &size)) return false;
+    const std::wstring actual(path, size);
+    if (expected.find_first_of(L"\\/") != std::wstring::npos) return _wcsicmp(actual.c_str(), expected.c_str()) == 0;
+    const std::size_t slash = actual.find_last_of(L"\\/");
+    return _wcsicmp(actual.c_str() + (slash == std::wstring::npos ? 0 : slash + 1), expected.c_str()) == 0;
 }
 
 void addWindow(std::vector<FqWindow>& out, HWND hwnd, bool hung) {
@@ -116,12 +130,17 @@ std::vector<FqProcess> sessionProcesses() {
     return out;
 }
 
-bool terminateProcesses(const std::vector<unsigned long>& pids, std::wstring* error) {
+bool terminateProcesses(const std::vector<FqProcess>& targets, std::wstring* error) {
     bool ok = true;
     std::vector<HANDLE> ending;
-    for (unsigned long pid : pids) {
+    for (const FqProcess& t : targets) {
+        const DWORD pid = t.pid;
         if (pid == 0 || pid == 4 || pid == GetCurrentProcessId()) continue;
-        HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
+        HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (h && !sameProgram(h, t.exePath)) {   // PID repris par un autre programme : l'app visée est partie
+            CloseHandle(h);
+            continue;
+        }
         if (!h) {
             const DWORD e = GetLastError();
             if (e == ERROR_INVALID_PARAMETER) continue;   // déjà parti
@@ -145,6 +164,27 @@ bool terminateProcesses(const std::vector<unsigned long>& pids, std::wstring* er
         CloseHandle(h);
     }
     return ok;
+}
+
+bool forceQuitNow(const std::wstring& appId, std::wstring* error,
+                  const std::function<bool(const std::vector<FqProcess>&)>& allow) {
+    const std::vector<FqApp> apps = forceQuitApps(forceQuitWindows(), FqApp{});
+    const auto app = std::find_if(apps.begin(), apps.end(), [&](const FqApp& a) { return a.appId == appId; });
+    if (app == apps.end()) return true;   // partie entre-temps : rien à arrêter, rien à dire
+    const std::vector<FqProcess> processes = sessionProcesses();
+    std::vector<FqProcess> targets;
+    for (unsigned long pid : forceQuitTargets(*app, processes, GetCurrentProcessId()))
+        for (const FqProcess& p : processes)
+            if (p.pid == pid) targets.push_back(p);
+    if (targets.empty()) {
+        if (error) *error = L"Ses processus sont introuvables.";
+        return false;
+    }
+    if (allow && !allow(targets)) {
+        if (error) *error = L"Refusé.";
+        return false;
+    }
+    return terminateProcesses(targets, error);
 }
 
 } // namespace md

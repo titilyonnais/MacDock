@@ -1247,13 +1247,8 @@ void DockApp::openForceQuit() {
             }).detach();
             return true;
         }
-        const std::vector<unsigned long> targets = forceQuitTargets(app, sessionProcesses(), GetCurrentProcessId());
-        if (targets.empty()) {
-            if (error) *error = L"Ses processus sont introuvables.";
-            return false;
-        }
-        log::info(L"Forcer à quitter : « %s », %zu processus", app.name.c_str(), targets.size());
-        return terminateProcesses(targets, error);
+        log::info(L"Forcer à quitter : « %s »", app.name.c_str());
+        return forceQuitNow(app.appId, error);   // relue maintenant : jamais un PID repris depuis l'ouverture de la feuille
     };
     const auto spec = parseHotkey(settings_.forceQuitHotkey);
     env.shortcutLabel = spec ? hotkeyLabel(*spec) : std::wstring();

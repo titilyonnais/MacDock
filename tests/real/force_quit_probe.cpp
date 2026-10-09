@@ -192,16 +192,20 @@ int wmain(int argc, wchar_t** argv) {
     md::ForceQuitWindow::Env env;
     env.list = [] { return md::forceQuitApps(md::forceQuitWindows(), md::sessionExplorer()); };
     env.forceQuit = [&](const md::FqApp& app, std::wstring* error) {
-        const auto targets = md::forceQuitTargets(app, md::sessionProcesses(), GetCurrentProcessId());
-        bool allowed = !app.explorer && !targets.empty();
-        for (unsigned long pid : targets) allowed = allowed && mine.count(pid) != 0;
-        if (!allowed) {   // jamais une app de l'utilisateur
+        if (app.explorer) {   // jamais l'Explorateur de l'utilisateur
             refused.push_back(app.name);
             if (error) *error = L"Refusé par la sonde.";
             return false;
         }
-        stopped.push_back(app.name);
-        return md::terminateProcesses(targets, error);
+        bool allowed = false;
+        const bool ok = md::forceQuitNow(app.appId, error, [&](const std::vector<md::FqProcess>& targets) {
+            allowed = true;
+            for (const md::FqProcess& p : targets) allowed = allowed && mine.count(p.pid) != 0;
+            if (!allowed) refused.push_back(app.name);   // jamais une app de l'utilisateur
+            return allowed;
+        });
+        if (ok && allowed) stopped.push_back(app.name);
+        return ok;
     };
     env.shortcutLabel = L"⌥⊞⎋";
     check(fq.open(GetModuleHandleW(nullptr), env), L"fenêtre ouverte");

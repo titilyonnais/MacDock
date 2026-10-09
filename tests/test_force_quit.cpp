@@ -220,14 +220,26 @@ TEST_CASE(force_quit_terminates_own_child_only) {
     PROCESS_INFORMATION pi{};
     REQUIRE(CreateProcessW(cmd.c_str(), line.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi));
     std::wstring error;
-    CHECK(md::terminateProcesses({pi.dwProcessId}, &error));
+    // Relecture du plan 54, critique 2 : le PID est maintenant à un autre programme que celui relu (PID repris) :
+    // jamais arrêté, et ce n'est pas une erreur (l'app visée est partie).
+    CHECK(md::terminateProcesses({{pi.dwProcessId, L"", L"C:\\Autre\\programme.exe"}}, &error));
+    CHECK(WaitForSingleObject(pi.hProcess, 0) == WAIT_TIMEOUT);
+    CHECK(md::terminateProcesses({{pi.dwProcessId, L"", cmd}}, &error));
     CHECK(error.empty());
     CHECK(WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0);   // déjà fini au retour
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     // PID inexistant (processus déjà parti) : pas une erreur ; 0, 4 et ce processus : jamais touchés.
-    CHECK(md::terminateProcesses({0xFFFFFFF0ul}, &error));
-    CHECK(md::terminateProcesses({0, 4, GetCurrentProcessId()}, &error));
+    CHECK(md::terminateProcesses({{0xFFFFFFF0ul, L"", cmd}}, &error));
+    CHECK(md::terminateProcesses({{0, L"", cmd}, {4, L"", cmd}, {GetCurrentProcessId(), L"", cmd}}, &error));
+}
+
+TEST_CASE(force_quit_now_app_gone_is_not_an_error) {   // relecture du plan 54, critique 2
+    // Confirmation d'une app partie entre-temps (fermée, plantée) : rien d'arrêté, rien de signalé ; jamais les PID
+    // gardés d'une lecture ancienne (ils peuvent avoir été repris).
+    std::wstring error;
+    CHECK(md::forceQuitNow(L"exe:c:\\nulle\\part\\disparue.exe", &error));
+    CHECK(error.empty());
 }
 
 TEST_CASE(force_quit_session_explorer) {
