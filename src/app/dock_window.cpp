@@ -19,6 +19,7 @@
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
 #include "../core/diag.h"
+#include "../interact/cursor_relay.h"
 #include "../quicklook/quicklook_logic.h"
 #include "../quicklook/quicklook_shell.h"
 #include "../screenshot/screen_grab.h"
@@ -2105,20 +2106,25 @@ LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
     }
     if (code == HC_ACTION && wp == WM_MOUSEMOVE && self_) {
         auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
-        self_->mouseX_ = info->pt.x;
-        self_->mouseY_ = info->pt.y;
+        self_->hookX_ = info->pt.x;
+        self_->hookY_ = info->pt.y;
         self_->hookMoveAt_ = GetTickCount64();
-        // Un seul message en attente à la fois : les mouvements sont fusionnés. Message perdu (boucle modale qui vide
-        // la file sans distribuer) : au-delà de 250 ms on en renvoie un plutôt que de laisser le Dock sourd.
-        const DWORD now = GetTickCount();
-        if (self_->mousePending_ && now - self_->mousePostedAt_ > 250) self_->mousePending_ = false;
-        if (!self_->mousePending_.exchange(true)) {
-            self_->mousePostedAt_ = now;
-            if (!PostMessageW(self_->hwnd_, WM_APP_MOUSE, 0, 0))
-                self_->mousePending_ = false;   // file pleine : on réessaiera au prochain mouvement
-        }
+        self_->deliverMouse(info->pt);
     }
     return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+void DockApp::deliverMouse(POINT pt) {
+    mouseX_ = pt.x;
+    mouseY_ = pt.y;
+    // Un seul message en attente à la fois : les mouvements sont fusionnés. Message perdu (boucle modale qui vide
+    // la file sans distribuer) : au-delà de 250 ms on en renvoie un plutôt que de laisser le Dock sourd.
+    const DWORD now = GetTickCount();
+    if (mousePending_ && now - mousePostedAt_ > 250) mousePending_ = false;
+    if (!mousePending_.exchange(true)) {
+        mousePostedAt_ = now;
+        if (!PostMessageW(hwnd_, WM_APP_MOUSE, 0, 0)) mousePending_ = false;   // file pleine : au prochain mouvement
+    }
 }
 
 // Ne lit que Tab (avec Alt) et, pendant une session, Échap, flèches, Q, H ; tout le reste passe sans délai.
@@ -2340,6 +2346,26 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
+namespace {
+// Processus d'une fenêtre lancé en administrateur ; jeton illisible : sans doute élevé.
+bool windowElevated(HWND h) {
+    DWORD pid = 0;
+    if (!h || !GetWindowThreadProcessId(h, &pid)) return false;
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return true;
+    bool elevated = true;
+    HANDLE token = nullptr;
+    if (OpenProcessToken(p, TOKEN_QUERY, &token)) {
+        TOKEN_ELEVATION e{};
+        DWORD got = 0;
+        elevated = GetTokenInformation(token, TokenElevation, &e, sizeof e, &got) && e.TokenIsElevated;
+        CloseHandle(token);
+    }
+    CloseHandle(p);
+    return elevated;
+}
+} // namespace
+
 void DockApp::startMouseThread() {
     // Le hook souris bas niveau vit sur son propre thread : la boucle d'animation ne ralentit jamais la souris.
     mouseThread_ = std::thread([this] {
@@ -2348,8 +2374,46 @@ void DockApp::startMouseThread() {
         if (!hook) log::error(L"SetWindowsHookEx(WH_MOUSE_LL) a échoué (%lu)", GetLastError());
         HHOOK keys = SetWindowsHookExW(WH_KEYBOARD_LL, keyboardHookProc, instance_, 0);   // Alt+Tab seulement
         if (!keys) log::error(L"SetWindowsHookEx(WH_KEYBOARD_LL) a échoué (%lu) : Alt+Tab reste à Windows", GetLastError());
+        // Relais du crochet souris (plan 62) : il se tait sous une app en administrateur, quand VMware avale la souris,
+        // ou quand une app déplace le curseur (SetCursorPos). La position lue prend alors le relais, sur ce fil.
+        CursorRelay relay;
+        HWND foreground = nullptr;
+        bool elevated = false;
+        unsigned interval = relay.intervalMs(false);
+        UINT_PTR timer = SetTimer(nullptr, 0, interval, nullptr);
         MSG msg;
-        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {}
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            if (msg.message != WM_TIMER || msg.hwnd) continue;
+            POINT c{};
+            if (!GetCursorPos(&c)) continue;   // bureau sécurisé (invite de l'UAC) : rien à livrer
+            if (const HWND fg = GetForegroundWindow(); fg != foreground) {
+                foreground = fg;
+                elevated = windowElevated(fg);
+            }
+            CursorSample s;
+            s.cursor = c;
+            s.known = POINT{mouseX_.load(), mouseY_.load()};
+            s.nowMs = GetTickCount64();
+            const ULONGLONG hookAt = hookMoveAt_.load();
+            s.hookAgeMs = hookAt ? s.nowMs - hookAt : s.nowMs;
+            s.elevatedForeground = elevated;
+            const bool wasActive = relay.active();
+            const RelayStep step = relay.poll(s);
+            if (step.deliver) deliverMouse(*step.deliver);
+            if (step.reinstallHook) {   // repasse en tête de la chaîne des crochets
+                if (hook) UnhookWindowsHookEx(hook);
+                hook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, instance_, 0);
+                log::info(L"Crochet souris réinstallé (muet depuis %llu ms alors que la souris bougeait)", s.hookAgeMs);
+            }
+            if (trace_ && relay.active() != wasActive)
+                log::info(L"[trace] relais de la souris %s%s", relay.active() ? L"actif" : L"arrêté",
+                          relay.active() && elevated ? L" (app en administrateur au premier plan)" : L"");
+            if (const unsigned want = relay.intervalMs(elevated); want != interval) {
+                interval = want;
+                timer = SetTimer(nullptr, timer, interval, nullptr);
+            }
+        }
+        KillTimer(nullptr, timer);
         if (keys) UnhookWindowsHookEx(keys);
         if (hook) UnhookWindowsHookEx(hook);
     });
@@ -2400,12 +2464,12 @@ void DockApp::startSentinel() {
             if (!GetCursorPos(&c)) continue;
             const bool moved = c.x != prev.x || c.y != prev.y;
             prev = c;
-            const bool behind = c.x != mouseX_.load() || c.y != mouseY_.load();
+            const bool behind = c.x != hookX_.load() || c.y != hookY_.load();   // le crochet lui-même, pas le relais
             if (!silentSince && moved && behind && now - hookMoveAt_.load() > 300) {
                 silentSince = now;
                 log::info(L"[sentinelle] crochet souris muet : curseur %ld,%ld, dernier vu %ld,%ld il y a %llu ms ; premier plan %s ; "
                           L"sous le curseur %s",
-                          c.x, c.y, mouseX_.load(), mouseY_.load(), now - hookMoveAt_.load(),
+                          c.x, c.y, hookX_.load(), hookY_.load(), now - hookMoveAt_.load(),
                           describeWindow(GetForegroundWindow()).c_str(), describeWindow(WindowFromPoint(c)).c_str());
             } else if (silentSince && !behind) {
                 log::info(L"[sentinelle] crochet souris revenu après %llu ms ; premier plan %s", now - silentSince,
@@ -2998,6 +3062,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         std::wstring app = model_.appOfWindow(toId(h));
         if (app.empty())
             if (HWND owner = GetAncestor(h, GA_ROOTOWNER)) app = model_.appOfWindow(toId(owner));
+        if (trace_ && controller_.isBouncing(app)) log::info(L"[trace] %s au premier plan : fin du rebond", app.c_str());
         controller_.setActiveApp(app);
         requestFrame();
     };
@@ -3009,8 +3074,12 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
-        if (trace_) log::info(L"[trace] attention %p (%s)", h, model_.appOfWindow(toId(h)).c_str());
-        controller_.setAttention(model_.appOfWindow(toId(h)), true);
+        const std::wstring app = model_.appOfWindow(toId(h));
+        const bool before = controller_.isBouncing(app);
+        controller_.setAttention(app, true);
+        if (trace_)
+            log::info(L"[trace] attention %p (%s) : %s", h, app.c_str(),
+                      !controller_.isBouncing(app) ? L"ignorée (app active)" : before ? L"rebond en cours" : L"début du rebond");
         requestFrame();
     };
     tracker_.setTrace(trace_);

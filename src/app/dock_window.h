@@ -282,6 +282,11 @@ private:
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
     std::atomic<DWORD> mousePostedAt_{0};
+    // Fil du crochet : position livrée au Dock (crochet ou relais), mouvements fusionnés en un message.
+    void deliverMouse(POINT pt);
+    // Dernier mouvement vu par le crochet lui-même (relais du crochet, plan 62, et sentinelle) ; mouseX_ et mouseY_
+    // suivent aussi le relais.
+    std::atomic<LONG> hookX_{0}, hookY_{0};
     // Sentinelle du mode diagnostic : souris vue par le crochet, tours de la boucle, message en cours de traitement.
     std::atomic<ULONGLONG> hookMoveAt_{0}, loopAt_{0};
     std::atomic<int> loopPhase_{0};       // 0 messages, 1 animation, 2 image, 3 attente de l'horloge, 4 attente d'un message
