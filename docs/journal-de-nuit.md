@@ -1028,6 +1028,16 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Entrée essayée en réel** : « dock » ouvre Réglages MacDock sur la section Dock, « son » la page Son des
   Paramètres ; les deux fenêtres ouvertes par l'essai ont été refermées.
 
+### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
+
+- **Défaut vu à l'essai réel du plan 55** : la barre de menus posait ses pastilles en haut à droite de Réglages
+  MacDock et de « Forcer à quitter », par-dessus les leurs ; sur Forcer à quitter, elles cachaient la fin du titre.
+  Ces fenêtres retirent le cadre de Windows mais gardent ses styles : le DWM leur compte des boutons de légende.
+- **Correction** : une marque (propriété de fenêtre `MacDock.OwnLights`) ; la barre n'y pose ni pastilles ni
+  apparence, et ces fenêtres règlent elles-mêmes coins et liseré.
+- **Essais réels** avant et après : Réglages en mode d'essai (dossier temporaire effacé), Forcer à quitter ouvert par
+  son message et fermé par Échap sans rien forcer.
+
 ### Plan 57 — Couleur d'accentuation, 9 octobre en soirée (session autonome)
 
 - **Réglages > Général > Apparence** : « Couleur d'accentuation », huit pastilles comme Réglages Système de macOS 26
@@ -1042,15 +1052,20 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture indépendante** : rien de critique ; corrigés : le nom survolé dans l'éventail des piles (resté sur
   l'ancien bleu), la barre avec un `settings.json` à BOM, et Spotlight qui ne trouvait pas le réglage.
 
-### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
+### Plan 58 — Menu de saisie du clavier, 9 octobre en soirée (session autonome)
 
-- **Défaut vu à l'essai réel du plan 55** : la barre de menus posait ses pastilles en haut à droite de Réglages
-  MacDock et de « Forcer à quitter », par-dessus les leurs ; sur Forcer à quitter, elles cachaient la fin du titre.
-  Ces fenêtres retirent le cadre de Windows mais gardent ses styles : le DWM leur compte des boutons de légende.
-- **Correction** : une marque (propriété de fenêtre `MacDock.OwnLights`) ; la barre n'y pose ni pastilles ni
-  apparence, et ces fenêtres règlent elles-mêmes coins et liseré.
-- **Essais réels** avant et après : Réglages en mode d'essai (dossier temporaire effacé), Forcer à quitter ouvert par
-  son message et fermé par Échap sans rien forcer.
+- **Icône** : avec plusieurs dispositions de clavier (ici français et anglais US), la barre montre à gauche du son
+  celle de l'app au premier plan, « FR » ou « US » dans une boîte arrondie, comme les sources de saisie de macOS.
+  La barre des tâches, qui portait cet indicateur, est cachée par MacDock : plus rien ne le montrait.
+- **Menu** : les dispositions avec leur nom (« Français (France) », « Anglais (États-Unis) »), l'actuelle cochée ;
+  un clic la donne à l'app au premier plan, comme la barre de langue de Windows ; « Afficher les émojis et
+  symboles », « Afficher le clavier visuel », « Ouvrir les réglages Clavier… ».
+- **Suivi** : la disposition de l'app est relue deux fois par seconde (Windows ne signale pas celle d'une autre
+  app) ; la liste, à l'ouverture du menu et toutes les dix secondes.
+- **Réglage** : Réglages > Barre des menus > Icônes > « Saisie » (`showInput` dans `menubar.json`).
+- **Essais réels** : barre relancée ; « FR » affiché, comme la disposition de Brave lue en parallèle ; menu ouvert
+  par un clic envoyé à la seule barre, capturé, refermé par Échap sans rien choisir ; captures effacées.
+- **À essayer avec toi** : changer de disposition depuis le menu (je ne l'ai pas fait sur tes apps).
 
 ## Mineurs reportés — plan 57
 - L'anneau du clavier (Tab dans Réglages) suit l'accent à 50 % ; pour le Bleu, les teintes relevées sur macOS

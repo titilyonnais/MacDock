@@ -42,6 +42,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Spotlight** : conversions d'unités et section « Réglages » (pages des Paramètres de Windows, sections de
   Réglages MacDock) (plan 55).
 - **Couleur d'accentuation** de Réglages Système (huit accents), appliquée partout dans MacDock (plan 57).
+- **Menu de saisie** du clavier dans la barre de menus (« FR », « US »), comme celui de macOS (plan 58).
 
 ## À faire, par ordre d'effet
 1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une

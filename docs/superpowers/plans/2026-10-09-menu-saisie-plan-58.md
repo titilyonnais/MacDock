@@ -31,14 +31,23 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   Icônes.
 
 ## Tâches
-- [ ] 1. **Logique** (`src/menubar/status_input.*`, `status_menus.*`, `menubar_settings.*`) : `layoutCode`, lecture des
+- [x] 1. **Logique** (`src/menubar/status_input.*`, `status_menus.*`, `menubar_settings.*`) : `layoutCode`, lecture des
   dispositions et de celle au premier plan, `StatusKind::Input` (icône et menu), action de changement, réglage
   `showInput`. Tests.
-- [ ] 2. **Dessin** (`bar_renderer.*`) : texte dans une boîte arrondie (`BarDrawItem::boxed`). Test hors écran.
-- [ ] 3. **Barre** (`menubar_window.*`) : état, minuterie de 500 ms, image, changement de disposition ; Réglages >
+- [x] 2. **Dessin** (`bar_renderer.*`) : texte dans une boîte arrondie (`BarDrawItem::boxed`). Test hors écran.
+- [x] 3. **Barre** (`menubar_window.*`) : état, minuterie de 500 ms, image, changement de disposition ; Réglages >
   Barre des menus > Icônes > « Saisie ». Tests (rangée, aller-retour).
-- [ ] 4. **Essais réels** : barre relancée ; l'icône montre la disposition de la fenêtre au premier plan (lue en
+- [x] 4. **Essais réels** : barre relancée ; l'icône montre la disposition de la fenêtre au premier plan (lue en
   parallèle, en lecture seule) ; capture de la seule barre ; aucun changement de disposition sur tes apps (essayé avec
   toi).
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- Suite : 792 tests verts ; barre, Dock, Réglages, outil d'icônes et sonde compilés (Debug et Release).
+- **Essais réels** :
+  - MacDock relancé (Release, diagnostic) : la barre montre « FR » dans sa boîte, à gauche du son ; la disposition
+    de la fenêtre au premier plan (Brave), lue en parallèle, est bien le français (0x040C040C) ;
+  - menu ouvert par un clic envoyé à la seule barre : « Français (France) » coché, « Anglais (États-Unis) »,
+    émojis, clavier visuel, réglages Clavier ; refermé par Échap sans rien choisir ; captures effacées.
+- Non essayé en réel : le changement de disposition depuis le menu, sur tes apps ; à faire avec toi.
