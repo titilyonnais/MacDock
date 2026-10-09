@@ -28,13 +28,12 @@ std::wstring localeInfo(unsigned short langid, LCTYPE what) {
     return out;
 }
 
-// Fenêtre qui a le clavier dans l'app au premier plan (sinon la fenêtre au premier plan elle-même).
-HWND keyboardWindow() {
-    const HWND fg = GetForegroundWindow();
-    if (!fg) return nullptr;
+// Fenêtre qui a le clavier dans le fil de w (sinon w elle-même).
+HWND keyboardWindow(HWND w) {
+    if (!w || !IsWindow(w)) return nullptr;
     GUITHREADINFO gi{sizeof gi};
-    if (GetGUIThreadInfo(GetWindowThreadProcessId(fg, nullptr), &gi) && gi.hwndFocus) return gi.hwndFocus;
-    return fg;
+    if (GetGUIThreadInfo(GetWindowThreadProcessId(w, nullptr), &gi) && gi.hwndFocus) return gi.hwndFocus;
+    return w;
 }
 
 } // namespace
@@ -66,13 +65,13 @@ std::vector<InputLayout> installedLayouts() {
     return out;
 }
 
-std::uint32_t foregroundLayout() {
-    const HWND w = keyboardWindow();
+std::uint32_t windowLayout(HWND window) {
+    const HWND w = keyboardWindow(window);
     if (!w) return 0;
     return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(GetKeyboardLayout(GetWindowThreadProcessId(w, nullptr))));
 }
 
-bool switchForegroundLayout(std::uint32_t hkl) {
+bool switchWindowLayout(HWND window, std::uint32_t hkl) {
     const int n = GetKeyboardLayoutList(0, nullptr);
     if (n <= 0 || !hkl) return false;
     std::vector<HKL> list(std::size_t(n), nullptr);
@@ -80,7 +79,7 @@ bool switchForegroundLayout(std::uint32_t hkl) {
     HKL target = nullptr;   // le vrai HKL (64 bits) de cette disposition
     for (int i = 0; i < got; ++i)
         if (static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(list[std::size_t(i)])) == hkl) target = list[std::size_t(i)];
-    const HWND w = keyboardWindow();
+    const HWND w = keyboardWindow(window);
     if (!target || !w) return false;
     // Comme la barre de langue de Windows : la fenêtre demande elle-même le changement (DefWindowProc).
     return PostMessageW(w, WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(target)) != FALSE;

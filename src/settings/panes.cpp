@@ -130,6 +130,8 @@ std::vector<GroupSpec> menuBarPane() {
 
     GroupSpec icons;
     icons.title = L"Icônes";
+    icons.rows.push_back(toggle(L"Saisie", [](auto& m) -> auto& { return m.bar.showInput; },
+                                L"Disposition du clavier, quand il y en a plusieurs", L"clavier disposition langue"));
     icons.rows.push_back(toggle(L"Son", [](auto& m) -> auto& { return m.bar.showSound; }, {}, L"volume"));
     icons.rows.push_back(toggle(L"Wi-Fi", [](auto& m) -> auto& { return m.bar.showNetwork; }, {}, L"réseau"));
     icons.rows.push_back(toggle(L"Batterie", [](auto& m) -> auto& { return m.bar.showBattery; }));

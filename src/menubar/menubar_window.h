@@ -130,6 +130,7 @@ private:
     StatusState statusState();
     void onStatus(LPARAM snapshot);
     void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
+    void pollInput();           // menu de saisie : disposition de l'app suivie (500 ms), liste relue toutes les 10 s
     void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
     // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
     // choisie vise cette fenêtre, même inactive.
@@ -203,6 +204,9 @@ private:
     StatusHub hub_;                        // réseau, radios, lecture en cours, luminosité, batterie (fil de travail)
     StatusSnapshot snap_;                  // dernier relevé du hub
     std::vector<StatusItem> status_;       // icônes système et horloge (cases trayLaid_.size() + j de la droite)
+    std::vector<InputLayout> inputs_;      // dispositions du clavier de la session (menu de saisie, plan 58)
+    std::uint32_t input_ = 0;              // celle de l'app suivie
+    int inputTicks_ = 0;
     struct TrayShown {                     // icône d'app placée dans la barre
         ipc::TrayIconEvent e;              // sans ses pixels (dans image)
         std::shared_ptr<const std::vector<std::uint8_t>> image;

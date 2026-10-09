@@ -1,6 +1,8 @@
 // Menu de saisie du clavier (plan 58), comme celui de macOS : dispositions de la session, celle de l'app au premier
 // plan, et son changement. Les fonctions de lecture appellent Windows ; layoutCode est pure (pays injecté).
 #pragma once
+#include <windows.h>
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -24,11 +26,12 @@ std::wstring layoutCode(std::uint32_t hkl, const std::function<std::wstring(unsi
 std::wstring layoutName(std::uint32_t hkl);
 // Dispositions de la session (GetKeyboardLayoutList), dans l'ordre de Windows.
 std::vector<InputLayout> installedLayouts();
-// Disposition de l'app au premier plan (fil de la fenêtre qui a le clavier) ; 0 sans fenêtre.
-std::uint32_t foregroundLayout();
-// Demande à l'app au premier plan de passer à cette disposition (WM_INPUTLANGCHANGEREQUEST) ; false si la disposition
-// n'est pas installée ou sans fenêtre au premier plan.
-bool switchForegroundLayout(std::uint32_t hkl);
+// Disposition d'une fenêtre : celle du fil qui a le clavier dans son app ; 0 sans fenêtre. La barre lit celle de l'app
+// qu'elle suit (son propre menu peut avoir le premier plan).
+std::uint32_t windowLayout(HWND window);
+// Demande à cette fenêtre (à celle qui a son clavier) de passer à la disposition (WM_INPUTLANGCHANGEREQUEST, comme la
+// barre de langue de Windows) ; false sans fenêtre ou si la disposition n'est pas installée.
+bool switchWindowLayout(HWND window, std::uint32_t hkl);
 
 std::wstring hklText(std::uint32_t hkl);           // « 040C040C »
 std::uint32_t hklFromText(std::wstring_view text);   // 0 si illisible

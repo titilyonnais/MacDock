@@ -72,6 +72,7 @@ struct UiaTitles {
     std::vector<RawMenuItem> titles;
 };
 constexpr UINT_PTR kClockTimer = 0x434C;        // "CL"
+constexpr UINT_PTR kInputTimer = 0x494E;        // "IN" : disposition du clavier de l'app suivie (menu de saisie)
 constexpr UINT_PTR kSampleTimeout = 0x5354;     // "ST" : pas d'image utilisable de la capture
 constexpr UINT_PTR kShotRevealTimer = 0x5352;   // "SR" : sécurité, si le Dock ne rend jamais la main
 constexpr UINT_PTR kResampleTimer = 0x5253;     // "RS" : diaporama de fonds d'écran
@@ -789,6 +790,8 @@ StatusState MenuBarApp::statusState() {
     s.muted = s.audio && audio_.muted();
     s.settings = settings_;
     s.clock = clock_;
+    s.inputs = inputs_;
+    s.input = input_;
     SYSTEMTIME now;
     GetLocalTime(&now);
     s.year = now.wYear;
@@ -811,7 +814,7 @@ void MenuBarApp::updateStatusItems() {
     for (std::size_t i = 0; sameKinds && i < items.size(); ++i) {
         sameKinds = items[i].kind == status_[i].kind;
         changed = changed || items[i].glyph != status_[i].glyph || std::fabs(items[i].level - status_[i].level) > 1e-3f ||
-                  items[i].alt != status_[i].alt;
+                  items[i].alt != status_[i].alt || items[i].text != status_[i].text;   // texte : code de la disposition
     }
     if (!changed) return;
     if (sameKinds) status_ = std::move(items);   // mêmes cases : pas de nouvelle mise en page
@@ -851,6 +854,10 @@ BarFrame MenuBarApp::frame(const Screen& s) const {
     for (std::size_t j = 0; trayN + j < s.layout.rightX.size() && j < status_.size(); ++j) {
         BarDrawItem it;
         if (status_[j].kind == StatusKind::Clock) it.text = clock_;
+        if (status_[j].kind == StatusKind::Input) {   // « FR » dans sa boîte
+            it.text = status_[j].text;
+            it.boxed = true;
+        }
         it.glyph = status_[j].glyph;
         it.level = status_[j].level;
         it.alt = status_[j].alt;
@@ -910,6 +917,26 @@ void MenuBarApp::restoreTargetFocus() {
     HWND t = target_.window;
     if (!t || !IsWindow(t) || GetAncestor(GetForegroundWindow(), GA_ROOT) == GetAncestor(t, GA_ROOT)) return;
     SetForegroundWindow(t);   // notre menu vient d'avoir le premier plan : permis, sans frappe Alt synthétique
+}
+
+void MenuBarApp::pollInput() {
+    bool changed = false;
+    if (++inputTicks_ >= 20 || inputs_.empty()) {   // disposition ajoutée ou retirée : vue en dix secondes au plus
+        inputTicks_ = 0;
+        std::vector<InputLayout> list = installedLayouts();
+        changed = list.size() != inputs_.size() ||
+                  !std::equal(list.begin(), list.end(), inputs_.begin(), [](const InputLayout& a, const InputLayout& b) {
+                      return a.hkl == b.hkl;
+                  });
+        if (changed) inputs_ = std::move(list);
+    }
+    // L'app suivie, pas le premier plan : notre propre menu peut l'avoir.
+    const HWND t = target_.window && IsWindow(target_.window) ? target_.window : GetForegroundWindow();
+    if (const std::uint32_t now = windowLayout(t); now && now != input_) {
+        input_ = now;
+        changed = true;
+    }
+    if (changed) updateStatusItems();
 }
 
 void MenuBarApp::updateClock() {
@@ -1413,6 +1440,10 @@ MenuWindow::BarLink MenuBarApp::barLink(const Screen& s, int current) const {
 
 int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
     const StatusKind kind = status_[j].kind;
+    if (kind == StatusKind::Input) {   // la liste du menu : celle de maintenant
+        inputs_ = installedLayouts();
+        inputTicks_ = 0;
+    }
     StatusState opened = statusState();
     if (kind == StatusKind::Sound) opened.outputs = audio_.outputs();   // relues à la prochaine ouverture
     const StatusMenu menu = statusMenu(kind, opened);
@@ -1479,6 +1510,17 @@ void MenuBarApp::runStatus(const StatusCommand& c) {
             }
             break;
         case StatusAction::BarSettings: openSettingsFile(); break;
+        case StatusAction::InputLayout: {   // à l'app suivie, qui retrouve d'abord le premier plan que notre menu avait
+            restoreTargetFocus();
+            const HWND t = target_.window && IsWindow(target_.window) ? target_.window : GetForegroundWindow();
+            const std::uint32_t hkl = hklFromText(c.second);
+            done = switchWindowLayout(t, hkl);
+            if (done) {   // l'icône suit tout de suite ; la relecture la corrige si l'app refuse
+                input_ = hkl;
+                updateStatusItems();
+            }
+            break;
+        }
         default: done = false; break;   // curseurs, interrupteurs, média : déjà faits pendant le menu
     }
     if (trace_) log::info(L"[trace] barre : action d'état %d (%s) %s", int(c.first), c.second.c_str(), done ? L"faite" : L"sans effet");
@@ -1630,6 +1672,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     break;
                 }
                 case kResampleTimer: startSamples(); break;
+                case kInputTimer: pollInput(); break;
                 case kResampleSoon:   // fond ou clair/sombre changé : barre rééchantillonnée, fenêtres recolorées
                     KillTimer(ctl_, kResampleSoon);
                     startSamples();
@@ -1824,6 +1867,8 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     updateActiveScreen();
 
     render();
+    inputs_ = installedLayouts();   // menu de saisie (plan 58)
+    SetTimer(ctl_, kInputTimer, 500, nullptr);
     scheduleClock();
     startSamples();
     SetTimer(ctl_, kResampleTimer, 60000, nullptr);

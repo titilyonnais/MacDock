@@ -154,3 +154,15 @@ TEST_CASE(bar_renderer_draws_boxed_code) {   // plan 58 : « FR » dans une boî
     }
     CoUninitialize();
 }
+
+TEST_CASE(input_window_layout_and_refusals) {   // la disposition d'une fenêtre : celle du fil qui a son clavier
+    const HWND w = CreateWindowExW(0, L"STATIC", L"essai", WS_OVERLAPPED, 0, 0, 50, 50, nullptr, nullptr, nullptr, nullptr);
+    REQUIRE(w != nullptr);
+    const auto mine = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(GetKeyboardLayout(0)));
+    CHECK(md::windowLayout(w) == mine);   // fenêtre de ce fil : sa disposition
+    CHECK(md::windowLayout(nullptr) == 0u);
+    CHECK(!md::switchWindowLayout(nullptr, mine));        // pas de fenêtre
+    CHECK(!md::switchWindowLayout(w, 0));                 // pas de disposition
+    CHECK(!md::switchWindowLayout(w, 0x7FFF7FFFu));       // disposition absente de la session : rien demandé
+    DestroyWindow(w);
+}
