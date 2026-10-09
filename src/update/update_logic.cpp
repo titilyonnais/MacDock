@@ -66,6 +66,8 @@ std::vector<Release> parseReleases(std::string_view text) {
     return out;
 }
 
+std::wstring releasesUrl(const std::wstring& repo) { return L"https://api.github.com/repos/" + repo + L"/releases?per_page=20"; }
+
 std::wstring installerName(const Version& v) { return L"MacDock-Setup-" + versionText(v) + L".exe"; }
 
 std::optional<UpdateOffer> pickUpdate(const std::vector<Release>& releases, const Version& current, bool prerelease) {

@@ -35,6 +35,9 @@ struct UpdateOffer {
     ReleaseAsset installer, sums, signature;
 };
 std::optional<UpdateOffer> pickUpdate(const std::vector<Release>& releases, const Version& current, bool prerelease);
+// Liste des versions publiées (et non releases/latest) : une version tout juste publiée, pas encore signée, ne cache
+// pas la précédente, signée. Sans jeton, l'API ne montre jamais les brouillons.
+std::wstring releasesUrl(const std::wstring& repo);
 std::wstring installerName(const Version& v);   // « MacDock-Setup-0.53.0.exe »
 
 // Empreinte d'un fichier dans SHA256SUMS.txt (lignes « <64 chiffres hexadécimaux>  <nom> », « *<nom> » accepté),

@@ -119,7 +119,7 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
     UpdateState s = load(p);
     s.lastCheck = nowSeconds();
     const auto current = parseVersion(kMacDockVersion);
-    const std::wstring api = L"https://api.github.com/repos/" + o.repo + (o.prerelease ? L"/releases?per_page=20" : L"/releases/latest");
+    const std::wstring api = releasesUrl(o.repo);   // préversions écartées par pickUpdate, sauf o.prerelease
     std::wstring error;
     const auto body = httpsGet(api, kMaxApiBytes, L"application/vnd.github+json", &error);
     if (!body || !current) {

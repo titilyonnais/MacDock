@@ -143,3 +143,20 @@ TEST_CASE(update_startup_action) {
     CHECK(md::startupAction(s, ver(L"0.52.0"), true) == md::StartupAction::DropAttempt);
     CHECK(md::startupAction(md::UpdateState{}, ver(L"0.52.0"), false) == md::StartupAction::None);
 }
+
+TEST_CASE(update_list_endpoint_and_signed_fallback) {
+    // Essai de bout en bout du plan 53 : une version tout juste publiée n'est pas encore signée (quelques minutes) ; la
+    // liste des versions (et non releases/latest) permet de proposer la précédente, signée.
+    CHECK(md::releasesUrl(L"titilyonnais/MacDock") == L"https://api.github.com/repos/titilyonnais/MacDock/releases?per_page=20");
+    const auto r = md::parseReleases(R"([
+      {"tag_name": "v0.54.0", "draft": false, "prerelease": false, "assets": [
+        {"name": "MacDock-Setup-0.54.0.exe", "size": 1, "browser_download_url": "https://github.com/a.exe"},
+        {"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": "https://github.com/s.txt"}]},
+      {"tag_name": "v0.53.0", "draft": false, "prerelease": false, "assets": [
+        {"name": "MacDock-Setup-0.53.0.exe", "size": 1, "browser_download_url": "https://github.com/b.exe"},
+        {"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": "https://github.com/t.txt"},
+        {"name": "SHA256SUMS.txt.sig", "size": 1, "browser_download_url": "https://github.com/t.sig"}]}])");
+    const auto offer = md::pickUpdate(r, *md::parseVersion(L"0.52.0"), false);
+    REQUIRE(offer.has_value());
+    CHECK(offer->version == *md::parseVersion(L"0.53.0"));
+}
