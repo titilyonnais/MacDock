@@ -37,11 +37,14 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Icônes des exécutables**, dessinées par le code (plan 49).
 - **« Déplacer et redimensionner »** de macOS 26 : menu Fenêtre (plan 50), Organiser et menu au survol de la pastille
   verte (plan 51).
+- **Publication sur GitHub** (plan 52) et **mises à jour automatiques signées** (plan 53, version 0.53.0).
 
 ## À faire, par ordre d'effet
-1. **Publication sur GitHub et mises à jour automatiques** (plans 52 et 53, demandés le 9 octobre).
-2. **Forcer à quitter** (⌥⌘⎋) : liste des apps, « ne répond pas », confirmation.
-3. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
+1. **Forcer à quitter** (⌥⌘⎋) : liste des apps, « ne répond pas », confirmation (plan 54, en cours).
+2. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
+3. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
+   installation abandonnée, notification après un redémarrage de l'Explorateur, dossier des téléchargements à la
+   désinstallation).
 4. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
    - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
