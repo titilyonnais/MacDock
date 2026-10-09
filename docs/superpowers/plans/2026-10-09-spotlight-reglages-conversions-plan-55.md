@@ -74,3 +74,24 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
     Paramètres, « dock » → la section Dock en meilleur résultat ; fermé par Échap, sans Entrée (rien lancé, presse-
     papiers intact) ; captures de sa seule fenêtre, effacées.
 - Suite : 760 tests verts (Debug et Release).
+
+## Relecture indépendante
+Rien de critique ; deux importants, et trois mineurs regradés importants par leur effet. Corrigés en une passe,
+chacun avec un test vu en échec avant (765 tests verts) :
+- **Survol** : la région du panneau change alors que le pointeur a bougé hors du panneau ; le mouvement que Windows
+  envoie ensuite choisissait la ligne survolée. `HoverGate::regionChanged` à chaque changement de région ; défaut
+  reproduit en réel avant le correctif (pointeur déplacé sous le champ, puis remis), vérifié après.
+- **App au nom exact** : « caméra », « loupe », « narrateur » mettaient la page des Paramètres devant l'app du même
+  nom ; l'app reste le meilleur résultat, la page passe dans Réglages.
+- **App face à une conversion** (mineur regradé) : « 7 days » ou « 60 sec » donnaient une conversion et Entrée
+  remplaçait le presse-papiers au lieu de lancer « 7 Days to Die » ; une app dont le nom commence par la requête
+  passe devant.
+- **Symboles courts** (mineur regradé) : « 12 pt » (pintes), « 2nd » (nœuds), « 100C », « 2F », « 1o » ; les
+  symboles d'une lettre demandent une espace, « pt » et « nd » retirés.
+- **Mots-clés seuls** (mineur regradé) : « image », « carte », « licence » mettaient un réglage en meilleur résultat,
+  devant le premier document que Entrée ouvrait avant le plan ; un mot-clé seul n'est jamais le meilleur résultat,
+  et sa section passe après les documents.
+- **Entrée essayée en réel** (mineur 9) : « dock » ouvre Réglages MacDock sur la section Dock
+  (`--pane dock`), « son » la page Son des Paramètres ; fenêtres ouvertes par l'essai refermées, Paramètres et
+  Réglages MacDock n'étaient pas ouverts avant.
+- Mineurs reportés : voir le journal (« Mineurs reportés — plan 55 »).

@@ -1009,7 +1009,7 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Conversions** comme la calculatrice : `10 km` → 6,21371 mi, `100 °F en °C`, `500 Go` → 465,661 Gio, `90 min` →
   1,5 h ; dix catégories, symboles en casse exacte et noms en français ou en anglais. `4K`, `3d`, `2 pi` ou
   `1013 mb` ne sont pas pris pour des unités (une vidéo 4K, une app 3D, π, des millibars ?). Entrée copie le nombre.
-- **Section « Réglages »** : 69 pages des Paramètres de Windows 11 avec leurs mots-clés (`fond d'écran` → Arrière-plan,
+- **Section « Réglages »** : 68 pages des Paramètres de Windows 11 avec leurs mots-clés (`fond d'écran` → Arrière-plan,
   `mot de passe` → Options de connexion) et les 11 sections de Réglages MacDock avec leur tuile, ouvertes par
   `--pane`. Une page n'ouvre jamais autre chose qu'une adresse `ms-settings:`.
 - **Défaut trouvé à l'essai réel et corrigé** (il datait du premier Spotlight) : quand le panneau grandissait sous
@@ -1018,6 +1018,30 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Essais réels** : ton Dock recompilé et relancé, Spotlight ouvert par son message, requêtes envoyées à sa seule
   fenêtre (`10 km en miles`, `wifi`, `dock`) : résultats et icônes exacts, fermé par Échap sans rien lancer ni
   copier ; captures de sa seule fenêtre, effacées après lecture.
+- **Relecture indépendante** : rien de critique ; corrigés avec un test vu en échec avant :
+  - le survol choisissait encore une ligne si le pointeur avait bougé hors du panneau avant qu'il grandisse
+    (reproduit en réel avant le correctif, puis vérifié) ;
+  - une app au nom exact (« caméra », « loupe ») reste le meilleur résultat devant la page du même nom ;
+  - une app dont le nom commence par la requête (« 7 days ») passe devant la conversion ;
+  - « 12 pt », « 2nd », « 100C » ne sont plus convertis ;
+  - un réglage trouvé par un simple mot-clé (« image », « carte ») ne passe plus devant tes documents.
+- **Entrée essayée en réel** : « dock » ouvre Réglages MacDock sur la section Dock, « son » la page Son des
+  Paramètres ; les deux fenêtres ouvertes par l'essai ont été refermées.
+
+## Mineurs reportés — plan 55
+- « Clavier » (Windows) ouvre `ms-settings:keyboard`, rangée par Microsoft avec la langue ; la page Clavier de
+  Windows 11 est sous Accessibilité (`ms-settings:easeofaccess-keyboard`). À vérifier en réel.
+- Recherche : « wi fi » (avec une espace) ne trouve rien, « capture d'écran » au singulier ne trouve pas la section
+  « Captures d'écran », les traits d'union ne sont facultatifs que dans les noms (« hautparleurs ») ; « mise à jour »
+  met À propos (MacDock) avant Windows Update.
+- `--pane` en échec silencieux si `MacDockSettings.exe` manque (rien au journal).
+- Tuile « Police » dessinée en Segoe UI au lieu de la police de l'interface ; un peintre recréé à chaque image
+  pendant l'apparition.
+- Saisies non comprises : « –40 °C » (tiret demi-cadratin), U+2009 comme séparateur de milliers, mots de liaison en
+  majuscules (« EN »), « 1 GO », « 1 ML » ; deux pliages identiques (`foldName`, `fold`) ; le commentaire de
+  `formatNumber` ne dit pas qu'au-delà de 10^chiffres, tous les chiffres entiers s'affichent.
+- Vu à l'essai réel, antérieur au plan : la barre de menus pose ses pastilles en double (en haut à droite) sur la
+  fenêtre de Réglages MacDock, qui a déjà les siennes.
 
 ## Mineurs reportés — plan 53
 - `launchInstaller` ne revérifie pas que la version prête est plus récente ni que son empreinte notée est non vide (un `update.json` abîmé par ce même compte) ; l'installateur part même si la tentative n'a pas pu être notée.
