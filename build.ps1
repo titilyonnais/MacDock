@@ -3,7 +3,7 @@
 #   ./build.ps1 -Target all -Config Release
 #   ./build.ps1 -Target all -Config Release -OutDir build\Package   (autre dossier : MacDock peut tourner pendant ce temps)
 param(
-    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'all')] [string]$Target = 'all',
+    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'forcequitprobe', 'all')] [string]$Target = 'all',
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [string]$OutDir = '',
     [switch]$Run
@@ -74,6 +74,11 @@ $Targets = @{
                   Libs = @('d2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'ole32.lib', 'user32.lib') }
 }
 
+# Sonde de l'essai réel de Forcer à quitter (plan 54, tests\real\force_quit_probe.cpp), hors de « all » : les modules
+# des tests, sans les tests.
+$Targets.forcequitprobe = @{ Exe = 'force_quit_probe.exe'; Sources = @('tests\real\force_quit_probe.cpp') + @($Targets.tests.Sources | Where-Object { $_ -ne 'tests\*.cpp' });
+                             Subsystem = 'CONSOLE'; Libs = $Targets.tests.Libs }
+
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
 $ShaderDir = Join-Path $OutRoot 'shaders'
 function Build-Shaders {
@@ -117,7 +122,7 @@ function Build-Target([string]$Name) {
 }
 
 $names = if ($Target -eq 'all') { @('tests', 'dock', 'menubar', 'launcher', 'settings') } else { @($Target) }
-if ($names -contains 'tests' -or $names -contains 'dock' -or $names -contains 'menubar') { Build-Shaders }
+if ($names -contains 'tests' -or $names -contains 'dock' -or $names -contains 'menubar' -or $names -contains 'forcequitprobe') { Build-Shaders }
 foreach ($n in $names) { Build-Target $n }
 
 if ($Run -and ($names -contains 'tests')) {
