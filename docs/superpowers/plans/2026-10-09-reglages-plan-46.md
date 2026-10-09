@@ -26,7 +26,7 @@
 
   Décision : pas d'essai réel de la course entre le Dock et l'app (il faudrait changer tes vrais réglages du Dock) ;
   les tests de la fusion et de `dockSettingsToWrite` la couvrent.
-- [ ] 2. **Vrais noms des écrans** :
+- [x] 2. **Vrais noms des écrans** :
   - `QueryDisplayConfig` et `DisplayConfigGetDeviceInfo` : nom du moniteur pour chaque source GDI (`\\.\DISPLAY1`) ;
     écran interne sans nom : « Écran intégré » ;
   - libellé : nom, puis la définition, puis « (principal) » ; sans nom, « Écran N » comme avant.

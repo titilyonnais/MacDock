@@ -23,6 +23,7 @@
 #include "../settings/instance.h"
 #include "../settings/mods.h"
 #include "../settings/pane_icons.h"
+#include "../settings/screens.h"
 
 namespace md {
 
@@ -591,10 +592,12 @@ void SettingsWindow::drawContent(ui::Painter& p, float w, float h) {
 
 void SettingsWindow::buildEnv() {
     env_ = {};
+    // Écrans : leur nom (« DELL U2720Q », « Écran intégré »), sinon « Écran N », puis la définition (plan 46).
     struct Ctx {
         PaneEnv* env;
-        int n;
-    } ctx{&env_, 0};
+        std::map<std::wstring, std::wstring> names;
+        std::vector<ScreenChoice> screens;
+    } ctx{&env_, monitorNames(), {}};
     EnumDisplayMonitors(
         nullptr, nullptr,
         [](HMONITOR mon, HDC, LPRECT, LPARAM lp) -> BOOL {
@@ -602,18 +605,21 @@ void SettingsWindow::buildEnv() {
             MONITORINFOEXW mi{};
             mi.cbSize = sizeof mi;
             if (!GetMonitorInfoW(mon, &mi)) return TRUE;
-            ++c->n;
+            ScreenChoice s;
+            if (const auto it = c->names.find(mi.szDevice); it != c->names.end()) s.name = it->second;
             DEVMODEW dm{};
             dm.dmSize = sizeof dm;
-            std::wstring name = L"Écran " + std::to_wstring(c->n);
-            if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm))
-                name += L" — " + std::to_wstring(dm.dmPelsWidth) + L" × " + std::to_wstring(dm.dmPelsHeight);
-            if (mi.dwFlags & MONITORINFOF_PRIMARY) name += L" (principal)";
-            c->env->screens.push_back(name);
+            if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+                s.width = int(dm.dmPelsWidth);
+                s.height = int(dm.dmPelsHeight);
+            }
+            s.primary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+            c->screens.push_back(std::move(s));
             c->env->screenIds.push_back(mi.szDevice);
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&ctx));
+    env_.screens = screenLabels(ctx.screens);
     // Polices proposées : celles d'une courte liste qui sont installées.
     ComPtr<IDWriteFontCollection> fonts;
     if (dwrite_) dwrite_->GetSystemFontCollection(&fonts, FALSE);
