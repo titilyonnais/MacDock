@@ -34,6 +34,10 @@ struct ActionContext {
     std::wstring exePath;                // À propos
 };
 
+// Le Dock répond-il (WM_NULL rendu dans le délai) ? Forcer à quitter ne lui est demandé qu'alors ; sinon le
+// Gestionnaire des tâches, qui marche justement quand plus rien ne répond.
+bool dockResponds(HWND dock, unsigned timeoutMs = 300);
+
 // false si l'action n'a rien fait (fenêtre disparue, raccourci invalide, refus d'une confirmation).
 bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys);
 

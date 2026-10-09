@@ -465,6 +465,43 @@ TEST_CASE(bar_actions_ignore_missing_window) {
     CHECK(!md::runAction({md::ActionKind::Minimize}, ctx, sys));
 }
 
+TEST_CASE(bar_force_quit_needs_responding_dock) {   // relecture du plan 54, important 4
+    // Menu  > Forcer à quitter… : la fenêtre du Dock seulement s'il répond ; figé, le Gestionnaire des tâches (qui
+    // marche justement quand plus rien ne répond).
+    CHECK(!md::dockResponds(nullptr));
+    for (const bool stuck : {false, true}) {
+        HANDLE created = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HANDLE release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HWND dock = nullptr;
+        std::thread owner([&] {
+            dock = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"STATIC", L"", WS_POPUP, -3000, -3000, 10, 10, nullptr,
+                                   nullptr, nullptr, nullptr);
+            SetEvent(created);
+            if (stuck) {
+                WaitForSingleObject(release, 5000);   // fil figé
+            } else {
+                for (MSG m; WaitForSingleObject(release, 0) == WAIT_TIMEOUT;) {
+                    while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+                    Sleep(5);
+                }
+            }
+            MSG m;
+            while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+            DestroyWindow(dock);
+        });
+        WaitForSingleObject(created, 2000);
+        const ULONGLONG t0 = GetTickCount64();
+        const bool responds = md::dockResponds(dock, 300);
+        const ULONGLONG elapsed = GetTickCount64() - t0;
+        SetEvent(release);
+        owner.join();
+        CloseHandle(created);
+        CloseHandle(release);
+        CHECK(responds == !stuck);
+        CHECK(elapsed < 1500);   // jamais d'attente sans fin
+    }
+}
+
 TEST_CASE(bar_actions_dont_wait_for_hung_window) {
     // « Tout afficher » sur la fenêtre d'une app figée (son fil ne traite plus de messages) : la barre n'attend pas.
     HANDLE created = CreateEventW(nullptr, TRUE, FALSE, nullptr);

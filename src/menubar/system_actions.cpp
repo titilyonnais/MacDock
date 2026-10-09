@@ -43,13 +43,13 @@ SystemActions realSystemActions() {
     s.signOut = [] { exitWindows(EWX_LOGOFF, L"fermeture de session"); };
     s.restart = [] { exitWindows(EWX_REBOOT, L"redémarrage"); };
     s.shutdown = [] { exitWindows(EWX_POWEROFF, L"extinction"); };
-    s.forceQuit = [] {   // la fenêtre du Dock, au premier plan ; sans Dock, le Gestionnaire des tâches de Windows
-        if (HWND dock = FindWindowW(L"MacDockWindow", nullptr)) {
+    s.forceQuit = [] {   // la fenêtre du Dock, au premier plan ; sans Dock, ou Dock figé, le Gestionnaire des tâches
+        HWND dock = FindWindowW(L"MacDockWindow", nullptr);
+        if (dockResponds(dock)) {
             DWORD pid = 0;
             GetWindowThreadProcessId(dock, &pid);
             AllowSetForegroundWindow(pid);
-            PostMessageW(dock, RegisterWindowMessageW(L"MacDockForceQuit"), 0, 0);
-            return;
+            if (PostMessageW(dock, RegisterWindowMessageW(L"MacDockForceQuit"), 0, 0)) return;
         }
         ShellExecuteW(nullptr, L"open", L"taskmgr.exe", nullptr, nullptr, SW_SHOWNORMAL);
     };
