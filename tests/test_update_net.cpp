@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/update/release_key.h"
 #include "../src/update/update_net.h"
 #include "../src/update/update_sign.h"
 
@@ -119,4 +120,13 @@ TEST_CASE(update_https_only) {
     const std::wstring path = std::wstring(tmp) + L"macdock-dl-test.exe";
     CHECK(!md::httpsDownload(L"ftp://example.com/a.exe", path, 1000));
     CHECK(GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES);   // rien d'écrit
+}
+
+TEST_CASE(update_release_key_signs_like_cng) {
+    // La vraie clé des versions (créée sur le PC de l'auteur) : un échantillon signé par .NET (P1363) est vérifié par
+    // CNG avec la clé publique inscrite dans MacDock ; un caractère de plus, refusé.
+    const auto& key = md::releasePublicKey();
+    REQUIRE(key.size() == 72);   // en-tête et deux coordonnées de 32 octets
+    CHECK(md::verifyReleaseSignature(md::kReleaseKeySample, md::kReleaseKeySampleSig, key));
+    CHECK(!md::verifyReleaseSignature(std::string(md::kReleaseKeySample) + " ", md::kReleaseKeySampleSig, key));
 }

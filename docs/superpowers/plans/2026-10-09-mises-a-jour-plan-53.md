@@ -23,9 +23,10 @@ versions publiées.
   - clé ECDSA P-256 « MacDock Release », créée une fois dans le magasin de clés Windows de l'utilisateur (CNG), non
     exportable : elle ne quitte jamais ce PC ;
   - sa clé publique est inscrite dans MacDock (`src/update/release_key.h`) ;
-  - `release.yml` publie la version en brouillon (invisible des mises à jour) ;
-  - `tools/sign-release.ps1` télécharge le brouillon, revérifie l'empreinte de l'installateur, signe
-    `SHA256SUMS.txt` (`SHA256SUMS.txt.sig`), le joint, puis publie la version.
+  - `release.yml` publie la version ; tant qu'elle n'est pas signée, les mises à jour l'ignorent ;
+  - `tools/sign-release.ps1 -Tag vX.Y.Z` la télécharge, revérifie l'empreinte de l'installateur, signe
+    `SHA256SUMS.txt` et joint `SHA256SUMS.txt.sig` (pas de brouillon : `gh` ne retrouve pas les brouillons par
+    étiquette, et une version non signée ne gêne personne en attendant).
 - **Téléchargement** (WinHTTP, HTTPS seulement) :
   - `SHA256SUMS.txt` et sa signature d'abord, vérifiée avec la clé publique (CNG) ; mal signée : rien d'autre ;
   - puis l'installateur `MacDock-Setup-X.Y.Z.exe`, dans `%LOCALAPPDATA%\MacDock\updates` ;
@@ -48,7 +49,7 @@ versions publiées.
   - `MACDOCK_UPDATE_DELAY` : délai avant la première recherche.
 
 ## Tâches
-- [ ] 1. **Logique pure** (`src/update/update_logic.*`) :
+- [x] 1. **Logique pure** (`src/update/update_logic.*`) :
   - `parseReleases` : JSON de l'API, version, préversion, brouillon, ressources ;
   - `pickUpdate` : la plus récente, plus récente que la version courante, préversions selon l'option ;
   - `expectedSha256` : lecture de `SHA256SUMS.txt` ;
@@ -57,15 +58,14 @@ versions publiées.
   - `startupAction` : installer, abandonner une tentative ratée, ou rien.
 
   Tests sur de vrais exemples de l'API de GitHub.
-- [ ] 2. **Réseau, empreinte et signature** (`src/update/update_net.*`, `update_sign.*`) :
+- [x] 2. **Réseau, empreinte et signature** (`src/update/update_net.*`, `update_sign.*`) :
   - `httpsGet` et `httpsDownload` (WinHTTP, redirections HTTPS, taille bornée, délais) ;
   - `sha256File` (CNG) ;
   - `verifySignature(données, signature, clé publique)` (ECDSA P-256, CNG).
 
   Tests : empreintes connues (vecteurs du NIST) ; signature d'une clé jetable vérifiée, refusée si un octet change ou
   avec une autre clé ; téléchargement réel de la release 0.52.0 (si le réseau manque, le test le dit sans échouer).
-- [ ] 3. **Signature des versions** : clé créée, clé publique inscrite, `tools/sign-release.ps1`, `release.yml` en
-  brouillon.
+- [x] 3. **Signature des versions** : clé créée, clé publique inscrite, `tools/sign-release.ps1`.
 - [ ] 4. **Lanceur** :
   - fil de mise à jour, notification et clic ;
   - installation au démarrage, `--check-update`, `--install-update` ;
