@@ -30,7 +30,7 @@ void icon(ui::Painter& p, const Box& b, PaneIcon which) {
             rt->DrawEllipse(D2D1::Ellipse(b.at(10, 10), 3.6f * b.k, 3.6f * b.k), p.brush(white), 2.2f * b.k);
             for (int i = 0; i < 8; ++i) {
                 const float a = float(i) * 3.14159265f / 4, c = std::cos(a), s = std::sin(a);
-                line(p, b, 10 + 4.8f * c, 10 + 4.8f * s, 10 + 7 * c, 10 + 7 * s, 2.4f);
+                line(p, b, 10 + 3.8f * c, 10 + 3.8f * s, 10 + 7 * c, 10 + 7 * s, 2.4f);   // dents prises dans l'anneau
             }
             break;
         }

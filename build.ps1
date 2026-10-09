@@ -2,7 +2,7 @@
 #   ./build.ps1 -Target tests -Run
 #   ./build.ps1 -Target all -Config Release
 param(
-    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'all')] [string]$Target = 'all',
+    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'all')] [string]$Target = 'all',
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [switch]$Run
 )
@@ -40,28 +40,31 @@ $Targets = @{
     tests    = @{ Exe = 'tests.exe'; Sources = @('tests\*.cpp') + $LogicSources + @('src\popup\menu_window.cpp', 'src\popup\popup_glass.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\screenshot\screen_recorder.cpp'); Subsystem = 'CONSOLE'; Includes = @('tests\stubs');
                   Libs = @('user32.lib', 'shell32.lib', 'ole32.lib', 'advapi32.lib', 'windowscodecs.lib', 'gdi32.lib', 'dwmapi.lib', 'propsys.lib', 'version.lib', 'oleaut32.lib', 'uiautomationcore.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib', 
                       'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dwrite.lib', 'dcomp.lib', 'dxguid.lib', 'mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib') }
-    dock     = @{ Exe = 'MacDock.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
+    dock     = @{ Exe = 'MacDock.exe'; Res = 'res\dock.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\layout\*.cpp',
                       'src\anim\*.cpp', 'src\model\*.cpp', 'src\ipc\*.cpp', 'src\icons\*.cpp', 'src\tracker\*.cpp',
                       'src\shell\*.cpp', 'src\render\*.cpp', 'src\calib\*.cpp', 'src\glass\*.cpp', 'src\popup\*.cpp', 'src\interact\*.cpp', 'src\stack\*.cpp', 'src\theme\*.cpp', 'src\apps\*.cpp', 'src\spotlight\*.cpp', 'src\mission\*.cpp', 'src\switcher\*.cpp', 'src\quicklook\*.cpp', 'src\screenshot\*.cpp', 'src\sound\*.cpp', 'src\app\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'dbghelp.lib', 'shcore.lib', 'dxguid.lib', 'windowsapp.lib',
                       'mfplat.lib', 'mfplay.lib', 'winmm.lib', 'mfreadwrite.lib', 'mfuuid.lib') }
-    menubar  = @{ Exe = 'MacMenuBar.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
+    menubar  = @{ Exe = 'MacMenuBar.exe'; Res = 'res\menubar.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\geom\*.cpp', 'src\model\*.cpp',
                       'src\icons\*.cpp', 'src\tracker\*.cpp', 'src\shell\*.cpp', 'src\glass\*.cpp', 'src\calib\*.cpp',
                       'src\popup\menu_window.cpp', 'src\popup\menu_model.cpp', 'src\popup\glyphs.cpp', 'src\popup\popup_glass.cpp', 'src\theme\wallpaper_art.cpp', 'src\app\visibility.cpp', 'src\stack\*.cpp', 'src\menubar\*.cpp', 'src\hud\*.cpp', 'src\ipc\*.cpp', 'src\sound\*.cpp', 'src\anim\motion.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib',
                       'dwmapi.lib', 'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib',
                       'gdi32.lib', 'advapi32.lib', 'propsys.lib', 'uxtheme.lib', 'version.lib', 'shcore.lib', 'dxguid.lib', 'wlanapi.lib', 'iphlpapi.lib', 'windowsapp.lib', 'wbemuuid.lib', 'dxva2.lib',
                       'powrprof.lib', 'secur32.lib', 'winmm.lib') }
-    launcher = @{ Exe = 'MacDockLauncher.exe'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
+    launcher = @{ Exe = 'MacDockLauncher.exe'; Res = 'res\dock.rc'; Sources = @('src\launcher\*.cpp', 'src\core\*.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
-    settings = @{ Exe = 'MacDockSettings.exe'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
+    settings = @{ Exe = 'MacDockSettings.exe'; Res = 'res\settings.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
                       'src\settings_app\*.cpp', 'src\anim\spring.cpp', 'src\anim\motion.cpp', 'src\menubar\menubar_settings.cpp', 'src\interact\hotkey.cpp',
                       'src\menubar\clock_format.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'dwmapi.lib',
                       'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'gdi32.lib', 'advapi32.lib',
                       'shcore.lib', 'version.lib', 'dxguid.lib', 'wtsapi32.lib') }
+    icons    = @{ Exe = 'make_icons.exe'; Sources = @('tools\make_icons.cpp', 'src\settings\app_icon.cpp', 'src\settings\pane_icons.cpp',
+                      'src\ui\*.cpp', 'src\calib\png_io.cpp'); Subsystem = 'CONSOLE';
+                  Libs = @('d2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'ole32.lib', 'user32.lib') }
 }
 
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
@@ -94,7 +97,14 @@ function Build-Target([string]$Name) {
     $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
     Set-Content -Path $rsp -Value $lines -Encoding ascii
     Write-Host "== $Name ($Config) : $($sources.Count) fichiers"
-    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && cl @`"$rsp`" /link $link"
+    # Icône de l'exécutable (res\*.rc, plan 49) : compilée par rc.exe et liée avec le reste.
+    $rc = ''
+    if ($t.Res) {
+        $res = Join-Path $obj "$Name.res"
+        $rc = "rc /nologo /i `"$(Join-Path $Root 'res')`" /fo `"$res`" `"$(Join-Path $Root $t.Res)`" && "
+        $link = "$link `"$res`""
+    }
+    cmd /c "`"$vcvars`" 10.0.26100.0 >nul && $rc cl @`"$rsp`" /link $link"
     if ($LASTEXITCODE -ne 0) { throw "Echec de compilation : $Name" }
 }
 
