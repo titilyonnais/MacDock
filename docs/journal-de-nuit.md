@@ -1110,9 +1110,21 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   en dur (Apps, sélecteur d'apps, tuiles de Spotlight), et les icônes de MacDock (`res/*.ico`), refaites.
 - **Vu en mesurant** : chez toi, « Tahoe strict » est désactivé ; les icônes Windows rondes (Chrome, Telegram,
   Discord, Steam, Brave) gardent leur forme, alors que macOS 26 les met toutes dans le même carré arrondi.
+- **Plaque grise de Tahoe** : ton choix sur l'aperçu ; « Tahoe strict » activé dans ton `settings.json`, toutes les
+  icônes du Dock ont maintenant la même forme.
+- **Relecture indépendante** : rien de critique ; la valeur 0,259 confirmée par une autre méthode (0,2587) ;
+  corrigés : la tuile « = » des calculs dans Spotlight (trop grande, moins ronde), et le coin continu d'Apple au lieu
+  d'arcs de cercle pour les tuiles dessinées par MacDock (icônes refaites) ; outil de mesure versionné.
 - **Pilotage de la VM** : VMware ignore les clics et touches simulés ; l'outil de pilotage avait réduit tes fenêtres
   (et celles de MacDock) pour ses captures : restaurées, sauf le Gestionnaire des tâches et Windhawk (en
   administrateur).
+
+## Mineurs reportés — plan 60
+- Forcer à quitter : la case d'attente d'une icône (20 pt pleins, rayon 5) n'a pas la forme de l'icône qui arrive
+  (16,1 pt, rayon 4,2) : petit saut au chargement.
+- L'outil de mesure ne sait pas mesurer une icône posée sur une plaque (il prend la couleur du logo pour l'icône).
+- Barre de menus : ses Éléments récents ignorent le rayon et « Tahoe strict » de `dock-metrics.json` /
+  `settings.json` (même forme avec les défauts).
 
 ## Mineurs reportés — plan 59
 - Menu déjà ouvert dans l'app : le premier plan est refusé (rebond d'attention dans le Dock) ; sur macOS, `` ⌘` ``
