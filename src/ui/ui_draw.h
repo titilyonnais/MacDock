@@ -103,6 +103,9 @@ float menuWidth(Painter& p, const std::vector<std::wstring>& items);
 void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused, float trailing = 0);
 // Anneau de focus autour de r.
 void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius);
+// Rectangle à coins continus d'Apple (la forme des icônes : src/geom/smooth_rect), à remplir comme une géométrie ;
+// nul si Direct2D refuse.
+Microsoft::WRL::ComPtr<ID2D1PathGeometry> smoothRectGeometry(ID2D1Factory* factory, D2D1_RECT_F r, float radius);
 // Pastilles de la fenêtre (fermer, réduire, agrandir), le premier centre en `first` ; grises si inactive (en couleur au
 // survol, comme la barre de menus) ; symboles au survol ; `disabled` : indice grisé (agrandir), -1 sinon.
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled = -1);

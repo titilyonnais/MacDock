@@ -121,8 +121,15 @@ void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon w
         SUCCEEDED(p.rt()->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(r.left, r.top),
                                                                                          D2D1::Point2F(r.left, r.bottom)),
                                                     stops.Get(), &gradient))) {
-        const float radius = cornerRatio > 0 ? cornerRatio * (r.right - r.left) : ui::metrics::tileRadius * b.k;
-        p.rt()->FillRoundedRectangle(D2D1::RoundedRect(r, radius, radius), gradient.Get());
+        if (cornerRatio > 0) {   // forme des icônes d'apps : coin continu d'Apple (comme le masque du Dock)
+            ComPtr<ID2D1Factory> factory;
+            p.rt()->GetFactory(&factory);
+            if (auto shape = ui::smoothRectGeometry(factory.Get(), r, cornerRatio * (r.right - r.left)))
+                p.rt()->FillGeometry(shape.Get(), gradient.Get());
+        } else {   // tuile de la barre latérale de l'app Réglages (façon Réglages Système)
+            const float radius = ui::metrics::tileRadius * b.k;
+            p.rt()->FillRoundedRectangle(D2D1::RoundedRect(r, radius, radius), gradient.Get());
+        }
     } else {
         p.fillRound(r, cornerRatio > 0 ? cornerRatio * (r.right - r.left) : ui::metrics::tileRadius * b.k, base);
     }
