@@ -102,6 +102,7 @@ constexpr int kHotOverlay = 1, kHotOpacityUp = 2, kHotOpacityDown = 3, kHotSpotl
 // Sélecteur d'apps : Alt+Tab, Alt+Maj+Tab, puis le temps d'une session Alt+Échap, Alt+←, Alt+→, Alt+Q, Alt+H.
 constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchLeft = 9, kHotSwitchRight = 10,
               kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotForceQuit = 13, kHotAppExpose = 14;
+constexpr int kHotCycle = 15, kHotCycleBack = 16;   // ⌘` (plan 59) : fenêtre suivante ou précédente de l'app
 constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
 constexpr UINT_PTR kHotkeyRetryTimer = 0x484B;   // "HK" : raccourci pris par une autre app, réessayé
 // Instant de la dernière touche d'un nom tapé dans la liste des fichiers (0 : aucune) : fil des crochets seulement.
@@ -206,6 +207,7 @@ void DockApp::applySettings() {
         registerMissionHotkey();
         registerAppExposeHotkey();
         registerSwitcherHotkey();
+        applyCycleHotkey();
     }
     if (forceQuitMsg_) registerForceQuitHotkey();
     requestFrame();
@@ -1271,6 +1273,48 @@ void DockApp::registerSwitcherHotkey() {
     log::info(switchKeysOn_ ? L"Sélecteur d'apps : Alt+Tab repris" : L"Sélecteur d'apps : raccourci désactivé");
 }
 
+void DockApp::applyCycleHotkey() {
+    const bool on = parseWindowCycleHotkey(settings_.windowCycleHotkey);
+    if (on == cycleKeysOn_) return;
+    cycleKeysOn_ = on;   // pas de RegisterHotKey : la touche est reconnue à sa place par le crochet clavier
+    log::info(on ? L"Fenêtre suivante de l'app : Alt+` pris" : L"Fenêtre suivante de l'app : raccourci désactivé");
+}
+
+// ⌘` de macOS : la fenêtre suivante (ou précédente) de l'app au premier plan passe devant, sans panneau. L'ordre est
+// celui du Dock (ordre d'ouverture), stable : des appuis successifs passent par toutes les fenêtres.
+void DockApp::cycleWindows(bool back) {
+    // Touche neutre d'abord : Alt relâché sans autre frappe ouvrirait le menu de l'app. Envoyée par le Dock, elle lui
+    // donne aussi le droit de changer le premier plan (pas de frappe Alt synthétique : Alt est tenu).
+    INPUT in[2] = {};
+    in[0].type = in[1].type = INPUT_KEYBOARD;
+    in[0].ki.wVk = in[1].ki.wVk = 0xE8;
+    in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, in, sizeof(INPUT));
+    if (menuOpen_ || switch_.active()) return;   // une fenêtre modale du Dock, ou le sélecteur
+    const HWND front = GetAncestor(GetForegroundWindow(), GA_ROOTOWNER);
+    const std::wstring app = model_.appOfWindow(toId(front));
+    if (app.empty()) return;   // bureau, ou fenêtre que le Dock ne suit pas
+    const std::vector<HWND> windows = toHwnds(model_.windowsOf(app));
+    Microsoft::WRL::ComPtr<IVirtualDesktopManager> desktops;
+    CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&desktops));
+    std::vector<bool> eligible;
+    std::optional<std::size_t> current;
+    for (std::size_t i = 0; i < windows.size(); ++i) {   // visibles, non réduites, non voilées, sur ce bureau
+        const HWND h = windows[i];
+        if (h == front) current = i;
+        DWORD cloaked = 0;
+        BOOL here = TRUE;
+        eligible.push_back(IsWindow(h) && IsWindowVisible(h) && !IsIconic(h) &&
+                           !(SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked) &&
+                           !(desktops && SUCCEEDED(desktops->IsWindowOnCurrentVirtualDesktop(h, &here)) && !here));
+    }
+    const std::optional<std::size_t> target = cycleTarget(eligible, current, back);
+    if (trace_) log::info(L"[trace] fenêtre %s de %s : %zu fenêtre(s), cible %d", back ? L"précédente" : L"suivante",
+                          app.c_str(), windows.size(), target ? int(*target) : -1);
+    if (!target) return;   // une seule fenêtre : rien ne bouge
+    if (!SetForegroundWindow(windows[*target])) log::warn(L"Fenêtre suivante : premier plan refusé par Windows");
+}
+
 void DockApp::switcherKey(int id) {
     if (id == kHotSwitch || id == kHotSwitchBack) {
         const bool back = id == kHotSwitchBack;
@@ -2236,6 +2280,37 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 }
             }
         }
+        // ⌘` de macOS (plan 59) : la touche sous Échap, Alt tenu, fait passer devant la fenêtre suivante de l'app ;
+        // pendant le sélecteur d'apps, elle recule d'une case. Reconnue à sa place (` en QWERTY, ² en AZERTY).
+        if (isCycleKey(k->scanCode, (k->flags & LLKHF_EXTENDED) != 0) && (self_->cycleKeysOn_ || self_->switchSession_)) {
+            static bool cycleTaken = false;   // fil du crochet seulement : appui pris, relâchement avalé aussi
+            auto pressed = [](int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; };
+            CycleKeyEvent e;
+            e.down = down;
+            e.repeat = repeat;
+            e.alt = (k->flags & LLKHF_ALTDOWN) != 0 || commandAlt;
+            e.ctrl = pressed(VK_CONTROL);
+            e.win = pressed(VK_LWIN) || pressed(VK_RWIN);
+            e.shift = pressed(VK_SHIFT);
+            e.injected = (k->flags & LLKHF_INJECTED) != 0 && !diagnosticCapture();   // acceptées en diagnostic (essais)
+            e.taken = cycleTaken;
+            e.session = self_->switchSession_;
+            const CycleKey a = cycleKeyAction(e);
+            if (!down) cycleTaken = false;
+            int id = 0;
+            switch (a) {
+                case CycleKey::Next: id = kHotCycle; break;
+                case CycleKey::Prev: id = kHotCycleBack; break;
+                case CycleKey::SwitcherBack: id = kHotSwitchBack; break;
+                case CycleKey::SwitcherNext: id = kHotSwitch; break;
+                default: break;
+            }
+            if (id) {
+                cycleTaken = true;
+                PostMessageW(self_->hwnd_, WM_APP_SWITCHKEY, WPARAM(id), 0);
+            }
+            if (a != CycleKey::Pass) return 1;   // avalée : ni ² ni ` tapé dans l'app
+        }
         if (self_->switchKeysOn_) {
             const bool alt = (k->flags & LLKHF_ALTDOWN) != 0 || commandAlt;
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -2466,7 +2541,8 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             quickLookWatch_.reset();
             return 0;
         case WM_APP_SWITCHKEY:
-            if (switch_.active() || int(wp) == kHotSwitch || int(wp) == kHotSwitchBack) switcherKey(int(wp));
+            if (int(wp) == kHotCycle || int(wp) == kHotCycleBack) cycleWindows(int(wp) == kHotCycleBack);
+            else if (switch_.active() || int(wp) == kHotSwitch || int(wp) == kHotSwitchBack) switcherKey(int(wp));
             return 0;
         case WM_APP_CORNER:
             if (const unsigned delay = hotCornerDelayMs(HotCornerAction(wp))) {
@@ -2883,6 +2959,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         endSwitch(true);
     };
     registerSwitcherHotkey();
+    applyCycleHotkey();
     lastUiBeat_ = GetTickCount64();
     pipe_.setLivenessCheck([this] {
         PostMessageW(hwnd_, WM_APP_PING, 0, 0);

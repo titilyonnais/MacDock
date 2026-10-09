@@ -19,6 +19,13 @@ std::wstring firstTitle(const wchar_t* query) {
 
 } // namespace
 
+TEST_CASE(spot_settings_window_cycle_keywords) {   // plan 59 : « fenêtre suivante » mène à Réglages > Clavier
+    const auto& pages = md::settingsPages();
+    const auto r = md::searchSettings(pages, L"fenêtre suivante");
+    REQUIRE(!r.empty());
+    CHECK(pages[r[0]].macDock && pages[r[0]].title == L"Clavier");
+}
+
 TEST_CASE(spot_settings_table_is_valid) {
     const auto& pages = md::settingsPages();
     REQUIRE(pages.size() > 60);

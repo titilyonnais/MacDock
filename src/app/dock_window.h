@@ -34,6 +34,7 @@
 #include "../screenshot/shot_viewfinder.h"
 #include "../switcher/switcher_logic.h"
 #include "../switcher/switcher_window.h"
+#include "../switcher/window_cycle.h"
 #include "../theme/theme_system.h"
 #include "../tracker/window_tracker.h"
 #include "dock_controller.h"
@@ -104,6 +105,8 @@ private:
     // Les fenêtres d'une seule app (réduites en rangée en bas) ; false : rien à montrer (autre bureau virtuel…).
     bool openAppExpose(const std::wstring& appId);
     void registerSwitcherHotkey();                             // Alt+Tab et Alt+Maj+Tab (réglage appSwitcherHotkey)
+    void applyCycleHotkey();                                   // Alt+` (réglage windowCycleHotkey, plan 59)
+    void cycleWindows(bool back);                              // ⌘` : fenêtre suivante (ou précédente) de l'app
     void registerForceQuitHotkey();                            // raccourci du réglage forceQuitHotkey (⌥⌘⎋)
     void openForceQuit();                                      // « Forcer des applications à quitter »
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
@@ -282,6 +285,7 @@ private:
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
+    std::atomic<bool> cycleKeysOn_{false};     // le crochet clavier prend Alt+` (réglage windowCycleHotkey)
     std::atomic<bool> shotKeysOn_{false};      // le crochet prend ⊞⇧3 et ⊞⇧4 (réglage screenshots)
     std::atomic<bool> commandKeyOn_{false};    // Alt de gauche joue ⌘ (réglage altAsCommand)
     CommandKeys commandKeys_;                  // fil du crochet seulement

@@ -153,6 +153,24 @@ TEST_CASE(settings_hot_corners_and_shortcuts) {
     CHECK(md::shortcutConflict(m, L"Spotlight") == L"Forcer à quitter");
 }
 
+TEST_CASE(settings_keyboard_window_cycle) {   // plan 59 : ⌘` de macOS, réglable dans Clavier > Raccourcis
+    const auto keyboard = md::paneGroups(md::PaneId::Keyboard, fullEnv());
+    const md::RowSpec* cycle = row(keyboard, L"Fenêtre suivante de l'app");
+    REQUIRE(cycle && cycle->kind == md::RowKind::Choice);
+    CHECK(cycle->choices.size() == 2);
+    md::SettingsModel m;
+    CHECK(cycle->get(m) == 0);   // ⌥` par défaut
+    cycle->set(m, 1);
+    CHECK(m.dock.windowCycleHotkey == L"off");
+    cycle->set(m, 0);
+    CHECK(m.dock.windowCycleHotkey == L"alt+backtick");
+    CHECK(cycle->detail.find(L"²") != std::wstring::npos);   // la touche sous Échap, nommée pour l'AZERTY
+    bool found = false;
+    for (const auto& f : md::searchPanes(L"fenêtre suivante", fullEnv()))
+        found = found || (f.pane == md::PaneId::Keyboard && !f.rows.empty());
+    CHECK(found);
+}
+
 TEST_CASE(settings_fonts_and_mods) {
     md::PaneEnv env = fullEnv();
     const auto fontGroups = md::paneGroups(md::PaneId::Font, env);   // gardés : la ligne pointe dedans
