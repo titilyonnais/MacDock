@@ -221,3 +221,46 @@ TEST_CASE(settings_monitor_names_on_this_pc) {
         CHECK(!name.empty());
     }
 }
+
+TEST_CASE(settings_about_software_update) {
+    // Plan 53 : « Mise à jour de logiciels » dans À propos : l'état en titre court et sous-titre (lisibles à côté des
+    // boutons), Rechercher, Installer (version prête seulement), Rechercher automatiquement.
+    md::PaneEnv env = fullEnv();
+    env.updateTitle = L"MacDock est à jour";
+    env.updateDetail = L"Vérifié le 09/10/2026 à 10:28";
+    const auto about = md::paneGroups(md::PaneId::About, env);
+    const md::RowSpec* status = row(about, L"MacDock est à jour");
+    REQUIRE(status != nullptr);
+    CHECK(status->detail == env.updateDetail);
+    CHECK(hasAction(status, md::PaneAction::CheckUpdate));
+    CHECK(!hasAction(status, md::PaneAction::InstallUpdate));
+    env.updateReady = true;
+    CHECK(hasAction(row(md::paneGroups(md::PaneId::About, env), L"MacDock est à jour"), md::PaneAction::InstallUpdate));
+    const md::RowSpec* automatic = row(about, L"Rechercher automatiquement les mises à jour");
+    REQUIRE(automatic && automatic->kind == md::RowKind::Switch);
+    md::SettingsModel m;
+    automatic->set(m, 0);
+    CHECK(!m.autoUpdate);
+    automatic->set(m, 1);
+    CHECK(m.autoUpdate);
+}
+
+TEST_CASE(settings_update_status_text) {
+    md::UpdateState s;
+    auto status = md::updateStatus(s, L"");
+    CHECK(status.title == L"Pas encore vérifié");
+    s.lastCheck = 1791534536;
+    status = md::updateStatus(s, L"le 09/10/2026 à 10:28");
+    CHECK(status.title == L"MacDock est à jour");
+    CHECK(status.detail == L"Vérifié le 09/10/2026 à 10:28");
+    s.lastError = L"hors ligne ou GitHub injoignable";
+    status = md::updateStatus(s, L"le 09/10/2026 à 10:28");
+    CHECK(status.title == L"Recherche impossible");
+    CHECK(status.detail == L"Hors ligne ou GitHub injoignable");   // majuscule en tête
+    s.readyVersion = L"0.53.0";   // prête : l'emporte sur une erreur plus récente
+    status = md::updateStatus(s, L"le 09/10/2026 à 10:28");
+    CHECK(status.title == L"MacDock 0.53.0 est prête");
+    CHECK(status.detail == L"Installée au prochain démarrage");
+    // Assez courts pour tenir à côté de deux boutons.
+    for (const auto& t : {status.title, status.detail}) CHECK(t.size() <= 36);
+}

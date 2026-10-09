@@ -4,8 +4,12 @@
 
 #include <cwctype>
 
+#include <fstream>
+#include <sstream>
+
 #include "../config/config_store.h"
 #include "../core/strings.h"
+#include "../update/update_logic.h"
 
 namespace md {
 
@@ -44,9 +48,20 @@ DockFile readDock(const std::wstring& dir) {
 }
 } // namespace
 
+namespace {
+std::wstring updatePath(const std::wstring& dir) { return dir + L"\\update.json"; }
+UpdateState readUpdate(const std::wstring& dir) {
+    std::ifstream f(updatePath(dir), std::ios::binary);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return parseUpdateState(ss.str());
+}
+} // namespace
+
 SettingsModel loadModel(const std::wstring& dir, ModelFiles* status, const SettingsIo* io) {
     SettingsModel m;
     m.startup = startupIsOurs(io);
+    m.autoUpdate = readUpdate(dir).automatic;
     const DockFile dock = readDock(dir);
     m.dock = dock.parsed;
     const LoadResult bar = loadJsonFile(barPath(dir));
@@ -63,6 +78,8 @@ bool commit(const std::wstring& dir, const std::function<void(SettingsModel&)>& 
     SettingsModel m{dock.parsed, menuBarSettingsFromJson(barRaw)};
     m.startup = startupIsOurs(io);
     const bool startupBefore = m.startup;
+    m.autoUpdate = readUpdate(dir).automatic;
+    const bool autoUpdateBefore = m.autoUpdate;
     const json::Value dockBefore = settingsToJson(m.dock), barBefore = menuBarSettingsToJson(m.bar);
     edit(m);
     const json::Value dockAfter = settingsToJson(m.dock), barAfter = menuBarSettingsToJson(m.bar);
@@ -73,6 +90,12 @@ bool commit(const std::wstring& dir, const std::function<void(SettingsModel&)>& 
         ok = !barBroken && saveJsonFileAtomic(barPath(dir), mergeChanged(barRaw, barBefore, barAfter)) && ok;
     if (m.startup != startupBefore && io && io->writeStartup)   // guillemets, comme MacDockLauncher.exe --install
         ok = io->writeStartup(m.startup ? std::optional<std::wstring>(L"\"" + io->launcherPath + L"\"") : std::nullopt) && ok;
+    if (m.autoUpdate != autoUpdateBefore) {   // relu juste avant : la version prête notée par le lanceur est gardée
+        UpdateState u = readUpdate(dir);
+        u.automatic = m.autoUpdate;
+        const auto doc = json::parse(updateStateJson(u));
+        ok = doc && saveJsonFileAtomic(updatePath(dir), *doc) && ok;
+    }
     if (result) *result = m;
     return ok;
 }

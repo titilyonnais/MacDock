@@ -3,9 +3,13 @@
 
 #include <string>
 
+#include <fstream>
+#include <sstream>
+
 #include "minitest.h"
 #include "../src/config/config_store.h"
 #include "../src/settings/settings_doc.h"
+#include "../src/update/update_logic.h"
 
 namespace {
 // Dossier temporaire propre à un test (effacé au début).
@@ -553,4 +557,38 @@ TEST_CASE(ui_sidebar_fits_a_short_window) {
     REQUIRE(!tops.empty());
     CHECK(tops.back() + md::ui::metrics::sidebarRow <= md::ui::sidebarVisibleBottom(md::ui::metrics::minHeight));
     CHECK(md::ui::sidebarVisibleBottom(600) < md::ui::sidebarPanel(600).bottom);
+}
+
+TEST_CASE(settings_auto_update_lives_in_update_json) {
+    // Plan 53 : « Rechercher automatiquement » vit dans update.json, que le lanceur lit aussi ; l'app n'y change que ce
+    // champ, jamais la version prête notée par le lanceur, et ne le réécrit pas pour un autre réglage.
+    const std::wstring dir = tempDir(L"update");
+    const std::wstring path = dir + L"\\update.json";
+    DeleteFileW(path.c_str());
+    CHECK(md::loadModel(dir).autoUpdate);   // pas de fichier : recherches automatiques
+    md::UpdateState s;
+    s.readyVersion = L"0.53.0";
+    s.readySha256 = "aa";
+    {
+        std::ofstream f(path, std::ios::binary);
+        f << md::updateStateJson(s);
+    }
+    auto read = [&] {
+        std::ifstream f(path, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return md::parseUpdateState(ss.str());
+    };
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.autoUpdate = false; }));
+    CHECK(!read().automatic);
+    CHECK(read().readyVersion == L"0.53.0");
+    CHECK(read().readySha256 == "aa");
+    CHECK(!md::loadModel(dir).autoUpdate);
+    WIN32_FILE_ATTRIBUTE_DATA before{}, after{};
+    GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &before);
+    Sleep(20);
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.bar.autohide = !m.bar.autohide; }));
+    GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &after);
+    CHECK(CompareFileTime(&before.ftLastWriteTime, &after.ftLastWriteTime) == 0);   // pas réécrit
+    DeleteFileW(path.c_str());
 }

@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../update/update_logic.h"
 #include "mods.h"
 #include "settings_doc.h"
 
@@ -35,7 +36,10 @@ std::optional<PaneId> paneFromKey(std::string_view key);
 enum class RowKind { Switch, Slider, Choice, Segmented, Info, Buttons, Shortcut, Value };
 
 // Actions des boutons, exécutées par la fenêtre (arg : identifiant du mod…).
-enum class PaneAction { None, Launch, Restart, Quit, Export, Import, Reset, InstallMod, UninstallMod, GetWindhawk, ShowFolder, ShowLogs };
+enum class PaneAction {
+    None, Launch, Restart, Quit, Export, Import, Reset, InstallMod, UninstallMod, GetWindhawk, ShowFolder, ShowLogs,
+    CheckUpdate, InstallUpdate,   // mise à jour de logiciels (plan 53) : par le lanceur
+};
 struct ButtonSpec {
     std::wstring label;
     PaneAction action = PaneAction::None;
@@ -56,7 +60,16 @@ struct PaneEnv {
     std::vector<ModEnv> mods;
     bool running = true;                   // MacDock tourne
     std::wstring version, dataDir;
+    std::wstring updateTitle, updateDetail;   // mise à jour de logiciels : état (updateStatus)
+    bool updateReady = false;                 // une version est téléchargée, vérifiée et prête
 };
+
+// Mise à jour de logiciels : l'état gardé dans update.json, en titre court et sous-titre (ils tiennent à côté de deux
+// boutons). `checkedAt` : la dernière recherche, déjà écrite (« le 09/10/2026 à 10:28 »).
+struct UpdateStatus {
+    std::wstring title, detail;
+};
+UpdateStatus updateStatus(const UpdateState& s, const std::wstring& checkedAt);
 
 struct RowSpec {
     RowKind kind = RowKind::Info;

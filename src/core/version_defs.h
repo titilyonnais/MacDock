@@ -4,7 +4,7 @@
 #pragma once
 
 #define MACDOCK_VERSION_MAJOR 0
-#define MACDOCK_VERSION_MINOR 52
+#define MACDOCK_VERSION_MINOR 53
 #define MACDOCK_VERSION_PATCH 0
 /* Préversion : "-rc.1" (publiée comme telle, ignorée par les mises à jour) ; "" pour une version. */
 #define MACDOCK_VERSION_SUFFIX ""

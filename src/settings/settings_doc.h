@@ -16,6 +16,9 @@ struct SettingsModel {
     Settings dock;
     MenuBarSettings bar;
     bool startup = false;   // ouvrir MacDock à l'ouverture de session (hors fichiers : SettingsIo)
+    // Rechercher automatiquement les mises à jour (plan 53) : champ « automatic » de update.json, que le lanceur lit ;
+    // l'app n'y change que lui.
+    bool autoUpdate = true;
 };
 
 // Ce que le modèle lit et écrit hors de ses fichiers : la valeur « MacDock » de HKCU\...\Run (démarrage avec Windows),

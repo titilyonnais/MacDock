@@ -957,6 +957,35 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture indépendante** : MacDock dépendait du runtime Visual C++, absent d'un Windows neuf : runtime désormais
   intégré, et contrôlé à chaque fabrication. Arrêt, relance et workflows renforcés.
 
+### Plan 53 — mises à jour automatiques, 9 octobre
+
+- **MacDock se met à jour tout seul** depuis les versions publiées sur GitHub :
+  - recherche une minute après le démarrage, puis deux fois par jour ;
+  - version trouvée téléchargée et vérifiée en arrière-plan, puis notification : un clic redémarre MacDock et
+    l'installe, sinon elle s'installe au prochain démarrage, avant le Dock.
+- **Signée par ta clé** : chaque version est signée sur ce PC (`tools/sign-release.ps1`, clé « MacDock Release »,
+  non exportable). MacDock refuse une version mal signée, altérée, ou dont la signature couvre autre chose que son
+  installateur. Le script vérifie d'où vient la version avant de la signer.
+- **Réglages > À propos** : *Mise à jour de logiciels* (état, *Rechercher*, *Installer*, *Rechercher
+  automatiquement*).
+- **Seule la copie installée se met à jour** : ta copie compilée (`build\Release`) jamais.
+- **Essais réels** sur de vraies préversions publiées puis supprimées : version mal signée ou non signée refusée,
+  notification et clic, installateur altéré jamais lancé, installation au démarrage, bouton *Installer*, arrêt pendant
+  une recherche bloquée, installateur pendant une recherche, MacDock qui revient si l'installateur échoue au
+  démarrage.
+- **Relecture indépendante** : 1 critique (*Installer* ne faisait rien et rallumait le démarrage avec Windows) et
+  6 importants (signature trop large, provenance non vérifiée, arrêt du lanceur bloqué ou retardé, MacDock pas relancé,
+  état réécrit à l'aveugle), tous corrigés avec un test vu en échec avant.
+
+## Mineurs reportés — plan 53
+- `launchInstaller` ne revérifie pas que la version prête est plus récente ni que son empreinte notée est non vide (un `update.json` abîmé par ce même compte) ; l'installateur part même si la tentative n'a pas pu être notée.
+- Une relance de `release.yml` garde l'ancienne signature : « signature invalide » jusqu'à la nouvelle signature.
+- Recherche ratée (hors ligne à la première minute) : la suivante 12 h plus tard.
+- Après l'abandon d'une installation ratée, Réglages dit « à jour » ; le dossier `updates` reste après la désinstallation.
+- Réglages : textes à polir (« est prête », erreurs brutes comme « HTTP 403 »), pas d'indicateur pendant *Rechercher*, état pas rafraîchi tout de suite quand le lanceur trouve une version.
+- Notification : perdue après un redémarrage de l'Explorateur ; un double clic lance deux installateurs (le second attend son tour).
+- Clé de signature logicielle (pas le TPM) : choix expliqué dans le plan 53.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

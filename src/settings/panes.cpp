@@ -351,10 +351,33 @@ std::vector<GroupSpec> aboutPane(const PaneEnv& env) {
     g.rows.push_back(actions(L"Journaux", {{L"Afficher", PaneAction::ShowLogs}}));
     g.footer = L"MacDock : un Dock, une barre des menus et des réglages façon macOS pour Windows 11. Aucune ressource Apple : "
                L"tout est dessiné.";
-    return {g};
+    // Comme Réglages Système > Général > Mise à jour de logiciels.
+    GroupSpec u;
+    u.title = L"Mise à jour de logiciels";
+    std::vector<ButtonSpec> buttons{{L"Rechercher", PaneAction::CheckUpdate}};
+    if (env.updateReady) buttons.insert(buttons.begin(), {L"Installer", PaneAction::InstallUpdate});
+    RowSpec status = actions(env.updateTitle.empty() ? L"Mises à jour" : env.updateTitle, std::move(buttons), env.updateDetail);
+    status.keywords = L"mise à jour version rechercher installer";
+    u.rows.push_back(std::move(status));
+    u.rows.push_back(toggle(L"Rechercher automatiquement les mises à jour", [](auto& m) -> auto& { return m.autoUpdate; },
+                            L"Une version prête s'installe au démarrage suivant", L"mise à jour version github"));
+    u.footer = L"Les versions viennent de github.com/titilyonnais/MacDock et sont signées : une version mal signée n'est "
+               L"jamais installée.";
+    return {g, u};
 }
 
 }  // namespace
+
+UpdateStatus updateStatus(const UpdateState& s, const std::wstring& checkedAt) {
+    if (!s.readyVersion.empty()) return {L"MacDock " + s.readyVersion + L" est prête", L"Installée au prochain démarrage"};
+    if (!s.lastError.empty()) {
+        std::wstring detail = s.lastError;   // « hors ligne… » : majuscule en tête de ligne
+        detail[0] = wchar_t(std::towupper(detail[0]));
+        return {L"Recherche impossible", detail};
+    }
+    if (s.lastCheck > 0) return {L"MacDock est à jour", L"Vérifié " + checkedAt};
+    return {L"Pas encore vérifié", L""};
+}
 
 std::wstring searchFold(std::wstring_view s) {
     std::wstring out;

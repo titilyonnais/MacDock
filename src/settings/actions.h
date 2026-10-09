@@ -1,6 +1,7 @@
 // Actions des boutons de l'app Réglages (logique pure) : la ou les commandes à lancer pour chacune. La fenêtre les
 // exécute (ShellExecuteEx) ; exporter, importer et rétablir se font dans la fenêtre (dialogues, feuille d'alerte).
 #pragma once
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,16 @@ struct ActionCommand {
     // Étape sans fichier : l'Explorateur de la session de l'utilisateur redémarré par l'app elle-même (jamais par un
     // processus administrateur).
     bool restartExplorer = false;
+    // Code de sortie sans valeur d'erreur (recherche de mise à jour : 10 = version prête) ; l'état se relit ensuite.
+    bool ignoreExitCode = false;
+    // Réglages qui se ferme n'attend plus sa fin (une recherche de mise à jour continue seule ; sinon l'app resterait
+    // ouverte en coulisse jusqu'à 3 min, sans pouvoir se rouvrir, et l'installateur attendrait).
+    bool abandonOnClose = false;
 };
+
+// Attend la fin d'un processus lancé par un bouton, au plus `timeoutMs` ; `abandon` levé (fermeture de Réglages) :
+// on n'attend plus. true : il a fini.
+bool waitForExit(void* process, unsigned timeoutMs, const std::atomic<bool>* abandon);
 
 // Dans l'ordre ; vide pour une action faite dans la fenêtre, ou un mod inconnu.
 std::vector<ActionCommand> actionCommands(PaneAction action, const ButtonContext& c);

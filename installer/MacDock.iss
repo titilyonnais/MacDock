@@ -7,8 +7,8 @@
 ;   /NOLAUNCH    MacDock n'est pas lancé à la fin (essais)
 ;   /NOSTARTUP   pas de démarrage avec Windows (essais)
 ;   /RELAUNCH    MacDock relancé même s'il ne tournait pas et que l'installation échoue (mise à jour au démarrage)
-; Paramètre du désinstalleur :
-;   /KEEPTHEME   le thème de Windows n'est pas rétabli (essais)
+; Désinstallation d'essai : MACDOCK_KEEP_THEME=1 dans l'environnement, le thème de Windows n'est pas rétabli (un
+; paramètre ne suffirait pas : le désinstalleur se relance depuis %TEMP% sans les paramètres maison).
 ; Une mise à jour installée par-dessus MacDock en marche le quitte d'abord (ordre d'arrêt au lanceur, fenêtres
 ; fermées), puis le relance ; ratée ou annulée, elle relance l'ancien. Les réglages (%APPDATA%\MacDock) ne sont jamais
 ; touchés, même à la désinstallation.
@@ -96,10 +96,6 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\MacDockLauncher.exe"; Description: "Lancer MacDock"; Flags: nowait postinstall; Check: LaunchWanted
 
-[UninstallRun]
-; Thème macOS appliqué (curseurs, fond d'écran) : celui de Windows est rétabli, sa sauvegarde étant gardée par MacDock ;
-; sans sauvegarde, rien ne change.
-Filename: "{app}\MacDock.exe"; Parameters: "--theme restore"; Flags: runhidden waituntilterminated; RunOnceId: "RestoreTheme"; Check: not ParamGiven('/KEEPTHEME')
 
 [Code]
 const
@@ -107,7 +103,11 @@ const
   EVENT_MODIFY_STATE = $0002;
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppGuid}}_is1';
-  Mutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher,MacDockSettings.Instance';
+  // Tout ce qui garde un fichier de MacDock ouvert : Dock, barre, lanceur, Réglages, et une recherche de mise à jour
+  // (MacDockLauncher.exe --check-update, verrou des mises à jour), qui s'arrête à l'ordre d'arrêt.
+  Mutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher,MacDockSettings.Instance,Local\MacDockUpdate';
+  // Relance : seuls le Dock, la barre et le lanceur comptent (Réglages qui se ferme ne la retarde pas).
+  LauncherMutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher';
   QuitEvent = 'Local\MacDockQuit';
   StopFailed = 'MacDock ne s''est pas arrêté. Quitte-le (clic droit sur le Dock > Quitter MacDock), ferme Réglages MacDock, puis recommence.';
 
@@ -159,6 +159,12 @@ begin
     Result := RegValueExists(HKCU, RunKey, 'MacDock')
   else
     Result := WizardIsTaskSelected('startup');
+end;
+
+// Essais : la désinstallation ne rétablit pas le thème de Windows.
+function KeepTheme(): Boolean;
+begin
+  Result := GetEnv('MACDOCK_KEEP_THEME') = '1';
 end;
 
 function LaunchWanted(): Boolean;
@@ -239,11 +245,11 @@ begin
   begin
     for I := 1 to 150 do
     begin
-      if not MacDockRunning() then
+      if not CheckForMutexes(LauncherMutexes) then
         Break;
       Sleep(100);
     end;
-    if not MacDockRunning() then
+    if not CheckForMutexes(LauncherMutexes) then
       Exec(AppDir + '\MacDockLauncher.exe', '', AppDir, SW_SHOWNORMAL, ewNoWait, Code);
   end;
 end;
@@ -260,7 +266,13 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Value: String;
+  Code: Integer;
 begin
+  // Thème macOS appliqué (curseurs, fond d'écran) : celui de Windows est rétabli, avant que les fichiers partent ; sans
+  // sauvegarde, rien ne change. Décidé ici, à la désinstallation : la condition d'une entrée [UninstallRun] serait
+  // évaluée à l'installation.
+  if (CurUninstallStep = usUninstall) and not KeepTheme() then
+    Exec(ExpandConstant('{app}\MacDock.exe'), '--theme restore', '', SW_HIDE, ewWaitUntilTerminated, Code);
   // Démarrage avec Windows retiré s'il lançait exactement cette copie (pas une autre, compilée ailleurs).
   if (CurUninstallStep = usPostUninstall) and RegQueryStringValue(HKCU, RunKey, 'MacDock', Value) and
      (CompareText(Value, '"' + ExpandConstant('{app}') + '\MacDockLauncher.exe"') = 0) then

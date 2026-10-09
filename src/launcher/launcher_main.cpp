@@ -4,15 +4,25 @@
 //   MacDockLauncher.exe --uninstall  retire le démarrage automatique
 //   MacDockLauncher.exe --quit       ordre d'arrêt : le lanceur ferme le Dock et la barre, sans rien relancer
 //                                    (l'installateur s'en sert avant une mise à jour)
+//   MacDockLauncher.exe --check-update    recherche, télécharge et vérifie une mise à jour (plan 53) ; code de
+//                                         sortie 0 à jour, 10 prête, 1 erreur (update.json dit laquelle)
+//   MacDockLauncher.exe --install-update  installe la mise à jour prête (l'installateur quitte et relance MacDock)
+// Au démarrage, une mise à jour prête est installée avant le Dock ; ensuite, un fil cherche les suivantes. Tout cela
+// seulement pour la copie posée par l'installateur (une copie compilée à la main ne se met jamais à jour).
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../core/log.h"
+#include "../update/updater.h"
+#include "launcher_args.h"
 #include "supervisor.h"
+#include "update_notifier.h"
 
 namespace {
 
@@ -52,6 +62,39 @@ std::wstring logDir() {
     dir += L"\\MacDock";
     CreateDirectoryW(dir.c_str(), nullptr);
     return dir + L"\\logs";
+}
+
+// --check-update (Réglages) : la recherche tourne dans un fil. Un ordre d'arrêt (installateur, --quit) termine le
+// processus aussitôt : sinon ce fichier resterait verrouillé pendant que l'installateur le remplace. L'installateur
+// attend aussi le verrou des mises à jour, que la recherche tient.
+int checkUpdate() {
+    md::log::init(logDir());
+    if (!md::update::runsFromInstalledCopy()) {   // Réglages dit pourquoi
+        const md::update::Paths paths = md::update::defaultPaths();
+        md::UpdateState s = md::update::load(paths);
+        s.lastError = L"copie non installée : les mises à jour passent par l'installateur";
+        md::update::save(paths, s);
+        return 1;
+    }
+    HANDLE quit = CreateEventW(nullptr, TRUE, FALSE, kQuitEvent);   // jamais remis à zéro ici : un ordre en cours vaut
+    md::update::Options options = md::update::optionsFromEnvironment();
+    options.cancel = quit;
+    std::atomic<int> code{1};
+    std::thread worker([&] {
+        switch (md::update::check(md::update::defaultPaths(), options)) {
+            case md::update::CheckResult::UpToDate: code = 0; break;
+            case md::update::CheckResult::Ready: code = 10; break;
+            case md::update::CheckResult::Failed: code = 1; break;
+        }
+    });
+    const HANDLE waits[] = {worker.native_handle(), quit};
+    if (WaitForMultipleObjects(quit ? 2 : 1, waits, FALSE, INFINITE) != WAIT_OBJECT_0) {
+        md::log::info(L"Ordre d'arrêt reçu : recherche de mise à jour abandonnée");
+        ExitProcess(1);
+    }
+    worker.join();
+    if (quit) CloseHandle(quit);
+    return code;
 }
 
 int install() {
@@ -133,11 +176,24 @@ void stopChild(Child& c) {
 
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
-    std::wstring args(cmdLine ? cmdLine : L"");
-    if (args.find(L"--install") != std::wstring::npos) return install();
-    if (args.find(L"--uninstall") != std::wstring::npos) return uninstall();
-    if (args.find(L"--quit") != std::wstring::npos) return quitRunning();
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    std::vector<std::wstring> argv;
+    int argc = 0;
+    if (LPWSTR* list = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        argv.assign(list, list + argc);
+        LocalFree(list);
+    }
+    switch (md::launcherCommand(argv)) {
+        case md::LauncherCommand::Install: return install();
+        case md::LauncherCommand::Uninstall: return uninstall();
+        case md::LauncherCommand::Quit: return quitRunning();
+        case md::LauncherCommand::CheckUpdate: return checkUpdate();
+        case md::LauncherCommand::InstallUpdate:
+            md::log::init(logDir());
+            if (!md::update::runsFromInstalledCopy()) return 1;
+            return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
+        case md::LauncherCommand::Run: break;
+    }
 
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kLauncherMutex);
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
@@ -146,6 +202,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
 
     std::wstring logs = logDir();
     md::log::init(logs);
+    // Mises à jour : seulement pour la copie posée par l'installateur (jamais une copie compilée à la main, ni la
+    // variante d'essai, qui installeraient la vraie ailleurs).
+    const bool updates = md::update::runsFromInstalledCopy();
+    // Mise à jour téléchargée lors d'une session précédente : installée avant que le Dock apparaisse. Un relais attend
+    // la fin de l'installateur et relance MacDock, même s'il échoue ou s'arrête tôt ; ce lanceur s'arrête tout de suite
+    // pour ne pas gêner le remplacement de ses fichiers.
+    if (updates && md::update::installAtStartup(md::update::defaultPaths())) {
+        if (quit) CloseHandle(quit);
+        ReleaseMutex(mutex);
+        CloseHandle(mutex);
+        return 0;
+    }
     std::vector<Child> children{{md::ChildRole::Dock, exeDir() + L"\\MacDock.exe", L"Le Dock", L"MacDock s'est arrêté",
                                  L"Le Dock a planté plusieurs fois. La barre des tâches Windows a été rétablie."}};
     const std::wstring bar = exeDir() + L"\\MacMenuBar.exe";
@@ -153,8 +221,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
         children.push_back({md::ChildRole::MenuBar, bar, L"La barre de menus", L"La barre de menus s'est arrêtée",
                             L"La barre de menus a planté plusieurs fois et n'est plus relancée."});
     md::Supervisor supervisor;
+    md::UpdateNotifier notifier;   // recherches de fond, notification d'une version prête
     for (auto& c : children)
         if (!startChild(c)) notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
+    if (updates) notifier.start(instance);
 
     for (;;) {
         std::vector<HANDLE> handles;
@@ -198,8 +268,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
                 break;
         }
     }
+    // Une recherche encore dans le réseau n'est pas attendue plus de 3 s : l'installateur n'attend l'arrêt que 30 s.
+    const bool idle = notifier.stop(3000);
+    if (!idle) md::log::warn(L"Recherche de mise à jour encore en cours : arrêt sans l'attendre");
     if (quit) CloseHandle(quit);
     ReleaseMutex(mutex);
     CloseHandle(mutex);
+    if (!idle) ExitProcess(0);   // le fil de recherche s'arrête avec le processus
     return 0;
 }
