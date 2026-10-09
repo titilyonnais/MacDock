@@ -246,3 +246,51 @@ TEST_CASE(settings_alt_as_command_off_by_default) {
     s.altAsCommand = true;
     CHECK(md::settingsFromJson(md::settingsToJson(s)).altAsCommand);
 }
+
+TEST_CASE(dock_save_keeps_keys_written_meanwhile) {
+    // Plan 46 : le Dock n'écrit que ce qu'il a changé. L'app Réglages a passé la taille à 64 avant que le Dock relise
+    // le fichier ; le Dock enregistre ensuite son masquage automatique : la taille de l'app reste.
+    md::Settings dock;
+    dock.tileSize = 48;
+    const md::json::Value lastSaved = md::settingsToJson(dock);
+    md::LoadResult file;
+    file.fromFile = true;
+    file.value = lastSaved;
+    file.value.set("tileSize", md::json::Value(64.0));
+    file.value.set("futureKey", md::json::Value(true));   // clé d'une version plus récente : gardée aussi
+    md::Settings now = dock;
+    now.autohide = !dock.autohide;
+    const md::json::Value out = md::dockSettingsToWrite(file, lastSaved, md::settingsToJson(now));
+    CHECK(out.find("autohide") && out.find("autohide")->asBool(!now.autohide) == now.autohide);
+    CHECK_NEAR(out.find("tileSize")->asNumber(0), 64.0, 1e-9);
+    CHECK(out.find("futureKey") && out.find("futureKey")->asBool(false));
+    // Fichier absent, invalide ou illisible : tout est écrit, comme avant.
+    md::LoadResult missing;
+    const md::json::Value all = md::dockSettingsToWrite(missing, lastSaved, md::settingsToJson(now));
+    CHECK_NEAR(all.find("tileSize")->asNumber(0), 48.0, 1e-9);
+    md::LoadResult broken;
+    broken.wasInvalid = true;
+    CHECK(md::dockSettingsToWrite(broken, lastSaved, md::settingsToJson(now)).find("pinned"));
+}
+
+TEST_CASE(dock_save_screen_removal_both_ways) {
+    // « Écran principal » retire la clé screen. Retirée par l'app pendant que le Dock enregistre autre chose : elle
+    // reste retirée. Retirée par le Dock lui-même : elle disparaît du fichier.
+    md::Settings dock;
+    dock.screen = L"\\\\.\\DISPLAY2";
+    const md::json::Value lastSaved = md::settingsToJson(dock);
+    REQUIRE(lastSaved.find("screen"));
+    md::LoadResult file;
+    file.fromFile = true;
+    file.value = lastSaved;
+    file.value.erase("screen");                        // l'app a choisi « Écran principal »
+    md::Settings pinsOnly = dock;
+    pinsOnly.autohide = !dock.autohide;                // le Dock enregistre autre chose
+    CHECK(!md::dockSettingsToWrite(file, lastSaved, md::settingsToJson(pinsOnly)).find("screen"));
+    md::LoadResult same;
+    same.fromFile = true;
+    same.value = lastSaved;
+    md::Settings cleared = dock;
+    cleared.screen.clear();                            // le Dock retire lui-même l'écran
+    CHECK(!md::dockSettingsToWrite(same, lastSaved, md::settingsToJson(cleared)).find("screen"));
+}

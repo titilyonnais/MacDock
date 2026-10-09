@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "../config/config_store.h"
 #include "../config/settings.h"
 #include "../core/json.h"
 #include "../menubar/menubar_settings.h"
@@ -28,10 +29,7 @@ SettingsIo registryIo(const std::wstring& launcherPath);   // le vrai registre (
 // Mode d'essai (--data) : la même valeur gardée dans un fichier, jamais dans le vrai registre.
 SettingsIo fileStartupIo(const std::wstring& file, const std::wstring& launcherPath);
 
-// Fusion par différence : `file` reçoit les clés de `after` dont la valeur (sérialisée) diffère de `before`, et perd
-// celles que `after` n'a plus (« Écran principal » retire screen) ; ses autres clés (inconnues de nous, épingles du
-// Dock) restent telles quelles.
-json::Value mergeChanged(json::Value file, const json::Value& before, const json::Value& after);
+// Écritures par différence (mergeChanged) : voir config_store.h, partagé avec le Dock.
 
 // État des fichiers lus : invalide (JSON cassé) ou illisible (verrou…). Un tel fichier n'est jamais réécrit : le Dock
 // garde alors ses réglages actuels, et l'app ne doit pas le remplacer par un fichier presque vide.

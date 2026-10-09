@@ -180,6 +180,20 @@ TEST_CASE(ui_slider_value_and_position) {
     CHECK_NEAR(md::ui::sliderValueAt(md::ui::sliderKnobX(100, 16, 128, 100, 300), 16, 128, 1, 100, 300), 100.0, 1e-9);
 }
 
+TEST_CASE(ui_menu_press_drag_release) {
+    // Plan 46 : comme sur macOS, un menu ouvert par l'appui se choisit en glissant puis en relâchant ; un clic court
+    // le laisse ouvert (second clic pour choisir).
+    using R = md::ui::MenuRelease;
+    CHECK(md::ui::menuRelease(2, 0.0f, 0.10).kind == R::KeepOpen);   // clic court, sans bouger
+    const auto drag = md::ui::menuRelease(2, 12.0f, 0.15);           // glissé jusqu'à l'élément 2 : choisi
+    CHECK(drag.kind == R::Choose && drag.item == 2);
+    CHECK(md::ui::menuRelease(0, 3.0f, 0.20).kind == R::KeepOpen);   // tremblement de moins de 4 pt : un clic
+    // Relecture : sans glisser, un appui tenu ferme le menu sans rien changer (l'élément sous le doigt n'est pas
+    // toujours la valeur actuelle : menu recalé au bord, valeur inconnue montrée comme le premier élément).
+    CHECK(md::ui::menuRelease(1, 0.0f, 0.50).kind == R::Close);
+    CHECK(md::ui::menuRelease(-1, 30.0f, 0.60).kind == R::Close);    // glissé puis relâché hors du menu : fermé
+}
+
 TEST_CASE(ui_segments_menu_and_focus) {
     CHECK_EQ(md::ui::segmentAt(105, 100, 400, 3), 0);
     CHECK_EQ(md::ui::segmentAt(250, 100, 400, 3), 1);
@@ -474,6 +488,31 @@ TEST_CASE(ui_draw_floating_sidebar_panel) {
         // Panneau : le voile de la barre latérale, le fond acrylique transparaît (alpha du voile, à 6 près).
         CHECK(std::abs(int(c.at(100, 200)[3]) - int(pal.sidebarTint.a * 255 + 0.5f)) <= 6);
         CHECK(c.at(9, 9)[3] > 200);        // coin arrondi du panneau : peint (hors du verre)
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(ui_painter_formats_kept_between_frames) {
+    // Plan 46 : chaque image crée un peintre ; ses formats de texte viennent du cache de la fenêtre, plus recréés.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(200, 100);
+        md::ui::FormatCache cache;
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> first;   // gardé : une adresse libérée ne peut pas être reprise
+        {
+            md::ui::Painter a(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);
+            first = a.format(13);
+            CHECK(a.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
+        }
+        REQUIRE(first != nullptr);
+        CHECK_EQ(cache.size(), std::size_t(2));   // la ligne et le paragraphe, gardés dans le cache de la fenêtre
+        md::ui::Painter b(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);   // image suivante
+        CHECK(b.format(13) == first.Get());
+        const std::size_t kept = cache.size();
+        CHECK(b.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
+        CHECK_EQ(cache.size(), kept);   // le format du paragraphe est déjà là
+        CHECK(b.format(13, DWRITE_FONT_WEIGHT_BOLD) != first.Get());
     }
     CoUninitialize();
 }

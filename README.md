@@ -1,6 +1,6 @@
 # MacDock
 
-Un Dock et une barre de menus façon **macOS 27 Golden Gate** pour Windows 11.
+Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
 
 - **Dock** : magnification, rebonds, infobulles, apps épinglées et ouvertes, fenêtres réduites (avec l'effet génie), Téléchargements et Corbeille. Un mod **Windhawk** cache la barre des tâches Windows tant que le Dock tourne.
 - **Barre de menus** (`MacMenuBar.exe`) : transparente en haut de chaque écran, avec le menu du système, le nom de l'app active, ses menus, les icônes d'état et des autres apps, et la date et l'heure.

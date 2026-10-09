@@ -22,6 +22,9 @@ std::optional<std::size_t> pushedMonitor(const std::vector<MonitorInfo>& monitor
                                          int edgePx);
 // Écran enregistré s'il existe encore (casse ignorée), sinon le principal (ou le premier).
 std::size_t initialMonitor(const std::vector<MonitorInfo>& monitors, const std::wstring& saved);
+// Écran du Dock d'après le réglage : l'écran choisi s'il est branché ; réglage vide (« Écran principal » de l'app
+// Réglages) : le principal ; écran choisi débranché : l'écran courant (`current`), jusqu'à son retour.
+std::size_t dockMonitorIndex(const std::vector<MonitorInfo>& monitors, const std::wstring& setting, const std::wstring& current);
 
 // Poussée contre le bord du Dock sur un autre écran : la souris doit continuer de bouger contre le bord
 // (événements reçus sans interruption) pendant kPushSeconds ; une souris simplement posée au bord n'en

@@ -28,18 +28,27 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Menus, Spotlight et pastille visibles sur les captures** (plans 35 et 36).
 - **Moteur Liquid Glass v2** (formes qui fusionnent, lumière réglable) **et moteur d'animations** (ressorts SwiftUI, courbes Core Animation) (plan 37), branchés dans les menus et l'infobulle du Dock (plan 38).
 - **⊞⇧5 et enregistrement de l'écran** (plan 39).
+- **App Réglages de MacDock** : onze sections, recherche, raccourcis, sauvegarde (plans 41 et 42) ; noms réels des
+  écrans, menus en appuyer-glisser-relâcher (plan 46).
+- **Passage à macOS 26 Tahoe** : pastilles plates, barre latérale flottante, durées des animations (plans 43 et 44).
+- **Fenêtres** : génie à l'appui sur « réduire », « Masquer » instantané (plan 44) ; pastilles des fenêtres
+  recouvertes ou masquées (plan 45) ; plein écran (Brave) sans coins arrondis ni liseré (8 octobre).
 
 ## À faire, par ordre d'effet
-1. **App Réglages de MacDock** (plan 41 fait : fenêtre, sections Dock, Barre des menus, Fenêtres, liens) :
-   - **plan 42** : Général (démarrage avec Windows, sauvegarde), Mission Control et coins actifs, Clavier (raccourcis modifiables), Captures, Sons, Police, Mods Windhawk, À propos, recherche ;
-   - **plan 43** : finitions et icône de l'exécutable.
-2. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
+1. **Icônes des exécutables** (app Réglages, Dock, barre de menus), dessinées par le code : l'app Réglages apparaît
+   aujourd'hui dans le Dock avec l'icône générique de Windows.
+2. **Fenêtre : « Déplacer et redimensionner »** de macOS 26 (moitiés, quarts, Remplir, Centrer, taille précédente),
+   dans le menu Fenêtre et au survol de la pastille verte.
+3. **Apps et Mission Control** : zones de clic justes, cadre des miniatures sans les bordures invisibles, flèches.
+4. **Forcer à quitter** (⌥⌘⎋) : liste des apps, « ne répond pas », confirmation.
+5. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
+6. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
    - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
    - la liste de fichiers et le volet de l'Explorateur (DirectUI).
-3. **Glitch des bords** de Brave en sortie de plein écran : à enregistrer image par image.
-4. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
-5. **Captures, suite** : ⊞⇧5 (barre d'outils, enregistrement de l'écran), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+7. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
+8. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+9. **Couleur d'accentuation** de Réglages Système (huit accents).
 
 ## Limites connues
 - Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.

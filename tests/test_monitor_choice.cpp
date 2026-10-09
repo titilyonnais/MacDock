@@ -64,3 +64,14 @@ TEST_CASE(monitor_push_requires_motion) {
     CHECK(other.update(L"", 0.34).empty());
     CHECK(other.update(b, 0.36).empty());
 }
+
+TEST_CASE(monitor_dock_screen_from_setting) {
+    // Relecture du plan 46 : « Écran principal » (réglage vide) ramène le Dock sur le principal, pas sur l'écran
+    // courant ; un écran choisi débranché garde le Dock où il est jusqu'à son retour.
+    std::vector<md::MonitorInfo> m{{L"\\\\.\\DISPLAY2", RECT{-1920, 0, 0, 1080}, false},
+                                   {L"\\\\.\\DISPLAY1", RECT{0, 0, 1920, 1080}, true}};
+    CHECK_EQ(md::dockMonitorIndex(m, L"", L"\\\\.\\DISPLAY2"), std::size_t(1));
+    CHECK_EQ(md::dockMonitorIndex(m, L"\\\\.\\display2", L"\\\\.\\DISPLAY1"), std::size_t(0));   // casse ignorée
+    CHECK_EQ(md::dockMonitorIndex(m, L"\\\\.\\DISPLAY3", L"\\\\.\\DISPLAY2"), std::size_t(0));   // débranché : reste
+    CHECK_EQ(md::dockMonitorIndex(m, L"\\\\.\\DISPLAY3", L""), std::size_t(1));
+}

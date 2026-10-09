@@ -23,6 +23,7 @@
 #include "../settings/instance.h"
 #include "../settings/mods.h"
 #include "../settings/pane_icons.h"
+#include "../settings/screens.h"
 
 namespace md {
 
@@ -316,7 +317,7 @@ void SettingsWindow::render() {
     dc_->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_));
     dc_->Clear(D2D1::ColorF(0, 0, 0, 0));
     {
-        ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_);
+        ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_, &formats_);
         ui::drawWindowBackground(p, w, h);   // Tahoe : barre latérale de verre flottante, le contenu tout autour
         computeGeometry(p, w);
         drawSidebar(p, h);
@@ -591,10 +592,12 @@ void SettingsWindow::drawContent(ui::Painter& p, float w, float h) {
 
 void SettingsWindow::buildEnv() {
     env_ = {};
+    // Écrans : leur nom (« DELL U2720Q », « Écran intégré »), sinon « Écran N », puis la définition (plan 46).
     struct Ctx {
         PaneEnv* env;
-        int n;
-    } ctx{&env_, 0};
+        std::map<std::wstring, std::wstring> names;
+        std::vector<ScreenChoice> screens;
+    } ctx{&env_, monitorNames(), {}};
     EnumDisplayMonitors(
         nullptr, nullptr,
         [](HMONITOR mon, HDC, LPRECT, LPARAM lp) -> BOOL {
@@ -602,18 +605,21 @@ void SettingsWindow::buildEnv() {
             MONITORINFOEXW mi{};
             mi.cbSize = sizeof mi;
             if (!GetMonitorInfoW(mon, &mi)) return TRUE;
-            ++c->n;
+            ScreenChoice s;
+            if (const auto it = c->names.find(mi.szDevice); it != c->names.end()) s.name = it->second;
             DEVMODEW dm{};
             dm.dmSize = sizeof dm;
-            std::wstring name = L"Écran " + std::to_wstring(c->n);
-            if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm))
-                name += L" — " + std::to_wstring(dm.dmPelsWidth) + L" × " + std::to_wstring(dm.dmPelsHeight);
-            if (mi.dwFlags & MONITORINFOF_PRIMARY) name += L" (principal)";
-            c->env->screens.push_back(name);
+            if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+                s.width = int(dm.dmPelsWidth);
+                s.height = int(dm.dmPelsHeight);
+            }
+            s.primary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+            c->screens.push_back(std::move(s));
             c->env->screenIds.push_back(mi.szDevice);
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&ctx));
+    env_.screens = screenLabels(ctx.screens);
     // Polices proposées : celles d'une courte liste qui sont installées.
     ComPtr<IDWriteFontCollection> fonts;
     if (dwrite_) dwrite_->GetSystemFontCollection(&fonts, FALSE);
@@ -781,7 +787,7 @@ void SettingsWindow::openMenu(int index) {
     const RowSpec& s = spec(index);
     if (s.choices.empty()) return;
     const ui::Palette pal = ui::palette(dark_);
-    ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_);
+    ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_, &formats_);
     const Geom& g = geoms_[std::size_t(index)];
     const int checked = int(std::clamp(std::lround(valueOf(index)), 0L, long(s.choices.size()) - 1));
     const float mw = std::max(ui::menuWidth(p, s.choices), g.control.right - g.control.left + 26);
@@ -890,6 +896,7 @@ void SettingsWindow::onMouseDown(float x, float y) {
     }
     if (recording_ >= 0) stopRecording();   // un clic arrête l'écoute (sur un champ de raccourci, elle reprend plus bas)
     if (menu_) {
+        menuPressAt_.reset();
         if (inside(menu_->rect, x, y)) {
             menu_->hover = ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()));
             pressedRow_ = -2;   // relâché sur un élément : choisi
@@ -939,7 +946,12 @@ void SettingsWindow::onMouseDown(float x, float y) {
             if (seg >= 0) setValue(i, double(seg));
             break;
         }
-        case RowKind::Choice: openMenu(i); break;
+        case RowKind::Choice:
+            openMenu(i);
+            menuPressAt_ = D2D1::Point2F(x, y);   // le doigt peut glisser jusqu'à un élément et y relâcher
+            menuPressTime_ = GetMessageTime();    // l'instant de l'appui, pas celui où il est traité
+            menuDragMax_ = 0;
+            break;
         case RowKind::Buttons:
             pressedButton_ = buttonAt(i, x, y);
             if (pressedButton_ < 0) pressedRow_ = -1;
@@ -970,6 +982,8 @@ void SettingsWindow::onMouseMove(float x, float y, bool buttonDown) {
         return;
     }
     bool dirty = false;
+    if (menuPressAt_ && buttonDown)   // appui qui a ouvert le menu : le plus grand écart compte (aller puis retour)
+        menuDragMax_ = std::max(menuDragMax_, std::hypot(x - menuPressAt_->x, y - menuPressAt_->y));
     if (menu_) {
         const int hover = inside(menu_->rect, x, y)
                               ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
@@ -1021,6 +1035,24 @@ void SettingsWindow::onMouseUp(float x, float y) {
                              ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
                              : -1;
         if (item >= 0) chooseMenu(item);
+        return;
+    }
+    if (menu_ && menuPressAt_ && pressed == menu_->row) {   // l'appui qui l'a ouvert : appuyer, glisser, relâcher
+        const int item = inside(menu_->rect, x, y)
+                             ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
+                             : -1;
+        const float moved = std::max(menuDragMax_, std::hypot(x - menuPressAt_->x, y - menuPressAt_->y));
+        const double held = double(DWORD(GetMessageTime()) - DWORD(menuPressTime_)) / 1000.0;
+        if (diagnosticCapture())
+            log::info(L"[diag] réglages : relâché %.0f,%.0f pt sur le menu (élément %d, %.0f pt, %.2f s)", x, y, item, moved, held);
+        menuPressAt_.reset();
+        const ui::MenuRelease r = ui::menuRelease(item, moved, held);
+        if (r.kind == ui::MenuRelease::Choose) {
+            chooseMenu(r.item);
+        } else if (r.kind == ui::MenuRelease::Close) {
+            menu_.reset();
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
         return;
     }
     if (light >= 0) {

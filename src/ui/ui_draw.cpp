@@ -24,8 +24,32 @@ void knob(Painter& p, D2D1_POINT_2F c, float rx, float ry) {
 }
 } // namespace
 
-Painter::Painter(ID2D1RenderTarget* rt, IDWriteFactory* dwrite, const Palette& palette, std::wstring font)
-    : rt_(rt), dwrite_(dwrite), pal_(palette), font_(std::move(font)) {
+IDWriteTextFormat* FormatCache::get(IDWriteFactory* dwrite, const std::wstring& font, float size, DWRITE_FONT_WEIGHT weight,
+                                    DWRITE_TEXT_ALIGNMENT align, bool paragraph) {
+    for (auto& e : formats_)
+        if (e.size == size && e.weight == weight && e.align == align && e.paragraph == paragraph && e.font == font)
+            return e.format.Get();
+    Entry e{font, size, weight, align, paragraph, nullptr};
+    if (!dwrite || FAILED(dwrite->CreateTextFormat(font.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL,
+                                                   DWRITE_FONT_STRETCH_NORMAL, size, L"fr-FR", &e.format)))
+        return nullptr;
+    if (paragraph) {
+        e.format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+    } else {
+        e.format->SetTextAlignment(align);
+        e.format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        e.format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+        ComPtr<IDWriteInlineObject> ellipsis;
+        dwrite->CreateEllipsisTrimmingSign(e.format.Get(), &ellipsis);
+        e.format->SetTrimming(&trim, ellipsis.Get());
+    }
+    formats_.push_back(e);
+    return formats_.back().format.Get();
+}
+
+Painter::Painter(ID2D1RenderTarget* rt, IDWriteFactory* dwrite, const Palette& palette, std::wstring font, FormatCache* cache)
+    : rt_(rt), dwrite_(dwrite), pal_(palette), font_(std::move(font)), cache_(cache ? cache : &own_) {
     if (font_.empty()) font_ = interfaceFont(dwrite_);
     rt_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), &brush_);
 }
@@ -42,21 +66,7 @@ ID2D1SolidColorBrush* Painter::brush(Rgba c) {
 }
 
 IDWriteTextFormat* Painter::format(float size, DWRITE_FONT_WEIGHT weight, DWRITE_TEXT_ALIGNMENT align) {
-    for (auto& f : formats_)
-        if (f.size == size && f.weight == weight && f.align == align) return f.format.Get();
-    Format f{size, weight, align, nullptr};
-    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                         size, L"fr-FR", &f.format)))
-        return nullptr;
-    f.format->SetTextAlignment(align);
-    f.format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-    f.format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-    DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-    ComPtr<IDWriteInlineObject> ellipsis;
-    dwrite_->CreateEllipsisTrimmingSign(f.format.Get(), &ellipsis);
-    f.format->SetTrimming(&trim, ellipsis.Get());
-    formats_.push_back(f);
-    return formats_.back().format.Get();
+    return cache_->get(dwrite_, font_, size, weight, align, false);
 }
 
 void Painter::fillRound(D2D1_RECT_F r, float radius, Rgba c) {
@@ -79,23 +89,15 @@ void Painter::text(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c, DWR
 
 void Painter::paragraph(const std::wstring& s, D2D1_RECT_F r, float size, Rgba c, DWRITE_FONT_WEIGHT weight) {
     if (s.empty()) return;
-    ComPtr<IDWriteTextFormat> f;
-    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                         size, L"fr-FR", &f)))
-        return;
-    f->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
-    rt_->DrawText(s.c_str(), UINT32(s.size()), f.Get(), r, brush(c));
+    if (IDWriteTextFormat* f = cache_->get(dwrite_, font_, size, weight, DWRITE_TEXT_ALIGNMENT_LEADING, true))
+        rt_->DrawText(s.c_str(), UINT32(s.size()), f, r, brush(c));
 }
 
 float Painter::paragraphHeight(const std::wstring& s, float width, float size, DWRITE_FONT_WEIGHT weight) {
     if (s.empty()) return 0;
-    ComPtr<IDWriteTextFormat> f;
+    IDWriteTextFormat* f = cache_->get(dwrite_, font_, size, weight, DWRITE_TEXT_ALIGNMENT_LEADING, true);
     ComPtr<IDWriteTextLayout> layout;
-    if (FAILED(dwrite_->CreateTextFormat(font_.c_str(), nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                         size, L"fr-FR", &f)))
-        return 0;
-    f->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
-    if (FAILED(dwrite_->CreateTextLayout(s.c_str(), UINT32(s.size()), f.Get(), width, 10000, &layout))) return 0;
+    if (!f || FAILED(dwrite_->CreateTextLayout(s.c_str(), UINT32(s.size()), f, width, 10000, &layout))) return 0;
     DWRITE_TEXT_METRICS m{};
     layout->GetMetrics(&m);
     return std::ceil(m.height);

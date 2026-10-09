@@ -15,9 +15,33 @@
 namespace md::ui {
 
 // Pinceau partagé, formats de texte en cache et quelques primitives ; `opacity` atténue tout (contrôle grisé).
+// Formats de texte DirectWrite gardés d'une image à l'autre : la fenêtre en garde un et le passe à chaque peintre
+// (un peintre par image). Texte sur une ligne (aligné, centré verticalement, coupé par « … ») ou paragraphe (replié).
+class FormatCache {
+public:
+    IDWriteTextFormat* get(IDWriteFactory* dwrite, const std::wstring& font, float size, DWRITE_FONT_WEIGHT weight,
+                           DWRITE_TEXT_ALIGNMENT align, bool paragraph);
+    std::size_t size() const { return formats_.size(); }
+
+private:
+    struct Entry {
+        std::wstring font;
+        float size;
+        DWRITE_FONT_WEIGHT weight;
+        DWRITE_TEXT_ALIGNMENT align;
+        bool paragraph;
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> format;
+    };
+    std::vector<Entry> formats_;
+};
+
 class Painter {
 public:
-    Painter(ID2D1RenderTarget* rt, IDWriteFactory* dwrite, const Palette& palette, std::wstring font);
+    // `cache` : celui de la fenêtre (gardé d'une image à l'autre) ; nul : un cache propre au peintre.
+    Painter(ID2D1RenderTarget* rt, IDWriteFactory* dwrite, const Palette& palette, std::wstring font,
+            FormatCache* cache = nullptr);
+    Painter(const Painter&) = delete;   // `cache_` peut viser `own_`
+    Painter& operator=(const Painter&) = delete;
     ID2D1RenderTarget* rt() const { return rt_; }
     ID2D1Factory* factory() const;
     const Palette& pal() const { return pal_; }
@@ -41,18 +65,13 @@ public:
     const std::wstring& font() const { return font_; }
 
 private:
-    struct Format {
-        float size;
-        DWRITE_FONT_WEIGHT weight;
-        DWRITE_TEXT_ALIGNMENT align;
-        Microsoft::WRL::ComPtr<IDWriteTextFormat> format;
-    };
     ID2D1RenderTarget* rt_;
     IDWriteFactory* dwrite_;
     const Palette& pal_;
     std::wstring font_;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush_;
-    std::vector<Format> formats_;
+    FormatCache own_;
+    FormatCache* cache_;
 };
 
 // Police de l'interface : SF Pro si elle est installée, puis Inter, puis Segoe UI Variable.

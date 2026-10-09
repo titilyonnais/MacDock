@@ -164,6 +164,7 @@ private:
     bool snapshot_ = false;
     std::wstring dataDir_;
     Settings settings_;
+    json::Value savedSettings_;   // settings.json tel que le Dock l'a lu ou écrit en dernier : il n'écrit que la différence
     Metrics metrics_;
     AppModel model_;
     WindowTracker tracker_;
@@ -266,6 +267,7 @@ private:
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée
+    std::wstring placedScreen_;   // réglage d'écran au dernier placement : changé dans l'app Réglages, le Dock y va
 
     std::thread mouseThread_;
     DWORD mouseThreadId_ = 0;

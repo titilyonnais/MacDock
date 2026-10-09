@@ -6,6 +6,7 @@
 
 #include "minitest.h"
 #include "../src/settings/panes.h"
+#include "../src/settings/screens.h"
 
 namespace {
 md::PaneEnv fullEnv() {
@@ -197,4 +198,26 @@ TEST_CASE(settings_search_finds_button_labels) {
     CHECK(found.front().pane == md::PaneId::General);
     CHECK(!found.front().rows.empty());
     CHECK(!md::searchPanes(L"relancer", fullEnv()).empty());
+}
+
+TEST_CASE(settings_screen_labels) {
+    // Plan 46 : les écrans portent leur nom, comme sur macOS ; sans nom, « Écran N » comme avant.
+    const auto l = md::screenLabels({{L"DELL U2720Q", 3840, 2160, true}, {L"", 1920, 1080, false},
+                                     {L"Écran intégré", 2560, 1600, false}});
+    REQUIRE(l.size() == 3u);
+    CHECK(l[0] == L"DELL U2720Q — 3840 × 2160 (principal)");
+    CHECK(l[1] == L"Écran 2 — 1920 × 1080");
+    CHECK(l[2] == L"Écran intégré — 2560 × 1600");
+    // Deux écrans du même modèle : numérotés, comme dans les réglages Écrans de macOS.
+    const auto t = md::screenLabels({{L"LG ULTRAGEAR", 1920, 1080, false}, {L"LG ULTRAGEAR", 1920, 1080, true}});
+    CHECK(t[0] == L"LG ULTRAGEAR (1) — 1920 × 1080");
+    CHECK(t[1] == L"LG ULTRAGEAR (2) — 1920 × 1080 (principal)");
+}
+
+TEST_CASE(settings_monitor_names_on_this_pc) {
+    // Lecture seule de la configuration d'affichage : chaque nom va avec une source GDI (DISPLAY1…).
+    for (const auto& [device, name] : md::monitorNames()) {
+        CHECK(device.rfind(L"\\\\.\\DISPLAY", 0) == 0);
+        CHECK(!name.empty());
+    }
 }

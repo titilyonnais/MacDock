@@ -69,7 +69,8 @@ LoadResult loadJsonFile(const std::wstring& path) {
 
 bool saveJsonFileAtomic(const std::wstring& path, const json::Value& v) {
     std::string text = json::serialize(v, true);
-    std::wstring tmp = path + L".tmp";
+    // Propre au processus : le Dock et l'app Réglages peuvent écrire le même fichier au même instant.
+    std::wstring tmp = path + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return false;
     DWORD written = 0;
@@ -89,6 +90,26 @@ namespace md {
 bool shouldImportDefaultPins(const LoadResult& file, const Settings& parsed) {
     if (file.wasInvalid || file.unreadable) return false;
     return !parsed.pinnedInitialized;
+}
+
+namespace {
+bool same(const json::Value* a, const json::Value& b) { return a && json::serialize(*a, false) == json::serialize(b, false); }
+} // namespace
+
+json::Value mergeChanged(json::Value file, const json::Value& before, const json::Value& after) {
+    if (!after.isObject()) return file;
+    if (!file.isObject()) file = json::Value(json::Object{});
+    for (const auto& [key, value] : after.asObject())
+        if (!same(before.find(key), value)) file.set(key, value);
+    if (before.isObject())
+        for (const auto& [key, value] : before.asObject())
+            if (!after.find(key)) file.erase(key);
+    return file;
+}
+
+json::Value dockSettingsToWrite(const LoadResult& file, const json::Value& lastSaved, const json::Value& now) {
+    if (!file.fromFile || file.wasInvalid || file.unreadable) return now;
+    return mergeChanged(file.value, lastSaved, now);
 }
 } // namespace md
 
