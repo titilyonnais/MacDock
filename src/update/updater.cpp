@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "../core/json.h"
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../core/version.h"
@@ -44,7 +45,10 @@ std::int64_t nowSeconds() {
 // Un seul processus à la fois : le lanceur (fil de fond) et l'app Réglages (« Rechercher maintenant »).
 struct Lock {
     HANDLE m = CreateMutexW(nullptr, FALSE, L"Local\\MacDockUpdate");
-    bool held = m && WaitForSingleObject(m, 120000) != WAIT_TIMEOUT;
+    bool held;
+    explicit Lock(DWORD waitMs) : held(m && WaitForSingleObject(m, waitMs) != WAIT_TIMEOUT) {}
+    Lock(const Lock&) = delete;
+    Lock& operator=(const Lock&) = delete;
     ~Lock() {
         if (held) ReleaseMutex(m);
         if (m) CloseHandle(m);
@@ -101,11 +105,21 @@ UpdateState load(const Paths& p) {
 bool save(const Paths& p, const UpdateState& s) {
     const std::wstring dir = p.stateFile.substr(0, p.stateFile.find_last_of(L"\\/"));
     createDirs(dir);
+    // « Rechercher automatiquement » appartient à l'app Réglages : celui du fichier est gardé (il a pu changer pendant
+    // une recherche, entre la lecture de l'état et son écriture).
+    UpdateState out = s;
+    {
+        std::ifstream f(p.stateFile, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        if (const auto doc = json::parse(ss.str()); doc && doc->isObject())
+            if (const json::Value* v = doc->find("automatic")) out.automatic = v->asBool(out.automatic);
+    }
     const std::wstring tmp = p.stateFile + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
         if (!f) return false;
-        const std::string text = updateStateJson(s);
+        const std::string text = updateStateJson(out);
         f.write(text.data(), std::streamsize(text.size()));
         if (!f) return false;
     }
@@ -115,7 +129,11 @@ bool save(const Paths& p, const UpdateState& s) {
 }
 
 CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
-    Lock lock;
+    Lock lock(o.lockWaitMs);
+    if (!lock.held) {   // un autre processus cherche ou installe encore : rien n'est touché
+        log::warn(L"Mise à jour : une autre recherche est en cours, celle-ci est abandonnée");
+        return CheckResult::Failed;
+    }
     UpdateState s = load(p);
     s.lastCheck = nowSeconds();
     const auto current = parseVersion(kMacDockVersion);
@@ -192,8 +210,12 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
     return CheckResult::Ready;
 }
 
-bool launchInstaller(const Paths& p, bool relaunch) {
-    Lock lock;
+bool launchInstaller(const Paths& p, bool relaunch, unsigned lockWaitMs) {
+    Lock lock(lockWaitMs);
+    if (!lock.held) {
+        log::warn(L"Mise à jour : une recherche est en cours, installation remise à plus tard");
+        return false;
+    }
     UpdateState s = load(p);
     if (s.readyVersion.empty() || !exists(s.readyPath) || sha256File(s.readyPath) != s.readySha256) {
         log::warn(L"Mise à jour : aucun installateur prêt et intact");
@@ -217,6 +239,8 @@ bool launchInstaller(const Paths& p, bool relaunch) {
 }
 
 bool installAtStartup(const Paths& p) {
+    Lock lock(5000);   // une recherche lancée à la main (Réglages) : le démarrage n'attend pas, rien n'est touché
+    if (!lock.held) return false;
     UpdateState s = load(p);
     const auto current = parseVersion(kMacDockVersion);
     if (!current) return false;

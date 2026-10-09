@@ -17,7 +17,8 @@ Paths defaultPaths();
 
 struct Options {
     std::wstring repo = L"titilyonnais/MacDock";
-    bool prerelease = false;   // essais : MACDOCK_UPDATE_PRERELEASE=1
+    bool prerelease = false;            // essais : MACDOCK_UPDATE_PRERELEASE=1
+    unsigned lockWaitMs = 120000;       // attente du verrou, si un autre processus cherche ou installe déjà
 };
 Options optionsFromEnvironment();
 
@@ -32,7 +33,7 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* ready = nullpt
 
 // Lance l'installateur prêt en silence (empreinte revérifiée juste avant) et note la tentative. `relaunch` : MacDock
 // relancé même si l'installation échoue (au démarrage, rien ne tourne encore). false : rien de prêt, fichier altéré.
-bool launchInstaller(const Paths& p, bool relaunch);
+bool launchInstaller(const Paths& p, bool relaunch, unsigned lockWaitMs = 120000);
 
 // Au démarrage du lanceur, avant le Dock : installe la version prête (true : l'installateur est parti, le lanceur
 // s'arrête), ou oublie une version périmée ou une tentative ratée.
