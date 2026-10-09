@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <mutex>
 
 #include "../core/log.h"
 #include "../geom/smooth_rect.h"
@@ -27,8 +28,12 @@ using Pixels = std::vector<std::uint8_t>;
 
 struct Rgb { double r, g, b; };
 
+// Fabrique WIC partagée par les fils qui ont leur fournisseur d'icônes (Dock, Spotlight, Forcer à quitter) : créée
+// une fois, sous verrou (réessayée tant qu'elle manque), jamais libérée.
 IWICImagingFactory* wic() {
+    static std::mutex lock;
     static ComPtr<IWICImagingFactory> factory;
+    std::lock_guard guard(lock);
     if (!factory)
         CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
     return factory.Get();
@@ -185,9 +190,12 @@ Pixels loadPng(const std::wstring& path, int& size) {
     return px;
 }
 
-// Table de couverture de la forme d'icône (coins continus, anticrénelée), calculée une fois par taille et rayon.
+// Table de couverture de la forme d'icône (coins continus, anticrénelée), calculée une fois par taille et rayon ; sous
+// verrou : plusieurs fils ont leur fournisseur d'icônes. Les références rendues restent valides (std::map).
 const std::vector<float>& maskFor(int size, double ratio) {
+    static std::mutex lock;
     static std::map<std::pair<int, double>, std::vector<float>> cache;
+    std::lock_guard guard(lock);
     auto& m = cache[{size, ratio}];
     if (m.empty()) m = smoothSquareMask(size, ratio);
     return m;
