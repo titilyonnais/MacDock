@@ -47,20 +47,20 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   la session : ne jamais fermer tes apps).
 
 ## Tâches
-- [ ] 1. **Raccourcis libres relus** (défaut trouvé en préparant ce plan) : `settingsFromJson` n'acceptait qu'une liste
+- [x] 1. **Raccourcis libres relus** (défaut trouvé en préparant ce plan) : `settingsFromJson` n'acceptait qu'une liste
   fixe pour Spotlight, Mission Control et Exposé, alors que Réglages enregistre n'importe quel raccourci ; un raccourci
   libre revenait en silence à sa valeur par défaut. Désormais : tout raccourci que `parseHotkey` accepte, ou « off ».
   Nouvelle clé `forceQuitHotkey`. Tests : aller-retour par le fichier, valeur invalide, défaut.
-- [ ] 2. **Logique** (`src/forcequit/force_quit_logic.*`) : regroupement des fenêtres en apps, tri, Explorateur en
+- [x] 2. **Logique** (`src/forcequit/force_quit_logic.*`) : regroupement des fenêtres en apps, tri, Explorateur en
   dernier, app figée, fenêtres fantômes ; processus à arrêter ; sélection après une app quittée. Tests.
-- [ ] 3. **Système** (`src/forcequit/force_quit_system.*`, `src/shell/explorer_restart.*`) : énumération réelle
+- [x] 3. **Système** (`src/forcequit/force_quit_system.*`, `src/shell/explorer_restart.*`) : énumération réelle
   (fenêtres, fantômes, processus et AUMID), arrêt des processus avec la raison d'un refus, relance de l'Explorateur
   (Réglages s'en sert aussi). `AppIdentity` garde le PID de l'app.
-- [ ] 4. **Fenêtre** (`src/forcequit/force_quit_window.*`, mise en page pure testée) : dessin, souris, clavier,
+- [x] 4. **Fenêtre** (`src/forcequit/force_quit_window.*`, mise en page pure testée) : dessin, souris, clavier,
   feuilles, relecture de la liste ; `MacDock.exe --force-quit-snapshot f.png [--theme dark]`.
-- [ ] 5. **Branchements** : Dock (raccourci 13, message « MacDockForceQuit », icônes), Réglages > Clavier (ligne et
+- [x] 5. **Branchements** : Dock (raccourci 13, message « MacDockForceQuit », icônes), Réglages > Clavier (ligne et
   conflits), menu  (action ForceQuit, raccourci affiché, Gestionnaire des tâches sans Dock). Tests.
-- [ ] 6. **Essais réels** :
+- [x] 6. **Essais réels** :
   - sonde `tests/real/force_quit_probe.cpp` : deux apps d'essai à elle (une figée, une vivante), vraie énumération,
     vraie fenêtre, clics et touches réels ; « (ne répond pas) » vu, app figée forcée à quitter après confirmation,
     jamais autre chose ;
@@ -75,3 +75,25 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
 - Une app qui se ferme seule pendant la confirmation : rien à arrêter, pas d'erreur trompeuse.
 - Plusieurs fenêtres et plusieurs processus pour une même app ; une app du Store réduite.
 - Changement d'écran ou de DPI, thème clair ou sombre, raccourci désactivé (« off ») ou pris par une autre app.
+
+## Décisions prises en cours de route
+- La fenêtre suit le thème des apps de Windows (AppsUseLightTheme), comme une fenêtre ordinaire, et non celui du
+  Dock.
+- Liste relue chaque seconde sans cache des identités : mesurée sous 60 ms sur ce PC (le Dock l'écrit au journal
+  au-delà). Coût si c'est faux : de petits à-coups du Dock pendant que la fenêtre est ouverte.
+- La sonde héberge la fenêtre elle-même (même code que le Dock) avec une action gardée : le seul moyen d'essayer
+  « Forcer à quitter » pour de vrai sans risquer tes apps. Le Dock, lui, est essayé sans rien forcer.
+- Défaut d'identité trouvé à l'essai réel et corrigé dans ce plan : une app à l'AUMID explicite inconnu de
+  Windows (un Chrome lancé par un outil) gardait shell:AppsFolder\<AUMID> comme cible : icône générique dans
+  le Dock et ici, relance impossible. Désormais son exe, sauf pour une app empaquetée.
+
+## Essais réels
+- **Sonde** (`./build.ps1 -Target forcequitprobe`) : deux apps d'essai à elle, l'une figée (Windows a posé sa
+  fenêtre fantôme d'elle-même), l'autre vivante, au milieu de tes apps ouvertes. Tout exact : app figée marquée
+  « (ne répond pas) » une seule fois, sans app fantôme ; clic, confirmation, Échap, Entrée, ↓ ↑, souris ; les deux
+  apps d'essai arrêtées, tes apps listées mais jamais visées (la garde n'a rien refusé).
+- **Dock** recompilé et relancé : raccourci alt+win+escape enregistré, fenêtre ouverte par le message de la barre
+  avec tes apps, leurs icônes et l'app du premier plan choisie, puis fermée sans rien forcer. Le raccourci lui-même
+  n'a pas été tapé (pas de touche ⊞ simulée cette nuit).
+- **Images** : `MacDock.exe --force-quit-snapshot` clair, sombre et avec la confirmation, regardées ; le titre
+  coupé a été corrigé.

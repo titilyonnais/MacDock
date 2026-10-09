@@ -977,6 +977,22 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   6 importants (signature trop large, provenance non vérifiée, arrêt du lanceur bloqué ou retardé, MacDock pas relancé,
   état réécrit à l'aveugle), tous corrigés avec un test vu en échec avant.
 
+### Plan 54 — Forcer à quitter, 9 octobre après-midi (session autonome)
+
+- **⌥⌘⎋** (`Alt+⊞+Échap`, réglable dans Réglages > Clavier) ou menu  > *Forcer à quitter…* : la fenêtre « Forcer
+  des applications à quitter » de macOS 26. Tes apps ouvertes avec leur icône, « (ne répond pas) » en rouge pour une
+  app figée, l'app au premier plan déjà choisie, confirmation avant d'arrêter ; *Relancer* pour l'Explorateur.
+- **Ne touche jamais** à l'Explorateur (sauf *Relancer*), au cadre des apps du Store, au système ni à MacDock ; une app
+  lancée en administrateur : la fenêtre dit que Windows refuse.
+- **Défauts trouvés en chemin et corrigés** :
+  - un raccourci réglé librement dans Réglages (Spotlight, Mission Control, Exposé) revenait en silence à sa valeur
+    par défaut ;
+  - une app à l'AUMID inconnu de Windows (un Chrome lancé par un outil) avait une icône générique dans le Dock et ne
+    pouvait pas être relancée.
+- **Essais réels** : une sonde avec deux apps d'essai à elle (une figée, une vivante), pilotée par de vrais clics et
+  de vraies touches : tout exact, fenêtre fantôme de Windows comprise ; tes apps listées, jamais visées. Dans ton Dock :
+  fenêtre ouverte par le menu de la barre, avec tes vraies apps, puis fermée sans rien forcer.
+
 ## Mineurs reportés — plan 53
 - `launchInstaller` ne revérifie pas que la version prête est plus récente ni que son empreinte notée est non vide (un `update.json` abîmé par ce même compte) ; l'installateur part même si la tentative n'a pas pu être notée.
 - Une relance de `release.yml` garde l'ancienne signature : « signature invalide » jusqu'à la nouvelle signature.
