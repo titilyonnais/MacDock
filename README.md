@@ -52,6 +52,8 @@ Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
 ## Utilisation
 
 - **Clic** sur une app fermée : elle se lance en rebondissant. Sur une app ouverte : elle passe au premier plan.
+- **Rebond d'attention** : une app qui réclame ton attention (fenêtre qui clignote) fait rebondir son icône, comme sur macOS ; le rebond s'arrête quand elle passe au premier plan ou que tu cliques son icône, et une app déjà au premier plan ne rebondit pas.
+- **Apps lancées en administrateur** (Gestionnaire des tâches, Windhawk…) : quand l'une d'elles est au premier plan, Windows cache la souris et le clavier à MacDock. Le Dock suit quand même le curseur (il relit sa position), mais les raccourcis de MacDock (⌥⇥, ⊞⇧3/4/5, ⌥`, la touche ⌘) restent à Windows jusqu'à ce qu'une autre app passe devant.
 - **Bouton Apps** : ouvre l'écran **Apps**, comme sur macOS Tahoe : toutes les apps du menu Démarrer (Win32 et Store) en grille sur un fond de verre, triées par nom, page par page.
   - Tape pour chercher (majuscules et accents ignorés) ; Entrée lance le premier résultat ; flèches, Page précédente / suivante, Début, Fin et molette pour se déplacer ; Échap efface la recherche, puis ferme.
   - Un clic sur une app la lance ; un clic dans le vide, un clic droit ou Échap ferment sans rien lancer.

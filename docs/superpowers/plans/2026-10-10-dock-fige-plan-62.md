@@ -40,9 +40,33 @@ mode diagnostic.
 - [x] 1. **Rebond** : DockController::setActiveApp, attention ignorée pour l'app active, arrêt au clic sur l'icône
   (tests controller_attention_ignored_for_active_app, controller_attention_stops_for_good_when_app_activates,
   controller_attention_again_once_app_inactive ; rouges sans la garde, verts avec).
-- [ ] 2. **Dock figé** : logique pure du relais (tests), fil de lecture, réinstallation du crochet, sentinelle (relais
+- [x] 2. **Dock figé** : logique pure du relais (tests), fil de lecture, réinstallation du crochet, sentinelle (relais
   actif ou arrêté, crochet réinstallé).
 - [ ] 3. **Lenteurs** : WM_APP_BACKDROP après le génie, premier rendu, capture du verre quand le Dock est masqué.
 - [ ] 4. **Essais réels** : Gestionnaire des tâches, VMware, fenêtre d'essai qui clignote ; journal avant et après.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- **Tâche 1** (d45d0ec) : tests rouges sans la garde « app active » (2 échecs), verts avec. Essai réel : fenêtre
+  d'essai inactive qui clignote dix fois (FLASHW_ALL, nombre fixe) ; son icône rebondit ; clic sur l'icône à
+  00:36:40 ; six clignotements tardifs jusqu'à 00:36:45 ; le Dock retombe au repos (20 à 28 tours de boucle en 5 s,
+  aucune image), alors qu'avant la correction il animait sans fin (825 images en 5 s, 9 octobre à 23:08).
+- **Tâche 2** (0cb7c09) : `src/interact/cursor_relay.*` (logique pure, 9 tests : 7 rouges sur l'ébauche, puis verts) ;
+  relais sur le fil du crochet (`DockApp::startMouseThread`), livraison commune `DockApp::deliverMouse`, position du
+  crochet seul (`hookX_`, `hookY_`) pour la sentinelle ; traces « relais de la souris actif / arrêté », « Crochet
+  souris réinstallé », et pour le rebond « début du rebond / rebond en cours / ignorée (app active) / fin du rebond ».
+  Suite : 827 tests verts. Essais réels (souris simulée) :
+  - curseur déplacé par SetCursorPos (invisible au crochet), premier plan normal : le Dock prend la souris en 55 à
+    106 ms et la rend en 29 à 46 ms ; avant, il restait figé (le clic passait au travers jusqu'au bureau) ;
+  - VMware ou Gestionnaire des tâches au premier plan : Windows refuse alors tout déplacement simulé, SendInput comme
+    SetCursorPos ; le relais ne peut pas y être essayé avec des entrées simulées. GetCursorPos, lui, n'est jamais
+    bloqué : la vraie souris sera suivie (le journal de 00:17 montre ces mouvements que le crochet ne voyait pas) ;
+  - au repos : 20 tours de boucle en 5 s, comme avant ; en mouvement, 23 à 26 messages de souris pour deux glissés,
+    comme avant (pas de double envoi) ;
+  - un crochet muet pendant des déplacements par SetCursorPos est réinstallé (au plus toutes les 10 s), comme voulu.
+- **Effet de bord de l'essai** : le Gestionnaire des tâches, réduit de nouveau comme je l'avais trouvé, garde le
+  premier plan ; tant qu'il l'a, Windows bloque toutes les entrées simulées (et le délai de verrouillage du premier
+  plan est au maximum sur ce PC). Ton premier clic rend la main. Les essais suivants évitent les fenêtres élevées.
+- **Vu en chemin, pour la tâche 3** : curseur posé sur l'icône d'une app réduite, la boucle tourne ~100 fois par
+  seconde sans dessiner.
