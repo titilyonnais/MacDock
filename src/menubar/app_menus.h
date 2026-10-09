@@ -31,6 +31,7 @@ enum class ActionKind {
     ClearRecent,      // Éléments récents : Effacer le menu (exécutée par la barre, qui garde la liste)
     OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
     Tile,             // fenêtre active rangée (macOS 26) ; arg : action (« left », « fill »… : window_tile.h)
+    Arrange,          // fenêtre active et les suivantes organisées (macOS 26) ; arg : « left-right », « quarters »…
 };
 
 enum class MenuSource { Generic, Win32, Uia };

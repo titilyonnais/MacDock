@@ -121,6 +121,10 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             if (!liveWindow(target)) return false;
             if (const auto action = parseTileAction(a.arg)) return tileWindow(target, *action);
             return false;
+        case ActionKind::Arrange:   // macOS 26 : la fenêtre active et les suivantes, de l'avant vers l'arrière
+            if (!liveWindow(target)) return false;
+            if (const auto arrangement = parseArrangement(a.arg)) return arrangeWindows(target, *arrangement);
+            return false;
         case ActionKind::BringAllToFront:
             if (c.appWindows.empty()) return false;
             activateApp(c.appWindows);

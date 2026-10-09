@@ -563,3 +563,49 @@ TEST_CASE(menus_window_move_and_resize) {
     CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Centrer")->enabled);
     CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Déplacer et redimensionner")->enabled);
 }
+
+TEST_CASE(menus_window_arrange) {
+    // Plan 51 : section « Organiser » de macOS 26, après les quarts ; la fenêtre active puis les suivantes.
+    auto b = md::buildBarMenus(appContext());
+    const md::BarMenu* w = findMenu(b, L"Fenêtre");
+    REQUIRE(w != nullptr);
+    const md::MenuItem* mr = findItem(*w, L"Déplacer et redimensionner");
+    REQUIRE(mr != nullptr);
+    std::size_t at = mr->submenu.size();
+    for (std::size_t i = 0; i < mr->submenu.size(); ++i)
+        if (mr->submenu[i].text == L"Organiser") at = i;
+    REQUIRE(at < mr->submenu.size());
+    CHECK(!mr->submenu[at].enabled);   // intitulé grisé
+    const std::pair<const wchar_t*, const wchar_t*> want[] = {{L"Gauche et droite", L"left-right"},
+                                                              {L"Droite et gauche", L"right-left"},
+                                                              {L"Haut et bas", L"top-bottom"},
+                                                              {L"Bas et haut", L"bottom-top"},
+                                                              {L"Quarts", L"quarters"}};
+    REQUIRE(at + std::size(want) < mr->submenu.size());
+    for (std::size_t k = 0; k < std::size(want); ++k) {
+        const md::MenuItem& it = mr->submenu[at + 1 + k];
+        CHECK(it.text == want[k].first);
+        CHECK(it.enabled);
+        const md::MenuAction a = actionOf(b, &it);
+        CHECK(a.kind == md::ActionKind::Arrange);
+        CHECK(a.arg == want[k].second);
+    }
+    // Taille fixe : rien à organiser.
+    auto fixed = appContext();
+    fixed.targetResizable = false;
+    auto bf = md::buildBarMenus(fixed);
+    for (auto& it : findItem(*findMenu(bf, L"Fenêtre"), L"Déplacer et redimensionner")->submenu)
+        if (it.text == L"Gauche et droite") CHECK(!it.enabled);
+}
+
+TEST_CASE(bar_actions_arrange_needs_window) {
+    md::SystemActions sys;
+    md::ActionContext ctx;
+    HWND dead = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, nullptr, nullptr);
+    REQUIRE(dead != nullptr);
+    DestroyWindow(dead);
+    ctx.target.window = dead;
+    CHECK(!md::runAction({md::ActionKind::Arrange, L"left-right"}, ctx, sys));
+    ctx.target.window = nullptr;
+    CHECK(!md::runAction({md::ActionKind::Arrange, L"quarters"}, ctx, sys));
+}

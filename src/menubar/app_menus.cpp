@@ -158,14 +158,20 @@ void windowMenu(Builder& b, const BarContext& c, const std::vector<CatalogItem>&
     MenuItem move;
     move.text = L"Déplacer et redimensionner";
     move.enabled = canMove;
-    const auto section = [&](const wchar_t* title, std::initializer_list<std::pair<const wchar_t*, const wchar_t*>> items) {
+    const auto section = [&](const wchar_t* title, ActionKind kind,
+                             std::initializer_list<std::pair<const wchar_t*, const wchar_t*>> items) {
         move.submenu.push_back(b.item(title, {}, {}, false));   // intitulé grisé
-        for (const auto& [text, action] : items) move.submenu.push_back(b.item(text, {ActionKind::Tile, action}, {}, canResize));
+        for (const auto& [text, action] : items) move.submenu.push_back(b.item(text, {kind, action}, {}, canResize));
         move.submenu.push_back({});
     };
-    section(L"Moitiés", {{L"Gauche", L"left"}, {L"Droite", L"right"}, {L"Haut", L"top"}, {L"Bas", L"bottom"}});
-    section(L"Quarts", {{L"En haut à gauche", L"top-left"}, {L"En haut à droite", L"top-right"},
-                        {L"En bas à gauche", L"bottom-left"}, {L"En bas à droite", L"bottom-right"}});
+    section(L"Moitiés", ActionKind::Tile, {{L"Gauche", L"left"}, {L"Droite", L"right"}, {L"Haut", L"top"}, {L"Bas", L"bottom"}});
+    section(L"Quarts", ActionKind::Tile,
+            {{L"En haut à gauche", L"top-left"}, {L"En haut à droite", L"top-right"}, {L"En bas à gauche", L"bottom-left"},
+             {L"En bas à droite", L"bottom-right"}});
+    // La fenêtre active et les suivantes (ordre d'affichage), comme macOS 26.
+    section(L"Organiser", ActionKind::Arrange,
+            {{L"Gauche et droite", L"left-right"}, {L"Droite et gauche", L"right-left"}, {L"Haut et bas", L"top-bottom"},
+             {L"Bas et haut", L"bottom-top"}, {L"Quarts", L"quarters"}});
     move.submenu.push_back(b.item(L"Revenir à la taille précédente", {ActionKind::Tile, L"previous"}, {}, canMove));
     m.model.items.push_back(std::move(move));
     Builder::separator(m);
