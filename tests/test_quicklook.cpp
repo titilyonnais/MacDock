@@ -32,6 +32,31 @@ TEST_CASE(quicklook_space_in_file_views_only) {
     CHECK(md::quickLookKey(VK_SPACE, true, false, false, other) == QuickLookKey::Pass);
 }
 
+TEST_CASE(quicklook_space_continues_type_ahead) {
+    // Plan 47 : « mon rapport » tapé dans la liste des fichiers sélectionne le fichier par son nom ; l'espace tapée
+    // moins d'une seconde après une lettre va à l'Explorateur (comme le Finder), à l'appui comme au relâchement.
+    using md::QuickLookKey;
+    md::QuickLookContext c;
+    c.foregroundClass = L"CabinetWClass";
+    c.focusClass = L"DirectUIHWND";
+    c.focusInShellView = true;
+    c.typeAhead = true;
+    CHECK(md::quickLookKey(VK_SPACE, true, false, false, c) == QuickLookKey::Pass);
+    CHECK(md::quickLookKey(VK_SPACE, false, false, false, c) == QuickLookKey::Pass);
+    // Lettres, chiffres et signes comptent ; pas un raccourci (Ctrl, Alt, ⊞), ni les flèches ou Échap.
+    CHECK(md::typeAheadKey('M', false));
+    CHECK(md::typeAheadKey('7', false));
+    CHECK(md::typeAheadKey(VK_OEM_PERIOD, false));
+    CHECK(!md::typeAheadKey('C', true));
+    CHECK(!md::typeAheadKey(VK_DOWN, false));
+    CHECK(!md::typeAheadKey(VK_ESCAPE, false));
+    CHECK(!md::typeAheadKey(VK_SPACE, false));   // l'espace elle-même ne relance pas la saisie
+    // Une seconde, comme la sélection par la saisie du Finder.
+    CHECK(md::typeAheadActive(10'000, 10'999));
+    CHECK(!md::typeAheadActive(10'000, 11'000));
+    CHECK(!md::typeAheadActive(0, 500));   // rien tapé encore
+}
+
 TEST_CASE(quicklook_text_files_and_decoding) {
     CHECK(md::quickLookIsText(L"C:\\a\\notes.TXT"));
     CHECK(!md::quickLookIsText(L"C:\\v1.2\\LISEZMOI"));   // point dans le nom du dossier : pas une extension

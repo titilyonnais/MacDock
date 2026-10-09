@@ -18,7 +18,18 @@ QuickLookKey quickLookKey(unsigned vk, bool down, bool modifiers, bool injected,
     // Liste des fichiers seulement : jamais une zone de saisie (renommer, rechercher, adresse).
     const bool list = sameClass(c.focusClass, L"DirectUIHWND") || sameClass(c.focusClass, L"SysListView32");
     if (!list || !c.focusInShellView) return QuickLookKey::Pass;
+    if (c.typeAhead) return QuickLookKey::Pass;   // « mon rapport » : l'espace continue le nom tapé
     return down ? QuickLookKey::Open : QuickLookKey::Swallow;
+}
+
+bool typeAheadKey(unsigned vk, bool commandModifiers) {
+    if (commandModifiers) return false;
+    return (vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z') || (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) ||
+           (vk >= VK_OEM_1 && vk <= VK_OEM_3) || (vk >= VK_OEM_4 && vk <= VK_OEM_8) || vk == VK_OEM_102;
+}
+
+bool typeAheadActive(unsigned long long lastTyped, unsigned long long now) {
+    return lastTyped != 0 && now >= lastTyped && now - lastTyped < 1000;
 }
 
 bool quickLookIsText(const std::wstring& path) {

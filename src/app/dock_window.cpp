@@ -2057,6 +2057,11 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const unsigned vk = k->vkCode & 0xFF;
         const bool repeat = down && held[vk];
         held[vk] = down;
+        // Nom tapé dans la liste des fichiers : instant de la dernière lettre (l'espace qui suit en fait partie).
+        static ULONGLONG lastTyped = 0;
+        if (down && typeAheadKey(vk, ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_LWIN) |
+                                       GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0))
+            lastTyped = GetTickCount64();
         // Touche ⌘ (option) : avant tout le reste. Nos frappes simulées passent sans être relues.
         bool commandAlt = false;   // Alt rendu à Windows pour cette frappe (pas encore dans l'état du clavier)
         if (self_->commandKeyOn_ && k->dwExtraInfo != kCommandReplay &&
@@ -2133,7 +2138,8 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             const bool injected = (k->flags & LLKHF_INJECTED) != 0 && !diagnosticCapture();
             const bool mods = ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_SHIFT) |
                                 GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
-            const QuickLookContext c = quickLookContextNow();
+            QuickLookContext c = quickLookContextNow();
+            static bool spaceInName = false;   // décidé à l'appui, gardé pour le relâchement
             if (self_->quickLook_->isOpen()) {
                 const QuickLookKey a = quickLookKey(VK_SPACE, down, mods, injected, c);   // même contexte que l'ouverture
                 if (a != QuickLookKey::Pass) {
@@ -2142,6 +2148,8 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                     if (vk != VK_RETURN) return 1;
                 }
             } else if (vk == VK_SPACE) {
+                if (down && !repeat) spaceInName = typeAheadActive(lastTyped, GetTickCount64());
+                c.typeAhead = spaceInName;
                 switch (quickLookKey(vk, down, mods, injected, c)) {
                     case QuickLookKey::Open:
                         if (!repeat) PostMessageW(self_->hwnd_, WM_APP_QUICKLOOK, reinterpret_cast<WPARAM>(GetForegroundWindow()), 0);

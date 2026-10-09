@@ -14,7 +14,7 @@
   il n'est jamais réessayé, même une fois libéré.
 
 ## Tâches
-- [ ] 1. **Espace dans la saisie en cours** :
+- [x] 1. **Espace dans la saisie en cours** :
   - le crochet clavier note l'instant de la dernière lettre, chiffre ou signe frappé sans modificateur ;
   - moins d'une seconde après : l'espace va à l'Explorateur (appui et relâchement), sinon le Coup d'œil s'ouvre.
 
