@@ -239,6 +239,27 @@ void drawSegmented(Painter& p, D2D1_RECT_F r, const std::vector<std::wstring>& l
                p.pal().text, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_TEXT_ALIGNMENT_CENTER);
 }
 
+void drawSwatches(Painter& p, D2D1_RECT_F r, const std::vector<Rgba>& colors, int selected) {
+    const float rad = metrics::swatch / 2, cy = (r.top + r.bottom) / 2;
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        const D2D1_POINT_2F c = D2D1::Point2F(r.left + float(i) * (metrics::swatch + metrics::swatchGap) + rad, cy);
+        p.fillCircle(c, rad, colors[i]);
+        // Liseré discret : le jaune garde son bord sur un fond clair.
+        p.rt()->DrawEllipse(D2D1::Ellipse(c, rad - 0.25f, rad - 0.25f), p.brush(rgb(0x000000, 0.12f)), 0.5f);
+        if (int(i) == selected) p.fillCircle(c, 3, rgb(0xFFFFFF));
+    }
+}
+
+float swatchesWidth(int count) {
+    return count > 0 ? float(count) * metrics::swatch + float(count - 1) * metrics::swatchGap : 0;
+}
+
+int swatchAt(float x, float left, int count) {
+    const float half = metrics::swatchGap / 2, pitch = metrics::swatch + metrics::swatchGap;
+    if (count <= 0 || x < left - half || x >= left + swatchesWidth(count) + half) return -1;
+    return std::clamp(int(std::floor((x - left + half) / pitch)), 0, count - 1);
+}
+
 float segmentedWidth(Painter& p, const std::vector<std::wstring>& labels) {
     float widest = 0;
     for (const auto& l : labels) widest = std::max(widest, p.textWidth(l, metrics::fontBody));

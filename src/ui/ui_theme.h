@@ -3,6 +3,8 @@
 #pragma once
 #include <cstdint>
 
+#include "../core/accent.h"
+
 namespace md::ui {
 
 struct Rgba {
@@ -34,7 +36,8 @@ struct Palette {
     Rgba sheetBackground, sheetEdge;
     Rgba sidebarEdge;              // liseré du panneau de verre flottant
 };
-Palette palette(bool dark);
+// Couleur d'accentuation (plan 57) : accent, texte dessus et anneau du clavier ; bleu par défaut.
+Palette palette(bool dark, AccentColor accent = AccentColor::Blue);
 
 namespace metrics {
 constexpr float windowWidth = 715, minHeight = 470, defaultHeight = 620;
@@ -60,6 +63,7 @@ constexpr float buttonHeight = 24, buttonRadius = 12, buttonPadding = 14, button
 constexpr float shortcutWidth = 150, shortcutHeight = 22, shortcutRadius = 6;
 constexpr float sheetWidth = 300, sheetPadding = 20, sheetRadius = 26, sheetButtonHeight = 28, sheetTop = 8;
 constexpr float bottomPadding = 24;
+constexpr float swatch = 16, swatchGap = 8;   // pastilles de la couleur d'accentuation (Réglages > Général)
 }  // namespace metrics
 
 }  // namespace md::ui

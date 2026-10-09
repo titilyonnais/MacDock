@@ -91,6 +91,11 @@ float popupWidth(Painter& p, const std::wstring& text);
 // Contrôle segmenté de segments égaux ; `selected` sur un fond clair en relief.
 void drawSegmented(Painter& p, D2D1_RECT_F r, const std::vector<std::wstring>& labels, int selected);
 float segmentedWidth(Painter& p, const std::vector<std::wstring>& labels);
+// Pastilles rondes (couleur d'accentuation) de metrics::swatch, espacées de metrics::swatchGap depuis r.left ; la
+// choisie porte un point blanc, comme Réglages Système > Apparence.
+void drawSwatches(Painter& p, D2D1_RECT_F r, const std::vector<Rgba>& colors, int selected);
+float swatchesWidth(int count);
+int swatchAt(float x, float left, int count);   // pastille sous x (demi-écart compris) ; -1 en dehors
 // Menu ouvert : `checked` coché, `hover` sur l'accent ; éléments de metrics::menuItem.
 void drawMenu(Painter& p, D2D1_RECT_F r, const std::vector<std::wstring>& items, int checked, int hover);
 float menuWidth(Painter& p, const std::vector<std::wstring>& items);
