@@ -488,6 +488,30 @@ TEST_CASE(ui_draw_floating_sidebar_panel) {
     CoUninitialize();
 }
 
+TEST_CASE(ui_painter_formats_kept_between_frames) {
+    // Plan 46 : chaque image crée un peintre ; ses formats de texte viennent du cache de la fenêtre, plus recréés.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(200, 100);
+        md::ui::FormatCache cache;
+        IDWriteTextFormat* first = nullptr;
+        {
+            md::ui::Painter a(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);
+            first = a.format(13);
+            CHECK(a.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
+        }
+        REQUIRE(first != nullptr);
+        md::ui::Painter b(c.rt.Get(), c.dwrite.Get(), pal, L"Segoe UI", &cache);   // image suivante
+        CHECK(b.format(13) == first);
+        const std::size_t kept = cache.size();
+        CHECK(b.paragraphHeight(L"Deux lignes de texte qui se replient", 80, 12) > 15);
+        CHECK_EQ(cache.size(), kept);   // le format du paragraphe est déjà là
+        CHECK(b.format(13, DWRITE_FONT_WEIGHT_BOLD) != first);
+    }
+    CoUninitialize();
+}
+
 TEST_CASE(ui_window_lights_states) {
     // Relecture du plan 43 : liseré assombri sous le doigt (comme la barre), fenêtre inactive en couleur au survol.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

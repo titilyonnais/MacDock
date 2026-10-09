@@ -189,6 +189,7 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual> visual_;
     Microsoft::WRL::ComPtr<IDWriteFactory> dwrite_;
     std::wstring font_;
+    ui::FormatCache formats_;   // formats de texte gardés d'une image à l'autre
     UINT pxW_ = 0, pxH_ = 0;
 };
 

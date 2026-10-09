@@ -317,7 +317,7 @@ void SettingsWindow::render() {
     dc_->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_));
     dc_->Clear(D2D1::ColorF(0, 0, 0, 0));
     {
-        ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_);
+        ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_, &formats_);
         ui::drawWindowBackground(p, w, h);   // Tahoe : barre latérale de verre flottante, le contenu tout autour
         computeGeometry(p, w);
         drawSidebar(p, h);
@@ -787,7 +787,7 @@ void SettingsWindow::openMenu(int index) {
     const RowSpec& s = spec(index);
     if (s.choices.empty()) return;
     const ui::Palette pal = ui::palette(dark_);
-    ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_);
+    ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_, &formats_);
     const Geom& g = geoms_[std::size_t(index)];
     const int checked = int(std::clamp(std::lround(valueOf(index)), 0L, long(s.choices.size()) - 1));
     const float mw = std::max(ui::menuWidth(p, s.choices), g.control.right - g.control.left + 26);

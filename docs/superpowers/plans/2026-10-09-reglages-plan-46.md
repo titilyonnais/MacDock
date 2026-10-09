@@ -45,10 +45,13 @@
 
   Essai réel (app en mode d'essai, messages postés) : clic court sur « Génie », le menu reste ouvert ; appui, glisser
   jusqu'à « Windows » et relâcher : choisi, menu fermé ; relâché hors du menu : rien.
-- [ ] 4. **Formats de texte gardés d'une image à l'autre** : cache de la fenêtre (`ui::FormatCache`) passé au peintre,
+- [x] 4. **Formats de texte gardés d'une image à l'autre** : cache de la fenêtre (`ui::FormatCache`) passé au peintre,
   formats des paragraphes compris ; vidé au changement de police.
 
   Test : deux peintres qui partagent le cache donnent le même format ; un paragraphe dessiné deux fois n'en crée
   qu'un.
+
+  La police de la fenêtre n'est choisie qu'au démarrage : le cache, rangé par police, n'a pas à être vidé.
+  Essai réel : section « À propos » (ligne coupée par « … », paragraphe replié) identique.
 - [ ] 5. Essai réel (app Réglages en mode d'essai `--data`, MacDock lancé pour l'essai puis arrêté), documentation,
   relecture, fusion.
