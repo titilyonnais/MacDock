@@ -27,6 +27,8 @@ struct ActionCommand {
     // Étape sans fichier : l'Explorateur de la session de l'utilisateur redémarré par l'app elle-même (jamais par un
     // processus administrateur).
     bool restartExplorer = false;
+    // Code de sortie sans valeur d'erreur (recherche de mise à jour : 10 = version prête) ; l'état se relit ensuite.
+    bool ignoreExitCode = false;
 };
 
 // Dans l'ordre ; vide pour une action faite dans la fenêtre, ou un mod inconnu.

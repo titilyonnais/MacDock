@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 #include <thread>
 
 #include "../anim/motion.h"
@@ -636,6 +638,30 @@ void SettingsWindow::buildEnv() {
     env_.running = FindWindowW(L"MacDockWindow", nullptr) != nullptr;
     env_.version = kMacDockVersion;
     env_.dataDir = dir_;
+    // Mise à jour de logiciels : update.json du dossier des réglages (écrit par le lanceur).
+    UpdateState update;
+    {
+        std::ifstream f(dir_ + L"\\update.json", std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        update = parseUpdateState(ss.str());
+    }
+    std::wstring checkedAt;
+    if (update.lastCheck > 0) {   // heure locale, à la française : « le 09/10/2026 à 10:28 »
+        ULARGE_INTEGER t{};
+        t.QuadPart = ULONGLONG(update.lastCheck) * 10000000ULL + 116444736000000000ULL;
+        FILETIME ft{t.LowPart, t.HighPart}, local{};
+        SYSTEMTIME st{};
+        if (FileTimeToLocalFileTime(&ft, &local) && FileTimeToSystemTime(&local, &st)) {
+            wchar_t text[64] = {};
+            swprintf_s(text, L"le %02u/%02u/%04u à %02u:%02u", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute);
+            checkedAt = text;
+        }
+    }
+    const UpdateStatus status = updateStatus(update, checkedAt);
+    env_.updateTitle = status.title;
+    env_.updateDetail = status.detail;
+    env_.updateReady = !update.readyVersion.empty();
 }
 
 void SettingsWindow::selectPane(PaneId pane) {
@@ -1507,7 +1533,8 @@ void SettingsWindow::runAction(ButtonSpec button) {
             return;
         default: break;
     }
-    const bool refresh = button.action == PaneAction::Launch || button.action == PaneAction::Quit || button.action == PaneAction::Restart;
+    const bool refresh = button.action == PaneAction::Launch || button.action == PaneAction::Quit ||
+                         button.action == PaneAction::Restart || button.action == PaneAction::CheckUpdate;
     runCommands(actionCommands(button.action, ctx), refresh);
 }
 
@@ -1554,7 +1581,7 @@ void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refre
                 if (c.wait) {
                     DWORD code = 0;
                     if (WaitForSingleObject(sei.hProcess, 180000) == WAIT_OBJECT_0 && GetExitCodeProcess(sei.hProcess, &code) &&
-                        code != 0) {   // l'installateur a échoué (compilation, Windhawk absent…)
+                        code != 0 && !c.ignoreExitCode) {   // l'installateur a échoué (compilation, Windhawk absent…)
                         log::warn(L"Réglages : %s a fini avec le code %lu", c.file.c_str(), code);
                         result = 0;
                     }

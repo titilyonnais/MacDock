@@ -37,10 +37,6 @@ std::int64_t nowSeconds() {
 
 void UpdateNotifier::start(HINSTANCE instance) {
     if (thread_.joinable()) return;
-    if (!update::load(update::defaultPaths()).automatic) {
-        log::info(L"Mise à jour : recherches automatiques coupées");
-        return;
-    }
     instance_ = instance;
     g_self = this;
     thread_ = std::thread([this] { run(); });

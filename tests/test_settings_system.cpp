@@ -247,3 +247,21 @@ TEST_CASE(settings_test_instance_never_talks_to_the_real_one) {
     CHECK(real.windowClass != test.windowClass);   // une seconde ouverture ne trouve jamais l'autre
     CHECK(real.windowClass == L"MacDockSettingsWindow");
 }
+
+TEST_CASE(settings_actions_software_update) {
+    // Plan 53 : les deux boutons passent par le lanceur ; la recherche attend sa fin, et son code (10 : version prête)
+    // n'est pas une erreur : l'état se lit ensuite dans update.json.
+    const std::wstring exe = L"C:\\MacDock";
+    md::ButtonContext ctx{exe, L"C:\\Users\\x\\AppData\\Roaming\\MacDock"};
+    const auto check = md::actionCommands(md::PaneAction::CheckUpdate, ctx);
+    REQUIRE(check.size() == 1);
+    CHECK(check[0].file == exe + L"\\MacDockLauncher.exe");
+    CHECK(check[0].params == L"--check-update");
+    CHECK(check[0].wait);
+    CHECK(check[0].ignoreExitCode);
+    const auto install = md::actionCommands(md::PaneAction::InstallUpdate, ctx);
+    REQUIRE(install.size() == 1);
+    CHECK(install[0].file == exe + L"\\MacDockLauncher.exe");
+    CHECK(install[0].params == L"--install-update");
+    CHECK(!install[0].wait);   // l'installateur ferme l'app Réglages et relance MacDock
+}

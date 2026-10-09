@@ -53,6 +53,12 @@ std::vector<ActionCommand> actionCommands(PaneAction action, const ButtonContext
         case PaneAction::GetWindhawk: return {ActionCommand{L"https://windhawk.net", L""}};
         case PaneAction::ShowFolder: return {ActionCommand{explorer(c), L"\"" + c.dataDir + L"\""}};
         case PaneAction::ShowLogs: return {ActionCommand{explorer(c), L"\"" + c.dataDir + L"\\logs\""}};
+        case PaneAction::CheckUpdate: {
+            ActionCommand check{c.exeDir + L"\\MacDockLauncher.exe", L"--check-update", L"open", true};
+            check.ignoreExitCode = true;
+            return {check};
+        }
+        case PaneAction::InstallUpdate: return {ActionCommand{c.exeDir + L"\\MacDockLauncher.exe", L"--install-update"}};
         case PaneAction::None:
         case PaneAction::Export:
         case PaneAction::Import:

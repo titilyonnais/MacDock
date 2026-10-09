@@ -14,7 +14,7 @@ namespace md {
 class UpdateNotifier {
 public:
     ~UpdateNotifier() { stop(); }
-    void start(HINSTANCE instance);   // rien si « Rechercher automatiquement » est coupé (update.json)
+    void start(HINSTANCE instance);   // « Rechercher automatiquement » (update.json) relu à chaque passage
     void stop();
 
 private:
