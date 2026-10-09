@@ -134,18 +134,19 @@ private:
 
 std::optional<double> evaluateExpression(std::wstring_view text) { return Parser(text).run(); }
 
-std::wstring formatNumber(double v) {
+std::wstring formatNumber(double v, int digits) {
     if (!std::isfinite(v)) return {};
     if (v == 0) return L"0";
+    digits = std::clamp(digits, 1, 15);
     const double a = std::abs(v);
     wchar_t buf[64];
     if (a >= 1e15 || a < 1e-9) {
-        std::swprintf(buf, 64, L"%.10g", v);
+        std::swprintf(buf, 64, L"%.*g", digits, v);
         std::wstring s = buf;
         std::replace(s.begin(), s.end(), L'.', L',');
         return s;
     }
-    const int decimals = std::clamp(10 - int(std::floor(std::log10(a))) - 1, 0, 15);
+    const int decimals = std::clamp(digits - int(std::floor(std::log10(a))) - 1, 0, 15);
     std::swprintf(buf, 64, L"%.*f", decimals, a);
     std::wstring s = buf;
     if (s.find(L'.') != std::wstring::npos) {
