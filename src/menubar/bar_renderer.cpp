@@ -194,6 +194,28 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
             drawGlyph(rt, it.glyph, D2D1::RectF(x0, y0, x0 + size, y0 + size), ink.Get(), it.level, it.alt);
             continue;
         }
+        if (it.boxed) {   // menu de saisie : le code de la disposition dans une boîte arrondie, comme les sources de macOS
+            auto l = layoutOf(it.text, true);
+            if (!l) continue;
+            const float fs = bold_ ? bold_->GetFontSize() * 0.72f : 10 * s;
+            l->SetFontSize(fs, DWRITE_TEXT_RANGE{0, UINT32(it.text.size())});
+            DWRITE_TEXT_METRICS tm{};
+            l->GetMetrics(&tm);
+            const float bh = std::round(15 * s), bw = std::max(std::round(tm.widthIncludingTrailingWhitespace + 8 * s), std::round(20 * s));
+            const float bx = std::round(it.x + (it.width - bw) / 2), by = std::round((height - bh) / 2);
+            const float stroke = std::max(1.0f, 1.2f * s), r = 3.5f * s;
+            const float tx = std::round(bx + (bw - tm.widthIncludingTrailingWhitespace) / 2), ty = std::round(by + (bh - tm.height) / 2);
+            for (int pass = withShadow ? 0 : 1; pass < 2; ++pass) {
+                const float dy = pass == 0 ? shadowDy : 0;
+                ID2D1SolidColorBrush* b = pass == 0 ? shadow.Get() : ink.Get();
+                rt->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(bx + stroke / 2, by + dy + stroke / 2, bx + bw - stroke / 2,
+                                                                       by + dy + bh - stroke / 2),
+                                                           r, r),
+                                         b, stroke);
+                rt->DrawTextLayout({tx, ty + dy}, l.Get(), b);
+            }
+            continue;
+        }
         auto l = layoutOf(it.text, it.bold);
         if (!l) continue;
         DWRITE_TEXT_METRICS tm{};

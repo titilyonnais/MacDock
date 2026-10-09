@@ -30,6 +30,7 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
     s.showNetwork = readBool(v, "showNetwork", s.showNetwork);
     s.showBattery = readBool(v, "showBattery", s.showBattery);
     s.showSearch = readBool(v, "showSearch", s.showSearch);
+    s.showInput = readBool(v, "showInput", s.showInput);
     s.hud = readBool(v, "hud", s.hud);
     s.volumeFeedback = readBool(v, "volumeFeedback", s.volumeFeedback);
     s.showAppIcons = readBool(v, "showAppIcons", s.showAppIcons);
@@ -77,6 +78,7 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     v.set("showNetwork", s.showNetwork);
     v.set("showBattery", s.showBattery);
     v.set("showSearch", s.showSearch);
+    v.set("showInput", s.showInput);
     v.set("hud", s.hud);
     v.set("volumeFeedback", s.volumeFeedback);
     v.set("showAppIcons", s.showAppIcons);

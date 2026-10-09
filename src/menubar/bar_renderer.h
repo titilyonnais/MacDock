@@ -30,6 +30,7 @@ struct BarDrawItem {      // pixels de la barre
     Glyph glyph = Glyph::None;  // icône d'état (à la place du texte)
     float level = 1;            // volume, force du signal, charge
     bool alt = false;           // sourdine, Wi-Fi coupé, en charge
+    bool boxed = false;         // texte dans une boîte arrondie (menu de saisie : « FR »)
     std::shared_ptr<const std::vector<std::uint8_t>> image;   // icône d'app : BGRA prémultipliée, en couleurs
     UINT imageW = 0, imageH = 0;
 };

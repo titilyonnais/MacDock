@@ -104,6 +104,17 @@ void wifiMenu(Builder& b, const StatusState& s) {
     b.item(L"Réglages Wi-Fi…", {StatusAction::OpenUri, L"ms-settings:network-wifi"});
 }
 
+// Menu de saisie (plan 58) : les dispositions, l'actuelle cochée ; émojis, clavier visuel, réglages.
+void inputMenu(Builder& b, const StatusState& s) {
+    for (const InputLayout& l : s.inputs)
+        b.item(l.name, {StatusAction::InputLayout, hklText(l.hkl)}).checked = l.hkl == s.input;
+    b.separator();
+    b.item(L"Afficher les émojis et symboles", {StatusAction::Shortcut, L"Win+."});
+    b.item(L"Afficher le clavier visuel", {StatusAction::OpenUri, L"osk.exe"});
+    b.separator();
+    b.item(L"Ouvrir les réglages Clavier…", {StatusAction::OpenUri, L"ms-settings:regionlanguage"});
+}
+
 void batteryMenu(Builder& b, const StatusState& s) {
     const BatteryInfo& bat = s.snap.battery;
     b.header(L"Batterie");
@@ -180,6 +191,14 @@ void notificationCenter(Builder& b, const StatusState& s) {
 std::vector<StatusItem> statusItems(const StatusState& s) {
     std::vector<StatusItem> out;
     const MenuBarSettings& set = s.settings;
+    // Menu de saisie : seulement s'il y a un choix, et une fois la disposition de l'app lue (pas de « ? » au démarrage).
+    if (set.showInput && s.inputs.size() >= 2 && s.input) {
+        std::wstring code;
+        for (const InputLayout& l : s.inputs)
+            if (l.hkl == s.input) code = l.code;
+        if (code.empty()) code = layoutCode(s.input);   // disposition ajoutée depuis la dernière lecture de la liste
+        out.push_back({StatusKind::Input, Glyph::None, 1, false, code.empty() ? L"?" : code});
+    }
     if (set.showSound && s.audio) out.push_back({StatusKind::Sound, Glyph::Speaker, s.muted ? 0 : s.volume, s.muted, {}});
     const NetworkInfo& n = s.snap.network;
     if (set.showNetwork && n.wifiInterface) out.push_back({StatusKind::Network, Glyph::Wifi, wifiLevel(n), !n.wifiOn, {}});
@@ -212,6 +231,11 @@ StatusMenu statusMenu(StatusKind kind, const StatusState& s) {
             batteryMenu(b, s);
             break;
         }
+        case StatusKind::Input: {
+            Builder b(out, 240);
+            inputMenu(b, s);
+            break;
+        }
         case StatusKind::ControlCenter: {
             Builder b(out, 340);
             controlCenterMenu(b, s);
@@ -231,6 +255,7 @@ MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const St
     StatusState s = now;   // valeurs actuelles, présence des lignes de l'ouverture
     s.audio = opened.audio;
     s.outputs = opened.outputs;
+    s.inputs = opened.inputs;   // mêmes lignes ; la coche suit la disposition actuelle
     NetworkInfo& n = s.snap.network;
     n.wifiInterface = opened.snap.network.wifiInterface;
     n.networks = opened.snap.network.networks;
@@ -251,6 +276,11 @@ MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const St
 std::optional<StatusCommand> statusFallback(const StatusCommand& c) {
     if (c.first == StatusAction::Output) return StatusCommand{StatusAction::OpenUri, L"ms-settings:sound"};
     return std::nullopt;
+}
+
+bool statusCommandTypesInApp(const StatusCommand& c) {
+    return c.first == StatusAction::Shortcut || c.first == StatusAction::InputLayout ||
+           (c.first == StatusAction::OpenUri && c.second == L"osk.exe");
 }
 
 } // namespace md
