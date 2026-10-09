@@ -11,7 +11,8 @@ TEST_CASE(geometry_concentric_default) {
     CHECK_NEAR(g.iconRadius, 38.625 * 0.259, 1e-9);   // rayon des icônes de macOS 26 (plan 60)
     CHECK_NEAR(g.visibleInset, 4.6875, 1e-9);
     // Concentrique (borné à la demi-épaisseur) ; le rendu le ramène ensuite au plus grand coin continu qui tient dans la
-    // hauteur (épaisseur / 3,057) : les extrémités du Dock de macOS 26 ont exactement cette forme (plan 61).
+    // hauteur (épaisseur / 3,057), la forme des extrémités du Dock de macOS 26 (plan 61). Au-delà de 117 pt, le rayon
+    // concentrique passe un peu sous ce plafond (46,28 contre 46,51 pt à 128) : écart invisible.
     CHECK_NEAR(g.cornerRadius, std::min(38.625 * 0.259 + 7.1 + 4.6875, (48 + 2 * 7.1) / 2), 1e-9);
     CHECK_NEAR(g.indicatorCenter, 4.7, 1e-9);
     // Le point ne touche pas l'icône : au moins 5 pt entre le haut du point et le bas de la forme visible.

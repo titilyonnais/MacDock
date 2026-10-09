@@ -77,8 +77,9 @@ bool metricsJsonComplete(const json::Value& v);
 
 // Version d'un fichier de réglages ("version"), 1 si absente.
 int jsonVersion(const json::Value& v);
-// Fichier sans "version" (v1) : une valeur égale à l'ancien défaut prend le nouveau ; les autres sont gardées.
-// Retire "indicatorInset" et met "version": 2.
+// Fichier d'une version antérieure (sans "version" : v1) : une valeur égale au défaut de son époque suit les défauts
+// des versions suivantes ; une valeur choisie par l'utilisateur reste. Retire "indicatorInset" et met "version" à
+// kMetricsVersion.
 json::Value migrateMetricsJson(const json::Value& v);
 
 } // namespace md
