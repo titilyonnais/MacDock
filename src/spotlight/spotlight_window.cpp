@@ -26,6 +26,7 @@
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
 #include "../icons/icon_provider.h"
+#include "../icons/squircle.h"
 #include "../popup/popup_glass.h"
 #include "../settings/pane_catalog.h"
 #include "../settings/pane_icons.h"
@@ -58,6 +59,17 @@ constexpr std::size_t kMaxRows = 12, kMaxSections = 4;
 // Icône des pages des Paramètres de Windows : celle de l'app Paramètres.
 constexpr wchar_t kWindowsSettingsApp[] =
     L"shell:AppsFolder\\windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+
+// Forme des icônes d'apps dans la case `cell` : carré de côté cell·shape, centré, aux coins continus de rayon
+// côté·corner (comme le masque du Dock).
+void fillIconShape(ID2D1DeviceContext* d, const D2D1_RECT_F& cell, float shape, float corner, ID2D1Brush* brush) {
+    const float side = (cell.right - cell.left) * shape, cx = (cell.left + cell.right) / 2, cy = (cell.top + cell.bottom) / 2;
+    Com<ID2D1Factory> factory;
+    d->GetFactory(&factory);
+    if (auto g = ui::smoothRectGeometry(factory.Get(), D2D1::RectF(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2),
+                                        side * corner))
+        d->FillGeometry(g.Get(), brush);
+}
 
 double now() {
     LARGE_INTEGER f, c;
@@ -103,7 +115,7 @@ struct View {
     bool caret = true, dark = false;
     float opacity = 1;
     // Tuiles des sections de Réglages MacDock : forme et rayon des icônes d'apps (AppsIconStyle), pour la même allure.
-    float tileShape = 824.0f / 1024, tileCorner = 185.4f / 824;
+    float tileShape = float(kIconShapeRatio), tileCorner = float(kIconCornerRatio);
     AccentColor accent = AccentColor::Blue;   // couleur d'accentuation (plan 57)
 };
 
@@ -202,13 +214,13 @@ struct Painter {
                 const D2D1_RECT_F row{kRowInset, top, kPanelW - kRowInset, top + kRowH};
                 if (sel) d->FillRoundedRectangle(D2D1::RoundedRect(row, 8, 8), accent.Get());
                 const D2D1_RECT_F ir{kIconX, top + (kRowH - kIcon) / 2, kIconX + kIcon, top + (kRowH + kIcon) / 2};
-                if (it.kind == SpotKind::Calc) {   // touche « = » orange de la Calculatrice
+                if (it.kind == SpotKind::Calc) {   // touche « = » orange de la Calculatrice, à la forme des icônes d'apps
                     Com<ID2D1SolidColorBrush> orange;
                     d->CreateSolidColorBrush(rgba(1.0f, 0.62f, 0.04f, a), &orange);
-                    if (orange) d->FillRoundedRectangle(D2D1::RoundedRect(ir, 6.5f, 6.5f), orange.Get());
+                    if (orange) fillIconShape(d, ir, v.tileShape, v.tileCorner, orange.Get());
                     const float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
-                    d->DrawLine({cx - 6, cy - 3}, {cx + 6, cy - 3}, white.Get(), 2.2f);
-                    d->DrawLine({cx - 6, cy + 3}, {cx + 6, cy + 3}, white.Get(), 2.2f);
+                    d->DrawLine({cx - 5, cy - 2.5f}, {cx + 5, cy - 2.5f}, white.Get(), 2.0f);
+                    d->DrawLine({cx - 5, cy + 2.5f}, {cx + 5, cy + 2.5f}, white.Get(), 2.0f);
                 } else if (it.kind == SpotKind::Pane) {
                     paneTile(d, v, it, ir, a);
                 } else if (icon) {
@@ -847,7 +859,7 @@ BgraImage spotlightSnapshot(const std::wstring& query, const std::vector<AppEntr
         Com<ID2D1SolidColorBrush> b;
         const std::uint32_t c = placeholderColor(index + 1);   // pas le bleu de la sélection en tête
         d->CreateSolidColorBrush(rgba(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, 1), &b);
-        if (b) d->FillRoundedRectangle(D2D1::RoundedRect(r, 6.5f, 6.5f), b.Get());
+        if (b) fillIconShape(d, r, float(kIconShapeRatio), float(kIconCornerRatio), b.Get());   // forme des icônes d'apps
     });
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
     if (FAILED(dc->EndDraw())) return out;

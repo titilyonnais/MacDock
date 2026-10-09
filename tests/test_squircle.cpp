@@ -32,7 +32,9 @@ TEST_CASE(squircle_mask_alpha_is_antialiased) {
     // Couverture d'un pixel : 1 au centre, 0 au coin, intermédiaire sur la courbe du coin (diagonale).
     CHECK_NEAR(md::squircleMaskAlpha(50, 50, 100), 1, 1e-9);
     CHECK_NEAR(md::squircleMaskAlpha(0, 0, 100), 0, 1e-9);
-    double edge = md::squircleMaskAlpha(6, 6, 100);
+    // La courbe du coin coupe la diagonale à 0,2915 rayon du sommet (milieu du coin continu d'Apple).
+    const int k = int(0.2915 * md::kIconCornerRatio * 100);
+    double edge = md::squircleMaskAlpha(k, k, 100);
     CHECK(edge > 0.1);
     CHECK(edge < 1.0);
 }

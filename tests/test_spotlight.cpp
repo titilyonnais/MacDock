@@ -384,6 +384,27 @@ TEST_CASE(spot_snapshot_draws_pane_tile) {   // plan 55 : la tuile de la section
     CoUninitialize();
 }
 
+TEST_CASE(spot_snapshot_calc_tile_has_icon_shape) {   // relecture du plan 60 : la tuile « = », à la forme des icônes
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto img = md::spotlightSnapshot(L"2+2", {}, {}, false, 1280, 800);
+    REQUIRE(img.w == 1280 && img.h == 800);
+    // Case de l'icône de la première ligne (28 pt) ; la tuile est la forme des icônes d'apps : 28 × 824/1024 ≈ 22,5 pt,
+    // centrée, donc rien d'orange sur les deux premières colonnes de la case.
+    const int left = (1280 - 680) / 2 + 16, top = int(800 * 0.22) + 52 + 6 + 26 + 6;
+    auto orange = [&](int x, int y) {
+        const std::uint8_t* px = &img.px[(std::size_t(y) * 1280 + x) * 4];   // B, G, R, A
+        return px[2] > 230 && px[1] > 130 && px[1] < 185 && px[0] < 70;
+    };
+    int edge = 0, centre = 0;
+    for (int y = top + 10; y < top + 18; ++y) {
+        for (int x = left; x < left + 2; ++x) edge += orange(x, y);
+        for (int x = left + 8; x < left + 10; ++x) centre += orange(x, y);
+    }
+    CHECK(centre > 0);   // la tuile est bien là
+    CHECK(edge == 0);    // mais pas jusqu'au bord de la case
+    CoUninitialize();
+}
+
 TEST_CASE(spot_snapshot_selection_follows_accent) {   // plan 57 : ligne choisie sur l'accent
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     std::vector<md::AppEntry> apps{{L"Calculatrice", L"calc"}};

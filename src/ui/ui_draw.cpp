@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../geom/smooth_rect.h"
+
 namespace md::ui {
 
 using Microsoft::WRL::ComPtr;
@@ -307,6 +309,18 @@ void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool f
 }
 
 void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius) { p.strokeRound(inflate(r, 2), radius + 2, p.pal().focusRing, 3); }
+
+ComPtr<ID2D1PathGeometry> smoothRectGeometry(ID2D1Factory* factory, D2D1_RECT_F r, float radius) {
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (!factory || FAILED(factory->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return nullptr;
+    const auto pts = smoothRectOutline(r.left, r.top, r.right - r.left, r.bottom - r.top, radius, 24);
+    sink->BeginFigure(D2D1::Point2F(float(pts[0].x), float(pts[0].y)), D2D1_FIGURE_BEGIN_FILLED);
+    for (std::size_t i = 1; i < pts.size(); ++i) sink->AddLine(D2D1::Point2F(float(pts[i].x), float(pts[i].y)));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) return nullptr;
+    return path;
+}
 
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled) {
     // Pastilles plates de macOS 26 Tahoe (comme traffic_lights.cpp) : remplissage et liseré.

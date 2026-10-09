@@ -39,6 +39,18 @@ TEST_CASE(app_icon_tile_and_corners) {
     CoUninitialize();
 }
 
+TEST_CASE(app_icon_corner_is_continuous) {   // relecture du plan 60 : coin continu d'Apple, pas un arc de cercle
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const md::BgraImage im = md::renderAppIcon(md::AppIconKind::Settings, 256);
+    REQUIRE(im.w == 256);
+    double worst = 0;   // écart de couverture au masque des icônes du Dock, dans le coin haut-gauche
+    for (int y = 0; y < 72; ++y)
+        for (int x = 0; x < 72; ++x)
+            worst = std::max(worst, std::abs(px(im, x, y)[3] / 255.0 - md::squircleMaskAlpha(x, y, 256)));
+    CHECK(worst < 0.3);   // un arc de cercle s'en écarte de plus d'un pixel près du milieu du coin
+    CoUninitialize();
+}
+
 TEST_CASE(app_icon_fits_dock_shape) {
     // Relecture du plan 49 : avec « Icônes uniformes » (par défaut), le Dock met en « prison » une icône qui ne remplit
     // pas sa forme (deux cadres). Plein cadre, au rayon de la grille d'Apple, elle passe sous son propre masque.

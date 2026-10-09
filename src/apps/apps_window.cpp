@@ -22,6 +22,7 @@
 #include "../core/log.h"
 #include "../glass/glass_renderer.h"
 #include "../icons/icon_provider.h"
+#include "../icons/squircle.h"
 #include "../popup/popup_glass.h"
 #include "../shell/shell_actions.h"
 #include "../theme/wallpaper_art.h"
@@ -759,7 +760,7 @@ BgraImage appsSnapshot(const std::vector<AppEntry>& apps, const std::wstring& qu
         }
         std::vector<std::uint8_t> sq(std::size_t(px) * px * 4, 0);
         const std::uint32_t c = placeholderColor(app);
-        const double radius = px * 0.225;
+        const double radius = px * kIconCornerRatio;   // rayon des icônes de macOS 26
         for (int y = 0; y < px; ++y)
             for (int x = 0; x < px; ++x) {   // carré arrondi plein
                 const double dx = std::max({radius - x - 0.5, x + 0.5 - (px - radius), 0.0});

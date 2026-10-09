@@ -65,12 +65,12 @@ $Targets = @{
                   Libs = @('user32.lib', 'shell32.lib', 'advapi32.lib', 'ole32.lib') }
     settings = @{ Exe = 'MacDockSettings.exe'; Res = 'res\settings.rc'; Sources = @('src\core\*.cpp', 'src\config\*.cpp', 'src\settings\*.cpp', 'src\ui\*.cpp',
                       'src\settings_app\*.cpp', 'src\anim\spring.cpp', 'src\anim\motion.cpp', 'src\menubar\menubar_settings.cpp', 'src\interact\hotkey.cpp',
-                      'src\menubar\clock_format.cpp', 'src\update\update_logic.cpp', 'src\shell\explorer_restart.cpp'); Subsystem = 'WINDOWS';
+                      'src\menubar\clock_format.cpp', 'src\update\update_logic.cpp', 'src\shell\explorer_restart.cpp', 'src\geom\smooth_rect.cpp'); Subsystem = 'WINDOWS';
                   Libs = @('d3d11.lib', 'dxgi.lib', 'dcomp.lib', 'd2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'dwmapi.lib',
                       'shell32.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'gdi32.lib', 'advapi32.lib',
                       'shcore.lib', 'version.lib', 'dxguid.lib', 'wtsapi32.lib') }
     icons    = @{ Exe = 'make_icons.exe'; Sources = @('tools\make_icons.cpp', 'src\settings\app_icon.cpp', 'src\settings\pane_icons.cpp',
-                      'src\ui\*.cpp', 'src\calib\png_io.cpp'); Subsystem = 'CONSOLE';
+                      'src\ui\*.cpp', 'src\calib\png_io.cpp', 'src\geom\smooth_rect.cpp'); Subsystem = 'CONSOLE';
                   Libs = @('d2d1.lib', 'dwrite.lib', 'windowscodecs.lib', 'ole32.lib', 'user32.lib') }
 }
 
