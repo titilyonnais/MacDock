@@ -862,6 +862,21 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - une seconde réduction pendant un génie coupe le premier net ;
   - Win+↓ ne prépare pas le génie à l'avance (≈ 0,1 s d'attente de la carte graphique).
 
+### Plan 45 — pastilles des fenêtres recouvertes ou masquées, nuit du 9 octobre
+
+- **Couleur sous les pastilles** : une fenêtre qui recouvre en partie la barre de titre d'une autre n'en donne plus la
+  couleur. Avant, un rectangle de la couleur de la fenêtre du dessus cachait les boutons ; maintenant, seuls les
+  points où la fenêtre elle-même est visible sont lus (64 pt au plus, trois points au moins).
+- **Fenêtre masquée** (zone de notification) : son calque est retiré, avec le crochet de déplacements de son
+  processus, et revient quand elle réapparaît.
+- **Essais réels** sur des fenêtres d'essai à moi, ancienne puis nouvelle barre : bande rouge sur la barre de titre,
+  fond des pastilles rouge avant, couleur de la barre après ; calque de la fenêtre masquée gardé avant, retiré après.
+- **Relecture indépendante** : rien de critique ; une garde ajoutée (pas de calque pour une fenêtre masquée qui passe
+  au premier plan), points de mesure bornés. Vérifié en réel qu'une fenêtre bloquée par un dialogue modal garde sa
+  couleur.
+- **Mineurs reportés** : couleur de repli d'une fenêtre jamais mesurée (F3F3F3 au lieu du ECECEE de l'apparence
+  macOS) ; couleur active gardée par une fenêtre devenue inactive en étant recouverte.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

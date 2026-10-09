@@ -27,7 +27,7 @@
   - à son prochain `SHOW`, elle retrouve un calque (déjà le cas pour une fenêtre sans calque).
 
   Test : `onTargetHidden` (immédiat : cacher ; reporté et encore masquée : retirer ; reporté et revenue : replacer).
-- [ ] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
+- [x] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
 
 ## Essai réel
 Fenêtres d'essai à moi, MacDock en diagnostic, lancé puis arrêté ; ancienne barre puis nouvelle :
@@ -35,3 +35,18 @@ Fenêtres d'essai à moi, MacDock en diagnostic, lancé puis arrêté ; ancienne
   rouge (`E61414`) ; après, celui de la barre de titre (`F3F3F3`) ;
 - fenêtre masquée : avant, son calque restait ; après, il est retiré avec le crochet de son processus, et un nouveau
   calque arrive quand elle est montrée de nouveau.
+
+## Relecture
+Rien de critique. Corrigés (d860690) :
+- une fenêtre masquée qui passe au premier plan (menu d'une icône de notification) pouvait recevoir un calque
+  qu'aucun HIDE ne retirerait : `lightsLayerWanted` exige une fenêtre visible. Le chemin n'a pas pu être reproduit en
+  réel (aucun calque créé, avant comme après) : la garde reste, testée ;
+- points de mesure bornés à 64 pt du calque et au moins trois (plus loin : titre, onglets, recherche d'Office) ;
+- repli sur la couleur du thème aussi quand la copie de l'écran échoue.
+
+Décision : `WindowFromPoint` sur une fenêtre désactivée par un dialogue modal (la documentation dit qu'elle est
+ignorée) — vérifié en réel, même processus et autre processus : elle est bien renvoyée. Rien à changer.
+
+Mineurs reportés :
+- repli « jamais mesurée » en F3F3F3 / 202020, alors que l'apparence macOS de la barre peint ECECEE / 2C2B2E ;
+- une fenêtre devenue inactive en étant recouverte garde sa couleur active jusqu'à la mesure suivante.
