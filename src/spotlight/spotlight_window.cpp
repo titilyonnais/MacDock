@@ -22,10 +22,13 @@
 #include "../anim/tahoe_timing.h"
 #include "../core/diag.h"
 #include "../core/log.h"
+#include "../core/strings.h"
 #include "../geom/smooth_rect.h"
 #include "../glass/glass_renderer.h"
 #include "../icons/icon_provider.h"
 #include "../popup/popup_glass.h"
+#include "../settings/pane_catalog.h"
+#include "../settings/pane_icons.h"
 #include "../shell/shell_actions.h"
 #include "../theme/wallpaper_art.h"
 #include "file_search.h"
@@ -51,7 +54,10 @@ constexpr float kRowInset = 8, kIconX = 16, kTextX = 54;
 constexpr float kShadow = 14;   // marge de l'ombre autour du panneau (fenêtre et région)
 constexpr float kFieldFont = 22, kTitleFont = 14, kSubFont = 11, kSectionFont = 11;
 constexpr double kTopRatio = 0.22;
-constexpr std::size_t kMaxRows = 12, kMaxSections = 3;
+constexpr std::size_t kMaxRows = 12, kMaxSections = 4;
+// Icône des pages des Paramètres de Windows : celle de l'app Paramètres.
+constexpr wchar_t kWindowsSettingsApp[] =
+    L"shell:AppsFolder\\windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
 
 double now() {
     LARGE_INTEGER f, c;
@@ -92,6 +98,8 @@ struct View {
     int selected = -1;
     bool caret = true, dark = false;
     float opacity = 1;
+    // Tuiles des sections de Réglages MacDock : forme et rayon des icônes d'apps (AppsIconStyle), pour la même allure.
+    float tileShape = 824.0f / 1024, tileCorner = 185.4f / 824;
 };
 
 using IconDraw = std::function<void(ID2D1DeviceContext*, const SpotItem&, std::size_t index, const D2D1_RECT_F&)>;
@@ -138,6 +146,19 @@ struct Painter {
         return std::min(tm.widthIncludingTrailingWhitespace, maxW);
     }
 
+    // Tuile colorée et pictogramme blanc de la section (pane_icons), à la taille de la forme des icônes d'apps.
+    void paneTile(ID2D1DeviceContext* d, const View& v, const SpotItem& it, const D2D1_RECT_F& ir, float a) {
+        const auto id = paneFromKey(toUtf8(it.target));
+        if (!id) return;
+        const PaneInfo& info = paneInfo(*id);
+        const float side = (ir.right - ir.left) * v.tileShape, cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
+        const ui::Palette pal = ui::palette(v.dark);
+        ui::Painter p(d, dwrite.Get(), pal, L"Segoe UI");
+        p.opacity = a;
+        drawPaneTile(p, D2D1::RectF(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2), info.tile, info.icon,
+                     v.tileCorner);
+    }
+
     void paint(ID2D1DeviceContext* d, const View& v, const IconDraw& icon) {
         const float a = std::clamp(v.opacity, 0.0f, 1.0f);
         Com<ID2D1SolidColorBrush> ink, grey, line, accent, white;
@@ -182,6 +203,8 @@ struct Painter {
                     const float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
                     d->DrawLine({cx - 6, cy - 3}, {cx + 6, cy - 3}, white.Get(), 2.2f);
                     d->DrawLine({cx - 6, cy + 3}, {cx + 6, cy + 3}, white.Get(), 2.2f);
+                } else if (it.kind == SpotKind::Pane) {
+                    paneTile(d, v, it, ir, a);
                 } else if (icon) {
                     icon(d, it, index, ir);
                 }
@@ -213,7 +236,13 @@ struct IconPost {
     IconProvider::ImagePtr image;
 };
 
-std::wstring iconKey(const SpotItem& it) { return (it.kind == SpotKind::App ? L"a:" : L"f:") + it.target; }
+std::wstring iconKey(const SpotItem& it) {
+    switch (it.kind) {
+        case SpotKind::App: return L"a:" + it.target;
+        case SpotKind::Setting: return L"s:";   // l'icône de l'app Paramètres, pour toutes ses pages
+        default: return L"f:" + it.target;
+    }
+}
 
 struct Session;
 Session* g_open = nullptr;
@@ -285,6 +314,8 @@ LRESULT CALLBACK spotProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 bool Session::init() {
     sc = env.scale;
     view.dark = env.dark;
+    view.tileShape = float(req->icons.shapeRatio);
+    view.tileCorner = float(req->icons.cornerRatio);
     if (!painter.init(env.font) || !env.device) return false;
     Com<IDXGIDevice> dxgi;
     D2D1_FACTORY_OPTIONS opts{};
@@ -335,9 +366,14 @@ void Session::startLoading() {
                     job = std::move(l->queue.front());
                     l->queue.pop_front();
                 }
-                auto* post = new IconPost{job.first, job.second.kind == SpotKind::App
-                                                         ? icons.get(L"apps:" + job.second.target, job.second.target, px)
-                                                         : icons.fileIcon(job.second.target, px)};
+                IconProvider::ImagePtr image;
+                if (job.second.kind == SpotKind::App)
+                    image = icons.get(L"apps:" + job.second.target, job.second.target, px);
+                else if (job.second.kind == SpotKind::Setting)
+                    image = icons.get(std::wstring(L"apps:") + kWindowsSettingsApp, kWindowsSettingsApp, px);
+                else
+                    image = icons.fileIcon(job.second.target, px);
+                auto* post = new IconPost{job.first, image};
                 bool posted = false;
                 {
                     std::lock_guard lock(l->mutex);
@@ -370,7 +406,7 @@ void Session::wantIcons() {
     std::lock_guard lock(loader->mutex);
     for (const auto& s : view.sections)
         for (const SpotItem& it : s.items) {
-            if (it.kind == SpotKind::Calc) continue;
+            if (it.kind == SpotKind::Calc || it.kind == SpotKind::Pane) continue;   // dessinées sur place
             const std::wstring key = iconKey(it);
             if (requested.insert(key).second) loader->queue.emplace_back(key, it);
         }

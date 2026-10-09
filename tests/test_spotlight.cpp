@@ -281,3 +281,37 @@ TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le
     CHECK(k[0].items[0].kind == md::SpotKind::Pane && k[0].items[0].target == L"keyboard");   // Réglages MacDock
     CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
 }
+
+TEST_CASE(spot_action_for_each_kind) {   // plan 55 : ce que le Dock fait du choix
+    using K = md::SpotActionKind;
+    const auto s = md::spotAction({md::SpotKind::Setting, L"Wi-Fi", L"Paramètres Windows", L"ms-settings:network-wifi"}, false);
+    CHECK(s.kind == K::Launch && s.arg == L"ms-settings:network-wifi");
+    CHECK(md::spotAction({md::SpotKind::Setting, L"x", L"", L"C:\\Windows\\notepad.exe"}, false).kind == K::None);   // une page, rien d'autre
+    const auto p = md::spotAction({md::SpotKind::Pane, L"Dock", L"Réglages MacDock", L"dock"}, false);
+    CHECK(p.kind == K::OpenPane && p.arg == L"dock");
+    CHECK(md::spotAction({md::SpotKind::Pane, L"x", L"", L"inconnue"}, false).kind == K::None);   // clé que --pane ignore
+    const auto c = md::spotAction({md::SpotKind::Calc, L"84", L"", L"84"}, false);
+    CHECK(c.kind == K::Copy && c.arg == L"84");
+    const auto a = md::spotAction({md::SpotKind::App, L"Calculatrice", L"", L"shell:AppsFolder\\calc"}, true);
+    CHECK(a.kind == K::Launch && a.arg == L"shell:AppsFolder\\calc");   // Ctrl+Entrée ne change rien pour une app
+    const auto f = md::spotAction({md::SpotKind::File, L"a.txt", L"", L"C:\\a.txt"}, true);
+    CHECK(f.kind == K::Reveal && f.arg == L"C:\\a.txt");
+    CHECK(md::spotAction({md::SpotKind::File, L"a.txt", L"", L"C:\\a.txt"}, false).kind == K::Launch);
+}
+
+TEST_CASE(spot_snapshot_draws_pane_tile) {   // plan 55 : la tuile de la section, comme dans Réglages MacDock
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto img = md::spotlightSnapshot(L"fenêtres", {}, {}, false, 1280, 800);
+    REQUIRE(img.w == 1280 && img.h == 800);
+    // Première ligne : panneau centré, à 22 % de la hauteur ; sous le champ (52), la marge (6) et le titre de section
+    // (26) ; case de l'icône de 28 pt, à 16 pt du bord gauche et centrée dans la ligne de 40 pt.
+    const int left = (1280 - 680) / 2 + 16, top = int(800 * 0.22) + 52 + 6 + 26 + 6;
+    int purple = 0;   // violet de « Fenêtres » (#6155F5) : ni l'accent bleu de la sélection, ni une case de couleur
+    for (int y = top; y < top + 28; ++y)
+        for (int x = left; x < left + 28; ++x) {
+            const std::uint8_t* px = &img.px[(std::size_t(y) * 1280 + x) * 4];   // B, G, R, A
+            if (px[0] > 200 && px[2] > 70 && px[2] < 160 && px[1] < 120) ++purple;
+        }
+    CHECK(purple > 100);
+    CoUninitialize();
+}

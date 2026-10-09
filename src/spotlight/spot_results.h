@@ -40,6 +40,16 @@ const SpotItem* spotAt(const std::vector<SpotSection>& sections, std::size_t ind
 // Au plus maxRows lignes, dans l'ordre ; les sections vidées disparaissent (panneau sur un petit écran).
 std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t maxRows);
 
+// Ce que le Dock fait du choix : copier le nombre, lancer (app, document, page ms-settings:), montrer le document
+// dans l'Explorateur (Ctrl+Entrée), ouvrir une section de Réglages MacDock ; None pour une cible invalide (page qui
+// n'est pas en ms-settings:, clé que --pane ne connaît pas).
+enum class SpotActionKind { None, Copy, Launch, Reveal, OpenPane };
+struct SpotAction {
+    SpotActionKind kind = SpotActionKind::None;
+    std::wstring arg;
+};
+SpotAction spotAction(const SpotItem& item, bool reveal);
+
 // Recherche de documents utile : requête non vide qui n'est ni un calcul ni une conversion.
 bool wantsFileSearch(const std::wstring& query);
 // Emplacement court d'un document : les deux derniers dossiers, « Documents › Factures ».

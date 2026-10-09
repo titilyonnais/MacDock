@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "../core/strings.h"
+#include "../settings/pane_catalog.h"
 #include "spot_calc.h"
 #include "spot_convert.h"
 
@@ -121,6 +122,21 @@ std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t
 DockClick dockClickGate(bool spotlightOpen, bool modalOpen) {
     if (spotlightOpen) return DockClick::CloseSpotlight;
     return modalOpen ? DockClick::Ignore : DockClick::Proceed;
+}
+
+SpotAction spotAction(const SpotItem& item, bool reveal) {
+    switch (item.kind) {
+        case SpotKind::Calc: return {SpotActionKind::Copy, item.target};
+        case SpotKind::App: return {SpotActionKind::Launch, item.target};
+        case SpotKind::File: return {reveal ? SpotActionKind::Reveal : SpotActionKind::Launch, item.target};
+        case SpotKind::Setting:   // une page des Paramètres, jamais un autre programme
+            if (item.target.starts_with(L"ms-settings:")) return {SpotActionKind::Launch, item.target};
+            break;
+        case SpotKind::Pane:
+            if (paneFromKey(toUtf8(item.target))) return {SpotActionKind::OpenPane, item.target};
+            break;
+    }
+    return {};
 }
 
 bool wantsFileSearch(const std::wstring& query) {
