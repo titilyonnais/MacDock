@@ -71,5 +71,8 @@ StatusMenu statusMenu(StatusKind kind, const StatusState& s);
 MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const StatusState& now);
 // Action de repli quand c échoue (sortie audio refusée : réglages Son), sinon rien.
 std::optional<StatusCommand> statusFallback(const StatusCommand& c);
+// L'action agit dans l'app suivie (raccourci comme ⊞., disposition, clavier visuel qui tape au premier plan) : le menu
+// lui avait pris le premier plan, elle le reprend avant.
+bool statusCommandTypesInApp(const StatusCommand& c);
 
 } // namespace md

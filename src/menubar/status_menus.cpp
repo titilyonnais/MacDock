@@ -191,7 +191,8 @@ void notificationCenter(Builder& b, const StatusState& s) {
 std::vector<StatusItem> statusItems(const StatusState& s) {
     std::vector<StatusItem> out;
     const MenuBarSettings& set = s.settings;
-    if (set.showInput && s.inputs.size() >= 2) {   // menu de saisie : seulement s'il y a un choix
+    // Menu de saisie : seulement s'il y a un choix, et une fois la disposition de l'app lue (pas de « ? » au démarrage).
+    if (set.showInput && s.inputs.size() >= 2 && s.input) {
         std::wstring code;
         for (const InputLayout& l : s.inputs)
             if (l.hkl == s.input) code = l.code;
@@ -275,6 +276,11 @@ MenuModel refreshStatusMenu(StatusKind kind, const StatusState& opened, const St
 std::optional<StatusCommand> statusFallback(const StatusCommand& c) {
     if (c.first == StatusAction::Output) return StatusCommand{StatusAction::OpenUri, L"ms-settings:sound"};
     return std::nullopt;
+}
+
+bool statusCommandTypesInApp(const StatusCommand& c) {
+    return c.first == StatusAction::Shortcut || c.first == StatusAction::InputLayout ||
+           (c.first == StatusAction::OpenUri && c.second == L"osk.exe");
 }
 
 } // namespace md

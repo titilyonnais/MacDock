@@ -155,6 +155,65 @@ TEST_CASE(bar_renderer_draws_boxed_code) {   // plan 58 : « FR » dans une boî
     CoUninitialize();
 }
 
+TEST_CASE(input_layout_klid_from_hkl) {   // clé du clavier dans le registre (« Keyboard Layouts »)
+    auto variant = [](unsigned short id) -> std::wstring {
+        return id == 0x00CF ? L"0002040C" : id == 0x0001 ? L"00020409" : L"";
+    };
+    CHECK(md::layoutKlid(0x040C040C, variant) == L"0000040C");
+    CHECK(md::layoutKlid(0x040C0409, variant) == L"0000040C");   // langue anglaise, clavier français
+    CHECK(md::layoutKlid(0xF0CF040C, variant) == L"0002040C");   // variante (BÉPO), par son identifiant
+    CHECK(md::layoutKlid(0xF0010409, variant) == L"00020409");   // États-Unis International
+    CHECK(md::layoutKlid(0xF0990409, variant).empty());          // variante inconnue
+    CHECK(md::layoutKlid(0xE0010411, variant) == L"E0010411");   // IME : le HKL entier
+    CHECK(md::layoutKlid(0, variant).empty());
+}
+
+TEST_CASE(input_same_language_layouts_get_full_names) {   // relecture : deux claviers français, deux lignes pareilles
+    std::vector<md::InputLayout> list = {{0x040C040C, L"Français (France)", L"FR"},
+                                         {0xF0CF040C, L"Français (France)", L"FR"},
+                                         {0x04090409, L"Anglais (États-Unis)", L"US"}};
+    auto full = [](std::uint32_t hkl) -> std::wstring {
+        switch (hkl) {
+            case 0x040C040C: return L"Français (France) – Français (Traditionnel, AZERTY)";
+            case 0xF0CF040C: return L"Français (France) – Français (Standard, BÉPO)";
+            default: return L"(non demandé)";
+        }
+    };
+    md::distinguishLayouts(list, full);
+    CHECK(list[0].name == L"Français (France) – Français (Traditionnel, AZERTY)");
+    CHECK(list[1].name == L"Français (France) – Français (Standard, BÉPO)");
+    CHECK(list[2].name == L"Anglais (États-Unis)");   // seule de son nom : le nom court reste
+}
+
+TEST_CASE(input_full_names_from_windows) {   // lecture seule du registre : deux dispositions, deux noms complets
+    CHECK(md::layoutFullName(0x040C040C) != md::layoutFullName(0xF0CF040C));   // AZERTY et BÉPO
+    CHECK(md::layoutFullName(0x040C040C) != md::layoutFullName(0x040C0409));   // même clavier, autre langue
+    CHECK(md::layoutFullName(0x04090409) != md::layoutFullName(0xF0010409));   // US et US-International
+    CHECK(md::layoutFullName(0x040C040C).find(L" – ") != std::wstring::npos);
+}
+
+TEST_CASE(input_console_layout_read_from_its_ime_window) {   // relecture : conhost, attribuée au client (cmd, pwsh)
+    const HWND console = reinterpret_cast<HWND>(std::uintptr_t(0x1000)), ime = reinterpret_cast<HWND>(std::uintptr_t(0x2000));
+    auto imeOf = [&](HWND w) { return w == console ? ime : nullptr; };
+    CHECK(md::layoutWindow(console, L"ConsoleWindowClass", imeOf) == ime);
+    CHECK(md::layoutWindow(console, L"PseudoConsoleWindow", imeOf) == ime);
+    CHECK(md::layoutWindow(console, L"Chrome_WidgetWin_1", imeOf) == console);   // une app : sa propre fenêtre
+    CHECK(md::layoutWindow(console, L"ConsoleWindowClass", [](HWND) -> HWND { return nullptr; }) == console);
+}
+
+TEST_CASE(input_status_commands_return_to_the_app) {   // relecture : ⊞. insère l'émoji dans l'app, qui reprend la main
+    using A = md::StatusAction;
+    CHECK(md::statusCommandTypesInApp({A::Shortcut, L"Win+."}));
+    CHECK(md::statusCommandTypesInApp({A::InputLayout, L"040C040C"}));
+    CHECK(md::statusCommandTypesInApp({A::OpenUri, L"osk.exe"}));   // le clavier visuel tape au premier plan
+    CHECK(!md::statusCommandTypesInApp({A::OpenUri, L"ms-settings:regionlanguage"}));   // une app s'ouvre devant
+    CHECK(!md::statusCommandTypesInApp({A::Output, L"{0.0.0.00000000}"}));
+}
+
+TEST_CASE(input_status_item_waits_for_the_current_layout) {   // relecture : au démarrage, pas de « ? »
+    for (const auto& it : md::statusItems(twoLayouts(0))) CHECK(it.kind != md::StatusKind::Input);
+}
+
 TEST_CASE(input_window_layout_and_refusals) {   // la disposition d'une fenêtre : celle du fil qui a son clavier
     const HWND w = CreateWindowExW(0, L"STATIC", L"essai", WS_OVERLAPPED, 0, 0, 50, 50, nullptr, nullptr, nullptr, nullptr);
     REQUIRE(w != nullptr);

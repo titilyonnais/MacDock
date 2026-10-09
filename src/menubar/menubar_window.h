@@ -118,7 +118,7 @@ private:
     void render();                 // toutes les barres
     void render(Screen& s);
     void recoverDevice(Screen& s);   // device perdu : recréé ; sinon sortie en erreur (le lanceur relance la barre)
-    void restoreTargetFocus();   // menu fermé sans choix : le clavier retourne à l'app
+    bool restoreTargetFocus();   // menu fermé sans choix : le clavier retourne à l'app (true : premier plan rendu)
     void afterMenu();            // menu fermé : capsule ôtée, mises en page et écrans en attente appliqués
     BarFrame frame(const Screen& s) const;
     void onPress(Screen& s, POINT client, bool doubleClick = false);

@@ -913,10 +913,10 @@ void MenuBarApp::afterMenu() {
     render();
 }
 
-void MenuBarApp::restoreTargetFocus() {
+bool MenuBarApp::restoreTargetFocus() {
     HWND t = target_.window;
-    if (!t || !IsWindow(t) || GetAncestor(GetForegroundWindow(), GA_ROOT) == GetAncestor(t, GA_ROOT)) return;
-    SetForegroundWindow(t);   // notre menu vient d'avoir le premier plan : permis, sans frappe Alt synthétique
+    if (!t || !IsWindow(t) || GetAncestor(GetForegroundWindow(), GA_ROOT) == GetAncestor(t, GA_ROOT)) return false;
+    return SetForegroundWindow(t) != FALSE;   // notre menu vient d'avoir le premier plan : permis, sans frappe Alt synthétique
 }
 
 void MenuBarApp::pollInput() {
@@ -1496,6 +1496,9 @@ int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink&
 }
 
 void MenuBarApp::runStatus(const StatusCommand& c) {
+    // ⊞. (émojis), clavier visuel, disposition : ils agissent dans l'app suivie, qui reprend d'abord le premier plan
+    // que notre menu lui avait pris (sinon Windows le donne seul à la fenêtre suivante).
+    if (statusCommandTypesInApp(c) && restoreTargetFocus()) Sleep(40);   // le temps que l'app reçoive l'activation
     bool done = true;
     switch (c.first) {
         case StatusAction::Output: done = audio_.setDefault(c.second); break;
@@ -1510,8 +1513,7 @@ void MenuBarApp::runStatus(const StatusCommand& c) {
             }
             break;
         case StatusAction::BarSettings: openSettingsFile(); break;
-        case StatusAction::InputLayout: {   // à l'app suivie, qui retrouve d'abord le premier plan que notre menu avait
-            restoreTargetFocus();
+        case StatusAction::InputLayout: {   // à l'app suivie (qui vient de reprendre le premier plan)
             const HWND t = target_.window && IsWindow(target_.window) ? target_.window : GetForegroundWindow();
             const std::uint32_t hkl = hklFromText(c.second);
             done = switchWindowLayout(t, hkl);
@@ -1827,6 +1829,9 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(ctl_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
     lights_.create(instance);
     lights_.setZoomMenuSink(ctl_, WM_APP_ZOOM_MENU);
+    // Menu de saisie (plan 58) : lu avant la première mise en page, l'icône est là dès la première image.
+    inputs_ = installedLayouts();
+    input_ = windowLayout(GetForegroundWindow());
     rebuildScreens();
     if (screens_.empty()) {
         DestroyWindow(ctl_);
@@ -1867,8 +1872,7 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     updateActiveScreen();
 
     render();
-    inputs_ = installedLayouts();   // menu de saisie (plan 58)
-    SetTimer(ctl_, kInputTimer, 500, nullptr);
+    SetTimer(ctl_, kInputTimer, 500, nullptr);   // menu de saisie : disposition de l'app suivie
     scheduleClock();
     startSamples();
     SetTimer(ctl_, kResampleTimer, 60000, nullptr);
