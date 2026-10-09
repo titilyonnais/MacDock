@@ -73,7 +73,8 @@ std::wstring installerName(const Version& v) { return L"MacDock-Setup-" + versio
 std::optional<UpdateOffer> pickUpdate(const std::vector<Release>& releases, const Version& current, bool prerelease) {
     std::optional<UpdateOffer> best;
     for (const Release& r : releases) {
-        if (r.draft || (r.prerelease && !prerelease)) continue;
+        // Préversion : le drapeau de l'API ou le numéro (« -rc.1 », signé avec le nom de l'installateur) suffit.
+        if (r.draft || ((r.prerelease || !r.version.pre.empty()) && !prerelease)) continue;
         if (compareVersions(r.version, current) <= 0) continue;
         if (best && compareVersions(r.version, best->version) <= 0) continue;
         const ReleaseAsset* installer = assetNamed(r, installerName(r.version));
@@ -87,7 +88,7 @@ std::optional<UpdateOffer> pickUpdate(const std::vector<Release>& releases, cons
 }
 
 std::optional<std::string> expectedSha256(std::string_view sums, std::wstring_view fileName) {
-    const std::string wanted = toUtf8(fileName);
+    std::optional<std::string_view> only;   // la seule ligne non vide
     std::size_t start = 0;
     while (start < sums.size()) {
         std::size_t end = sums.find('\n', start);
@@ -95,16 +96,19 @@ std::optional<std::string> expectedSha256(std::string_view sums, std::wstring_vi
         std::string_view line = sums.substr(start, end - start);
         start = end + 1;
         if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-        if (line.size() < 66 || !std::all_of(line.begin(), line.begin() + 64, isHex)) continue;
-        if (line[64] != ' ') continue;
-        std::string_view name = line.substr(65);
-        if (!name.empty() && (name.front() == ' ' || name.front() == '*')) name.remove_prefix(1);
-        if (name != wanted) continue;
-        std::string hash(line.substr(0, 64));
-        std::transform(hash.begin(), hash.end(), hash.begin(), [](char c) { return char(c >= 'A' && c <= 'F' ? c + 32 : c); });
-        return hash;
+        if (line.empty()) continue;
+        if (only) return std::nullopt;   // une ligne de plus : la signature ne vaut pas pour elle, ni pour le reste
+        only = line;
     }
-    return std::nullopt;
+    if (!only) return std::nullopt;
+    const std::string_view line = *only;
+    if (line.size() < 66 || !std::all_of(line.begin(), line.begin() + 64, isHex) || line[64] != ' ') return std::nullopt;
+    std::string_view name = line.substr(65);
+    if (!name.empty() && (name.front() == ' ' || name.front() == '*')) name.remove_prefix(1);
+    if (name != toUtf8(fileName)) return std::nullopt;
+    std::string hash(line.substr(0, 64));
+    std::transform(hash.begin(), hash.end(), hash.begin(), [](char c) { return char(c >= 'A' && c <= 'F' ? c + 32 : c); });
+    return hash;
 }
 
 UpdateState parseUpdateState(std::string_view text) {

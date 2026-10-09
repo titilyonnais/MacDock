@@ -90,15 +90,36 @@ TEST_CASE(update_pick_newest_published) {
 }
 
 TEST_CASE(update_expected_sha256) {
-    const std::string sums = "d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257  MacDock-Setup-0.52.0.exe\r\n"
-                             "D3E3C2A044962A450DB1A6B4C66999507D319D2AC887BAF314BEADBA00300258 *Autre.exe\n";
-    CHECK(md::expectedSha256(sums, L"MacDock-Setup-0.52.0.exe") ==
-          std::optional<std::string>("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257"));
-    CHECK(md::expectedSha256(sums, L"Autre.exe") ==   // « * » (binaire) accepté, minuscules
-          std::optional<std::string>("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300258"));
-    CHECK(!md::expectedSha256(sums, L"MacDock-Setup-0.53.0.exe").has_value());
+    const std::string line = "d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257  MacDock-Setup-0.52.0.exe";
+    const std::optional<std::string> hash("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300257");
+    CHECK(md::expectedSha256(line + "\r\n", L"MacDock-Setup-0.52.0.exe") == hash);   // tel qu'écrit par make-installer
+    CHECK(md::expectedSha256(line + "\n", L"MacDock-Setup-0.52.0.exe") == hash);
+    CHECK(md::expectedSha256(line, L"MacDock-Setup-0.52.0.exe") == hash);
+    CHECK(md::expectedSha256("D3E3C2A044962A450DB1A6B4C66999507D319D2AC887BAF314BEADBA00300258 *Autre.exe\n", L"Autre.exe") ==
+          std::optional<std::string>("d3e3c2a044962a450db1a6b4c66999507d319d2ac887baf314beadba00300258"));   // « * », minuscules
+    CHECK(!md::expectedSha256(line + "\r\n", L"MacDock-Setup-0.53.0.exe").has_value());
     CHECK(!md::expectedSha256("abc  MacDock-Setup-0.52.0.exe", L"MacDock-Setup-0.52.0.exe").has_value());   // trop court
     CHECK(!md::expectedSha256("", L"x.exe").has_value());
+    // Relecture du plan 53, important 2 : un SHA256SUMS.txt signé ne vaut que pour son seul installateur. Une ligne de
+    // plus (glissée avant la signature) ne doit jamais faire accepter un autre installateur, ni celui-ci.
+    const std::string extra = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  MacDock-Setup-9.0.0.exe\r\n";
+    CHECK(!md::expectedSha256(line + "\r\n" + extra, L"MacDock-Setup-9.0.0.exe").has_value());
+    CHECK(!md::expectedSha256(line + "\r\n" + extra, L"MacDock-Setup-0.52.0.exe").has_value());
+    CHECK(!md::expectedSha256(extra + line + "\r\n", L"MacDock-Setup-0.52.0.exe").has_value());
+    CHECK(!md::expectedSha256(line + "\r\n" + line + "\r\n", L"MacDock-Setup-0.52.0.exe").has_value());   // en double
+    CHECK(!md::expectedSha256(line + "\r\nnote\r\n", L"MacDock-Setup-0.52.0.exe").has_value());           // texte en plus
+}
+
+TEST_CASE(update_prerelease_needs_prerelease_mode) {
+    // Relecture du plan 53 : le drapeau « préversion » vient de l'API, pas de la signature. Une préversion signée pour
+    // les essais (0.53.1-rc.1), republiée comme version normale, n'est jamais proposée hors mode préversion : seul le
+    // numéro, inclus dans le nom de l'installateur signé, décide.
+    const auto r = md::parseReleases(R"([{"tag_name": "v0.53.1-rc.1", "draft": false, "prerelease": false, "assets": [
+        {"name": "MacDock-Setup-0.53.1-rc.1.exe", "size": 1, "browser_download_url": "https://github.com/a.exe"},
+        {"name": "SHA256SUMS.txt", "size": 1, "browser_download_url": "https://github.com/s.txt"},
+        {"name": "SHA256SUMS.txt.sig", "size": 1, "browser_download_url": "https://github.com/s.sig"}]}])");
+    CHECK(!md::pickUpdate(r, ver(L"0.53.0"), false).has_value());
+    CHECK(md::pickUpdate(r, ver(L"0.53.0"), true).has_value());   // essais (MACDOCK_UPDATE_PRERELEASE=1)
 }
 
 TEST_CASE(update_check_due) {

@@ -27,9 +27,10 @@ struct Release {
 // écartées. Vide si le JSON est illisible ou si c'est une erreur de l'API (limite atteinte…).
 std::vector<Release> parseReleases(std::string_view json);
 
-// Version à proposer : la plus récente des versions publiées (préversions seulement si `prerelease`), plus récente
-// que `current`, avec son installateur « MacDock-Setup-<version>.exe », « SHA256SUMS.txt » et sa signature
-// « SHA256SUMS.txt.sig », tous en HTTPS. Une version sans signature n'est jamais proposée.
+// Version à proposer : la plus récente des versions publiées (préversions seulement si `prerelease` : drapeau de l'API
+// ou numéro « -rc.N », le seul signé), plus récente que `current`, avec son installateur
+// « MacDock-Setup-<version>.exe », « SHA256SUMS.txt » et sa signature « SHA256SUMS.txt.sig », tous en HTTPS. Une
+// version sans signature n'est jamais proposée.
 struct UpdateOffer {
     Version version;
     ReleaseAsset installer, sums, signature;
@@ -40,8 +41,9 @@ std::optional<UpdateOffer> pickUpdate(const std::vector<Release>& releases, cons
 std::wstring releasesUrl(const std::wstring& repo);
 std::wstring installerName(const Version& v);   // « MacDock-Setup-0.53.0.exe »
 
-// Empreinte d'un fichier dans SHA256SUMS.txt (lignes « <64 chiffres hexadécimaux>  <nom> », « *<nom> » accepté),
-// en minuscules ; nullopt si absente ou mal formée.
+// Empreinte de l'installateur dans SHA256SUMS.txt signé, en minuscules : le fichier ne doit contenir que sa ligne
+// (« <64 chiffres hexadécimaux>  <nom> », « *<nom> » accepté), pour que la signature ne vaille que pour lui. nullopt
+// si elle est absente ou mal formée, ou si le fichier contient autre chose.
 std::optional<std::string> expectedSha256(std::string_view sums, std::wstring_view fileName);
 
 // État gardé dans %APPDATA%\MacDock\update.json (lanceur et app Réglages).
