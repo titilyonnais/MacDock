@@ -28,6 +28,21 @@ std::wstring hotkeyLabel(const HotkeySpec& s);   // « ⌃⌥↑ », dans l'ordr
 // Deux réglages désignent-ils la même combinaison (casse, espaces et ordre ignorés) ? Jamais pour « off ».
 bool hotkeyConflict(std::wstring_view a, std::wstring_view b);
 
+// Raccourci global enregistré par le Dock (RegisterHotKey) : réglage du dernier essai, et s'il a été accepté.
+struct HotkeySlot {
+    std::wstring applied;
+    bool registered = false;
+    bool tried = false;
+    bool refused = false;   // RegisterHotKey a échoué : réessayé
+    int retries = 0;        // nouveaux essais déjà faits pour ce réglage
+};
+// Nouveaux essais d'un raccourci refusé : 10, toutes les 30 s (les apps qui démarrent avec la session) ; au-delà, le
+// Dock ne le prend plus à un lanceur qui redémarre (PowerToys Run sur Alt+Espace).
+constexpr int kHotkeyRetries = 10;
+// Faut-il (ré)essayer ? Réglage changé, ou dernier essai refusé (raccourci pris par une autre app au démarrage :
+// réessayé kHotkeyRetries fois). `parsable` faux : raccourci désactivé, rien à enregistrer.
+bool hotkeyNeedsRegister(const HotkeySlot& slot, const std::wstring& setting, bool parsable);
+
 // Enregistreur de raccourci (app Réglages) : une touche appuyée, avec les modificateurs tenus (MOD_…).
 //  - Wait : modificateur seul, touche sans nom, ou touche ordinaire sans modificateur (on continue d'écouter) ;
 //  - Accept : `spec` est le nouveau raccourci ; Reserved : Windows (ou MacDock lui-même) garde cette combinaison ;

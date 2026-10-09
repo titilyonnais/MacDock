@@ -96,6 +96,8 @@ private:
     void openSpotlight();                                      // Spotlight ; ferme celui qui est ouvert
     void registerSpotlightHotkey();                            // raccourci du réglage spotlightHotkey
     void openMissionControl();                                 // Mission Control ; ferme celui qui est ouvert
+    void registerHotkey(HotkeySlot& slot, int id, const std::wstring& setting, const std::optional<HotkeySpec>& spec,
+                        const wchar_t* what);
     void registerMissionHotkey();                              // raccourci du réglage missionControlHotkey
     void registerAppExposeHotkey();                            // raccourci du réglage appExposeHotkey
     // Les fenêtres d'une seule app (réduites en rangée en bas) ; false : rien à montrer (autre bureau virtuel…).
@@ -188,9 +190,7 @@ private:
     UINT missionMsg_ = 0;                // « MacDockMissionControl » : coins actifs
     UINT genieArmMsg_ = 0;               // « MacDockGenieArm » : appui sur la pastille jaune (wParam fenêtre, lParam point)
     UINT willMinimizeMsg_ = 0;           // « MacDockWillMinimize » : réduction par la barre de menus (wParam fenêtre)
-    std::wstring missionHotkeyOn_;       // raccourci enregistré (vide : aucun)
-    std::wstring appExposeHotkeyOn_;     // raccourci enregistré (vide : aucun)
-    std::wstring spotlightHotkeyOn_;     // raccourci enregistré (vide : aucun)
+    HotkeySlot missionHotkey_, appExposeHotkey_, spotlightHotkey_;   // refusés : réessayés (kHotkeyRetryTimer)
     std::wstring switcherHotkeyOn_;      // raccourci enregistré (vide : aucun)
     AppMru mru_;                         // apps de la plus récemment activée à la plus ancienne
     SwitchSession switch_;               // Alt+Tab en cours

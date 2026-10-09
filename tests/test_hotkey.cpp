@@ -118,3 +118,23 @@ TEST_CASE(hotkey_recorder_refuses_app_and_macdock_shortcuts) {
     CHECK(md::recordHotkey(VK_UP, MOD_CONTROL | MOD_ALT | MOD_SHIFT).kind == md::RecordKind::Reserved);
     CHECK(md::recordHotkey(VK_UP, MOD_CONTROL | MOD_ALT).kind == md::RecordKind::Accept);
 }
+
+TEST_CASE(hotkey_slot_retries_refused_registration) {
+    // Plan 47 : un raccourci pris par une autre app au démarrage est réessayé, jusqu'à ce qu'elle le libère.
+    md::HotkeySlot slot;
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+up", true));       // jamais essayé
+    slot = {L"ctrl+up", true, true};
+    CHECK(!md::hotkeyNeedsRegister(slot, L"ctrl+up", true));      // enregistré : rien à refaire
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+down", true));     // réglage changé
+    slot = {L"ctrl+up", false, true};
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+up", true));       // refusé : nouvel essai
+    slot = {L"off", false, true};
+    CHECK(!md::hotkeyNeedsRegister(slot, L"off", false));         // désactivé : rien à enregistrer
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+up", true));       // réactivé
+    // Relecture : réessayé 5 minutes au plus (10 fois), pour ne pas prendre le raccourci d'un lanceur qui redémarre.
+    slot = {L"alt+space", false, true, true, md::kHotkeyRetries - 1};
+    CHECK(md::hotkeyNeedsRegister(slot, L"alt+space", true));
+    slot.retries = md::kHotkeyRetries;
+    CHECK(!md::hotkeyNeedsRegister(slot, L"alt+space", true));
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+space", true));    // un autre réglage : nouvel essai
+}

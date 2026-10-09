@@ -891,6 +891,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture indépendante** : rien de critique ; un point important corrigé (appui tenu), un défaut hors périmètre
   corrigé (écran appliqué à chaud), noms d'écrans plus robustes, fichier temporaire propre à chaque processus.
 
+### Plan 47 — clavier, nuit du 9 octobre
+
+- **Saisie dans la liste de l'Explorateur** : « mon rapport » tapé dans la liste sélectionne le fichier, comme dans le
+  Finder ; l'espace ne déclenche plus le Coup d'œil pendant la saisie. Se déplacer, valider, effacer ou cliquer termine
+  la saisie ; une espace tapée ensuite ouvre l'aperçu comme avant. Vérifié en réel dans un dossier d'essai à moi.
+- **Raccourcis pris par une autre app** au démarrage (Mission Control, Exposé, Spotlight) : réessayés toutes les
+  30 s pendant 5 min, puis plus (pour ne pas les prendre à un lanceur qui redémarre). Vérifié en réel : raccourci
+  retenu par un script, libéré, repris par le Dock.
+- **Relecture indépendante** : rien de critique ; fin de la saisie, nouveaux essais limités, AltGr, ⌘Espace laissé à
+  Spotlight.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

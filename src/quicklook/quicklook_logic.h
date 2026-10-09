@@ -13,6 +13,7 @@ struct QuickLookContext {
     std::wstring foregroundClass;   // classe de la fenêtre au premier plan
     std::wstring focusClass;        // classe du contrôle qui a le focus clavier
     bool focusInShellView = false;  // le focus est dans la vue des fichiers (SHELLDLL_DefView)
+    bool typeAhead = false;         // un nom est en train d'être tapé dans la liste : l'espace en fait partie
 };
 
 enum class QuickLookKey { Pass, Open, Swallow };
@@ -20,6 +21,17 @@ enum class QuickLookKey { Pass, Open, Swallow };
 // Espace seul, frappé (pas simulé), dans la liste des fichiers de l'Explorateur ou du bureau : Open à l'appui,
 // Swallow au relâchement ; tout le reste passe (zones de saisie, autres apps, modificateurs).
 QuickLookKey quickLookKey(unsigned vk, bool down, bool modifiers, bool injected, const QuickLookContext& c);
+// Touche qui fait partie d'un nom tapé dans la liste des fichiers (sélection par la saisie) : lettre, chiffre ou signe
+// (pavé numérique compris), hors raccourci (`command`, voir typeAheadCommand).
+bool typeAheadKey(unsigned vk, bool command);
+// Raccourci plutôt que saisie : ⊞, ou Ctrl sans Alt, ou Alt sans Ctrl. AltGr (Ctrl+Alt) tape « @ € # » : de la saisie.
+bool typeAheadCommand(bool ctrl, bool alt, bool win);
+// Touches qui terminent la saisie (se déplacer, valider, renommer, effacer, changer de zone) : l'espace qui suit
+// ouvre le Coup d'œil, comme dans le Finder.
+bool typeAheadEnds(unsigned vk);
+// Saisie en cours : dernière touche de nom il y a moins d'une seconde (`lastTyped` 0 : aucune), comme la sélection par
+// la saisie du Finder, où l'espace continue alors le nom au lieu d'ouvrir le Coup d'œil.
+bool typeAheadActive(unsigned long long lastTyped, unsigned long long now);
 
 bool quickLookIsText(const std::wstring& path);                     // d'après l'extension
 std::wstring quickLookDecode(const std::vector<std::uint8_t>& bytes);   // UTF-8 (BOM ou non), UTF-16 LE/BE, sinon ANSI
