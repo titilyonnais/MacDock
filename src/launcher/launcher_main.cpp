@@ -12,7 +12,9 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../core/log.h"
@@ -59,6 +61,32 @@ std::wstring logDir() {
     dir += L"\\MacDock";
     CreateDirectoryW(dir.c_str(), nullptr);
     return dir + L"\\logs";
+}
+
+// --check-update (Réglages) : la recherche tourne dans un fil. Un ordre d'arrêt (installateur, --quit) termine le
+// processus aussitôt : sinon ce fichier resterait verrouillé pendant que l'installateur le remplace. L'installateur
+// attend aussi le verrou des mises à jour, que la recherche tient.
+int checkUpdate() {
+    md::log::init(logDir());
+    HANDLE quit = CreateEventW(nullptr, TRUE, FALSE, kQuitEvent);   // jamais remis à zéro ici : un ordre en cours vaut
+    md::update::Options options = md::update::optionsFromEnvironment();
+    options.cancel = quit;
+    std::atomic<int> code{1};
+    std::thread worker([&] {
+        switch (md::update::check(md::update::defaultPaths(), options)) {
+            case md::update::CheckResult::UpToDate: code = 0; break;
+            case md::update::CheckResult::Ready: code = 10; break;
+            case md::update::CheckResult::Failed: code = 1; break;
+        }
+    });
+    const HANDLE waits[] = {worker.native_handle(), quit};
+    if (WaitForMultipleObjects(quit ? 2 : 1, waits, FALSE, INFINITE) != WAIT_OBJECT_0) {
+        md::log::info(L"Ordre d'arrêt reçu : recherche de mise à jour abandonnée");
+        ExitProcess(1);
+    }
+    worker.join();
+    if (quit) CloseHandle(quit);
+    return code;
 }
 
 int install() {
@@ -151,14 +179,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         case md::LauncherCommand::Install: return install();
         case md::LauncherCommand::Uninstall: return uninstall();
         case md::LauncherCommand::Quit: return quitRunning();
-        case md::LauncherCommand::CheckUpdate:
-            md::log::init(logDir());
-            switch (md::update::check(md::update::defaultPaths(), md::update::optionsFromEnvironment())) {
-                case md::update::CheckResult::UpToDate: return 0;
-                case md::update::CheckResult::Ready: return 10;
-                case md::update::CheckResult::Failed: return 1;
-            }
-            return 1;
+        case md::LauncherCommand::CheckUpdate: return checkUpdate();
         case md::LauncherCommand::InstallUpdate:
             md::log::init(logDir());
             return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
@@ -234,9 +255,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 break;
         }
     }
-    notifier.stop();
+    // Une recherche encore dans le réseau n'est pas attendue plus de 3 s : l'installateur n'attend l'arrêt que 30 s.
+    const bool idle = notifier.stop(3000);
+    if (!idle) md::log::warn(L"Recherche de mise à jour encore en cours : arrêt sans l'attendre");
     if (quit) CloseHandle(quit);
     ReleaseMutex(mutex);
     CloseHandle(mutex);
+    if (!idle) ExitProcess(0);   // le fil de recherche s'arrête avec le processus
     return 0;
 }

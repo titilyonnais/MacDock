@@ -11,7 +11,9 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <thread>
@@ -178,6 +180,8 @@ private:
     int pressedButton_ = -1, focusButton_ = 0;
     bool busy_ = false;                   // une action tourne (installateur…)
     std::thread worker_;                  // son fil : attendu avant la fin du processus (« Relancer » doit aboutir)
+    // Réglages se ferme : levé avant d'attendre le fil, qui n'attend alors plus une recherche de mise à jour.
+    std::shared_ptr<std::atomic<bool>> closing_ = std::make_shared<std::atomic<bool>>(false);
 
     Microsoft::WRL::ComPtr<ID3D11Device> d3d_;
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_;

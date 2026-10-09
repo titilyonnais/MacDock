@@ -90,12 +90,17 @@ bool open(const std::wstring& url, const std::wstring& accept, Handle& session, 
     return true;
 }
 
-// Lit le corps par morceaux ; `sink` reçoit chaque morceau (false : arrêt). Au plus `maxBytes`.
+// Lit le corps par morceaux ; `sink` reçoit chaque morceau (false : arrêt). Au plus `maxBytes` ; `cancel` levé :
+// arrêt au morceau suivant.
 template <class Sink>
-bool readBody(HINTERNET request, std::uint64_t maxBytes, Sink&& sink, std::wstring* error) {
+bool readBody(HINTERNET request, std::uint64_t maxBytes, Sink&& sink, std::wstring* error, HANDLE cancel = nullptr) {
     std::vector<char> buf(64 * 1024);
     std::uint64_t total = 0;
     for (;;) {
+        if (cancel && WaitForSingleObject(cancel, 0) == WAIT_OBJECT_0) {
+            if (error) *error = L"annulé";
+            return false;
+        }
         DWORD got = 0;
         if (!WinHttpReadData(request, buf.data(), DWORD(buf.size()), &got)) {
             if (error) *error = lastError(L"lecture");
@@ -160,7 +165,7 @@ std::optional<std::string> httpsGet(const std::wstring& url, std::size_t maxByte
     return body;
 }
 
-bool httpsDownload(const std::wstring& url, const std::wstring& path, std::uint64_t maxBytes, std::wstring* error) {
+bool httpsDownload(const std::wstring& url, const std::wstring& path, std::uint64_t maxBytes, std::wstring* error, void* cancel) {
     Handle session, connect, request;
     DWORD status = 0;
     if (!open(url, L"application/octet-stream", session, connect, request, status, error)) return false;
@@ -173,7 +178,7 @@ bool httpsDownload(const std::wstring& url, const std::wstring& path, std::uint6
     const bool ok = readBody(request.h, maxBytes, [&](const char* p, DWORD n) {
         DWORD written = 0;
         return WriteFile(f, p, n, &written, nullptr) && written == n;
-    }, error);
+    }, error, static_cast<HANDLE>(cancel));
     const bool flushed = FlushFileBuffers(f) != FALSE;
     CloseHandle(f);
     if (!ok || !flushed || !MoveFileExW(part.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {

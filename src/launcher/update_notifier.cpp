@@ -38,22 +38,26 @@ std::int64_t nowSeconds() {
 void UpdateNotifier::start(HINSTANCE instance) {
     if (thread_.joinable()) return;
     instance_ = instance;
+    stop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_self = this;
     thread_ = std::thread([this] { run(); });
 }
 
-void UpdateNotifier::stop() {
-    if (!thread_.joinable()) return;
-    if (threadId_) PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
-    // Une recherche en cours (réseau) finit d'abord : au plus les délais de WinHTTP.
+bool UpdateNotifier::stop(unsigned waitMs) {
+    if (!thread_.joinable()) return true;
+    SetEvent(stop_);
+    if (WaitForSingleObject(thread_.native_handle(), waitMs) != WAIT_OBJECT_0) {
+        thread_.detach();   // encore dans le réseau : il s'arrêtera avec le processus
+        return false;
+    }
     thread_.join();
+    CloseHandle(stop_);
+    stop_ = nullptr;
     g_self = nullptr;
+    return true;
 }
 
 void UpdateNotifier::run() {
-    MSG m;
-    PeekMessageW(&m, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
-    threadId_ = GetCurrentThreadId();
     WNDCLASSW wc{};
     wc.lpfnWndProc = proc;
     wc.hInstance = instance_;
@@ -62,9 +66,15 @@ void UpdateNotifier::run() {
     hwnd_ = CreateWindowExW(0, kClass, L"MacDock, mises à jour", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance_, nullptr);
     if (!hwnd_) return;
     SetTimer(hwnd_, kCheckTimer, firstDelayMs(), nullptr);
-    while (GetMessageW(&m, nullptr, 0, 0) > 0) {
-        TranslateMessage(&m);
-        DispatchMessageW(&m);
+    // Messages (minuterie, clic sur la notification) jusqu'à l'arrêt ; une recherche bloque la boucle le temps qu'elle
+    // dure, et s'interrompt elle-même quand stop_ est levé.
+    while (MsgWaitForMultipleObjectsEx(1, &stop_, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE) != WAIT_OBJECT_0) {
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&m);
+            DispatchMessageW(&m);
+        }
+        if (WaitForSingleObject(stop_, 0) == WAIT_OBJECT_0) break;
     }
     removeIcon();
     DestroyWindow(hwnd_);
@@ -93,9 +103,10 @@ void UpdateNotifier::onTimer() {
     const UpdateState s = update::load(paths);
     if (!s.automatic) return;
     if (!checkDue(s.lastCheck, nowSeconds()) && s.readyVersion.empty()) return;
+    update::Options options = update::optionsFromEnvironment();
+    options.cancel = stop_;   // arrêt du lanceur (installateur, « Quitter MacDock ») : la recherche s'interrompt
     std::wstring ready;
-    if (update::check(paths, update::optionsFromEnvironment(), &ready) == update::CheckResult::Ready && ready != announced_)
-        showReady(ready);
+    if (update::check(paths, options, &ready) == update::CheckResult::Ready && ready != announced_) showReady(ready);
 }
 
 void UpdateNotifier::showReady(const std::wstring& version) {

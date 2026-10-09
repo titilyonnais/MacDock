@@ -19,6 +19,9 @@ struct Options {
     std::wstring repo = L"titilyonnais/MacDock";
     bool prerelease = false;            // essais : MACDOCK_UPDATE_PRERELEASE=1
     unsigned lockWaitMs = 120000;       // attente du verrou, si un autre processus cherche ou installe déjà
+    // Événement (HANDLE) levé pour abandonner (arrêt de MacDock) : l'attente du verrou et le téléchargement
+    // s'interrompent, et rien n'est écrit.
+    void* cancel = nullptr;
 };
 Options optionsFromEnvironment();
 

@@ -103,7 +103,11 @@ const
   EVENT_MODIFY_STATE = $0002;
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppGuid}}_is1';
-  Mutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher,MacDockSettings.Instance';
+  // Tout ce qui garde un fichier de MacDock ouvert : Dock, barre, lanceur, Réglages, et une recherche de mise à jour
+  // (MacDockLauncher.exe --check-update, verrou des mises à jour), qui s'arrête à l'ordre d'arrêt.
+  Mutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher,MacDockSettings.Instance,Local\MacDockUpdate';
+  // Relance : seuls le Dock, la barre et le lanceur comptent (Réglages qui se ferme ne la retarde pas).
+  LauncherMutexes = 'Local\MacDock,Local\MacMenuBar,Local\MacDockLauncher';
   QuitEvent = 'Local\MacDockQuit';
   StopFailed = 'MacDock ne s''est pas arrêté. Quitte-le (clic droit sur le Dock > Quitter MacDock), ferme Réglages MacDock, puis recommence.';
 
@@ -241,11 +245,11 @@ begin
   begin
     for I := 1 to 150 do
     begin
-      if not MacDockRunning() then
+      if not CheckForMutexes(LauncherMutexes) then
         Break;
       Sleep(100);
     end;
-    if not MacDockRunning() then
+    if not CheckForMutexes(LauncherMutexes) then
       Exec(AppDir + '\MacDockLauncher.exe', '', AppDir, SW_SHOWNORMAL, ewNoWait, Code);
   end;
 end;

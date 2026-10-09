@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <thread>
 
 #include "minitest.h"
 #include "../src/config/config_store.h"
@@ -248,6 +249,26 @@ TEST_CASE(settings_test_instance_never_talks_to_the_real_one) {
     CHECK(real.windowClass == L"MacDockSettingsWindow");
 }
 
+TEST_CASE(settings_wait_abandoned_on_close) {   // relecture du plan 53, important 5
+    // Réglages fermé pendant une recherche : l'app n'attend plus sa fin (elle resterait ouverte en coulisse, sans pouvoir
+    // se rouvrir, et l'installateur l'attendrait).
+    HANDLE never = CreateEventW(nullptr, TRUE, FALSE, nullptr);   // un processus qui ne finit pas
+    HANDLE done = CreateEventW(nullptr, TRUE, TRUE, nullptr);     // un processus déjà fini
+    std::atomic<bool> closing{false};
+    std::thread closer([&] {
+        Sleep(150);
+        closing = true;
+    });
+    const ULONGLONG start = GetTickCount64();
+    CHECK(!md::waitForExit(never, 5000, &closing));
+    CHECK(GetTickCount64() - start < 2000);
+    closer.join();
+    CHECK(md::waitForExit(done, 5000, &closing));   // fini : oui, même si l'app se ferme
+    CHECK(!md::waitForExit(never, 50, nullptr));     // délai dépassé
+    CloseHandle(never);
+    CloseHandle(done);
+}
+
 TEST_CASE(settings_actions_software_update) {
     // Plan 53 : les deux boutons passent par le lanceur ; la recherche attend sa fin, et son code (10 : version prête)
     // n'est pas une erreur : l'état se lit ensuite dans update.json.
@@ -259,6 +280,8 @@ TEST_CASE(settings_actions_software_update) {
     CHECK(check[0].params == L"--check-update");
     CHECK(check[0].wait);
     CHECK(check[0].ignoreExitCode);
+    CHECK(check[0].abandonOnClose);   // relecture : Réglages fermé n'attend pas la recherche
+    for (const auto& c : md::actionCommands(md::PaneAction::Restart, ctx)) CHECK(!c.abandonOnClose);   // « Relancer » aboutit
     const auto install = md::actionCommands(md::PaneAction::InstallUpdate, ctx);
     REQUIRE(install.size() == 1);
     CHECK(install[0].file == exe + L"\\MacDockLauncher.exe");

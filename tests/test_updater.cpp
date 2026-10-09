@@ -10,6 +10,7 @@
 #include "minitest.h"
 #include "../src/core/version.h"
 #include "../src/update/update_net.h"
+#include "../src/launcher/update_notifier.h"
 #include "../src/update/updater.h"
 
 namespace {
@@ -176,4 +177,58 @@ TEST_CASE(updater_startup_forgets_stale_and_failed) {
     CHECK(after.readyVersion.empty());
     CHECK(after.attemptedVersion.empty());
     CHECK(!exists(next));
+}
+
+namespace {
+
+// Variable d'environnement le temps d'un test (vue du C++ comme de Windows).
+struct EnvVar {
+    std::wstring name;
+    EnvVar(const wchar_t* n, const std::wstring& v) : name(n) { _wputenv_s(n, v.c_str()); }
+    ~EnvVar() { _wputenv_s(name.c_str(), L""); }
+};
+
+// Exécute `f` dans un fil, au plus `ms` : false s'il bloque encore (il est alors laissé là et finit avec les tests).
+template <class F>
+bool finishesWithin(unsigned ms, F f) {
+    HANDLE done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::thread([f, done] {
+        f();
+        SetEvent(done);
+    }).detach();
+    const bool ok = WaitForSingleObject(done, ms) == WAIT_OBJECT_0;
+    if (ok) CloseHandle(done);   // sinon le fil s'en sert encore
+    return ok;
+}
+
+} // namespace
+
+TEST_CASE(update_notifier_stops_right_after_start) {   // relecture du plan 53, important 4
+    // Ni Dock ni barre lancés (fichiers absents) : la boucle du lanceur se vide aussitôt, l'arrêt suit le départ du fil.
+    CHECK(finishesWithin(10000, [] {
+        for (int i = 0; i < 40; ++i) {
+            md::UpdateNotifier n;
+            n.start(GetModuleHandleW(nullptr));
+            n.stop();
+        }
+    }));
+}
+
+TEST_CASE(update_notifier_stop_interrupts_waiting_check) {   // relecture du plan 53, important 5
+    // Recherche bloquée (ici sur le verrou, qu'un autre processus tient) : l'arrêt du lanceur ne l'attend pas, sinon
+    // l'installateur abandonne au bout de 30 s et MacDock ne revient pas.
+    TempDir dir;
+    EnvVar updateDir(L"MACDOCK_UPDATE_DIR", dir.path);
+    EnvVar delay(L"MACDOCK_UPDATE_DELAY", L"1");
+    auto* busy = new HeldUpdateLock;   // jamais rendu si l'arrêt bloque : la recherche ne part alors jamais sur le réseau
+    auto* n = new md::UpdateNotifier;
+    n->start(GetModuleHandleW(nullptr));
+    Sleep(1600);   // première recherche une seconde après le départ : bloquée sur le verrou
+    const bool stopped = finishesWithin(5000, [n] { n->stop(); });
+    CHECK(stopped);
+    if (stopped) {
+        delete n;
+        delete busy;
+    }
+    CHECK(!exists(dir.path + L"\update.json"));   // rien d'écrit
 }

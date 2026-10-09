@@ -1,5 +1,9 @@
 #include "actions.h"
 
+#include <windows.h>
+
+#include <algorithm>
+
 #include "mods.h"
 
 namespace md {
@@ -56,6 +60,7 @@ std::vector<ActionCommand> actionCommands(PaneAction action, const ButtonContext
         case PaneAction::CheckUpdate: {
             ActionCommand check{c.exeDir + L"\\MacDockLauncher.exe", L"--check-update", L"open", true};
             check.ignoreExitCode = true;
+            check.abandonOnClose = true;
             return {check};
         }
         case PaneAction::InstallUpdate: return {ActionCommand{c.exeDir + L"\\MacDockLauncher.exe", L"--install-update"}};
@@ -65,6 +70,16 @@ std::vector<ActionCommand> actionCommands(PaneAction action, const ButtonContext
         case PaneAction::Reset: return {};
     }
     return {};
+}
+
+bool waitForExit(void* process, unsigned timeoutMs, const std::atomic<bool>* abandon) {
+    const ULONGLONG deadline = GetTickCount64() + timeoutMs;
+    for (;;) {   // par tranches de 100 ms : la fermeture de l'app est vue aussitôt
+        const ULONGLONG now = GetTickCount64();
+        const DWORD slice = now >= deadline ? 0 : DWORD(std::min<ULONGLONG>(100, deadline - now));
+        if (WaitForSingleObject(static_cast<HANDLE>(process), slice) == WAIT_OBJECT_0) return true;
+        if (now >= deadline || (abandon && abandon->load())) return false;
+    }
 }
 
 const std::vector<std::wstring>& macdockMutexes() {

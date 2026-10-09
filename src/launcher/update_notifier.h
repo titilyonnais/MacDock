@@ -5,7 +5,6 @@
 #pragma once
 #include <windows.h>
 
-#include <atomic>
 #include <string>
 #include <thread>
 
@@ -15,7 +14,10 @@ class UpdateNotifier {
 public:
     ~UpdateNotifier() { stop(); }
     void start(HINSTANCE instance);   // « Rechercher automatiquement » (update.json) relu à chaque passage
-    void stop();
+    // Arrêt : une recherche en cours s'interrompt au plus tôt (attente du verrou, téléchargement) ; au plus `waitMs`.
+    // false : le fil est encore pris dans le réseau ; le processus doit alors se terminer tout de suite (ExitProcess),
+    // sans détruire cet objet.
+    bool stop(unsigned waitMs = 3000);
 
 private:
     void run();
@@ -28,7 +30,7 @@ private:
     HINSTANCE instance_ = nullptr;
     HWND hwnd_ = nullptr;
     std::thread thread_;
-    std::atomic<DWORD> threadId_{0};
+    HANDLE stop_ = nullptr;   // créé avant le fil : un arrêt demandé aussitôt après le départ n'est jamais perdu
     bool iconShown_ = false;
     std::wstring announced_;   // version déjà annoncée (une seule notification par version)
 };

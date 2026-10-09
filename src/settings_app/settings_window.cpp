@@ -230,6 +230,7 @@ int SettingsWindow::run() {
         }
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
+                closing_->store(true);   // une recherche de mise à jour n'est plus attendue
                 if (worker_.joinable()) worker_.join();   // « Relancer » ou un installateur va jusqu'au bout
                 return int(msg.wParam);
             }
@@ -1556,7 +1557,7 @@ void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refre
     const HWND hwnd = hwnd_;
     wchar_t win[MAX_PATH] = {};
     GetWindowsDirectoryW(win, MAX_PATH);
-    worker_ = std::thread([commands = std::move(commands), refreshEnv, hwnd, windowsDir = std::wstring(win)] {
+    worker_ = std::thread([commands = std::move(commands), refreshEnv, hwnd, windowsDir = std::wstring(win), closing = closing_] {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
         LPARAM result = 1;   // 1 : réussie ; 0 : échec à signaler ; 2 : annulée par l'utilisateur (rien à dire)
         for (const auto& c : commands) {
@@ -1580,8 +1581,9 @@ void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refre
             if (sei.hProcess) {
                 if (c.wait) {
                     DWORD code = 0;
-                    if (WaitForSingleObject(sei.hProcess, 180000) == WAIT_OBJECT_0 && GetExitCodeProcess(sei.hProcess, &code) &&
-                        code != 0 && !c.ignoreExitCode) {   // l'installateur a échoué (compilation, Windhawk absent…)
+                    if (waitForExit(sei.hProcess, 180000, c.abandonOnClose ? closing.get() : nullptr) &&
+                        GetExitCodeProcess(sei.hProcess, &code) && code != 0 &&
+                        !c.ignoreExitCode) {   // l'installateur a échoué (compilation, Windhawk absent…)
                         log::warn(L"Réglages : %s a fini avec le code %lu", c.file.c_str(), code);
                         result = 0;
                     }

@@ -38,15 +38,23 @@ std::wstring knownFolder(REFKNOWNFOLDERID id) {
 
 bool exists(const std::wstring& path) { return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES; }
 
+bool cancelled(const Options& o) { return o.cancel && WaitForSingleObject(static_cast<HANDLE>(o.cancel), 0) == WAIT_OBJECT_0; }
+
 std::int64_t nowSeconds() {
     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-// Un seul processus à la fois : le lanceur (fil de fond) et l'app Réglages (« Rechercher maintenant »).
+// Un seul processus à la fois : le lanceur (fil de fond) et l'app Réglages (« Rechercher maintenant »). L'installateur
+// attend aussi que ce verrou disparaisse. `cancel` levé pendant l'attente : pas de verrou.
 struct Lock {
     HANDLE m = CreateMutexW(nullptr, FALSE, L"Local\\MacDockUpdate");
-    bool held;
-    explicit Lock(DWORD waitMs) : held(m && WaitForSingleObject(m, waitMs) != WAIT_TIMEOUT) {}
+    bool held = false;
+    explicit Lock(DWORD waitMs, HANDLE cancel = nullptr) {
+        if (!m) return;
+        const HANDLE waits[] = {m, cancel};
+        const DWORD r = WaitForMultipleObjects(cancel ? 2 : 1, waits, FALSE, waitMs);
+        held = r == WAIT_OBJECT_0 || r == WAIT_ABANDONED_0;   // abandonné : un processus arrêté en cours de route
+    }
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
     ~Lock() {
@@ -129,7 +137,8 @@ bool save(const Paths& p, const UpdateState& s) {
 }
 
 CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
-    Lock lock(o.lockWaitMs);
+    Lock lock(o.lockWaitMs, static_cast<HANDLE>(o.cancel));
+    if (cancelled(o)) return CheckResult::Failed;   // arrêt de MacDock : rien n'est touché
     if (!lock.held) {   // un autre processus cherche ou installe encore : rien n'est touché
         log::warn(L"Mise à jour : une autre recherche est en cours, celle-ci est abandonnée");
         return CheckResult::Failed;
@@ -146,6 +155,7 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
         log::warn(L"Mise à jour : recherche impossible (%s)", s.lastError.c_str());
         return CheckResult::Failed;
     }
+    if (cancelled(o)) return CheckResult::Failed;
     const auto offer = pickUpdate(parseReleases(*body), *current, o.prerelease);
     if (!offer) {
         s.lastError.clear();
@@ -184,8 +194,11 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* readyOut) {
         log::warn(L"Mise à jour %s : %s", version.c_str(), s.lastError.c_str());
         return CheckResult::Failed;
     }
+    if (cancelled(o)) return CheckResult::Failed;
     createDirs(p.downloadDir);
-    if (!httpsDownload(offer->installer.url, path, std::min<std::uint64_t>(kMaxInstallerBytes, offer->installer.size + 1), &error)) {
+    if (!httpsDownload(offer->installer.url, path, std::min<std::uint64_t>(kMaxInstallerBytes, offer->installer.size + 1), &error,
+                       o.cancel)) {
+        if (cancelled(o)) return CheckResult::Failed;
         s.lastError = error;
         save(p, s);
         log::warn(L"Mise à jour %s : téléchargement impossible (%s)", version.c_str(), error.c_str());
