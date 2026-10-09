@@ -7,11 +7,30 @@ namespace md {
 bool isCycleKey(unsigned scanCode, bool extended) { return scanCode == 0x29 && !extended; }
 
 CycleKey cycleKeyAction(const CycleKeyEvent& e) {
-    if (!e.down) return e.taken ? CycleKey::Swallow : CycleKey::Pass;   // relâchement : avalé s'il suit un appui pris
+    // Suite d'un appui pris (répétition, relâchement) : avalée, même si Alt a été lâché avant la touche.
+    if (e.taken && (!e.down || e.repeat)) return CycleKey::Swallow;
+    if (!e.down) return CycleKey::Pass;
     if (e.injected || !e.alt || e.ctrl || e.win) return CycleKey::Pass;    // Alt Gr (Ctrl+Alt), ⊞ : pas pour nous
     if (e.repeat) return CycleKey::Swallow;                                // appui tenu : une fenêtre par appui
-    if (e.session) return e.shift ? CycleKey::SwitcherNext : CycleKey::SwitcherBack;
+    if (e.session) return e.shift ? CycleKey::SwitcherRight : CycleKey::SwitcherLeft;
     return e.shift ? CycleKey::Prev : CycleKey::Next;
+}
+
+CycleStep CycleKeyGate::onKey(CycleKeyEvent e) {
+    e.taken = taken_;
+    CycleStep s{cycleKeyAction(e), false};
+    if (!e.down) taken_ = false;
+    switch (s.action) {
+        case CycleKey::Next:
+        case CycleKey::Prev:
+        case CycleKey::SwitcherLeft:
+        case CycleKey::SwitcherRight:
+            taken_ = true;      // son relâchement sera avalé aussi
+            s.neutral = true;   // tout de suite, par le crochet : Alt relâché ensuite n'ouvre pas le menu de l'app
+            break;
+        default: break;
+    }
+    return s;
 }
 
 std::optional<std::size_t> cycleTarget(const std::vector<bool>& eligible, std::optional<std::size_t> current, bool back) {

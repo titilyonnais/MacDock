@@ -21,9 +21,27 @@ struct CycleKeyEvent {
     bool session = false;    // sélecteur d'apps ouvert (⌥⇥ tenu)
 };
 // Pass : laissée à l'app ; Swallow : avalée sans effet ; Next / Prev : fenêtre suivante ou précédente ;
-// SwitcherBack / SwitcherNext : une case du sélecteur en arrière ou en avant (comme ⌘` pendant ⌘⇥).
-enum class CycleKey { Pass, Swallow, Next, Prev, SwitcherBack, SwitcherNext };
+// SwitcherLeft / SwitcherRight : une case du sélecteur vers la gauche ou la droite (comme ⌘` pendant ⌘⇥), sans effet
+// si la session vient de finir.
+enum class CycleKey { Pass, Swallow, Next, Prev, SwitcherLeft, SwitcherRight };
 CycleKey cycleKeyAction(const CycleKeyEvent& e);
+
+// Une frappe vue par le crochet : l'action, et s'il faut envoyer tout de suite une touche neutre (Alt relâché juste
+// après n'ouvrira pas le menu de l'app, même si le fil du Dock est occupé).
+struct CycleStep {
+    CycleKey action = CycleKey::Pass;
+    bool neutral = false;
+};
+// État du crochet pour cette touche (fil du crochet seulement) : un appui pris l'est jusqu'à son relâchement, même si
+// le réglage change entre les deux.
+class CycleKeyGate {
+public:
+    bool taken() const { return taken_; }
+    CycleStep onKey(CycleKeyEvent e);   // e.taken vient de la porte
+
+private:
+    bool taken_ = false;
+};
 
 // Fenêtre à faire passer devant parmi les fenêtres de l'app (ordre du Dock) : la suivante (ou la précédente) après
 // current, en boucle, parmi celles qui comptent (eligible : visibles, non réduites, sur ce bureau). current absent ou

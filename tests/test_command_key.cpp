@@ -42,6 +42,19 @@ TEST_CASE(command_key_other_keys_get_a_real_alt) {
     CHECK(k.onKey(VK_LMENU, true, false).kind == CommandAction::Kind::Swallow);  // appui suivant : ⌘ de nouveau
 }
 
+TEST_CASE(command_key_macdock_key_keeps_command) {   // relecture du plan 59 : ⌘` puis ⌘V sans lâcher ⌘
+    CommandKeys k;
+    CHECK(k.onKey(VK_LMENU, true, false).kind == CommandAction::Kind::Swallow);
+    CHECK(k.holding());
+    // ⌘ + la touche sous Échap (² en AZERTY) : MacDock la prend, Alt n'est pas rendu à Windows.
+    CHECK(k.onKey(VK_OEM_7, true, false, false, true).kind == CommandAction::Kind::Pass);
+    CHECK(k.onKey(VK_OEM_7, false, false, false, true).kind == CommandAction::Kind::Pass);
+    CHECK(k.holding());   // ⌘ reste ⌘
+    const CommandAction v = k.onKey('V', true, false);
+    CHECK(v.kind == CommandAction::Kind::Send);   // ⌘V : toujours Ctrl+V
+    CHECK(v.chord.vk == 'V' && v.chord.ctrl);
+}
+
 TEST_CASE(command_key_altgr_and_untouched_cases) {
     CommandKeys k;
     CHECK(k.onKey(VK_RMENU, true, false).kind == CommandAction::Kind::Pass);   // Alt Gr (@, #, {) : jamais touché

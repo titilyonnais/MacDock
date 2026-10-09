@@ -24,7 +24,7 @@ std::optional<Chord> commandChord(unsigned vk, bool shift, bool explorer) {
     }
 }
 
-CommandAction CommandKeys::onKey(unsigned vk, bool down, bool shift, bool explorer) {
+CommandAction CommandKeys::onKey(unsigned vk, bool down, bool shift, bool explorer, bool macDockKey) {
     CommandAction pass;
     CommandAction swallow;
     swallow.kind = CommandAction::Kind::Swallow;
@@ -37,6 +37,7 @@ CommandAction CommandKeys::onKey(unsigned vk, bool down, bool shift, bool explor
         return swallow;   // ⌘ seul ne fait rien (pas de menu de l'app), comme sur macOS
     }
     if (vk == VK_RMENU || !held_ || realAlt_) return pass;   // Alt Gr, pas de ⌘, ou Alt déjà réel
+    if (macDockKey) return pass;   // ⌘` : MacDock la prend dans son crochet ; Alt n'est pas rendu, ⌘ reste ⌘
     switch (vk) {
         case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT: case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
         case VK_LWIN: case VK_RWIN:

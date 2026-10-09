@@ -55,13 +55,53 @@ TEST_CASE(window_cycle_key_release_and_repeat) {
     CHECK(md::cycleKeyAction(e) == K::Pass);      // relâchement d'une frappe laissée à l'app
 }
 
-TEST_CASE(window_cycle_key_steps_back_in_the_switcher) {   // ⌘` pendant ⌘⇥ : une case en arrière
+TEST_CASE(window_cycle_key_steps_back_in_the_switcher) {   // ⌘` pendant ⌘⇥ : une case vers la gauche
     using K = md::CycleKey;
     md::CycleKeyEvent e;
     e.alt = e.session = true;
-    CHECK(md::cycleKeyAction(e) == K::SwitcherBack);
+    CHECK(md::cycleKeyAction(e) == K::SwitcherLeft);
     e.shift = true;
-    CHECK(md::cycleKeyAction(e) == K::SwitcherNext);
+    CHECK(md::cycleKeyAction(e) == K::SwitcherRight);
+}
+
+TEST_CASE(window_cycle_gate_sends_neutral_key_at_once) {   // relecture : la touche neutre part du crochet, tout de suite
+    md::CycleKeyGate g;
+    md::CycleKeyEvent e;
+    e.alt = true;
+    const md::CycleStep press = g.onKey(e);
+    CHECK(press.action == md::CycleKey::Next);
+    CHECK(press.neutral);   // avant que le fil du Dock traite le message : Alt relâché vite n'ouvre pas le menu
+    CHECK(g.taken());
+    e.down = false;
+    const md::CycleStep release = g.onKey(e);
+    CHECK(release.action == md::CycleKey::Swallow);
+    CHECK(!release.neutral);
+    CHECK(!g.taken());
+}
+
+TEST_CASE(window_cycle_gate_held_key_after_alt_release) {   // relecture : Alt lâché, touche encore tenue
+    md::CycleKeyGate g;
+    md::CycleKeyEvent e;
+    e.alt = true;
+    g.onKey(e);
+    e.alt = false;
+    e.repeat = true;
+    CHECK(g.onKey(e).action == md::CycleKey::Swallow);   // répétitions avalées : rien n'est tapé dans la fenêtre
+    e.repeat = false;
+    e.down = false;
+    CHECK(g.onKey(e).action == md::CycleKey::Swallow);   // relâchement avalé
+    CHECK(!g.taken());
+    e.down = true;
+    CHECK(g.onKey(e).action == md::CycleKey::Pass);      // ensuite, sans Alt, la touche redevient un caractère
+}
+
+TEST_CASE(window_cycle_gate_switcher_steps) {   // relecture : en session, une case, jamais une nouvelle session
+    md::CycleKeyGate g;
+    md::CycleKeyEvent e;
+    e.alt = e.session = true;
+    const md::CycleStep s = g.onKey(e);
+    CHECK(s.action == md::CycleKey::SwitcherLeft);
+    CHECK(s.neutral);
 }
 
 TEST_CASE(window_cycle_target_visits_every_window_in_order) {   // ordre stable : chaque appui en montre une autre
