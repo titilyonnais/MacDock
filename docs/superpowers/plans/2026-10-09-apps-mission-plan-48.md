@@ -32,9 +32,20 @@
   - flèches : la sélection (le contour) se déplace sur l'écran de la vue ; Entrée la choisit.
 
   Tests : grille 2 × 2 (droite, bas, bord), départ sans sélection, fenêtres décalées.
-- [ ] 4. Essai réel (MacDock lancé pour l'essai puis arrêté, fenêtres d'essai à soi seulement), documentation,
+- [x] 4. Essai réel (MacDock lancé pour l'essai puis arrêté, fenêtres d'essai à soi seulement), documentation,
   relecture, fusion.
 
 ## Essai réel
 MacDock en diagnostic, lancé puis arrêté ; deux fenêtres d'essai à moi (A à gauche, B à droite), A au premier plan :
 Exposé de l'app (Ctrl+Alt+↓) ouvert, puis →, →, Entrée : B choisie et passée au premier plan, Exposé fermé.
+
+## Relecture
+Rien de critique. Corrigés :
+- un nom long dépassait du halo et n'y était plus cliquable : il est mis en page dans le halo (deux lignes, puis « … ») ;
+  instantané vérifié (« AMD Software: Adrenalin Edition » sur deux lignes sous l'icône) ;
+- plusieurs écrans : Entrée et les flèches suivent la sélection globale ;
+- fenêtre agrandie : bordures invisibles des quatre côtés (mesuré : (-13, -13)-(3853, 2173) pour un cadre de
+  (0, 0)-(3840, 2160)), miniature calée 13 px trop haut par l'estimation : le cadre de DWM fait foi quand il a la taille
+  de la miniature (`thumbnailFrame`) ;
+- clic dans le vide pendant l'ouverture de l'écran Apps : ne ferme plus ; flèche tapée pendant l'ouverture de Mission
+  Control : appliquée à la fin.
