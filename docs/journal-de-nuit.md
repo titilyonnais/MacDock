@@ -1072,6 +1072,21 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Vu en passant** : le test `uia_menus_read_and_invoke_fake_app` a échoué deux fois (appel UI Automation
   bloqué), puis est passé : instable selon l'état du système, sans lien avec ce plan.
 
+### Plan 59 — Fenêtre suivante de l'app (⌥`), 9 octobre en soirée (session autonome)
+
+- **Raccourci** : Alt + la touche sous Échap (² sur ton clavier, ` en QWERTY) fait passer devant la fenêtre suivante
+  de l'app active, comme ⌘` sur macOS ; Alt+Maj, la précédente. La touche est reconnue à sa place, quelle que soit
+  la disposition du clavier.
+- **Ordre stable**, celui d'ouverture : des appuis successifs passent par toutes les fenêtres ouvertes et reviennent
+  à la première ; les fenêtres réduites sont sautées, comme sur macOS. Un appui tenu n'avance que d'une fenêtre.
+- **Pendant le sélecteur d'apps** (Alt+Tab tenu), la même touche recule d'une case, comme ⌘` pendant ⌘⇥.
+- **Réglage** : Réglages > Clavier > Raccourcis > « Fenêtre suivante de l'app » (`windowCycleHotkey` dans
+  `settings.json`) ; Spotlight trouve « fenêtre suivante ».
+- **Essai réel** par une sonde : trois fenêtres à elle, vraies touches envoyées seulement si l'une a le premier plan ;
+  onze contrôles exacts (1 → 2 → 3 → 1, retour arrière, fenêtre réduite sautée, appui tenu, touche jamais arrivée
+  aux fenêtres, aucun menu ouvert). Ton Dock recompilé et relancé.
+- **À essayer avec toi** : ² dans Brave avec plusieurs fenêtres, ² pendant Alt+Tab, et avec « Alt de gauche joue ⌘ ».
+
 ## Mineurs reportés — plan 58
 - La liste relue à l'ouverture du menu ne met pas l'icône à jour (le passage à une seule disposition se voit par
   un effet de bord).

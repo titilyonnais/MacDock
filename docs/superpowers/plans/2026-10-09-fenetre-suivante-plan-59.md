@@ -45,16 +45,29 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   `std::atomic<bool> cycleKeysOn_`.
 
 ## Tâches
-- [ ] 1. **Logique** (`src/switcher/window_cycle.*`, `config/settings.*`) : `isCycleKey`, `cycleKeyAction`,
+- [x] 1. **Logique** (`src/switcher/window_cycle.*`, `config/settings.*`) : `isCycleKey`, `cycleKeyAction`,
   `cycleTarget`, `parseWindowCycleHotkey`, réglage `windowCycleHotkey` (défaut, `OFF` lu en minuscules, valeur
   inconnue → défaut, aller-retour). Tests.
-- [ ] 2. **Dock** (`app/dock_window.*`, `settings/panes.cpp`, `spotlight/spot_settings.cpp`) : le crochet clavier prend
+- [x] 2. **Dock** (`app/dock_window.*`, `settings/panes.cpp`, `spotlight/spot_settings.cpp`) : le crochet clavier prend
   la touche (avant le repli de la touche ⌘) et poste `kHotCycle` / `kHotCycleBack`, ou recule dans le sélecteur ; le
   Dock fait passer la fenêtre devant ; ligne de Réglages > Clavier ; mots-clés de Spotlight. Tests (ligne et valeurs
   écrites, recherche « fenêtre suivante »).
-- [ ] 3. **Essais réels** : une sonde (`tests/real/window_cycle_probe.cpp`, cible `windowcycleprobe`) ouvre trois
+- [x] 3. **Essais réels** : une sonde (`tests/real/window_cycle_probe.cpp`, cible `windowcycleprobe`) ouvre trois
   fenêtres à elle, prend le premier plan, puis envoie Alt+` trois fois (1 → 2 → 3 → 1), Alt+Maj+` une fois (1 → 3),
   réduit la deuxième et vérifie qu'elle est sautée ; avant chaque touche, une de ses fenêtres doit avoir le premier
   plan, sinon elle s'arrête sans rien envoyer. MacDock relancé en diagnostic ; build Release.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- Suite : 807 tests verts ; Dock, Réglages et sonde compilés en Debug, tout le projet en Release.
+- **Essai réel** (sonde `window_cycle_probe.exe`, Dock Release relancé en diagnostic) : trois fenêtres à elle, vraies
+  touches envoyées seulement si l'une a le premier plan ; onze contrôles exacts :
+  - Alt+` : 1 → 2 → 3 → 1 ; Alt+Maj+` : 1 → 3 ;
+  - la 2 réduite : 3 → 1 → 3, elle est sautée ;
+  - Alt+` tenu (trois répétitions) : une seule fenêtre de plus ;
+  - la touche n'est jamais arrivée aux fenêtres, Alt relâché n'a demandé aucun menu.
+- Un premier passage avait trois échecs : la sonde réduisait la 2 par `SW_MINIMIZE`, qui donne le premier plan à la
+  fenêtre suivante ; le journal du Dock montrait des cibles justes. Sonde corrigée (`SW_SHOWMINNOACTIVE`).
+- Non essayés en réel : la touche pendant le sélecteur d'apps (il ignore les touches simulées) et Alt de gauche en ⌘ ;
+  à faire avec toi.
