@@ -16,7 +16,7 @@
   Sur macOS, elles déplacent la sélection, et Entrée la choisit.
 
 ## Tâches
-- [ ] 1. **Apps : la zone de clic est le halo** :
+- [x] 1. **Apps : la zone de clic est le halo** :
   - `appsItemRect(g, slot)` : icône et nom, la même zone que le halo dessiné ;
   - `appsHit` ne répond que dans cette zone ; le dessin du halo s'en sert aussi.
 

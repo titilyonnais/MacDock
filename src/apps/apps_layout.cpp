@@ -36,10 +36,20 @@ AppsGeometry appsLayout(double screenW, double screenH, std::size_t count) {
 
 int pageOf(const AppsGeometry& g, int index) { return index < 0 ? 0 : index / std::max(1, g.perPage); }
 
+AppsBox appsItemRect(const AppsGeometry& g, int slot) {
+    const int columns = std::max(1, g.columns);
+    const double x0 = g.gridLeft + (slot % columns) * g.cellW, y0 = g.gridTop + (slot / columns) * g.cellH;
+    const double top = y0 + std::max(0.0, (g.cellH - g.icon - kAppsLabelGap - kAppsLabelH) / 2);
+    const double ix = x0 + (g.cellW - g.icon) / 2;
+    return {ix - 12, top - 8, ix + g.icon + 12, top + g.icon + kAppsLabelGap + kAppsLabelH + 4};
+}
+
 int appsHit(const AppsGeometry& g, int page, double x, double y, std::size_t count) {
     if (x < g.gridLeft || y < g.gridTop || g.cellW <= 0 || g.cellH <= 0) return -1;
     const int col = int((x - g.gridLeft) / g.cellW), row = int((y - g.gridTop) / g.cellH);
     if (col >= g.columns || row >= g.rows) return -1;
+    const AppsBox r = appsItemRect(g, row * g.columns + col);
+    if (x < r.left || x >= r.right || y < r.top || y >= r.bottom) return -1;   // entre deux icônes
     const long long i = (long long)page * g.perPage + (long long)row * g.columns + col;
     return i >= 0 && i < (long long)count ? int(i) : -1;
 }

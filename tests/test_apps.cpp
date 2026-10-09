@@ -86,6 +86,22 @@ TEST_CASE(apps_hit_last_page) {
     CHECK(md::appsHit(g, 0, cx, g.gridTop - 5, 37) == -1);
 }
 
+TEST_CASE(apps_hit_only_on_icon_and_name) {
+    // Plan 48 : sur un grand écran (4K à 150 %), une case est bien plus large que l'icône ; seuls l'icône et son nom
+    // (le halo de survol) répondent, un clic entre deux icônes ne lance rien.
+    const auto g = md::appsLayout(2560, 1440, 40);
+    const md::AppsBox r = md::appsItemRect(g, 0);
+    CHECK(r.right - r.left < g.cellW - 40);
+    const double cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    CHECK_EQ(md::appsHit(g, 0, cx, cy, 40), 0);                 // l'icône
+    CHECK_EQ(md::appsHit(g, 0, cx, r.bottom - 6, 40), 0);       // son nom
+    CHECK_EQ(md::appsHit(g, 0, r.right + 4, cy, 40), -1);       // entre deux icônes
+    CHECK_EQ(md::appsHit(g, 0, cx, r.bottom + 6, 40), -1);      // sous le nom
+    const md::AppsBox next = md::appsItemRect(g, 1);            // case voisine : même zone, décalée d'une case
+    CHECK(std::abs((next.left - r.left) - g.cellW) < 1e-9);
+    CHECK_EQ(md::appsHit(g, 0, (next.left + next.right) / 2, cy, 40), 1);
+}
+
 TEST_CASE(apps_keys_move_across_pages) {
     auto g = md::appsLayout(1920, 1080, 37);
     md::AppsCursor c;

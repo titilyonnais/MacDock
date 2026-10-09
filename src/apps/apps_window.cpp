@@ -40,7 +40,7 @@ constexpr UINT_PTR kCaretTimer = 1;
 constexpr double kAppearSeconds = tahoe::kLaunchpadAppearSeconds;
 constexpr double kWheelPause = 0.25;          // une page par geste de molette
 constexpr float kNameFont = 12, kSearchFont = 15, kEmptyFont = 17;
-constexpr float kLabelH = 32, kLabelGap = 6;  // nom sous l'icône, deux lignes au plus
+constexpr float kLabelH = float(kAppsLabelH), kLabelGap = float(kAppsLabelGap);   // nom sous l'icône (apps_layout)
 
 double now() {
     LARGE_INTEGER f, c;
@@ -187,7 +187,8 @@ struct Painter {
             const float top = y0 + std::max(0.0f, (float(g.cellH) - icon - kLabelGap - kLabelH) / 2);
             const float ix = x0 + (float(g.cellW) - icon) / 2;
             if (int(pos) == v.selected || int(pos) == v.hover) {
-                const D2D1_RECT_F halo{ix - 12, top - 8, ix + icon + 12, top + icon + kLabelGap + kLabelH + 4};
+                const AppsBox b = appsItemRect(g, k);   // la zone du clic aussi
+                const D2D1_RECT_F halo{float(b.left), float(b.top), float(b.right), float(b.bottom)};
                 white->SetOpacity(int(pos) == v.selected ? 0.22f : 0.12f);
                 d->FillRoundedRectangle(D2D1::RoundedRect(halo, 16, 16), white.Get());
                 white->SetOpacity(1);

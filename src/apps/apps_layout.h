@@ -16,7 +16,14 @@ struct AppsGeometry {
 
 // Au plus 7 × 5 cases par page ; icône de 48 à 96 pt.
 AppsGeometry appsLayout(double screenW, double screenH, std::size_t count);
-// Indice (dans la liste affichée) de l'app sous (x, y) sur la page, ou -1 (case vide, hors grille).
+constexpr double kAppsLabelH = 32, kAppsLabelGap = 6;   // nom sous l'icône, deux lignes au plus
+struct AppsBox {
+    double left = 0, top = 0, right = 0, bottom = 0;
+};
+// Icône et nom de la case `slot` de la page : le halo de survol, et la seule zone qui répond au clic (sur un grand
+// écran, une case est bien plus large que l'icône : un clic entre deux icônes ne lance rien).
+AppsBox appsItemRect(const AppsGeometry& g, int slot);
+// Indice (dans la liste affichée) de l'app sous (x, y) sur la page, ou -1 (hors d'une icône et de son nom, case vide).
 int appsHit(const AppsGeometry& g, int page, double x, double y, std::size_t count);
 int pageOf(const AppsGeometry& g, int index);
 
