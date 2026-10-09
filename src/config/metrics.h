@@ -8,18 +8,18 @@ namespace md {
 // X-macro : (nom, défaut, minimum, maximum). Le nom sert aussi de clé JSON.
 // Les bornes protègent contre une faute de frappe (division par zéro, ressort qui ne s'arrête jamais).
 #define MD_METRICS_FIELDS(X)                       \
-    X(iconGap, 4, 0, 64)                           \
-    X(dockPadding, 8, 0, 64)                       \
+    X(iconGap, 2.3, 0, 64)                         \
+    X(dockPadding, 7.1, 0, 64)                     \
     X(dockCornerRadius, 0, 0, 200)                 \
-    X(dockScreenMargin, 5, 0, 100)                 \
+    X(dockScreenMargin, 3.9, 0, 100)               \
     X(separatorWidth, 1, 0.5, 10)                  \
-    X(separatorMargin, 7, 0, 50)                   \
-    X(separatorLengthRatio, 0.80, 0, 1)            \
+    X(separatorMargin, 9.9, 0, 50)                 \
+    X(separatorLengthRatio, 0.95, 0, 1)            \
     X(magnifyRangeTiles, 3.0, 0.5, 10)             \
     X(magnifyStiffness, 420, 1, 5000)              \
     X(magnifyDamping, 38, 1, 500)                  \
     X(indicatorDiameter, 4, 0, 20)                 \
-    X(indicatorCenterFromBottom, 4, 0, 30)         \
+    X(indicatorCenterFromBottom, 4.7, 0, 30)       \
     X(iconShapeRatio, 0.8046875, 0.5, 1)           \
     X(iconCornerRatio, 0.259, 0, 0.5)              \
     X(iconShadowOpacity, 0.5, 0, 1)                \
@@ -68,7 +68,7 @@ struct Metrics {
 #undef MD_DECLARE
 };
 
-constexpr int kMetricsVersion = 6;
+constexpr int kMetricsVersion = 7;
 
 Metrics metricsFromJson(const json::Value& v);
 json::Value metricsToJson(const Metrics& m);   // écrit "version": kMetricsVersion
