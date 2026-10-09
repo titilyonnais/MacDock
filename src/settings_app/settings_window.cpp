@@ -22,6 +22,7 @@
 #include "../settings/backup.h"
 #include "../settings/instance.h"
 #include "../settings/mods.h"
+#include "../settings/app_icon.h"
 #include "../settings/pane_icons.h"
 #include "../settings/screens.h"
 
@@ -1785,29 +1786,10 @@ void SettingsWindow::commitShortcut(int row, const std::wstring& text) {
 // ---- Icône ----
 
 HICON makeSettingsIcon(int size) {
-    ComPtr<IWICImagingFactory> wic;
-    ComPtr<ID2D1Factory> d2d;
-    ComPtr<IDWriteFactory> dwrite;
-    ComPtr<IWICBitmap> bmp;
-    ComPtr<ID2D1RenderTarget> rt;
-    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
-        FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf())) ||
-        FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()))) ||
-        FAILED(wic->CreateBitmap(UINT(size), UINT(size), GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp)) ||
-        FAILED(d2d->CreateWicBitmapRenderTarget(bmp.Get(), D2D1::RenderTargetProperties(), &rt)))
-        return nullptr;
-    const ui::Palette pal = ui::palette(false);
-    rt->BeginDraw();
-    rt->Clear(D2D1::ColorF(0, 0, 0, 0));
-    {
-        ui::Painter p(rt.Get(), dwrite.Get(), pal, L"");
-        const float m = float(size) * 0.06f;
-        drawPaneTile(p, D2D1::RectF(m, m, float(size) - m, float(size) - m), 0x8E8E93, PaneIcon::Gear);
-    }
-    if (FAILED(rt->EndDraw())) return nullptr;
-    std::vector<BYTE> px(std::size_t(size) * size * 4);
-    WICRect all{0, 0, size, size};
-    bmp->CopyPixels(&all, UINT(size) * 4, UINT(px.size()), px.data());
+    // La même icône que celle de l'exécutable (res/settings.ico), en alpha droit comme l'attend CreateIconIndirect.
+    const BgraImage im = renderAppIcon(AppIconKind::Settings, size);
+    if (im.w != size) return nullptr;
+    const std::vector<BYTE>& px = im.px;
     BITMAPV5HEADER bi{};
     bi.bV5Size = sizeof bi;
     bi.bV5Width = size;

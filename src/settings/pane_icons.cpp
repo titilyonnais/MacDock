@@ -107,7 +107,7 @@ void icon(ui::Painter& p, const Box& b, PaneIcon which) {
 
 }  // namespace
 
-void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon which) {
+void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon which, float cornerRatio) {
     const Box b{r, (r.right - r.left) / 20.f};
     const ui::Rgba base = ui::rgb(color);
     // Léger dégradé vertical : un peu plus clair en haut, comme les tuiles des Réglages Système.
@@ -121,10 +121,10 @@ void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon w
         SUCCEEDED(p.rt()->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(r.left, r.top),
                                                                                          D2D1::Point2F(r.left, r.bottom)),
                                                     stops.Get(), &gradient))) {
-        const float radius = ui::metrics::tileRadius * b.k;
+        const float radius = cornerRatio > 0 ? cornerRatio * (r.right - r.left) : ui::metrics::tileRadius * b.k;
         p.rt()->FillRoundedRectangle(D2D1::RoundedRect(r, radius, radius), gradient.Get());
     } else {
-        p.fillRound(r, ui::metrics::tileRadius * b.k, base);
+        p.fillRound(r, cornerRatio > 0 ? cornerRatio * (r.right - r.left) : ui::metrics::tileRadius * b.k, base);
     }
     icon(p, b, which);
 }

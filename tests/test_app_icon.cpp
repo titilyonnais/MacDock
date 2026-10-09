@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "minitest.h"
+#include "../src/icons/squircle.h"
 #include "../src/settings/app_icon.h"
 
 namespace {
@@ -35,6 +36,31 @@ TEST_CASE(app_icon_tile_and_corners) {
     for (int y = 64; y < 192; ++y)
         for (int x = 64; x < 192; ++x) white += px(dock, x, y)[0] > 230 && px(dock, x, y)[1] > 230 && px(dock, x, y)[2] > 230;
     CHECK(white > 400);
+    CoUninitialize();
+}
+
+TEST_CASE(app_icon_fits_dock_shape) {
+    // Relecture du plan 49 : avec « Icônes uniformes » (par défaut), le Dock met en « prison » une icône qui ne remplit
+    // pas sa forme (deux cadres). Plein cadre, au rayon de la grille d'Apple, elle passe sous son propre masque.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (auto kind : {md::AppIconKind::Settings, md::AppIconKind::Dock, md::AppIconKind::MenuBar}) {
+        const md::BgraImage im = md::renderAppIcon(kind, 256);
+        REQUIRE(im.w == 256);
+        CHECK(md::iconFitsSquircle(im.px.data(), im.w, im.h, im.w * 4));
+    }
+    // Alpha droit (PNG, ICO) : un pixel du bord arrondi à moitié couvert garde la teinte de la tuile au lieu de tirer
+    // vers le noir (alpha prémultiplié laissé tel quel).
+    const md::BgraImage im = md::renderAppIcon(md::AppIconKind::Settings, 256);
+    int found = 0;   // un pixel du coin arrondi couvert à moins des deux tiers (prémultiplié, il tomberait sous 100)
+    for (int y = 0; y < 64 && !found; ++y)
+        for (int x = 0; x < 64 && !found; ++x) {
+            const std::uint8_t* p = px(im, x, y);
+            if (p[3] > 40 && p[3] < 160) {
+                found = 1;
+                CHECK(p[1] > 120);   // gris de la tuile (haut du dégradé ≈ 160), pas assombri
+            }
+        }
+    CHECK(found == 1);
     CoUninitialize();
 }
 

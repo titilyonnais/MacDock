@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "../icons/squircle.h"
 #include "../ui/ui_draw.h"
 #include "../ui/ui_theme.h"
 #include "pane_icons.h"
@@ -38,7 +39,7 @@ void put32(std::vector<std::uint8_t>& b, std::uint32_t v) {
 } // namespace
 
 BgraImage renderAppIcon(AppIconKind kind, int size) {
-    BgraImage out;
+    BgraImage out, failed;
     out.w = out.h = std::max(1, size);
     out.px.assign(std::size_t(out.w) * out.h * 4, 0);
     ComPtr<IWICImagingFactory> wic;
@@ -52,18 +53,18 @@ BgraImage renderAppIcon(AppIconKind kind, int size) {
         FAILED(d2d->CreateWicBitmapRenderTarget(bmp.Get(), D2D1::RenderTargetProperties(), &rt)) ||
         FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
                                    reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()))))
-        return out;
+        return failed;
     const ui::Palette pal = ui::palette(false);
     {
         ui::Painter p(rt.Get(), dwrite.Get(), pal, L"Segoe UI");
         rt->BeginDraw();
         rt->Clear(D2D1::ColorF(0, 0, 0, 0));
-        const float m = float(out.w) * 0.06f;   // marge, comme les icônes de macOS dans leur grille
-        drawPaneTile(p, D2D1::RectF(m, m, float(out.w) - m, float(out.h) - m), tileColor(kind), pictogram(kind));
-        if (FAILED(rt->EndDraw())) return out;
+        drawPaneTile(p, D2D1::RectF(0, 0, float(out.w), float(out.h)), tileColor(kind), pictogram(kind),
+                     float(kIconCornerRatio));
+        if (FAILED(rt->EndDraw())) return failed;
     }
     WICRect all{0, 0, out.w, out.h};
-    if (FAILED(bmp->CopyPixels(&all, UINT(out.w * 4), UINT(out.px.size()), out.px.data()))) return out;
+    if (FAILED(bmp->CopyPixels(&all, UINT(out.w * 4), UINT(out.px.size()), out.px.data()))) return failed;
     for (std::size_t i = 0; i < out.px.size(); i += 4) {   // alpha prémultiplié → droit (PNG, ICO)
         const unsigned a = out.px[i + 3];
         if (a == 0 || a == 255) continue;

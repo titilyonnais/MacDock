@@ -11,6 +11,7 @@
 namespace md {
 
 // Tuile de r (20 × 20 pt conseillé) : rectangle arrondi de `color` (0xRRGGBB), léger dégradé, pictogramme blanc.
-void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon icon);
+// `cornerRatio` : rayon / côté (0 : celui des tuiles de la barre latérale).
+void drawPaneTile(ui::Painter& p, D2D1_RECT_F r, std::uint32_t color, PaneIcon icon, float cornerRatio = 0);
 
 }  // namespace md

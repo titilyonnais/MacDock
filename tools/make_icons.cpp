@@ -28,8 +28,12 @@ int wmain(int argc, wchar_t** argv) {
         std::vector<std::pair<int, std::vector<std::uint8_t>>> pngs;
         for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256}) {
             const md::BgraImage im = md::renderAppIcon(icon.kind, size);
+            if (im.w != size) {   // dessin impossible : pas d'icône transparente écrite à la place
+                std::fwprintf(stderr, L"%ls : dessin en %d px impossible\n", icon.name, size);
+                return 1;
+            }
             pngs.push_back({size, md::encodePng(im.px.data(), UINT(im.w), UINT(im.h))});
-            if (pngs.back().second.empty()) code = 1;
+            if (pngs.back().second.empty()) return 1;
         }
         const std::vector<std::uint8_t> ico = md::icoFile(pngs);
         const std::wstring path = dir + L"\\" + icon.name;

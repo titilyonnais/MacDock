@@ -38,7 +38,7 @@ std::vector<std::uint8_t> encodePng(const std::uint8_t* bgra, UINT w, UINT h) {
     ComPtr<IStream> mem;
     ComPtr<IWICBitmapEncoder> encoder;
     ComPtr<IWICBitmapFrameEncode> frame;
-    WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppPBGRA;
+    WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppBGRA;   // alpha droit : l'encodeur PNG ne prend pas le prémultiplié
     if (!wic || FAILED(CreateStreamOnHGlobal(nullptr, TRUE, &mem)) ||
         FAILED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder)) ||
         FAILED(encoder->Initialize(mem.Get(), WICBitmapEncoderNoCache)) ||
