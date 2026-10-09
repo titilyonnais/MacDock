@@ -38,6 +38,10 @@ struct FqProcess {
 // ApplicationFrameHost, dwm, csrss, winlogon, ni les processus de MacDock (Dock, barre, lanceur).
 std::vector<unsigned long> forceQuitTargets(const FqApp& app, const std::vector<FqProcess>& processes, unsigned long self);
 
+// Autres apps de la liste qui partagent un processus avec l'app `index` (applications web d'Edge ou de Chrome, profils :
+// toutes leurs fenêtres appartiennent au navigateur) : forcer l'une arrête aussi les autres. Dans l'ordre de la liste.
+std::vector<std::wstring> appsSharingProcesses(const std::vector<FqApp>& apps, int index);
+
 // Sélection après une relecture de la liste : la même app si elle est toujours là ; partie, celle qui la suivait (sinon
 // celle qui la précédait) ; -1 sans sélection ou liste vide.
 int selectionAfter(const std::vector<FqApp>& before, int selected, const std::vector<FqApp>& after);

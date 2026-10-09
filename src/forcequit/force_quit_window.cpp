@@ -58,14 +58,6 @@ std::wstring hintFor(const std::wstring& shortcut) {
     return shortcut.empty() ? std::wstring() : L"Vous pouvez ouvrir cette fenêtre en appuyant sur " + shortcut + L".";
 }
 
-ui::SheetSpec confirmSpec(const FqApp& a) {
-    if (a.explorer)
-        return {L"Voulez-vous relancer l'Explorateur de fichiers ?", L"Ses fenêtres ouvertes seront fermées, puis le bureau reviendra.",
-                {L"Annuler", L"Relancer"}, 1};
-    return {L"Voulez-vous forcer « " + a.name + L" » à quitter ?", L"Les modifications non enregistrées seront perdues.",
-            {L"Annuler", L"Forcer à quitter"}, 1};
-}
-
 }  // namespace
 
 // Icônes chargées sur un fil à part (le Dock ne s'arrête pas), avec un fournisseur d'icônes propre à ce fil.
@@ -396,7 +388,7 @@ void ForceQuitWindow::openConfirm() {
     if (selected_ < 0 || selected_ >= int(apps_.size())) return;
     Sheet s;
     s.target = apps_[std::size_t(selected_)];
-    s.spec = confirmSpec(s.target);
+    s.spec = forceQuitConfirm(s.target, appsSharingProcesses(apps_, selected_));
     sheet_ = std::move(s);
     buttonPressed_ = false;
     SetTimer(hwnd_, kSheetTimer, 16, nullptr);
@@ -575,7 +567,7 @@ bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet) {
         if (sheet) {
             FqApp a;
             a.name = L"Courrier";
-            const ui::SheetSpec spec = confirmSpec(a);
+            const ui::SheetSpec spec = forceQuitConfirm(a, {});
             const ui::SheetLayout sl = ui::layoutSheet(p, kFqWidth, kFqTitleBar, spec);
             ui::drawSheet(p, sl, spec, kFqWidth, kFqHeight, -1, -1, 1);
         }

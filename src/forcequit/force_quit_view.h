@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../ui/ui_draw.h"
+#include "force_quit_logic.h"
 
 namespace md {
 
@@ -51,5 +52,9 @@ float scrollToShow(const FqLayout& l, std::size_t rows, float scroll, int i);   
 int lightAt(const FqLayout& l, float x, float y);   // 0 fermer, 1 réduire ; -1 ailleurs (agrandir est grisée)
 
 void drawForceQuit(ui::Painter& p, const FqLayout& l, const FqView& v);
+
+// Feuille de confirmation : « Voulez-vous forcer « X » à quitter ? » [Annuler] [Forcer à quitter], ou « Relancer » pour
+// l'Explorateur ; `alsoQuitting` : les autres apps qui partagent son processus, nommées (elles quitteront aussi).
+ui::SheetSpec forceQuitConfirm(const FqApp& app, const std::vector<std::wstring>& alsoQuitting);
 
 } // namespace md

@@ -113,4 +113,19 @@ void drawForceQuit(ui::Painter& p, const FqLayout& l, const FqView& v) {
     }
 }
 
+ui::SheetSpec forceQuitConfirm(const FqApp& app, const std::vector<std::wstring>& alsoQuitting) {
+    if (app.explorer)
+        return {L"Voulez-vous relancer l'Explorateur de fichiers ?", L"Ses fenêtres ouvertes seront fermées, puis le bureau reviendra.",
+                {L"Annuler", L"Relancer"}, 1};
+    std::wstring message = L"Les modifications non enregistrées seront perdues.";
+    if (!alsoQuitting.empty()) {   // « A », « A et B », « A, B et C »
+        std::wstring names;
+        for (std::size_t i = 0; i < alsoQuitting.size(); ++i)
+            names += (i == 0 ? L"" : i + 1 == alsoQuitting.size() ? L" et " : L", ") + alsoQuitting[i];
+        message += L" " + names + (alsoQuitting.size() == 1 ? L" quittera" : L" quitteront") +
+                   L" aussi : elles partagent le même processus.";
+    }
+    return {L"Voulez-vous forcer « " + app.name + L" » à quitter ?", message, {L"Annuler", L"Forcer à quitter"}, 1};
+}
+
 } // namespace md

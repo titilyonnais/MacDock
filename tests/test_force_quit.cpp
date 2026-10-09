@@ -17,6 +17,7 @@
 #include "minitest.h"
 #include "../src/forcequit/force_quit_logic.h"
 #include "../src/forcequit/force_quit_system.h"
+#include "../src/forcequit/force_quit_view.h"
 #include "../src/tracker/app_identity.h"
 
 namespace {
@@ -128,6 +129,35 @@ TEST_CASE(force_quit_targets_package_shared_by_tools) {   // relecture du plan 5
     const std::wstring exe = L"C:\\Program Files\\WindowsApps\\Microsoft.PowerShell\\pwsh.exe";
     CHECK((md::forceQuitTargets(pwsh, {{16032, pwsh.aumid, exe}, {12200, pwsh.aumid, exe}}, 1) ==
            std::vector<unsigned long>{16032}));
+}
+
+TEST_CASE(force_quit_shared_processes_named) {   // relecture du plan 54, important 2
+    // Une application web d'Edge ou de Chrome (son propre AUMID, sa ligne) : ses fenêtres appartiennent au navigateur.
+    // La forcer arrête aussi le navigateur : la confirmation le nomme.
+    md::FqApp notes, chrome, pwa;
+    notes.appId = L"notes";
+    notes.name = L"Bloc-notes";
+    notes.pids = {200};
+    chrome.appId = L"chrome";
+    chrome.name = L"Google Chrome";
+    chrome.pids = {100, 101};
+    pwa.appId = L"pwa";
+    pwa.name = L"YouTube";
+    pwa.pids = {100};
+    const std::vector<md::FqApp> apps = {notes, chrome, pwa};
+    CHECK((md::appsSharingProcesses(apps, 2) == std::vector<std::wstring>{L"Google Chrome"}));
+    CHECK((md::appsSharingProcesses(apps, 1) == std::vector<std::wstring>{L"YouTube"}));
+    CHECK(md::appsSharingProcesses(apps, 0).empty());
+    CHECK(md::appsSharingProcesses(apps, 7).empty());
+    const md::ui::SheetSpec one = md::forceQuitConfirm(pwa, {L"Google Chrome"});
+    CHECK(one.title == L"Voulez-vous forcer « YouTube » à quitter ?");
+    CHECK(one.message == L"Les modifications non enregistrées seront perdues. Google Chrome quittera aussi : "
+                         L"elles partagent le même processus.");
+    const md::ui::SheetSpec two = md::forceQuitConfirm(chrome, {L"YouTube", L"Gmail"});
+    CHECK(two.message == L"Les modifications non enregistrées seront perdues. YouTube et Gmail quitteront aussi : "
+                         L"elles partagent le même processus.");
+    CHECK(md::forceQuitConfirm(notes, {}).message == L"Les modifications non enregistrées seront perdues.");
+    CHECK((md::forceQuitConfirm(notes, {}).buttons == std::vector<std::wstring>{L"Annuler", L"Forcer à quitter"}));
 }
 
 TEST_CASE(force_quit_explorer_detection) {

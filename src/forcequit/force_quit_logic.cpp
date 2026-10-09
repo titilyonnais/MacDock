@@ -100,6 +100,20 @@ std::vector<unsigned long> forceQuitTargets(const FqApp& app, const std::vector<
     return out;
 }
 
+std::vector<std::wstring> appsSharingProcesses(const std::vector<FqApp>& apps, int index) {
+    std::vector<std::wstring> out;
+    if (index < 0 || index >= int(apps.size())) return out;
+    const std::vector<unsigned long>& mine = apps[std::size_t(index)].pids;
+    for (std::size_t i = 0; i < apps.size(); ++i) {
+        if (int(i) == index) continue;
+        const bool shared = std::any_of(apps[i].pids.begin(), apps[i].pids.end(), [&](unsigned long pid) {
+            return std::find(mine.begin(), mine.end(), pid) != mine.end();
+        });
+        if (shared) out.push_back(apps[i].name);
+    }
+    return out;
+}
+
 int selectionAfter(const std::vector<FqApp>& before, int selected, const std::vector<FqApp>& after) {
     if (after.empty() || selected < 0 || selected >= int(before.size())) return -1;
     if (const int same = indexOf(after, before[std::size_t(selected)].appId); same >= 0) return same;
