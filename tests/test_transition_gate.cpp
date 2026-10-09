@@ -103,3 +103,24 @@ TEST_CASE(transition_gate_marks_held_windows_for_crash_recovery) {
     DestroyWindow(held);
     DestroyWindow(other);
 }
+
+TEST_CASE(transition_busy_and_parked) {
+    // Retenue : génie armé ou en cours sur elle, ou réduite par « Masquer » (elle reviendra d'un coup, comme sur macOS).
+    md::HeldState armed;
+    armed.genieArmed = true;
+    CHECK(md::transitionBusy(armed));
+    md::HeldState running;
+    running.iconic = running.genieRunning = true;
+    CHECK(md::transitionBusy(running));
+    md::HeldState hidden;
+    hidden.iconic = hidden.appHidden = true;
+    CHECK(md::transitionBusy(hidden));
+    CHECK(md::transitionParked(hidden));   // la minuterie attend son retour
+    // Réduite par le génie, génie fini : rendue, pour qu'une restauration hors du Dock (⌘Tab, Alt+Tab) garde
+    // l'animation de Windows.
+    md::HeldState minimized;
+    minimized.iconic = true;
+    CHECK(!md::transitionBusy(minimized));
+    CHECK(!md::transitionParked(minimized));
+    CHECK(!md::transitionBusy(md::HeldState{}));
+}

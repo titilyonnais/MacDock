@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 
+#include "../anim/tahoe_timing.h"
 #include "../calib/png_io.h"
 #include "../core/log.h"
 #include "../shell/shell_actions.h"
@@ -29,7 +30,7 @@ namespace {
 template <class T> using Com = Microsoft::WRL::ComPtr<T>;
 
 constexpr wchar_t kClass[] = L"MacDockMission";
-constexpr double kAnimSeconds = 0.26, kSlow = 5;   // Maj enfoncée : au ralenti, comme le génie
+constexpr double kAnimSeconds = tahoe::kMissionSeconds, kSlow = 5;   // Maj enfoncée : au ralenti, comme le génie
 constexpr float kVeil = 0.22f, kBorder = 3, kBorderGap = 4, kRadius = 10, kTitleFont = 13;
 
 double now() {

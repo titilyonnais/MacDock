@@ -255,6 +255,11 @@ GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minim
     return run.active && !run.settling && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
 }
 
+MinimizeAnnounce minimizeAnnounce(bool hide, MinimizeEffect effect, bool minimizesToTile) {
+    if (hide) return {true, true};
+    return {effect != MinimizeEffect::Windows && minimizesToTile, false};
+}
+
 bool genieTakesMinimize(bool held, bool windowsAnimates) { return held || !windowsAnimates; }
 
 bool genieMustRestoreFirst(const GenieRun& run) { return run.active && run.restoring && !run.settling; }

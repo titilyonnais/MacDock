@@ -9,6 +9,7 @@
 
 #include "../src/anim/genie.h"
 #include "../src/anim/genie_preview.h"
+#include "../src/anim/tahoe_timing.h"
 #include "../src/app/min_animate.h"
 #include "../src/calib/png_io.h"
 
@@ -116,7 +117,7 @@ TEST_CASE(genie_degenerate_inputs) {
     for (auto& x : odd) CHECK(x.dst.right >= x.dst.left && x.dst.bottom >= x.dst.top);
 }
 
-TEST_CASE(genie_durations) {   // Golden Gate : animations ~12 % plus courtes que Tahoe
+TEST_CASE(genie_durations) {
     // macOS 26 Tahoe (plan 44) : 0,55 s et 0,30 s ; Golden Gate les raccourcissait de ~12 %.
     CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Genie, false), 0.55, 1e-9);
     CHECK_NEAR(md::minimizeDuration(md::MinimizeEffect::Scale, false), 0.30, 1e-9);
@@ -432,4 +433,28 @@ TEST_CASE(genie_takes_only_minimizes_windows_does_not_animate) {
     CHECK(!md::genieTakesMinimize(false, true));
     CHECK(md::genieTakesMinimize(false, false));
     CHECK(md::genieTakesMinimize(true, false));
+}
+
+TEST_CASE(genie_announce_decision) {
+    // Réduction annoncée : animations de Windows coupées seulement si le Dock l'anime (case au Dock, effet du Dock).
+    const auto plain = md::minimizeAnnounce(false, md::MinimizeEffect::Genie, true);
+    CHECK(plain.hold && !plain.hideApp);
+    CHECK(!md::minimizeAnnounce(false, md::MinimizeEffect::Genie, false).hold);    // pas de case : Windows anime
+    CHECK(!md::minimizeAnnounce(false, md::MinimizeEffect::Windows, true).hold);   // effet de Windows choisi
+    // Masquer : l'app est masquée et ses fenêtres disparaissent d'un coup, sans génie ni animation de Windows, quel
+    // que soit l'effet de réduction (macOS).
+    for (auto e : {md::MinimizeEffect::Genie, md::MinimizeEffect::Scale, md::MinimizeEffect::Windows}) {
+        const auto h = md::minimizeAnnounce(true, e, true);
+        CHECK(h.hideApp && h.hold);
+    }
+}
+
+TEST_CASE(tahoe_animation_durations) {
+    // macOS 26 Tahoe (plan 44) : Golden Gate raccourcissait aussi ces animations d'environ 12 %.
+    CHECK_NEAR(md::tahoe::kMissionSeconds, 0.30, 1e-9);
+    CHECK_NEAR(md::tahoe::kLaunchpadAppearSeconds, 0.20, 1e-9);
+    CHECK_NEAR(md::tahoe::kStackFanSeconds, 0.24, 1e-9);
+    CHECK_NEAR(md::tahoe::kStackGridFadeSeconds, 0.14, 1e-9);
+    CHECK_NEAR(md::tahoe::kSpotlightAppearSeconds, 0.12, 1e-9);
+    CHECK(std::wstring(md::tahoe::kSpotlightPlaceholder) == L"Recherche Spotlight");   // macOS 27 : « Rechercher ou demander »
 }

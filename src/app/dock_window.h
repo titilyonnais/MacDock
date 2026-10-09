@@ -79,12 +79,14 @@ private:
     void syncPointer();
     void onButton(bool down, POINT screen);   // bouton gauche n'importe où (crochet) : réduction annoncée
     void armGenie(HWND window, POINT down);   // réduction annoncée pour cette fenêtre (bouton ou pastille jaune)
-    // Animation de Windows coupée pour cette fenêtre, que le Dock va animer lui-même (réduction, restauration).
-    void holdTransitions(HWND window);
-    // Réduction annoncée (barre de menus, ⊞↓) : retenue seulement si le génie l'animera (case dans le Dock) ; sinon
-    // Windows l'anime seul.
-    void announceMinimize(HWND window);
+    // Animation de Windows coupée pour cette fenêtre, que le Dock va animer lui-même (réduction, restauration) ;
+    // `always` : même avec l'effet de Windows (« Masquer »).
+    void holdTransitions(HWND window, bool always = false);
+    // Réduction annoncée (barre de menus, ⊞↓, menus) : retenue seulement si le génie l'animera (case dans le Dock) ;
+    // sinon Windows l'anime seul. `hide` : « Masquer », l'app est masquée et la fenêtre disparaît d'un coup.
+    void announceMinimize(HWND window, bool hide = false);
     bool genieWouldAnimate(HWND window);
+    HeldState heldState(HWND window);
     void warmHovered(POINT client);           // case d'une fenêtre réduite survolée : capture préparée
     void setTransparent(bool transparent);
     void onClick(std::size_t index);

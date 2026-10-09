@@ -794,9 +794,11 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             const int pressed = l.pressed;
             l.pressed = -1;
             ReleaseCapture();
-            // Tahoe : la pastille reprend sa teinte, sans rebond (celui-ci venait de Golden Gate), puis la commande.
-            l.state.pressed = -1;
-            paint(l);
+            // Tahoe : la pastille reprend sa teinte (déjà repeinte par WM_CAPTURECHANGED), sans rebond, puis la commande.
+            if (l.state.pressed >= 0) {
+                l.state.pressed = -1;
+                paint(l);
+            }
             if (hitLight(l.layout, screenPoint()) == pressed && IsWindow(l.target))
                 PostMessageW(l.target, WM_SYSCOMMAND, lightCommand(pressed, IsZoomed(l.target) != FALSE), 0);
             return 0;

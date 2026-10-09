@@ -46,6 +46,10 @@ TransitionApi realTransitionApi() {
     return api;
 }
 
+bool transitionParked(const HeldState& s) { return s.iconic && s.appHidden; }
+
+bool transitionBusy(const HeldState& s) { return s.genieArmed || s.genieRunning || transitionParked(s); }
+
 void TransitionGate::hold(HWND window, double until) {
     if (!window) return;
     auto it = held_.find(window);

@@ -128,13 +128,13 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         }
         case ActionKind::HideApp:
             if (c.appWindows.empty()) return false;
-            minimizeAll(c.appWindows);
+            hideAll(c.appWindows);   // d'un coup, sans génie ni case au Dock
             if (c.hidden) c.hidden->insert(c.hidden->end(), c.appWindows.begin(), c.appWindows.end());
             return true;
         case ActionKind::HideOthers: {
             OthersCollect col{&c.appWindows, {}};
             EnumWindows(collectOthers, reinterpret_cast<LPARAM>(&col));
-            for (HWND h : col.others) minimizeWindow(h, SW_SHOWMINNOACTIVE);   // le Dock prévenu avant chacune
+            for (HWND h : col.others) hideWindow(h, SW_SHOWMINNOACTIVE);   // le Dock prévenu avant chacune
             if (c.hidden) c.hidden->insert(c.hidden->end(), col.others.begin(), col.others.end());
             return !col.others.empty();
         }
