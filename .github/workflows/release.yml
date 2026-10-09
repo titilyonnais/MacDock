@@ -1,7 +1,8 @@
 # Publication (plan 52) : une étiquette vX.Y.Z (ou vX.Y.Z-rc.N, préversion) envoyée sur GitHub construit
 # l'installateur et le joint à une release, avec son empreinte SHA-256 (SHA256SUMS.txt), que les mises à jour de
-# MacDock vérifient. L'étiquette doit correspondre à src/core/version_defs.h. Seul le jeton fourni par GitHub sert ;
-# l'étiquette passe par une variable d'environnement, jamais recopiée dans le script.
+# MacDock vérifient. L'étiquette doit correspondre exactement à src/core/version_defs.h et viser un commit de main.
+# Seul le jeton fourni par GitHub sert, et seulement à l'étape de publication ; l'étiquette passe par une variable
+# d'environnement, jamais recopiée dans un script ; action épinglée par empreinte de commit.
 name: Release
 
 on:
@@ -14,10 +15,21 @@ permissions:
 jobs:
   release:
     runs-on: windows-2025
+    timeout-minutes: 40
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Étiquette sur main
+        shell: pwsh
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor $env:GITHUB_SHA FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "L'étiquette $env:TAG ne vise pas un commit de main." }
 
       - name: Inno Setup 6.7.3
         shell: pwsh
@@ -39,10 +51,19 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        # Relancée après un échec partiel : la release existante reçoit les fichiers (remplacés).
         run: |
           $version = $env:TAG.Substring(1)
-          $notes = "docs/releases/$version.md"
-          $publish = @($env:TAG, "build/installer/MacDock-Setup-$version.exe", 'build/installer/SHA256SUMS.txt', '--title', "MacDock $version")
-          $publish += if (Test-Path $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
-          if ($version.Contains('-')) { $publish += '--prerelease' }
-          gh release create @publish
+          $files = @("build/installer/MacDock-Setup-$version.exe", 'build/installer/SHA256SUMS.txt')
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG @files --clobber
+          } else {
+            $notes = "docs/releases/$version.md"
+            $publish = @($env:TAG) + $files + @('--title', "MacDock $version")
+            $publish += if (Test-Path $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
+            if ($version.Contains('-')) { $publish += '--prerelease' }
+            gh release create @publish
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Publication impossible' }

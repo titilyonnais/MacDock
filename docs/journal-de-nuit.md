@@ -947,6 +947,16 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture indépendante** : le menu qui se rouvrait en boucle (déjà corrigé en réel), le premier plan repris après
   Alt+Tab (aussi dans les menus de la barre), les fenêtres « toujours au-dessus » dans Organiser : corrigés.
 
+### Plan 52 — publication sur GitHub, matin du 9 octobre
+
+- **Dépôt public** `titilyonnais/MacDock`, licence MIT, ton prénom retiré de tout l'historique (sauvegarde gardée).
+- **Version** 0.52.0 inscrite dans les quatre exécutables ; installateur Inno Setup par utilisateur, sans droits
+  d'administrateur ; GitHub Actions le construit et le publie à chaque étiquette `vX.Y.Z`, avec son empreinte.
+- **Essais réels** (variante d'essai, dossier à part) : installation, ordre d'arrêt, mise à jour pendant que MacDock
+  tourne, mise à jour ratée et retour de l'ancienne version, désinstallation, démarrage avec Windows.
+- **Relecture indépendante** : MacDock dépendait du runtime Visual C++, absent d'un Windows neuf : runtime désormais
+  intégré, et contrôlé à chaque fabrication. Arrêt, relance et workflows renforcés.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

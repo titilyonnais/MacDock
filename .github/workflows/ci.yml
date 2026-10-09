@@ -1,5 +1,5 @@
 # Intégration continue (plan 52) : à chaque envoi (toutes les branches), tests et compilation Release sur une machine
-# Windows de GitHub. Aucun secret.
+# Windows de GitHub. Aucun secret ; action épinglée par empreinte de commit.
 name: CI
 
 on:
@@ -14,8 +14,11 @@ permissions:
 jobs:
   build:
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Environnement
         shell: pwsh

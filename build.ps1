@@ -21,8 +21,10 @@ $OutRoot = if (-not $OutDir) { Join-Path $Root "build\$Config" } elseif ([IO.Pat
 
 $Common = @('/nologo', '/std:c++latest', '/W4', '/permissive-', '/EHsc', '/utf-8', '/MP',
             '/DUNICODE', '/D_UNICODE', '/DNOMINMAX', '/DWIN32_LEAN_AND_MEAN', '/D_WIN32_WINNT=0x0A00')
+# Release : runtime C++ intégré aux exécutables (/MT). Un Windows neuf n'a pas forcément le redistribuable Visual C++,
+# que l'installateur ne peut pas poser sans droits d'administrateur.
 if ($Config -eq 'Debug') { $Common += @('/Zi', '/Od', '/MDd', '/D_DEBUG') }
-else { $Common += @('/O2', '/MD', '/DNDEBUG', '/Zi') }
+else { $Common += @('/O2', '/MT', '/DNDEBUG', '/Zi') }
 
 function Get-Sources([string[]]$Patterns) {
     $files = foreach ($p in $Patterns) { Get-ChildItem -Path (Join-Path $Root $p) -ErrorAction SilentlyContinue }
@@ -99,7 +101,8 @@ function Build-Target([string]$Name) {
     $includes = @($t.Includes | Where-Object { $_ } | ForEach-Object { "/I`"$(Join-Path $Root $_)`"" })
     $lines = $Common + $includes + @("/I`"$ShaderDir`"", "/Fo`"$obj\\`"", "/Fd`"$obj\\vc.pdb`"", "/Fe`"$out\$($t.Exe)`"") +
              ($sources | ForEach-Object { "`"$_`"" })
-    $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO') + $t.Libs) -join ' '
+    # /PDBALTPATH : seul le nom du .pdb est inscrit dans l'exécutable, pas le chemin (ni le dossier de l'utilisateur).
+    $link = (@("/SUBSYSTEM:$($t.Subsystem)", '/DEBUG', '/INCREMENTAL:NO', '/PDBALTPATH:%_PDB%') + $t.Libs) -join ' '
     Set-Content -Path $rsp -Value $lines -Encoding ascii
     Write-Host "== $Name ($Config) : $($sources.Count) fichiers"
     # Icône et version de l'exécutable (res\*.rc, plans 49 et 52) : compilées par rc.exe et liées avec le reste.

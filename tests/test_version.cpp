@@ -47,3 +47,16 @@ TEST_CASE(version_current_is_readable) {
     CHECK(md::versionText(*current) == md::kMacDockVersion);
     CHECK(md::versionText(v(0, 53, 0, L"rc.1")) == L"0.53.0-rc.1");
 }
+
+TEST_CASE(version_semver_edge_cases) {
+    // Relecture du plan 52 : comme semver, pas de zéro en tête (« 01 », « rc.01 ») ; deux numéros de préversion
+    // trop grands pour un int se comparent quand même.
+    for (const wchar_t* bad : {L"01.2.3", L"1.02.3", L"1.2.03", L"1.2.3-rc.01"})
+        CHECK(!md::parseVersion(bad).has_value());
+    CHECK(md::parseVersion(L"0.0.0").has_value());
+    CHECK(md::parseVersion(L"1.2.3-rc.0").has_value());
+    CHECK(md::parseVersion(L"1.2.3-0a").has_value());   // identifiant alphanumérique : le zéro en tête est permis
+    CHECK(cmp(L"1.0.0-rc.99999999999999999999", L"1.0.0-rc.99999999999999999998") > 0);
+    CHECK(cmp(L"1.0.0-rc.100000000000000000000", L"1.0.0-rc.99999999999999999999") > 0);
+    CHECK(cmp(L"1.0.0-rc.99999999999999999999", L"1.0.0-rc.99999999999999999999") == 0);
+}

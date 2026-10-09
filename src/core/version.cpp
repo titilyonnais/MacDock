@@ -21,9 +21,9 @@ std::vector<std::wstring_view> split(std::wstring_view s, wchar_t sep) {
     }
 }
 
-// Nombre décimal non vide qui tient dans un int.
+// Nombre décimal non vide, sans zéro en tête (semver), qui tient dans un int.
 std::optional<int> number(std::wstring_view s) {
-    if (s.empty()) return std::nullopt;
+    if (s.empty() || (s.size() > 1 && s[0] == L'0')) return std::nullopt;
     long long n = 0;
     for (wchar_t c : s) {
         if (!isDigit(c)) return std::nullopt;
@@ -55,7 +55,7 @@ std::optional<Version> parseVersion(std::wstring_view text) {
     if (const std::size_t dash = text.find(L'-'); dash != std::wstring_view::npos) {
         const std::wstring_view pre = text.substr(dash + 1);
         for (std::wstring_view id : split(pre, L'.')) {
-            if (id.empty()) return std::nullopt;
+            if (id.empty() || (numeric(id) && id.size() > 1 && id[0] == L'0')) return std::nullopt;   // « rc.01 »
             for (wchar_t c : id)
                 if (!isIdentChar(c)) return std::nullopt;
         }
@@ -80,9 +80,9 @@ int compareVersions(const Version& a, const Version& b) {
     const auto pa = split(a.pre, L'.'), pb = split(b.pre, L'.');
     for (std::size_t i = 0; i < pa.size() && i < pb.size(); ++i) {
         const bool na = numeric(pa[i]), nb = numeric(pb[i]);
-        if (na && nb) {
-            const auto xa = number(pa[i]), xb = number(pb[i]);
-            if (xa && xb && *xa != *xb) return *xa < *xb ? -1 : 1;
+        if (na && nb) {   // sans zéro en tête : le plus long est le plus grand, sinon ordre des chiffres (toute taille)
+            if (pa[i].size() != pb[i].size()) return pa[i].size() < pb[i].size() ? -1 : 1;
+            if (const int c = pa[i].compare(pb[i]); c != 0) return c < 0 ? -1 : 1;
         } else if (na != nb) {
             return na ? -1 : 1;   // un nombre avant du texte
         } else if (const int c = pa[i].compare(pb[i]); c != 0) {
