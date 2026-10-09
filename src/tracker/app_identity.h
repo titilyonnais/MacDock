@@ -20,4 +20,8 @@ std::optional<AppIdentity> identifyLaunchTarget(const std::wstring& path);
 // Nom lisible d'un exécutable (FileDescription), sinon nom de fichier sans extension.
 std::wstring exeDisplayName(const std::wstring& exePath);
 
+// Chemin de l'exécutable d'un processus ; AUMID d'un processus empaqueté (app du Store…). Vide si inconnu.
+std::wstring processImagePath(DWORD pid);
+std::wstring processAppUserModelId(DWORD pid);
+
 } // namespace md

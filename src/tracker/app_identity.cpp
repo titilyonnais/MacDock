@@ -47,28 +47,6 @@ HWND findCoreWindow(HWND frame) {
     return found;
 }
 
-std::wstring processPath(DWORD pid) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return {};
-    wchar_t path[MAX_PATH * 2];
-    DWORD size = DWORD(std::size(path));
-    std::wstring out;
-    if (QueryFullProcessImageNameW(p, 0, path, &size)) out.assign(path, size);
-    CloseHandle(p);
-    return out;
-}
-
-std::wstring processAumid(DWORD pid) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return {};
-    wchar_t buf[APPLICATION_USER_MODEL_ID_MAX_LENGTH];
-    UINT32 len = APPLICATION_USER_MODEL_ID_MAX_LENGTH;
-    std::wstring out;
-    if (GetApplicationUserModelId(p, &len, buf) == ERROR_SUCCESS) out = buf;
-    CloseHandle(p);
-    return out;
-}
-
 std::wstring windowAumid(HWND hwnd) {
     ComPtr<IPropertyStore> store;
     if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&store)))) return {};
@@ -98,6 +76,28 @@ bool isCloakedForGood(HWND hwnd) {
 }
 
 } // namespace
+
+std::wstring processImagePath(DWORD pid) {
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return {};
+    wchar_t path[MAX_PATH * 2];
+    DWORD size = DWORD(std::size(path));
+    std::wstring out;
+    if (QueryFullProcessImageNameW(p, 0, path, &size)) out.assign(path, size);
+    CloseHandle(p);
+    return out;
+}
+
+std::wstring processAppUserModelId(DWORD pid) {
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return {};
+    wchar_t buf[APPLICATION_USER_MODEL_ID_MAX_LENGTH];
+    UINT32 len = APPLICATION_USER_MODEL_ID_MAX_LENGTH;
+    std::wstring out;
+    if (GetApplicationUserModelId(p, &len, buf) == ERROR_SUCCESS) out = buf;
+    CloseHandle(p);
+    return out;
+}
 
 bool isDockEligibleWindow(HWND hwnd) {
     if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return false;
@@ -160,7 +160,7 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
     if (className(hwnd) == L"ApplicationFrameWindow") {
         if (HWND core = findCoreWindow(hwnd)) {
             GetWindowThreadProcessId(core, &pid);
-            id.aumid = processAumid(pid);
+            id.aumid = processAppUserModelId(pid);
         } else {
             id.aumid = windowAumid(hwnd);   // app du Store réduite
             if (id.aumid.empty()) return std::nullopt;
@@ -168,9 +168,10 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
         }
     } else {
         id.aumid = windowAumid(hwnd);
-        if (id.aumid.empty()) id.aumid = processAumid(pid);
+        if (id.aumid.empty()) id.aumid = processAppUserModelId(pid);
     }
-    id.exePath = pid ? processPath(pid) : std::wstring();
+    id.pid = pid;
+    id.exePath = pid ? processImagePath(pid) : std::wstring();
     if (id.exePath.empty() && id.aumid.empty()) return std::nullopt;
     id.appId = makeAppId(id.aumid, id.exePath);
 
