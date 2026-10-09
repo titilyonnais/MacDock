@@ -1028,6 +1028,18 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Entrée essayée en réel** : « dock » ouvre Réglages MacDock sur la section Dock, « son » la page Son des
   Paramètres ; les deux fenêtres ouvertes par l'essai ont été refermées.
 
+### Plan 57 — Couleur d'accentuation, 9 octobre en soirée (session autonome)
+
+- **Réglages > Général > Apparence** : « Couleur d'accentuation », huit pastilles comme Réglages Système de macOS 26
+  (Bleu, Violet, Rose, Rouge, Orange, Jaune, Vert, Graphite) ; clic ou ← →, effet immédiat dans l'app.
+- **Partout dans MacDock** : sélection des menus (Dock, barre, Centre de contrôle), de Spotlight et de Forcer à
+  quitter, interrupteurs et curseurs de Réglages, contour de Mission Control, bouton « Capturer » de ⊞⇧5, lien des
+  piles. Un seul bleu au lieu de deux (#0088FF / #0091FF, ceux de macOS 26) ; texte noir sur le jaune.
+- **Teintes** : celles de macOS 26 / iOS 26 déjà employées par le projet ; à recaler sur ta VM macOS 26.
+- **Essais réels** : Réglages en mode d'essai (clic sur le violet : barre latérale violette) ; ton `settings.json`
+  sauvegardé, accent violet, Spotlight, Forcer à quitter et le menu  de la barre en violet, puis restauré à
+  l'empreinte près et retour au bleu vérifié.
+
 ### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
 
 - **Défaut vu à l'essai réel du plan 55** : la barre de menus posait ses pastilles en haut à droite de Réglages

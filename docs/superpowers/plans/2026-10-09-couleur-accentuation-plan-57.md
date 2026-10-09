@@ -27,17 +27,28 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
 - **Module** : `src/core/accent.h` (logique pure, sans dépendance), utilisable par tous les exécutables.
 
 ## Tâches
-- [ ] 1. **Accents** (`src/core/accent.h`) : table (clé, nom, teintes), `accentFromKey`, `accentRgb(accent, sombre)`,
+- [x] 1. **Accents** (`src/core/accent.h`) : table (clé, nom, teintes), `accentFromKey`, `accentRgb(accent, sombre)`,
   `onAccentRgb`. Tests.
-- [ ] 2. **Réglage** `accentColor` (`src/config/settings.*`) : lecture, écriture, valeur inconnue. Tests.
-- [ ] 3. **Interface** (`src/ui`) : `palette(sombre, accent)` ; pastilles dessinées (`drawSwatches`, `swatchAt`). Tests
+- [x] 2. **Réglage** `accentColor` (`src/config/settings.*`) : lecture, écriture, valeur inconnue. Tests.
+- [x] 3. **Interface** (`src/ui`) : `palette(sombre, accent)` ; pastilles dessinées (`drawSwatches`, `swatchAt`). Tests
   hors écran.
-- [ ] 4. **App Réglages** : rangée « Couleur d'accentuation » (Général), dessin, clic, clavier, palette suivant le choix.
+- [x] 4. **App Réglages** : rangée « Couleur d'accentuation » (Général), dessin, clic, clavier, palette suivant le choix.
   Tests (rangée, aller-retour du modèle, rendu).
-- [ ] 5. **Dock et barre** : `MenuWindow::Env::accent` (menus, piles, Centre de contrôle, Spotlight, Mission Control),
+- [x] 5. **Dock et barre** : `MenuWindow::Env::accent` (menus, piles, Centre de contrôle, Spotlight, Mission Control),
   barre ⊞⇧5, Forcer à quitter ; texte sur l'accent ; la barre relit l'accent de `settings.json`. Tests hors écran
   (Spotlight, Forcer à quitter).
-- [ ] 6. **Essais réels** : `settings.json` sauvegardé, accent violet, Spotlight, un menu du Dock et Forcer à quitter
+- [x] 6. **Essais réels** : `settings.json` sauvegardé, accent violet, Spotlight, un menu du Dock et Forcer à quitter
   capturés (leurs seules fenêtres), `settings.json` restauré à l'octet près ; Réglages en mode d'essai.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- Suite : 781 tests verts ; Dock, barre, Réglages, outil d'icônes et sonde compilés (Debug et Release).
+- **Essais réels** :
+  - Réglages en mode d'essai (`--data` temporaire, `--pane general`) : huit pastilles, bleu choisi ; clic sur le violet :
+    barre latérale violette, `settings.json` d'essai à « purple » ;
+  - ton `settings.json` sauvegardé, accent violet écrit, puis : Spotlight (ligne choisie), Forcer à quitter (sélection
+    et bouton) et le menu  de la barre (entrée choisie au clavier) en violet ; restauré à l'empreinte SHA-256 près,
+    Spotlight revenu au bleu ; captures et sauvegarde effacées.
+- Non essayé en réel : le bouton « Capturer » de ⊞⇧5 (la barre ⊞⇧5 ne s'ouvre qu'au vrai clavier) ; branché comme les
+  autres, une ligne.
