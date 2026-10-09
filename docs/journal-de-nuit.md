@@ -934,6 +934,19 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   près, sur ton écran 4K à 200 %.
 - **Relecture indépendante** : rien de critique ; restauration, cadre réellement obtenu et dialogues fixes corrigés.
 
+### Plan 51 — menu de la pastille verte, matin du 9 octobre
+
+- **Au survol de la pastille verte** (0,7 s), le menu de macOS 26, avec des icônes redessinées :
+  - *Déplacer et redimensionner* : moitiés, et quarts avec ⌥ ;
+  - *Remplir et organiser* : Remplir, ou Centrer avec ⌥, puis la fenêtre avec les suivantes ;
+  - *Plein écran*.
+- **Menu Fenêtre** : nouvelle section *Organiser* (gauche et droite, haut et bas, quarts, et leurs inverses), la
+  fenêtre active et les suivantes dans l'ordre d'affichage, comme macOS.
+- **Essai réel** sur des fenêtres d'essai à moi (`tests/real/zoom_menu_probe.cpp`) : délai, place du menu, cadres au
+  pixel près, Échap, Organiser, Plein écran, passage à une autre fenêtre.
+- **Relecture indépendante** : le menu qui se rouvrait en boucle (déjà corrigé en réel), le premier plan repris après
+  Alt+Tab (aussi dans les menus de la barre), les fenêtres « toujours au-dessus » dans Organiser : corrigés.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.
