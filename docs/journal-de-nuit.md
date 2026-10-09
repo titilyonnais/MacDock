@@ -1039,6 +1039,8 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Essais réels** : Réglages en mode d'essai (clic sur le violet : barre latérale violette) ; ton `settings.json`
   sauvegardé, accent violet, Spotlight, Forcer à quitter et le menu  de la barre en violet, puis restauré à
   l'empreinte près et retour au bleu vérifié.
+- **Relecture indépendante** : rien de critique ; corrigés : le nom survolé dans l'éventail des piles (resté sur
+  l'ancien bleu), la barre avec un `settings.json` à BOM, et Spotlight qui ne trouvait pas le réglage.
 
 ### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
 
@@ -1049,6 +1051,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   apparence, et ces fenêtres règlent elles-mêmes coins et liseré.
 - **Essais réels** avant et après : Réglages en mode d'essai (dossier temporaire effacé), Forcer à quitter ouvert par
   son message et fermé par Échap sans rien forcer.
+
+## Mineurs reportés — plan 57
+- L'anneau du clavier (Tab dans Réglages) suit l'accent à 50 % ; pour le Bleu, les teintes relevées sur macOS
+  (#0067F4 / #1AA9FF) ne sont plus employées.
+- Une fenêtre Forcer à quitter déjà ouverte garde l'ancien accent jusqu'à sa réouverture.
+- Pile en grille : le lien « Ouvrir dans l'Explorateur » survolé prend l'accent comme couleur de texte, peu lisible sur
+  le jaune en thème clair.
+- Spotlight : le sous-titre de la ligne choisie est un peu trop pâle pendant l'apparition (opacité appliquée deux fois,
+  antérieur au plan).
+- Nettoyage : un pinceau inutilisé et un commentaire périmé dans les menus, des noms trompeurs (`blue`, `white`), la
+  conversion de teinte recopiée trois fois, et la barre qui lit `settings.json` deux fois à chaque changement.
 
 ## Mineurs reportés — plan 56
 - Le branchement réel de la marque n'a pas de test automatique (la barre n'est pas dans `tests.exe`) : couvert par

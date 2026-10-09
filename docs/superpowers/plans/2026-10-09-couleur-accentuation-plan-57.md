@@ -52,3 +52,17 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
     Spotlight revenu au bleu ; captures et sauvegarde effacées.
 - Non essayé en réel : le bouton « Capturer » de ⊞⇧5 (la barre ⊞⇧5 ne s'ouvre qu'au vrai clavier) ; branché comme les
   autres, une ligne.
+
+## Relecture indépendante
+Rien de critique ; un important et huit mineurs. Corrigés en une passe, chacun avec un test vu en échec avant
+(783 tests verts) :
+- **Important** : dans l'éventail des piles, le nom survolé restait sur l'ancien bleu figé ; il prend l'accent, texte
+  lisible dessus (`fanLabelColors`).
+- **Mineurs regradés** :
+  - un `settings.json` avec BOM (édité à la main) laissait la barre en bleu pendant que le Dock prenait l'accent ;
+    un fichier illisible pendant une écriture la remettait au bleu. BOM retiré ; illisible : l'accent reste ;
+  - Spotlight ne trouvait pas le nouveau réglage : « accentuation », « apparence » mènent à Général.
+- **Promesse du plan tenue** : Forcer à quitter testé hors écran sur l'accent choisi.
+- **Tests fiabilisés** : la teinte du contour de Mission Control n'est plus celle d'une fenêtre factice ; une variable
+  masquée renommée.
+- Mineurs reportés : voir le journal (« Mineurs reportés — plan 57 »).
