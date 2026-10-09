@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 #include "../core/json.h"
 #include "../core/log.h"
@@ -18,6 +19,7 @@
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "advapi32.lib")
 
 namespace md::update {
 
@@ -80,6 +82,37 @@ void cleanDownloads(const std::wstring& dir, const std::wstring& keep) {
         if (_wcsicmp(path.c_str(), keep.c_str()) != 0) DeleteFileW(path.c_str());
     } while (FindNextFileW(h, &fd));
     FindClose(h);
+}
+
+// cmd.exe interdit par une stratégie (DisableCMD) : pas de relais.
+bool cmdAllowed() {
+    for (HKEY root : {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE}) {
+        DWORD value = 0, size = sizeof value;
+        if (RegGetValueW(root, L"Software\\Policies\\Microsoft\\Windows\\System", L"DisableCMD", RRF_RT_REG_DWORD, nullptr,
+                         &value, &size) == ERROR_SUCCESS && value != 0)
+            return false;
+    }
+    return true;
+}
+
+// Relais du démarrage : cmd.exe, sans fenêtre, lance l'installateur, attend sa fin, puis relance ce lanceur depuis son
+// dossier. Les chemins passent par l'environnement du relais : cmd ne les réinterprète jamais (« % », « & »…).
+bool startRelay(const std::wstring& setup, const std::wstring& logFile, const std::wstring& workDir, PROCESS_INFORMATION* pi) {
+    wchar_t sys[MAX_PATH] = {}, self[MAX_PATH] = {};
+    if (!GetSystemDirectoryW(sys, MAX_PATH) || !GetModuleFileNameW(nullptr, self, MAX_PATH)) return false;
+    std::wstring selfDir(self);
+    selfDir.resize(selfDir.find_last_of(L'\\'));
+    const std::pair<const wchar_t*, std::wstring> vars[] = {
+        {L"MACDOCK_RELAY_SETUP", setup}, {L"MACDOCK_RELAY_LOG", logFile}, {L"MACDOCK_RELAY_DIR", selfDir}, {L"MACDOCK_RELAY_LAUNCHER", self}};
+    for (const auto& [name, value] : vars) SetEnvironmentVariableW(name, value.c_str());
+    const std::wstring cmdExe = std::wstring(sys) + L"\\cmd.exe";
+    std::wstring cmd = L"\"" + cmdExe +
+                       L"\" /d /v:off /c start \"\" /wait \"%MACDOCK_RELAY_SETUP%\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "
+                       L"/LOG=\"%MACDOCK_RELAY_LOG%\" /RELAUNCH & start \"\" /d \"%MACDOCK_RELAY_DIR%\" \"%MACDOCK_RELAY_LAUNCHER%\"";
+    STARTUPINFOW si{sizeof si};
+    const bool ok = CreateProcessW(cmdExe.c_str(), cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, workDir.c_str(), &si, pi) != FALSE;
+    for (const auto& [name, value] : vars) SetEnvironmentVariableW(name, nullptr);
+    return ok;
 }
 
 } // namespace
@@ -234,14 +267,21 @@ bool launchInstaller(const Paths& p, bool relaunch, unsigned lockWaitMs) {
         log::warn(L"Mise à jour : aucun installateur prêt et intact");
         return false;
     }
-    std::wstring cmd = L"\"" + s.readyPath + L"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG=\"" + p.downloadDir +
-                       L"\\install.log\"";
+    const std::wstring logFile = p.downloadDir + L"\\install.log";
+    std::wstring cmd = L"\"" + s.readyPath + L"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG=\"" + logFile + L"\"";
     if (relaunch) cmd += L" /RELAUNCH";
     s.attemptedVersion = s.readyVersion;   // une seule tentative par version
     save(p, s);
     STARTUPINFOW si{sizeof si};
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(s.readyPath.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, p.downloadDir.c_str(), &si, &pi)) {
+    // Au démarrage, rien ne tourne : un relais attend la fin de l'installateur puis relance ce lanceur, même si
+    // l'installateur s'est arrêté tôt (autre installation en cours, journal impossible, antivirus) ; s'il a déjà relancé
+    // MacDock, le second lanceur trouve le premier et sort aussitôt.
+    bool started = relaunch && cmdAllowed() &&
+                   startRelay(s.readyPath, logFile, p.downloadDir, &pi);
+    if (!started)
+        started = CreateProcessW(s.readyPath.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, p.downloadDir.c_str(), &si, &pi) != FALSE;
+    if (!started) {
         log::error(L"Mise à jour : installateur impossible à lancer (%lu)", GetLastError());
         return false;
     }

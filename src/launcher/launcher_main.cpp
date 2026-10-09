@@ -193,8 +193,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     std::wstring logs = logDir();
     md::log::init(logs);
-    // Mise à jour téléchargée lors d'une session précédente : installée avant que le Dock apparaisse. L'installateur
-    // relance MacDock, même s'il échoue (/RELAUNCH) ; ce lanceur s'arrête tout de suite pour ne pas le gêner.
+    // Mise à jour téléchargée lors d'une session précédente : installée avant que le Dock apparaisse. Un relais attend
+    // la fin de l'installateur et relance MacDock, même s'il échoue ou s'arrête tôt ; ce lanceur s'arrête tout de suite
+    // pour ne pas gêner le remplacement de ses fichiers.
     if (md::update::installAtStartup(md::update::defaultPaths())) {
         if (quit) CloseHandle(quit);
         ReleaseMutex(mutex);
