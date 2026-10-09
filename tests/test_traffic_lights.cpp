@@ -97,6 +97,37 @@ TEST_CASE(lights_dominant_color) {
     CHECK_EQ(md::dominantColor({}), 0u);
 }
 
+TEST_CASE(lights_caption_sample_points) {
+    // Points de la barre de titre lus pour la couleur sous les pastilles : de droite à gauche depuis le calque, les
+    // neuf premiers où la fenêtre elle-même est visible (plan 45 : une fenêtre du dessus n'en donne plus la couleur).
+    const auto all = md::captionSampleXs(500, 100, 3, [](LONG) { return true; });
+    REQUIRE(all.size() == 9u);
+    CHECK_EQ(all.front(), 500L);
+    CHECK_EQ(all.back(), 476L);   // comme avant : 500 - 8 × 3
+    // Les plus proches recouverts par une autre fenêtre (x > 440) : les suivants vers la gauche.
+    const auto covered = md::captionSampleXs(500, 100, 3, [](LONG x) { return x <= 440; });
+    REQUIRE(covered.size() == 9u);
+    CHECK(covered.front() <= 440 && covered.back() == covered.front() - 24);
+    CHECK(md::captionSampleXs(500, 100, 3, [](LONG) { return false; }).empty());   // tout recouvert
+    CHECK(md::captionSampleXs(99, 100, 3, [](LONG) { return true; }).empty());     // cadre trop étroit
+    CHECK_EQ(md::captionSampleXs(108, 100, 3, [](LONG) { return true; }).size(), size_t(3));   // étroit : moins de neuf
+    const auto edge = md::captionSampleXs(120, 100, 3, [](LONG) { return true; });  // jusqu'au bord gauche, pas au-delà
+    CHECK(!edge.empty() && edge.back() >= 100);
+    // Recouverte sur une grande largeur : au plus 128 points essayés, puis rien.
+    int tried = 0;
+    CHECK(md::captionSampleXs(2000, 0, 1, [&](LONG) { return ++tried, false; }).empty());
+    CHECK(tried <= 128);
+}
+
+TEST_CASE(lights_target_hidden) {
+    // Fenêtre suivie masquée : calque caché tout de suite ; relue par la boucle du fil, retirée si elle l'est restée
+    // (avec le crochet de déplacements de son processus, s'il était le dernier), replacée si elle a réapparu.
+    CHECK(md::onTargetHidden(false, false) == md::HiddenLayer::HideNow);
+    CHECK(md::onTargetHidden(false, true) == md::HiddenLayer::HideNow);
+    CHECK(md::onTargetHidden(true, false) == md::HiddenLayer::Remove);
+    CHECK(md::onTargetHidden(true, true) == md::HiddenLayer::Replace);
+}
+
 TEST_CASE(lights_setting) {
     auto s = md::menuBarSettingsFromJson(*md::json::parse(R"({"trafficLights":"all"})"));
     CHECK(s.trafficLights == md::LightsMode::All);

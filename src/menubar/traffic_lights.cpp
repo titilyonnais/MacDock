@@ -92,6 +92,19 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     return l;
 }
 
+std::vector<LONG> captionSampleXs(LONG right, LONG minLeft, LONG step, const std::function<bool(LONG)>& ours, int want) {
+    std::vector<LONG> xs;
+    step = std::max(1L, step);
+    for (int tries = 0; right >= minLeft && tries < 128 && int(xs.size()) < want; ++tries, right -= step)
+        if (ours(right)) xs.push_back(right);
+    return xs;
+}
+
+HiddenLayer onTargetHidden(bool deferred, bool visible) {
+    if (!deferred) return HiddenLayer::HideNow;
+    return visible ? HiddenLayer::Replace : HiddenLayer::Remove;
+}
+
 LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]) {
     if (hit < 0) return doubleClick ? LightsMouse::Zoom : LightsMouse::Drag;
     return !doubleClick && enabled[hit] ? LightsMouse::Press : LightsMouse::None;

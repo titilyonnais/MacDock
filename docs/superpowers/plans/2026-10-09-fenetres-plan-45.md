@@ -12,7 +12,7 @@
   `EVENT_OBJECT_LOCATIONCHANGE` de son processus, bavard (curseur, caret), reste donc posé tant que la fenêtre existe.
 
 ## Tâches
-- [ ] 1. **Couleur prise sur la fenêtre elle-même** :
+- [x] 1. **Couleur prise sur la fenêtre elle-même** :
   - points candidats de droite à gauche, du calque jusqu'au bord gauche du cadre (au plus 128) ;
   - on garde les neuf premiers où la fenêtre est visible (`WindowFromPoint`, racine = la fenêtre) ;
   - aucun point visible : la couleur d'avant reste ; jamais mesurée : clair ou sombre selon la barre de titre de la
@@ -20,7 +20,7 @@
 
   Test : `captionSampleXs` (tous visibles : les neuf de toujours ; les plus proches recouverts : les suivants ;
   aucun : vide ; cadre trop étroit : vide).
-- [ ] 2. **Fenêtre masquée pour de bon** :
+- [x] 2. **Fenêtre masquée pour de bon** :
   - calque caché tout de suite ;
   - relue par la boucle du fil (aucun calque n'est alors en train de traiter un message) : encore masquée, calque
     retiré, avec le crochet de son processus s'il était le dernier ; revenue, calque replacé ;
@@ -28,3 +28,10 @@
 
   Test : `onTargetHidden` (immédiat : cacher ; reporté et encore masquée : retirer ; reporté et revenue : replacer).
 - [ ] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
+
+## Essai réel
+Fenêtres d'essai à moi, MacDock en diagnostic, lancé puis arrêté ; ancienne barre puis nouvelle :
+- barre de titre recouverte par une bande rouge à gauche des pastilles, couleur remesurée : avant, fond des pastilles
+  rouge (`E61414`) ; après, celui de la barre de titre (`F3F3F3`) ;
+- fenêtre masquée : avant, son calque restait ; après, il est retiré avec le crochet de son processus, et un nouveau
+  calque arrive quand elle est montrée de nouveau.
