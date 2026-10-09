@@ -172,6 +172,7 @@ struct Session {
     void renderAll();
     void close(std::optional<HWND> choice);
     int hitAt(std::size_t screen, double x, double y) const;
+    void select(std::size_t screen, int thumb);   // contour sur une seule fenêtre, tous écrans confondus
     bool isOurs(HWND h) const {
         for (const Screen& s : screens)
             if (s.hwnd == h) return true;
@@ -341,6 +342,18 @@ void Session::close(std::optional<HWND> choice) {
     for (Screen& s : screens) s.hover = -1;
 }
 
+// Contour sur la fenêtre `thumb` de l'écran `screen` (-1 : aucune), et sur aucune autre : un seul contour en tout,
+// même avec plusieurs écrans.
+void Session::select(std::size_t screen, int thumb) {
+    for (std::size_t k = 0; k < screens.size(); ++k) {
+        const int want = k == screen ? thumb : -1;
+        if (screens[k].hover == want) continue;
+        screens[k].hover = want;
+        render(screens[k]);
+    }
+    dcomp->Commit();
+}
+
 int Session::hitAt(std::size_t screen, double x, double y) const {
     for (std::size_t i = 0; i < thumbs.size(); ++i) {
         const Thumb& th = thumbs[i];
@@ -356,11 +369,7 @@ LRESULT Session::handle(std::size_t k, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEMOVE: {
             const int h = dir > 0 && q >= 1 ? hitAt(k, x, y) : -1;
-            if (h != s.hover) {
-                s.hover = h;
-                render(s);
-                dcomp->Commit();
-            }
+            if (h != s.hover) select(k, h);
             return 0;
         }
         case WM_LBUTTONDOWN: pressed = true; return 0;
@@ -373,8 +382,25 @@ LRESULT Session::handle(std::size_t k, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_RBUTTONUP: close(std::nullopt); return 0;
         case WM_KEYDOWN:
-            if (wp == VK_ESCAPE) close(std::nullopt);
-            else if (wp == VK_RETURN && s.hover >= 0) close(thumbs[std::size_t(s.hover)].src);
+            if (wp == VK_ESCAPE) {
+                close(std::nullopt);
+            } else if (wp == VK_RETURN && s.hover >= 0) {
+                close(thumbs[std::size_t(s.hover)].src);
+            } else if ((wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP || wp == VK_DOWN) && dir > 0 && q >= 1) {
+                // Flèches : la sélection passe à la fenêtre voisine de cet écran ; Entrée la choisit.
+                std::vector<int> index;
+                std::vector<MissionRect> rects;
+                int from = -1;
+                for (std::size_t i = 0; i < thumbs.size(); ++i) {
+                    if (!thumbs[i].alive || thumbs[i].screen != k) continue;
+                    if (int(i) == s.hover) from = int(index.size());
+                    index.push_back(int(i));
+                    rects.push_back(thumbs[i].to);
+                }
+                const int n = missionNeighbor(rects, from, wp == VK_LEFT ? -1 : wp == VK_RIGHT ? 1 : 0,
+                                              wp == VK_UP ? -1 : wp == VK_DOWN ? 1 : 0);
+                if (n >= 0 && index[std::size_t(n)] != s.hover) select(k, index[std::size_t(n)]);
+            }
             return 0;
         case WM_ACTIVATE:
             // Une autre app passe devant : fermeture immédiate. Passer d'une de nos vues à l'autre ne ferme pas.

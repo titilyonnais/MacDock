@@ -26,7 +26,7 @@
   Décision : `genieVisibleRect(rectangle Windows, taille de la miniature DWM)`, déjà utilisée et testée pour le génie
   (`test_genie`), au lieu de `DWMWA_EXTENDED_FRAME_BOUNDS` : sur la fenêtre d'essai mesurée, elle donne exactement le
   cadre visible, (311, 300)-(1089, 789). Câblage seul, sans nouveau test unitaire.
-- [ ] 3. **Mission Control : un seul contour** (survol retiré des autres écrans) **et flèches** :
+- [x] 3. **Mission Control : un seul contour** (survol retiré des autres écrans) **et flèches** :
   - `missionNeighbor(rects, from, dx, dy)` : la fenêtre la plus proche dans la direction ; aucune sélection : la
     première en haut à gauche ;
   - flèches : la sélection (le contour) se déplace sur l'écran de la vue ; Entrée la choisit.
@@ -34,3 +34,7 @@
   Tests : grille 2 × 2 (droite, bas, bord), départ sans sélection, fenêtres décalées.
 - [ ] 4. Essai réel (MacDock lancé pour l'essai puis arrêté, fenêtres d'essai à soi seulement), documentation,
   relecture, fusion.
+
+## Essai réel
+MacDock en diagnostic, lancé puis arrêté ; deux fenêtres d'essai à moi (A à gauche, B à droite), A au premier plan :
+Exposé de l'app (Ctrl+Alt+↓) ouvert, puis →, →, Entrée : B choisie et passée au premier plan, Exposé fermé.
