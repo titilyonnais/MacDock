@@ -38,6 +38,10 @@ CheckResult check(const Paths& p, const Options& o, std::wstring* ready = nullpt
 // relancé même si l'installation échoue (au démarrage, rien ne tourne encore). false : rien de prêt, fichier altéré.
 bool launchInstaller(const Paths& p, bool relaunch, unsigned lockWaitMs = 120000);
 
+// La copie qui tourne est-elle celle que l'installateur a posée (dossier de l'exécutable = InstallLocation de la clé de
+// désinstallation de MacDock) ? Sinon (copie compilée à la main, variante d'essai), aucune mise à jour.
+bool runsFromInstalledCopy();
+
 // Au démarrage du lanceur, avant le Dock : installe la version prête (true : l'installateur est parti, le lanceur
 // s'arrête), ou oublie une version périmée ou une tentative ratée.
 bool installAtStartup(const Paths& p);

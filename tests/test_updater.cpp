@@ -230,5 +230,5 @@ TEST_CASE(update_notifier_stop_interrupts_waiting_check) {   // relecture du pla
         delete n;
         delete busy;
     }
-    CHECK(!exists(dir.path + L"\update.json"));   // rien d'écrit
+    CHECK(!exists(dir.path + L"\\update.json"));   // rien d'écrit
 }

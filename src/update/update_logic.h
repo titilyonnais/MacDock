@@ -59,6 +59,11 @@ struct UpdateState {
 UpdateState parseUpdateState(std::string_view json);   // illisible : valeurs par défaut
 std::string updateStateJson(const UpdateState& s);
 
+// Seule la copie posée par l'installateur se met à jour : le dossier du lanceur est celui que l'installateur a noté
+// (InstallLocation, barre oblique finale et casse sans importance). Une copie compilée à la main ou la variante
+// d'essai installerait la vraie ailleurs et y renverrait le démarrage avec Windows.
+bool installedCopy(std::wstring_view exeDir, std::wstring_view installLocation);
+
 // Recherche due ? `interval` secondes après la précédente ; jamais faite ou horloge reculée : oui.
 bool checkDue(std::int64_t lastCheck, std::int64_t now, std::int64_t interval = 12 * 3600);
 

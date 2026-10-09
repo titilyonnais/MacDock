@@ -7,7 +7,8 @@
 //   MacDockLauncher.exe --check-update    recherche, télécharge et vérifie une mise à jour (plan 53) ; code de
 //                                         sortie 0 à jour, 10 prête, 1 erreur (update.json dit laquelle)
 //   MacDockLauncher.exe --install-update  installe la mise à jour prête (l'installateur quitte et relance MacDock)
-// Au démarrage, une mise à jour prête est installée avant le Dock ; ensuite, un fil cherche les suivantes.
+// Au démarrage, une mise à jour prête est installée avant le Dock ; ensuite, un fil cherche les suivantes. Tout cela
+// seulement pour la copie posée par l'installateur (une copie compilée à la main ne se met jamais à jour).
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -68,6 +69,13 @@ std::wstring logDir() {
 // attend aussi le verrou des mises à jour, que la recherche tient.
 int checkUpdate() {
     md::log::init(logDir());
+    if (!md::update::runsFromInstalledCopy()) {   // Réglages dit pourquoi
+        const md::update::Paths paths = md::update::defaultPaths();
+        md::UpdateState s = md::update::load(paths);
+        s.lastError = L"copie non installée : les mises à jour passent par l'installateur";
+        md::update::save(paths, s);
+        return 1;
+    }
     HANDLE quit = CreateEventW(nullptr, TRUE, FALSE, kQuitEvent);   // jamais remis à zéro ici : un ordre en cours vaut
     md::update::Options options = md::update::optionsFromEnvironment();
     options.cancel = quit;
@@ -182,6 +190,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         case md::LauncherCommand::CheckUpdate: return checkUpdate();
         case md::LauncherCommand::InstallUpdate:
             md::log::init(logDir());
+            if (!md::update::runsFromInstalledCopy()) return 1;
             return md::update::launchInstaller(md::update::defaultPaths(), false) ? 0 : 1;
         case md::LauncherCommand::Run: break;
     }
@@ -193,10 +202,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     std::wstring logs = logDir();
     md::log::init(logs);
+    // Mises à jour : seulement pour la copie posée par l'installateur (jamais une copie compilée à la main, ni la
+    // variante d'essai, qui installeraient la vraie ailleurs).
+    const bool updates = md::update::runsFromInstalledCopy();
     // Mise à jour téléchargée lors d'une session précédente : installée avant que le Dock apparaisse. Un relais attend
     // la fin de l'installateur et relance MacDock, même s'il échoue ou s'arrête tôt ; ce lanceur s'arrête tout de suite
     // pour ne pas gêner le remplacement de ses fichiers.
-    if (md::update::installAtStartup(md::update::defaultPaths())) {
+    if (updates && md::update::installAtStartup(md::update::defaultPaths())) {
         if (quit) CloseHandle(quit);
         ReleaseMutex(mutex);
         CloseHandle(mutex);
@@ -212,7 +224,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     md::UpdateNotifier notifier;   // recherches de fond, notification d'une version prête
     for (auto& c : children)
         if (!startChild(c)) notifyGaveUp(logs, c.stoppedTitle, c.stoppedText);
-    notifier.start(instance);
+    if (updates) notifier.start(instance);
 
     for (;;) {
         std::vector<HANDLE> handles;

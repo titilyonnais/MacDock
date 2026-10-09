@@ -137,6 +137,15 @@ std::string updateStateJson(const UpdateState& s) {
     return json::serialize(o);
 }
 
+bool installedCopy(std::wstring_view exeDir, std::wstring_view installLocation) {
+    const auto trimmed = [](std::wstring_view s) {
+        while (!s.empty() && (s.back() == L'\\' || s.back() == L'/')) s.remove_suffix(1);
+        return std::wstring(s);
+    };
+    const std::wstring a = trimmed(exeDir), b = trimmed(installLocation);
+    return !a.empty() && _wcsicmp(a.c_str(), b.c_str()) == 0;
+}
+
 bool checkDue(std::int64_t lastCheck, std::int64_t now, std::int64_t interval) {
     return lastCheck <= 0 || now < lastCheck || now - lastCheck >= interval;
 }

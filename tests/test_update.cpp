@@ -181,3 +181,16 @@ TEST_CASE(update_list_endpoint_and_signed_fallback) {
     REQUIRE(offer.has_value());
     CHECK(offer->version == *md::parseVersion(L"0.53.0"));
 }
+
+TEST_CASE(update_only_from_installed_copy) {   // relecture du plan 53 (copie d'essai ou compilée à la main)
+    // Seule la copie posée par l'installateur se met à jour : une copie compilée à la main ou la variante d'essai
+    // installerait la vraie ailleurs et y renverrait le démarrage avec Windows.
+    const std::wstring installed = L"C:\\Users\\alice\\AppData\\Local\\Programs\\MacDock\\";   // InstallLocation d'Inno
+    CHECK(md::installedCopy(L"C:\\Users\\alice\\AppData\\Local\\Programs\\MacDock", installed));
+    CHECK(md::installedCopy(L"c:\\users\\ALICE\\appdata\\local\\programs\\macdock\\", installed));
+    CHECK(!md::installedCopy(L"C:\\src\\macos-dock\\build\\Release", installed));
+    CHECK(!md::installedCopy(L"C:\\Users\\alice\\AppData\\Local\\Programs\\MacDock-essai", installed));
+    CHECK(!md::installedCopy(L"C:\\Users\\alice\\AppData\\Local\\Programs", installed));
+    CHECK(!md::installedCopy(L"C:\\Users\\alice\\AppData\\Local\\Programs\\MacDock", L""));   // jamais installé
+    CHECK(!md::installedCopy(L"", L""));
+}

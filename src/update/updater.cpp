@@ -291,6 +291,19 @@ bool launchInstaller(const Paths& p, bool relaunch, unsigned lockWaitMs) {
     return true;
 }
 
+bool runsFromInstalledCopy() {
+    wchar_t self[MAX_PATH] = {}, location[MAX_PATH] = {};
+    if (!GetModuleFileNameW(nullptr, self, MAX_PATH)) return false;
+    std::wstring dir(self);
+    dir.resize(dir.find_last_of(L'\\'));
+    DWORD size = sizeof location;
+    if (RegGetValueW(HKEY_CURRENT_USER,
+                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7C2E4C1B-8A3D-4F6E-9B21-5D0A3C9E7F14}_is1",
+                     L"InstallLocation", RRF_RT_REG_SZ, nullptr, location, &size) != ERROR_SUCCESS)
+        return false;
+    return installedCopy(dir, location);
+}
+
 bool installAtStartup(const Paths& p) {
     Lock lock(5000);   // une recherche lancée à la main (Réglages) : le démarrage n'attend pas, rien n'est touché
     if (!lock.held) return false;
