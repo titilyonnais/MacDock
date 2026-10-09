@@ -202,6 +202,23 @@ std::vector<GroupSpec> generalPane(const PaneEnv& env) {
                                 L"Le Dock et la barre des menus démarrent avec Windows", L"démarrage session"));
     out.push_back(start);
 
+    GroupSpec look;   // Réglages Système > Apparence (plan 57)
+    look.title = L"Apparence";
+    RowSpec accent;
+    accent.kind = RowKind::Swatches;
+    accent.label = L"Couleur d'accentuation";
+    accent.keywords = L"accent couleur surlignage sélection";
+    for (const AccentInfo& a : accentList()) accent.choices.push_back(a.name);
+    accent.get = [](const SettingsModel& m) { return double(int(m.dock.accentColor)); };
+    accent.set = [](SettingsModel& m, double v) {
+        m.dock.accentColor = AccentColor(std::clamp(int(std::lround(v)), 0, int(accentList().size()) - 1));
+    };
+    accent.swatch = [](int i, bool dark) {
+        return accentRgb(AccentColor(std::clamp(i, 0, int(accentList().size()) - 1)), dark);
+    };
+    look.rows.push_back(std::move(accent));
+    out.push_back(look);
+
     GroupSpec app;
     app.title = L"MacDock";
     const bool running = env.running;

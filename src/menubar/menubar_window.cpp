@@ -1161,7 +1161,20 @@ MenuWindow::Env MenuBarApp::menuEnv(const Screen& s) const {
     env.font = s.font;
     env.metrics = glassMetrics_;
     env.trace = trace_;
+    env.accent = dockAccent();
     return env;
+}
+
+// Couleur d'accentuation réglée pour le Dock (Réglages > Général) : relue seulement quand settings.json change.
+AccentColor MenuBarApp::dockAccent() const {
+    const std::wstring path = dataDir_ + L"\\settings.json";
+    if (FILETIME t{}; fileTime(path, t) && CompareFileTime(&t, &accentTime_) != 0) {
+        if (const auto a = accentColorOf(readShared(path))) {   // illisible (écriture en cours) : l'accent reste
+            accentTime_ = t;
+            accent_ = *a;
+        }
+    }
+    return accent_;
 }
 
 void MenuBarApp::onPress(Screen& s, POINT client, bool doubleClick) {

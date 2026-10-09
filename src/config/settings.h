@@ -2,8 +2,10 @@
 #pragma once
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "../core/accent.h"
 #include "../core/json.h"
 #include "hot_corner_action.h"
 
@@ -40,6 +42,7 @@ struct Settings {
     double largeSize = 80;    // borné à [tileSize, 128]
     bool glass = true;        // verre Liquid Glass (capture de l'arrière-plan) ; false = verre dépoli simple
     MinimizeEffect minimizeEffect = MinimizeEffect::Genie;   // réduction des fenêtres dans le Dock
+    AccentColor accentColor = AccentColor::Blue;   // couleur d'accentuation (menus, Spotlight, Réglages…), plan 57
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
     // Raccourcis globaux : tout raccourci que parseHotkey accepte (saisi dans l'app Réglages), ou off.
@@ -62,6 +65,9 @@ struct Settings {
 constexpr int kSettingsVersion = 2;
 
 Settings settingsFromJson(const json::Value& v);
+// Couleur d'accentuation d'un settings.json brut (lu par la barre de menus), BOM accepté ; valeur inconnue : bleu ;
+// fichier illisible (vide, JSON cassé pendant une écriture) : rien.
+std::optional<AccentColor> accentColorOf(std::string_view settingsJson);
 json::Value settingsToJson(const Settings& s);   // écrit "version": kSettingsVersion
 // Fichier sans "version" (v1) : largeSize 128 (ancien défaut) → 80 ; met "version": 2.
 json::Value migrateSettingsJson(const json::Value& v);

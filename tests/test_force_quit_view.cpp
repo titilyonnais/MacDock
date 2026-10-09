@@ -12,6 +12,8 @@
 #include "minitest.h"
 #include "../src/forcequit/force_quit_view.h"
 #include "../src/ui/ui_draw.h"
+#include "../src/calib/png_io.h"
+#include "../src/forcequit/force_quit_window.h"
 
 namespace {
 
@@ -166,4 +168,23 @@ TEST_CASE(force_quit_button_greyed_without_selection) {
     c.rt->EndDraw();
     c.read();
     CHECK(!sameColor(c.at(int(l.button.left) + 7, int((l.button.top + l.button.bottom) / 2)), pal.accent));   // grisé
+}
+
+TEST_CASE(force_quit_snapshot_follows_accent) {   // relecture du plan 57 : sélection et bouton sur l'accent choisi
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    wchar_t tmp[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, tmp);
+    const std::wstring path = std::wstring(tmp) + L"macdock-fq-accent.png";
+    REQUIRE(md::forceQuitSnapshot(path, false, false, md::AccentColor::Orange));
+    UINT w = 0, h = 0;
+    const std::vector<std::uint8_t> px = md::readPng(path, w, h);
+    DeleteFileW(path.c_str());
+    REQUIRE(!px.empty());
+    int orange = 0;   // #FF8D28 (clair), opaque
+    for (std::size_t i = 0; i + 3 < px.size(); i += 4)
+        if (px[i + 3] > 250 && std::abs(int(px[i + 2]) - 0xFF) <= 8 && std::abs(int(px[i + 1]) - 0x8D) <= 8 &&
+            std::abs(int(px[i]) - 0x28) <= 8)
+            ++orange;
+    CHECK(orange > 500);
+    CoUninitialize();
 }

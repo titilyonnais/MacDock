@@ -303,7 +303,7 @@ void ForceQuitWindow::render() {
     v.buttonEnabled = list_.selected >= 0;
     v.buttonPressed = buttonPressed_;
     v.hint = hintFor(env_.shortcutLabel);
-    const ui::Palette pal = ui::palette(dark_);
+    const ui::Palette pal = ui::palette(dark_, env_.accent);
     rt_->BeginDraw();
     rt_->SetTransform(D2D1::Matrix3x2F::Identity());
     {
@@ -528,7 +528,7 @@ RECT ForceQuitWindow::sheetButtonOnScreen(int i) const {
 
 // ---- Image hors écran ----
 
-bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet) {
+bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet, AccentColor accent) {
     const float scale = 2;
     const UINT w = UINT(kFqWidth * scale), h = UINT(kFqHeight * scale);
     ComPtr<IWICImagingFactory> wic;
@@ -551,7 +551,7 @@ bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet) {
     v.selected = 2;
     v.buttonEnabled = true;
     v.hint = hintFor(L"⌥⊞⎋");
-    const ui::Palette pal = ui::palette(dark);
+    const ui::Palette pal = ui::palette(dark, accent);
     rt->BeginDraw();
     {
         ui::Painter p(rt.Get(), dwrite.Get(), pal, ui::interfaceFont(dwrite.Get()));

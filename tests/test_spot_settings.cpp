@@ -53,6 +53,8 @@ TEST_CASE(spot_settings_search_finds_pages) {
     CHECK(firstTitle(L"désinstaller") == L"Applications installées");
     CHECK(firstTitle(L"mises à jour") == L"Windows Update");
     CHECK(firstTitle(L"génie") == L"Fenêtres");   // mot-clé d'une section de Réglages MacDock
+    CHECK(firstTitle(L"accentuation") == L"Général");   // relecture du plan 57 : Général > Apparence
+    CHECK(firstTitle(L"apparence") == L"Général");
     CHECK(firstTitle(L"  dock ") == L"Dock");
     const auto& pages = md::settingsPages();
     const auto c = md::searchSettings(pages, L"clavier");

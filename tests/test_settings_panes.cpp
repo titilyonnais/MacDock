@@ -62,7 +62,7 @@ TEST_CASE(settings_every_value_row_roundtrips) {
                     continue;
                 }
                 if (r.kind != md::RowKind::Switch && r.kind != md::RowKind::Slider && r.kind != md::RowKind::Choice &&
-                    r.kind != md::RowKind::Segmented)
+                    r.kind != md::RowKind::Segmented && r.kind != md::RowKind::Swatches)
                     continue;
                 REQUIRE(r.get && r.set);
                 std::vector<double> values;
@@ -93,6 +93,31 @@ TEST_CASE(settings_general_startup_and_backup) {
     md::PaneEnv stopped = fullEnv();
     stopped.running = false;
     CHECK(hasAction(row(md::paneGroups(md::PaneId::General, stopped), L"MacDock"), md::PaneAction::Launch));
+}
+
+TEST_CASE(settings_general_accent_color) {   // plan 57 : comme Réglages Système > Apparence
+    const auto general = md::paneGroups(md::PaneId::General, fullEnv());
+    const md::RowSpec* accent = row(general, L"Couleur d'accentuation");
+    REQUIRE(accent && accent->kind == md::RowKind::Swatches);
+    REQUIRE(accent->choices.size() == 8);
+    CHECK(accent->choices[0] == L"Bleu" && accent->choices[1] == L"Violet" && accent->choices[7] == L"Graphite");
+    REQUIRE(accent->swatch);
+    CHECK(accent->swatch(1, false) == 0xCB30E0u);   // la teinte du thème clair
+    CHECK(accent->swatch(0, true) == 0x0091FFu);    // et du sombre
+    md::SettingsModel m;
+    CHECK(accent->get(m) == 0);   // bleu par défaut
+    accent->set(m, 3);
+    CHECK(m.dock.accentColor == md::AccentColor::Red);
+    CHECK(accent->get(m) == 3);
+    accent->set(m, 99);   // borné à la dernière
+    CHECK(m.dock.accentColor == md::AccentColor::Graphite);
+    // La recherche trouve la ligne par son nom, ses mots-clés et les noms des couleurs.
+    for (const wchar_t* q : {L"accentuation", L"violet", L"apparence"}) {
+        const auto found = md::searchPanes(q, fullEnv());
+        bool inGeneral = false;
+        for (const auto& f : found) inGeneral = inGeneral || (f.pane == md::PaneId::General && !f.rows.empty());
+        CHECK(inGeneral);
+    }
 }
 
 TEST_CASE(settings_hot_corners_and_shortcuts) {

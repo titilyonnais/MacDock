@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../config/metrics.h"
+#include "../core/accent.h"
 #include "menu_model.h"
 
 namespace md {
@@ -25,6 +26,7 @@ public:
         std::wstring font;                // famille déjà résolue
         Metrics metrics;
         bool trace = false;
+        AccentColor accent = AccentColor::Blue;   // couleur d'accentuation (plan 57)
     };
     // Côté d'ouverture par rapport à l'ancrage : au-dessus (Dock en bas), à droite (Dock à gauche), à gauche,
     // en dessous (barre de menus : bord gauche du panneau sur l'ancrage) ou en dessous vers la gauche (pastille verte :

@@ -553,7 +553,7 @@ void DockApp::openShotToolbar() {
     }
     if (viewfinder_.active() || menuOpen_ || shotToolbar_.isOpen() || snapshot_) return;
     shotSession_ = true;   // Échap ferme la barre
-    if (!shotToolbar_.open(instance_, [this](int item) { onShotToolbar(item); })) shotSession_ = false;
+    if (!shotToolbar_.open(instance_, [this](int item) { onShotToolbar(item); }, settings_.accentColor)) shotSession_ = false;
 }
 
 void DockApp::onShotToolbar(int item) {
@@ -901,6 +901,7 @@ MenuWindow::Env DockApp::popupEnv() {
     env.font = renderer_.fontName(settings_.font);
     env.metrics = metrics_;
     env.trace = trace_;
+    env.accent = settings_.accentColor;   // couleur d'accentuation (plan 57)
     return env;
 }
 
@@ -1257,6 +1258,7 @@ void DockApp::openForceQuit() {
     };
     const auto spec = parseHotkey(settings_.forceQuitHotkey);
     env.shortcutLabel = spec ? hotkeyLabel(*spec) : std::wstring();
+    env.accent = settings_.accentColor;
     forceQuit_.open(instance_, std::move(env), forceQuitAppIdOf(GetForegroundWindow()));
 }
 

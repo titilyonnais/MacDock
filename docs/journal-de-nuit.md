@@ -1028,6 +1028,20 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Entrée essayée en réel** : « dock » ouvre Réglages MacDock sur la section Dock, « son » la page Son des
   Paramètres ; les deux fenêtres ouvertes par l'essai ont été refermées.
 
+### Plan 57 — Couleur d'accentuation, 9 octobre en soirée (session autonome)
+
+- **Réglages > Général > Apparence** : « Couleur d'accentuation », huit pastilles comme Réglages Système de macOS 26
+  (Bleu, Violet, Rose, Rouge, Orange, Jaune, Vert, Graphite) ; clic ou ← →, effet immédiat dans l'app.
+- **Partout dans MacDock** : sélection des menus (Dock, barre, Centre de contrôle), de Spotlight et de Forcer à
+  quitter, interrupteurs et curseurs de Réglages, contour de Mission Control, bouton « Capturer » de ⊞⇧5, lien des
+  piles. Un seul bleu au lieu de deux (#0088FF / #0091FF, ceux de macOS 26) ; texte noir sur le jaune.
+- **Teintes** : celles de macOS 26 / iOS 26 déjà employées par le projet ; à recaler sur ta VM macOS 26.
+- **Essais réels** : Réglages en mode d'essai (clic sur le violet : barre latérale violette) ; ton `settings.json`
+  sauvegardé, accent violet, Spotlight, Forcer à quitter et le menu  de la barre en violet, puis restauré à
+  l'empreinte près et retour au bleu vérifié.
+- **Relecture indépendante** : rien de critique ; corrigés : le nom survolé dans l'éventail des piles (resté sur
+  l'ancien bleu), la barre avec un `settings.json` à BOM, et Spotlight qui ne trouvait pas le réglage.
+
 ### Plan 56 — Pastilles en double, 9 octobre en fin d'après-midi (session autonome)
 
 - **Défaut vu à l'essai réel du plan 55** : la barre de menus posait ses pastilles en haut à droite de Réglages
@@ -1037,6 +1051,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   apparence, et ces fenêtres règlent elles-mêmes coins et liseré.
 - **Essais réels** avant et après : Réglages en mode d'essai (dossier temporaire effacé), Forcer à quitter ouvert par
   son message et fermé par Échap sans rien forcer.
+
+## Mineurs reportés — plan 57
+- L'anneau du clavier (Tab dans Réglages) suit l'accent à 50 % ; pour le Bleu, les teintes relevées sur macOS
+  (#0067F4 / #1AA9FF) ne sont plus employées.
+- Une fenêtre Forcer à quitter déjà ouverte garde l'ancien accent jusqu'à sa réouverture.
+- Pile en grille : le lien « Ouvrir dans l'Explorateur » survolé prend l'accent comme couleur de texte, peu lisible sur
+  le jaune en thème clair.
+- Spotlight : le sous-titre de la ligne choisie est un peu trop pâle pendant l'apparition (opacité appliquée deux fois,
+  antérieur au plan).
+- Nettoyage : un pinceau inutilisé et un commentaire périmé dans les menus, des noms trompeurs (`blue`, `white`), la
+  conversion de teinte recopiée trois fois, et la barre qui lit `settings.json` deux fois à chaque changement.
 
 ## Mineurs reportés — plan 56
 - Le branchement réel de la marque n'a pas de test automatique (la barre n'est pas dans `tests.exe`) : couvert par

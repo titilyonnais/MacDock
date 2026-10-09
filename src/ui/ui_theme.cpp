@@ -2,7 +2,7 @@
 
 namespace md::ui {
 
-Palette palette(bool dark) {
+Palette palette(bool dark, AccentColor accent) {
     Palette p;
     if (!dark) {
         p.window = rgb(0xFFFFFF);
@@ -13,12 +13,10 @@ Palette palette(bool dark) {
         p.text = rgb(0x000000, 0.85f);
         p.secondaryText = rgb(0x000000, 0.50f);
         p.tertiaryText = rgb(0x000000, 0.26f);
-        p.accent = rgb(0x0088FF);
         p.switchOff = rgb(0x000000, 0.10f);
         p.knobEdge = rgb(0x000000, 0.10f);
         p.controlFill = rgb(0x000000, 0.06f);
         p.segmentSelected = rgb(0xFFFFFF);
-        p.focusRing = {0.f, 103 / 255.f, 244 / 255.f, 0.5f};
         p.menuBackground = rgb(0xF6F6F7, 0.98f);
         p.menuEdge = rgb(0x000000, 0.12f);
         p.shadow = rgb(0x000000, 0.18f);
@@ -38,12 +36,10 @@ Palette palette(bool dark) {
         p.text = rgb(0xFFFFFF, 0.85f);
         p.secondaryText = rgb(0xFFFFFF, 0.55f);
         p.tertiaryText = rgb(0xFFFFFF, 0.25f);
-        p.accent = rgb(0x0091FF);
         p.switchOff = rgb(0xFFFFFF, 0.16f);
         p.knobEdge = rgb(0x000000, 0.25f);
         p.controlFill = rgb(0xFFFFFF, 0.10f);
         p.segmentSelected = rgb(0xFFFFFF, 0.26f);
-        p.focusRing = {26 / 255.f, 169 / 255.f, 1.f, 0.5f};
         p.menuBackground = rgb(0x2A2A2C, 0.98f);
         p.menuEdge = rgb(0xFFFFFF, 0.14f);
         p.shadow = rgb(0x000000, 0.45f);
@@ -55,7 +51,9 @@ Palette palette(bool dark) {
         p.sheetEdge = rgb(0xFFFFFF, 0.12f);
         p.sidebarEdge = rgb(0xFFFFFF, 0.12f);
     }
-    p.onAccent = rgb(0xFFFFFF);
+    p.accent = rgb(accentRgb(accent, dark));   // couleur d'accentuation (plan 57), bleu par défaut
+    p.onAccent = rgb(onAccentRgb(accent, dark));
+    p.focusRing = rgb(accentRgb(accent, dark), 0.5f);   // anneau du clavier : l'accent, voilé
     p.knob = rgb(0xFFFFFF);
     return p;
 }

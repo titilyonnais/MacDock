@@ -288,7 +288,7 @@ float SettingsWindow::heightPt() const { return float(pxH_) / scale_; }
 
 void SettingsWindow::render() {
     if (!dc_ || !target_) return;
-    const ui::Palette pal = ui::palette(dark_);
+    const ui::Palette pal = ui::palette(dark_, model_.dock.accentColor);   // l'accent choisi (plan 57)
     const float w = widthPt(), h = heightPt();
     dc_->BeginDraw();
     dc_->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_));
@@ -398,6 +398,11 @@ void SettingsWindow::computeGeometry(ui::Painter& p, float w) {
                 g.control = D2D1::RectF(right - cw, g.cy - mt::segmentHeight / 2, right, g.cy + mt::segmentHeight / 2);
                 break;
             }
+            case RowKind::Swatches: {   // couleur d'accentuation (plan 57)
+                const float cw = ui::swatchesWidth(int(s.choices.size()));
+                g.control = D2D1::RectF(right - cw, g.cy - mt::swatch / 2, right, g.cy + mt::swatch / 2);
+                break;
+            }
             case RowKind::Slider:
                 g.trackRight = right - mt::knob / 2;
                 g.trackLeft = g.trackRight - mt::sliderWidth;
@@ -483,6 +488,12 @@ void SettingsWindow::drawRow(ui::Painter& p, int i) {
             break;
         }
         case RowKind::Segmented: ui::drawSegmented(p, g.control, s.choices, int(std::lround(v))); break;
+        case RowKind::Swatches: {
+            std::vector<ui::Rgba> colors;
+            for (int k = 0; k < int(s.choices.size()); ++k) colors.push_back(ui::rgb(s.swatch ? s.swatch(k, dark_) : 0x8E8E93));
+            ui::drawSwatches(p, g.control, colors, int(std::lround(v)));
+            break;
+        }
         case RowKind::Value: ui::drawValue(p, g.control, s.text ? s.text(model_) : std::wstring()); break;
         case RowKind::Buttons: {
             const std::wstring t = s.text ? s.text(model_) : std::wstring();
@@ -503,9 +514,12 @@ void SettingsWindow::drawRow(ui::Painter& p, int i) {
     }
     p.opacity = 1;
     if (focus_ == i && focusable(i)) {
-        if (s.kind == RowKind::Buttons && !g.buttons.empty())
+        if (s.kind == RowKind::Buttons && !g.buttons.empty()) {
             ui::drawFocusRing(p, g.buttons[std::size_t(std::clamp(focusButton_, 0, int(g.buttons.size()) - 1))], mt::buttonRadius);
-        else
+        } else if (s.kind == RowKind::Swatches) {
+            const float sx = g.control.left + float(std::lround(v)) * (mt::swatch + mt::swatchGap);
+            ui::drawFocusRing(p, D2D1::RectF(sx, g.control.top, sx + mt::swatch, g.control.bottom), mt::swatch / 2);
+        } else
             ui::drawFocusRing(p, g.control, s.kind == RowKind::Switch ? mt::switchHeight / 2 : s.kind == RowKind::Slider ? mt::knob / 2 : 6);
     }
 }
@@ -787,7 +801,7 @@ void SettingsWindow::commitPending() {
 void SettingsWindow::openMenu(int index) {
     const RowSpec& s = spec(index);
     if (s.choices.empty()) return;
-    const ui::Palette pal = ui::palette(dark_);
+    const ui::Palette pal = ui::palette(dark_, model_.dock.accentColor);   // l'accent choisi (plan 57)
     ui::Painter p(dc_.Get(), dwrite_.Get(), pal, font_, &formats_);
     const Geom& g = geoms_[std::size_t(index)];
     const int checked = int(std::clamp(std::lround(valueOf(index)), 0L, long(s.choices.size()) - 1));
@@ -945,6 +959,11 @@ void SettingsWindow::onMouseDown(float x, float y) {
         case RowKind::Segmented: {
             const int seg = ui::segmentAt(x, g.control.left, g.control.right, int(s.choices.size()));
             if (seg >= 0) setValue(i, double(seg));
+            break;
+        }
+        case RowKind::Swatches: {
+            const int k = ui::swatchAt(x, g.control.left, int(s.choices.size()));
+            if (k >= 0) setValue(i, double(k));
             break;
         }
         case RowKind::Choice:
@@ -1171,6 +1190,7 @@ bool SettingsWindow::onKey(WPARAM key, bool repeat) {
             if (key == VK_SPACE || key == VK_RETURN || key == VK_DOWN || key == VK_UP) openMenu(focus_);
             else return false;
             return true;
+        case RowKind::Swatches:
         case RowKind::Segmented: {
             const int n = int(s.choices.size()), cur = int(std::lround(v));
             if (key == VK_LEFT && cur > 0) setValue(focus_, cur - 1);

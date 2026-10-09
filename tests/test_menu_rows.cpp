@@ -283,3 +283,30 @@ TEST_CASE(menu_close_returns_focus) {
     CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Chosen));     // l'action choisie décide
     CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Switched));   // un autre menu de la barre s'ouvre
 }
+
+TEST_CASE(menu_rows_follow_accent) {   // plan 57 : la tuile allumée du Centre de contrôle sur l'accent choisi
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    auto count = [](const std::vector<std::uint8_t>& px, std::uint32_t rgb) {   // pixels opaques de cette teinte
+        int n = 0;
+        for (std::size_t i = 0; i + 3 < px.size(); i += 4) {
+            if (px[i + 3] < 250) continue;
+            if (std::abs(int(px[i + 2]) - int((rgb >> 16) & 255)) <= 6 && std::abs(int(px[i + 1]) - int((rgb >> 8) & 255)) <= 6 &&
+                std::abs(int(px[i]) - int(rgb & 255)) <= 6)
+                ++n;
+        }
+        return n;
+    };
+    md::MenuWindow::Env env;
+    env.scale = 2;
+    env.dark = true;
+    std::vector<std::uint8_t> px;
+    UINT w = 0, h = 0;
+    env.accent = md::AccentColor::Purple;
+    REQUIRE(md::MenuWindow::snapshot(env, controlCenter(), px, w, h));
+    CHECK(count(px, 0xDB34F2) > 100);   // violet du thème sombre
+    env.accent = md::AccentColor::Blue;
+    REQUIRE(md::MenuWindow::snapshot(env, controlCenter(), px, w, h));
+    CHECK(count(px, 0xDB34F2) == 0);
+    CHECK(count(px, 0x0091FF) > 100);   // le bleu de macOS 26, le même que Réglages
+    CoUninitialize();
+}

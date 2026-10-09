@@ -214,3 +214,12 @@ TEST_CASE(stack_list_icons_visible_level_first) {
     CHECK(m.items.back().icon != nullptr);                           // « Ouvrir dans l'Explorateur » aussi
     CHECK(m.items[0].submenu[0].icon == nullptr);                    // budget épuisé avant les sous-menus
 }
+
+TEST_CASE(stack_fan_label_follows_accent) {   // relecture du plan 57 : le nom survolé sur l'accent choisi
+    const auto hot = md::fanLabelColors(true, md::AccentColor::Purple, true);
+    CHECK(hot.pill == 0xDB34F2u && hot.text == 0xFFFFFFu);
+    const auto yellow = md::fanLabelColors(true, md::AccentColor::Yellow, false);
+    CHECK(yellow.pill == 0xFFCC00u && yellow.text == 0x000000u);   // lisible sur le jaune
+    const auto calm = md::fanLabelColors(false, md::AccentColor::Purple, true);
+    CHECK(calm.pill == 0x29292Eu && calm.text == 0xFFFFFFu);   // au repos : pastille sombre, quel que soit l'accent
+}

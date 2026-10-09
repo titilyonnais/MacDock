@@ -399,10 +399,15 @@ void Session::render() {
 void Session::renderFan(ID2D1DeviceContext* d) {
     const float p = float(easeOut(progress()));
     const float labelAlpha = std::clamp((p - 0.55f) / 0.45f, 0.0f, 1.0f);   // les noms arrivent en fin de course
-    Com<ID2D1SolidColorBrush> pill, pillHot, text;
-    d->CreateSolidColorBrush(rgba(0.16f, 0.16f, 0.18f, 0.82f * labelAlpha), &pill);
-    d->CreateSolidColorBrush(env.dark ? rgba(0.04f, 0.52f, 1.0f, labelAlpha) : rgba(0.0f, 0.48f, 1.0f, labelAlpha), &pillHot);
-    d->CreateSolidColorBrush(rgba(1, 1, 1, labelAlpha), &text);
+    Com<ID2D1SolidColorBrush> pill, pillHot, text, textHot;
+    auto hex = [](std::uint32_t c, float a) {
+        return rgba(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, a);
+    };
+    const FanLabelColors calm = fanLabelColors(false, env.accent, env.dark), hot = fanLabelColors(true, env.accent, env.dark);
+    d->CreateSolidColorBrush(hex(calm.pill, 0.82f * labelAlpha), &pill);
+    d->CreateSolidColorBrush(hex(hot.pill, labelAlpha), &pillHot);   // nom survolé : la couleur d'accentuation
+    d->CreateSolidColorBrush(hex(calm.text, labelAlpha), &text);
+    d->CreateSolidColorBrush(hex(hot.text, labelAlpha), &textHot);   // lisible sur l'accent (noir sur le jaune)
     D2D1_MATRIX_3X2_F base;
     d->GetTransform(&base);
     const float pillH = pt(kLabelHeight);
@@ -421,8 +426,8 @@ void Session::renderFan(ID2D1DeviceContext* d) {
             d->FillRoundedRectangle(D2D1::RoundedRect(r, pillH / 2, pillH / 2), int(i) == hover ? pillHot.Get() : pill.Get());
             DWRITE_TEXT_METRICS tm{};
             e.label->GetMetrics(&tm);
-            d->DrawTextLayout({r.left + pt(kLabelPadX), y - tm.height / 2}, e.label.Get(), text.Get(),
-                              D2D1_DRAW_TEXT_OPTIONS_CLIP);
+            d->DrawTextLayout({r.left + pt(kLabelPadX), y - tm.height / 2}, e.label.Get(),
+                              int(i) == hover ? textHot.Get() : text.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
         }
     }
     d->SetTransform(base);
@@ -433,7 +438,9 @@ void Session::renderGrid(ID2D1DeviceContext* d) {
     Com<ID2D1SolidColorBrush> ink, hot, accent;
     d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &ink);
     d->CreateSolidColorBrush(env.dark ? rgba(1, 1, 1, 0.14f * opacity) : rgba(0, 0, 0, 0.09f * opacity), &hot);
-    d->CreateSolidColorBrush(env.dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);
+    const std::uint32_t tint = accentRgb(env.accent, env.dark);   // couleur d'accentuation
+    d->CreateSolidColorBrush(rgba(float((tint >> 16) & 255) / 255, float((tint >> 8) & 255) / 255, float(tint & 255) / 255, opacity),
+                             &accent);
     const float pad = pt(grid.padding);
     if (title) {
         DWRITE_TEXT_METRICS tm{};

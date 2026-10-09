@@ -592,3 +592,54 @@ TEST_CASE(settings_auto_update_lives_in_update_json) {
     CHECK(CompareFileTime(&before.ftLastWriteTime, &after.ftLastWriteTime) == 0);   // pas réécrit
     DeleteFileW(path.c_str());
 }
+
+TEST_CASE(ui_palette_follows_accent) {   // plan 57 : l'accent choisi, en clair et en sombre
+    auto close = [](md::ui::Rgba c, std::uint32_t rgb) {
+        return std::abs(c.r * 255 - float((rgb >> 16) & 255)) < 1 && std::abs(c.g * 255 - float((rgb >> 8) & 255)) < 1 &&
+               std::abs(c.b * 255 - float(rgb & 255)) < 1;
+    };
+    CHECK(close(md::ui::palette(false).accent, 0x0088FF));   // bleu par défaut
+    CHECK(close(md::ui::palette(true).accent, 0x0091FF));
+    const md::ui::Palette purple = md::ui::palette(true, md::AccentColor::Purple);
+    CHECK(close(purple.accent, 0xDB34F2));
+    CHECK(close(purple.onAccent, 0xFFFFFF));
+    CHECK(close(purple.focusRing, 0xDB34F2) && purple.focusRing.a < 0.8f);   // anneau du clavier : l'accent, voilé
+    CHECK(close(md::ui::palette(false, md::AccentColor::Yellow).onAccent, 0x000000));   // noir sur le jaune
+}
+
+TEST_CASE(ui_swatches_layout_and_hit) {   // plan 57 : pastilles de la couleur d'accentuation
+    const float d = md::ui::metrics::swatch, gap = md::ui::metrics::swatchGap;
+    CHECK_NEAR(md::ui::swatchesWidth(8), 8 * d + 7 * gap, 1e-4);
+    CHECK_NEAR(md::ui::swatchesWidth(0), 0.0, 1e-4);
+    CHECK_EQ(md::ui::swatchAt(100 + d / 2, 100, 8), 0);
+    CHECK_EQ(md::ui::swatchAt(100 + d + gap + d / 2, 100, 8), 1);
+    CHECK_EQ(md::ui::swatchAt(100 + 7 * (d + gap) + d / 2, 100, 8), 7);
+    CHECK_EQ(md::ui::swatchAt(100 - gap, 100, 8), -1);
+    CHECK_EQ(md::ui::swatchAt(100 + md::ui::swatchesWidth(8) + gap, 100, 8), -1);
+}
+
+TEST_CASE(ui_draw_swatches) {   // plan 57 : huit pastilles, la choisie avec un point blanc
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const md::ui::Palette pal = md::ui::palette(false);
+        Canvas c(240, 40);
+        md::ui::Painter p(c.rt.Get(), c.dwrite.Get(), pal, L"");
+        std::vector<md::ui::Rgba> colors;
+        for (const auto& a : md::accentList()) colors.push_back(md::ui::rgb(a.light));
+        const float d = md::ui::metrics::swatch, pitch = d + md::ui::metrics::swatchGap;
+        c.rt->BeginDraw();
+        c.rt->Clear(D2D1::ColorF(1, 1, 1, 1));
+        md::ui::drawSwatches(p, D2D1::RectF(10, 10, 10 + md::ui::swatchesWidth(8), 10 + d), colors, 1);
+        REQUIRE(SUCCEEDED(c.rt->EndDraw()));
+        c.read();
+        const int cy = int(10 + d / 2);
+        auto cx = [&](int i) { return int(10 + i * pitch + d / 2); };
+        CHECK(closeTo(c.at(cx(0), cy), 0x0088FF, 12));        // bleu
+        CHECK(whiteish(c.at(cx(1), cy)));                      // la choisie : point blanc au centre
+        CHECK(closeTo(c.at(cx(1) + 5, cy), 0xCB30E0, 12));    // et sa couleur autour
+        CHECK(closeTo(c.at(cx(2), cy), 0xFF2D55, 12));        // rose, sans point
+        CHECK(closeTo(c.at(cx(7), cy), 0x8E8E93, 12));        // graphite
+        CHECK(whiteish(c.at(cx(0) + int(pitch / 2), cy)));    // espace blanc entre deux pastilles
+    }
+    CoUninitialize();
+}

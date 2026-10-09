@@ -383,3 +383,16 @@ TEST_CASE(spot_snapshot_draws_pane_tile) {   // plan 55 : la tuile de la section
     CHECK(purple > 100);
     CoUninitialize();
 }
+
+TEST_CASE(spot_snapshot_selection_follows_accent) {   // plan 57 : ligne choisie sur l'accent
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::vector<md::AppEntry> apps{{L"Calculatrice", L"calc"}};
+    const auto img = md::spotlightSnapshot(L"calc", apps, {}, false, 1280, 800, md::AccentColor::Purple);
+    REQUIRE(img.w == 1280);
+    // Première ligne, côté droit (loin du texte) : panneau centré à 22 % de la hauteur, ligne sous le champ, la marge et
+    // le titre de section.
+    const int x = (1280 - 680) / 2 + 600, y = int(800 * 0.22) + 52 + 6 + 26 + 20;
+    const std::uint8_t* p = &img.px[(std::size_t(y) * 1280 + x) * 4];   // B, G, R, A
+    CHECK(std::abs(int(p[2]) - 0xCB) <= 8 && std::abs(int(p[1]) - 0x30) <= 8 && std::abs(int(p[0]) - 0xE0) <= 8);
+    CoUninitialize();
+}

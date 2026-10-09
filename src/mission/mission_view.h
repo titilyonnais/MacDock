@@ -35,6 +35,7 @@ BgraImage wallpaperCover(const std::wstring& path, int width, int height);
 
 // Même dessin hors écran (aucune fenêtre) : fond Tahoe, rectangles colorés à la place des miniatures ; hover : indice
 // de la fenêtre survolée (-1 : aucune).
-BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, int width, int height, int hover);
+BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, int width, int height, int hover,
+                          AccentColor accent = AccentColor::Blue);
 
 } // namespace md

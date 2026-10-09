@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/accent.h"
 #include "../icons/icon_provider.h"
 #include "../ui/ui_draw.h"
 #include "force_quit_logic.h"
@@ -29,6 +30,7 @@ public:
         std::function<bool(const FqApp&, std::wstring* error)> forceQuit;   // arrêt, ou relance de l'Explorateur
         std::wstring shortcutLabel;                                         // « ⌥⊞⎋ » ; vide : pas de phrase
         std::optional<bool> dark;                                           // thème imposé ; sinon celui des apps
+        AccentColor accent = AccentColor::Blue;                             // couleur d'accentuation (plan 57)
     };
     ForceQuitWindow() = default;
     ForceQuitWindow(const ForceQuitWindow&) = delete;
@@ -99,6 +101,6 @@ private:
 
 // Image de la fenêtre (exemple d'apps, une figée, une choisie), à l'échelle 2, sans rien afficher ;
 // `sheet` : avec la feuille de confirmation. MacDock.exe --force-quit-snapshot.
-bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet);
+bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet, AccentColor accent = AccentColor::Blue);
 
 } // namespace md

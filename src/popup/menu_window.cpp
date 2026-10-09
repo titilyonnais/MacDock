@@ -43,6 +43,10 @@ double now() {
 }
 
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
+// Teinte 0xRRGGBB (couleur d'accentuation) en couleur Direct2D.
+D2D1_COLOR_F hexColor(std::uint32_t c, float a) {
+    return D2D1::ColorF(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, a);
+}
 
 struct Session;
 
@@ -398,14 +402,15 @@ void Session::drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& pane
     const float sc = s();
     const bool dark = env.dark;
     // Entrées.
-    Com<ID2D1SolidColorBrush> text, disabled, accent, white, sep, keyInk, keyHot;
+    Com<ID2D1SolidColorBrush> text, disabled, accent, onAccent, white, sep, keyInk, keyHot;
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity) : rgba(0, 0, 0, 0.86f * opacity), &text);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.30f * opacity) : rgba(0, 0, 0, 0.28f * opacity), &disabled);
-    d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity) : rgba(0.0f, 0.48f, 1.0f, opacity), &accent);   // bleu macOS
+    d->CreateSolidColorBrush(hexColor(accentRgb(env.accent, dark), opacity), &accent);   // couleur d'accentuation
+    d->CreateSolidColorBrush(hexColor(onAccentRgb(env.accent, dark), opacity), &onAccent);   // texte dessus
     d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.12f * opacity) : rgba(0, 0, 0, 0.10f * opacity), &sep);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.45f * opacity) : rgba(0, 0, 0, 0.45f * opacity), &keyInk);
-    d->CreateSolidColorBrush(rgba(1, 1, 1, 0.70f * opacity), &keyHot);
+    d->CreateSolidColorBrush(hexColor(onAccentRgb(env.accent, dark), 0.70f * opacity), &keyHot);
     const float x0 = panel.left + float(kMenuPadding) * sc;
     const float x1 = panel.right - float(kMenuPadding) * sc;
     for (size_t i = 0; i < p.model->items.size(); ++i) {
@@ -422,7 +427,7 @@ void Session::drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& pane
         }
         const float rowH = float(kMenuItemHeight) * sc;
         const bool hot = int(i) == p.hover || int(i) == p.openSub;
-        ID2D1SolidColorBrush* ink = !it.enabled ? disabled.Get() : hot ? white.Get() : text.Get();
+        ID2D1SolidColorBrush* ink = !it.enabled ? disabled.Get() : hot ? onAccent.Get() : text.Get();
         if (hot && it.enabled) {
             float r = float(kMenuHighlightRadius) * sc;
             d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x0, top, x1, top + rowH), r, r), accent.Get());
@@ -631,11 +636,12 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
     const float rowH = float(menuRowHeight(it.row)) * sc;
     const bool dark = env.dark;
     const float dim = it.enabled ? 1.0f : 0.4f;
-    Com<ID2D1SolidColorBrush> ink, grey, track, accent, white, tileBg, tileOff, line;
+    Com<ID2D1SolidColorBrush> ink, grey, track, accent, onAccent, white, tileBg, tileOff, line;
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.92f * opacity * dim) : rgba(0, 0, 0, 0.86f * opacity * dim), &ink);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.50f * opacity) : rgba(0, 0, 0, 0.48f * opacity), &grey);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.20f * opacity) : rgba(0, 0, 0, 0.13f * opacity), &track);
-    d->CreateSolidColorBrush(dark ? rgba(0.04f, 0.52f, 1.0f, opacity * dim) : rgba(0.0f, 0.48f, 1.0f, opacity * dim), &accent);
+    d->CreateSolidColorBrush(hexColor(accentRgb(env.accent, dark), opacity * dim), &accent);
+    d->CreateSolidColorBrush(hexColor(onAccentRgb(env.accent, dark), opacity), &onAccent);
     d->CreateSolidColorBrush(rgba(1, 1, 1, opacity), &white);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.09f * opacity) : rgba(1, 1, 1, 0.50f * opacity), &tileBg);
     d->CreateSolidColorBrush(dark ? rgba(1, 1, 1, 0.16f * opacity) : rgba(0, 0, 0, 0.07f * opacity), &tileOff);
@@ -660,7 +666,7 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
                 if (hot)
                     d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(ix - pad, iy - pad, ix + iw + pad, iy + ih + pad), 6 * sc, 6 * sc),
                                             accent.Get());
-                const D2D1_COLOR_F base = hot ? rgba(1, 1, 1, 1) : dark ? rgba(1, 1, 1, 1) : rgba(0, 0, 0, 1);
+                const D2D1_COLOR_F base = hot ? hexColor(onAccentRgb(env.accent, dark), 1) : dark ? rgba(1, 1, 1, 1) : rgba(0, 0, 0, 1);
                 Com<ID2D1SolidColorBrush> frame, mine, others;
                 d->CreateSolidColorBrush(rgba(base.r, base.g, base.b, (hot ? 0.95f : dark ? 0.55f : 0.45f) * a * opacity), &frame);
                 d->CreateSolidColorBrush(rgba(base.r, base.g, base.b, (hot ? 1.0f : dark ? 0.90f : 0.78f) * a * opacity), &mine);
@@ -724,7 +730,7 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
                 d->FillEllipse(D2D1::Ellipse({cx, cy}, cs / 2, cs / 2), t.on ? accent.Get() : tileOff.Get());
                 const float gs = 16 * sc;
                 drawGlyph(d, t.glyph, D2D1::RectF(cx - gs / 2, cy - gs / 2, cx + gs / 2, cy + gs / 2),
-                          t.on ? white.Get() : ink.Get(), 1, false);
+                          t.on ? onAccent.Get() : ink.Get(), 1, false);
                 const float lx = cx + cs / 2 + 8 * sc, lw = tx + w - lx - 6 * sc;
                 drawText(d, dw, boldFormat.Get(), t.title, lx, cy - 17 * sc, lw, 17 * sc, t.enabled ? ink.Get() : grey.Get());
                 drawText(d, dw, smallFormat.Get(), t.subtitle, lx, cy, lw, 15 * sc, grey.Get(), false);

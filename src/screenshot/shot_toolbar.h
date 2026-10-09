@@ -11,6 +11,7 @@
 #include <functional>
 #include <string>
 
+#include "../core/accent.h"
 #include "screenshot_logic.h"
 
 namespace md {
@@ -36,7 +37,7 @@ private:
 class ShotToolbar {
 public:
     using Done = std::function<void(int item)>;   // ShotToolbarItem choisi (kToolScreen…), ou kToolClose
-    bool open(HINSTANCE instance, Done done);
+    bool open(HINSTANCE instance, Done done, AccentColor accent = AccentColor::Blue);
     void close();   // sans choix
     bool isOpen() const { return panel_.visible(); }
 
@@ -49,6 +50,7 @@ private:
     ShotToolbarLayout layout_;
     double scale_ = 1;
     int mode_ = kToolRegion;   // comme macOS : une zone par défaut
+    AccentColor accent_ = AccentColor::Blue;   // bouton « Capturer » (plan 57)
     int hover_ = -1;
     POINT at_{};
     Done done_;

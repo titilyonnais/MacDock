@@ -15,7 +15,7 @@ namespace {
 // Mots-clés des sections de Réglages MacDock (clé de --pane) : ce que l'on y règle.
 const std::map<std::string, std::wstring>& paneKeywords() {
     static const std::map<std::string, std::wstring> words = {
-        {"general", L"macdock démarrage ouvrir à la connexion sauvegarde exporter importer"},
+        {"general", L"macdock démarrage ouvrir à la connexion sauvegarde exporter importer apparence couleur d'accentuation accent"},
         {"dock", L"macdock taille agrandissement position masquer automatiquement"},
         {"menubar", L"macdock horloge icônes volume"},
         {"windows", L"macdock pastilles génie réduire"},

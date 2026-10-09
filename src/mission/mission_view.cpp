@@ -42,13 +42,19 @@ double now() {
 }
 
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
+// Teinte 0xRRGGBB (couleur d'accentuation) en couleur Direct2D.
+D2D1_COLOR_F hexColor(std::uint32_t c, float a) {
+    return D2D1::ColorF(float((c >> 16) & 255) / 255, float((c >> 8) & 255) / 255, float(c & 255) / 255, a);
+}
 
 D2D1_RECT_F toD2D(const MissionRect& r) { return {float(r.x), float(r.y), float(r.x + r.w), float(r.y + r.h)}; }
 
-// Contour bleu autour de la fenêtre survolée et pastille de son titre dessous (pixels ; sc : échelle de l'écran).
-void drawHover(ID2D1DeviceContext* d, IDWriteFactory* dw, const MissionRect& r, const std::wstring& title, float sc) {
+// Contour de la couleur d'accentuation autour de la fenêtre survolée (teinte sombre : le voile assombrit l'écran) et
+// pastille de son titre dessous (pixels ; sc : échelle de l'écran).
+void drawHover(ID2D1DeviceContext* d, IDWriteFactory* dw, const MissionRect& r, const std::wstring& title, float sc,
+               AccentColor accent) {
     Com<ID2D1SolidColorBrush> blue, pill, white;
-    d->CreateSolidColorBrush(rgba(0x0A / 255.0f, 0x84 / 255.0f, 1.0f, 1), &blue);
+    d->CreateSolidColorBrush(hexColor(accentRgb(accent, true), 1), &blue);
     d->CreateSolidColorBrush(rgba(0, 0, 0, 0.55f), &pill);
     d->CreateSolidColorBrush(rgba(1, 1, 1, 0.96f), &white);
     if (!blue || !pill || !white) return;
@@ -333,7 +339,7 @@ void Session::render(Screen& s) {
     }
     if (s.hover >= 0 && dir > 0 && q >= 1) {
         const Thumb& th = thumbs[std::size_t(s.hover)];
-        drawHover(d.Get(), dwrite.Get(), th.to, th.title, s.sc);
+        drawHover(d.Get(), dwrite.Get(), th.to, th.title, s.sc, env.accent);
     }
     s.surface->EndDraw();
 }
@@ -618,7 +624,8 @@ std::optional<HWND> MissionView::track(const MenuWindow::Env& env, const Request
     return std::nullopt;
 }
 
-BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, int width, int height, int hover) {
+BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, int width, int height, int hover,
+                          AccentColor accent) {
     BgraImage out{width, height, std::vector<std::uint8_t>(std::size_t(std::max(width, 0)) * std::max(height, 0) * 4, 0)};
     if (width <= 0 || height <= 0) return out;
     Com<ID3D11Device> dev;
@@ -671,7 +678,7 @@ BgraImage missionSnapshot(const std::vector<MissionRect>& windows, bool dark, in
         if (bar) dc->FillRectangle(D2D1::RectF(r.left, r.top + 4, r.right, r.top + std::min(24.0f, (r.bottom - r.top) / 4)), bar.Get());
     }
     if (hover >= 0 && std::size_t(hover) < rects.size())
-        drawHover(dc.Get(), dwrite.Get(), rects[std::size_t(hover)], L"Fenêtre " + std::to_wstring(hover + 1), 1);
+        drawHover(dc.Get(), dwrite.Get(), rects[std::size_t(hover)], L"Fenêtre " + std::to_wstring(hover + 1), 1, accent);
     if (FAILED(dc->EndDraw())) return out;
     D2D1_POINT_2U origin{0, 0};
     D2D1_RECT_U all{0, 0, UINT32(width), UINT32(height)};

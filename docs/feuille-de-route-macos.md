@@ -41,6 +41,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Forcer à quitter** (⌥⌘⎋, menu ) : la fenêtre de macOS 26 (plan 54).
 - **Spotlight** : conversions d'unités et section « Réglages » (pages des Paramètres de Windows, sections de
   Réglages MacDock) (plan 55).
+- **Couleur d'accentuation** de Réglages Système (huit accents), appliquée partout dans MacDock (plan 57).
 
 ## À faire, par ordre d'effet
 1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
@@ -52,7 +53,6 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
    - la liste de fichiers et le volet de l'Explorateur (DirectUI).
 3. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
 4. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
-5. **Couleur d'accentuation** de Réglages Système (huit accents).
 
 ## Limites connues
 - Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.
