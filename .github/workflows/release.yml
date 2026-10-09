@@ -19,10 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Inno Setup
+      - name: Inno Setup 6.7.3
         shell: pwsh
+        # Version figée, celle des essais (Inno Setup 7 est sorti depuis, non essayé), téléchargée chez son auteur et
+        # vérifiée (empreinte publiée par winget pour JRSoftware.InnoSetup 6.7.3).
         run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+          $url = 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
+          $sha = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
+          Invoke-WebRequest -Uri $url -OutFile innosetup.exe
+          if ((Get-FileHash -Algorithm SHA256 innosetup.exe).Hash.ToLowerInvariant() -ne $sha) { throw 'Empreinte inattendue' }
+          Start-Process -FilePath ./innosetup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/CURRENTUSER' -Wait
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'ISCC.exe introuvable' }
 
       - name: Installateur
         shell: pwsh
