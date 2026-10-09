@@ -19,6 +19,7 @@ double menuRowHeight(MenuRow r) {
         case MenuRow::Tiles: return kMenuTilesHeight;
         case MenuRow::Media: return kMenuMediaHeight;
         case MenuRow::Calendar: return kMenuCalendarHeight;
+        case MenuRow::Layouts: return kMenuLayoutsHeight;
         case MenuRow::Normal: break;
     }
     return kMenuItemHeight;
@@ -47,6 +48,22 @@ int mediaButtonAt(double rowWidth, double x) {
     if (x < left || x >= right) return -1;
     return int((x - left) / kMenuMediaButton);
 }
+
+double layoutIconLeft(std::size_t icons, double rowWidth, int k) {
+    if (icons == 0) return kMenuLayoutSide;
+    const double slot = (rowWidth - 2 * kMenuLayoutSide) / double(icons);
+    return kMenuLayoutSide + double(k) * slot + (slot - kMenuLayoutIconW) / 2;
+}
+
+int layoutIconAt(std::size_t icons, double rowWidth, double x) {
+    const double span = rowWidth - 2 * kMenuLayoutSide;
+    if (icons == 0 || !(span > 0) || !std::isfinite(x)) return -1;
+    const double rel = x - kMenuLayoutSide;
+    if (rel < 0 || rel >= span) return -1;
+    return std::min(int(icons) - 1, int(rel / (span / double(icons))));
+}
+
+double layoutsRowWidth(std::size_t icons) { return 2 * kMenuLayoutSide + double(icons) * (kMenuLayoutIconW + kMenuLayoutGap); }
 
 bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, int draggingId) {
     if (!refresh) return false;
@@ -122,7 +139,7 @@ std::wstring macShortcutLabel(std::wstring_view shortcut) {
     return out + shown;
 }
 
-MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax) {
+MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax, double headerWidthMax) {
     MenuLayout l;
     double y = kMenuPadding;
     for (auto& it : m.items) {
@@ -138,6 +155,10 @@ MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWi
     double shortcut = std::isfinite(shortcutWidthMax) && shortcutWidthMax > 0 ? kMenuShortcutGap + shortcutWidthMax : 0.0;
     l.width = std::max(kMenuMinWidth,
                        std::ceil(2 * kMenuPadding + l.textLeft + l.iconSpace + text + shortcut + kMenuTextRight));
+    if (std::isfinite(headerWidthMax) && headerWidthMax > 0)   // intitulé entier plutôt que tronqué
+        l.width = std::max(l.width, std::ceil(2 * kMenuPadding + 2 * kMenuHeaderInset + headerWidthMax));
+    for (const auto& it : m.items)
+        if (it.row == MenuRow::Layouts) l.width = std::max(l.width, std::ceil(2 * kMenuPadding + layoutsRowWidth(it.tiles.size())));
     if (m.width > 0) l.width = m.width;
     return l;
 }

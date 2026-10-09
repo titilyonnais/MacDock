@@ -60,6 +60,7 @@ struct Panel {
     float margin = 0;          // px autour du panneau (ombre)
     int hover = -1;
     int openSub = -1;          // index de l'entrée dont le sous-menu est ouvert
+    int hoverRow = -1, hoverTile = -1;   // icône de disposition survolée (ligne, icône)
     Com<IDCompositionTarget> target;
     Com<IDCompositionVisual2> visual;
     Com<IDCompositionSurface> surface;
@@ -190,7 +191,7 @@ struct Session {
     }
     void openSubmenu(Panel& p, int index, bool selectFirst);
     LRESULT handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp);
-    void measureTexts(Panel& p, float& maxText, float& maxShortcut);
+    void measureTexts(Panel& p, float& maxText, float& maxShortcut, float* maxHeader = nullptr);
     void drawItems(ID2D1DeviceContext* d, Panel& p, const D2D1_RECT_F& panel, float opacity);
     bool initText();   // DirectWrite seulement (rendu hors écran)
     void drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, float x0, float x1, float opacity);
@@ -255,9 +256,9 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->session = this;
     p->owned = std::move(owned);
     p->model = p->owned ? p->owned.get() : &model;
-    float maxText = 0, maxShortcut = 0;
-    measureTexts(*p, maxText, maxShortcut);
-    p->layout = layoutMenu(*p->model, maxText / s(), maxShortcut / s());
+    float maxText = 0, maxShortcut = 0, maxHeader = 0;
+    measureTexts(*p, maxText, maxShortcut, &maxHeader);
+    p->layout = layoutMenu(*p->model, maxText / s(), maxShortcut / s(), maxHeader / s());
     p->margin = std::ceil(float(env.metrics.shadowBlur) * 1.5f * s() + 4);
     const LONG w = LONG(std::ceil(p->layout.width * s() + 2 * p->margin));
     const LONG h = LONG(std::ceil(p->layout.height * s() + 2 * p->margin));
@@ -331,6 +332,15 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
                 log::info(L"[trace] menu : entrée %zu (%s) x=%ld y=%ld", i, raw->model->items[i].text.c_str(),
                           (raw->rc.left + raw->rc.right) / 2,
                           raw->rc.top + LONG(raw->margin + float(raw->layout.top[i] + kMenuItemHeight / 2) * s()));
+        for (size_t i = 0; i < raw->model->items.size(); ++i) {   // icônes de disposition : centre de chacune
+            const MenuItem& it = raw->model->items[i];
+            if (it.row != MenuRow::Layouts) continue;
+            for (size_t k = 0; k < it.tiles.size(); ++k)
+                log::info(L"[trace] menu : icône %zu.%zu (%s) x=%ld y=%ld", i, k, it.tiles[k].title.c_str(),
+                          raw->rc.left + LONG(raw->margin + float(kMenuPadding + layoutIconLeft(it.tiles.size(), rowWidth(*raw), int(k)) +
+                                                                kMenuLayoutIconW / 2) * s()),
+                          raw->rc.top + LONG(raw->margin + float(raw->layout.top[i] + kMenuLayoutsHeight / 2) * s()));
+        }
     }
     render(*raw);
     ShowWindow(raw->hwnd, panels.size() == 1 ? SW_SHOW : SW_SHOWNOACTIVATE);
@@ -343,11 +353,19 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
 
 bool Session::initText() { return initTextImpl(); }
 
-void Session::measureTexts(Panel& p, float& maxText, float& maxShortcut) {
+void Session::measureTexts(Panel& p, float& maxText, float& maxShortcut, float* maxHeader) {
     p.texts.clear();
     p.shortcuts.clear();
     for (auto& it : p.model->items) {
         Com<IDWriteTextLayout> t, k;
+        if (maxHeader && it.row == MenuRow::Header && headerFormat && !it.text.empty()) {   // intitulé : sa propre police
+            Com<IDWriteTextLayout> hl;
+            if (SUCCEEDED(dwrite->CreateTextLayout(it.text.c_str(), UINT32(it.text.size()), headerFormat.Get(), 4000, 200, &hl))) {
+                DWRITE_TEXT_METRICS hm{};
+                hl->GetMetrics(&hm);
+                *maxHeader = std::max(*maxHeader, hm.widthIncludingTrailingWhitespace);
+            }
+        }
         const bool plain = it.row == MenuRow::Normal || it.row == MenuRow::Toggle;   // les autres : mis en page au dessin
         if (plain && !it.separator() &&
             SUCCEEDED(dwrite->CreateTextLayout(it.text.c_str(), UINT32(it.text.size()), format.Get(), 4000, 200, &t))) {
@@ -616,9 +634,45 @@ void Session::drawRow(ID2D1DeviceContext* d, Panel& p, size_t i, float top, floa
     IDWriteFactory3* dw = dwrite.Get();
     switch (it.row) {
         case MenuRow::Normal: break;
-        case MenuRow::Header:
-            drawText(d, dw, headerFormat.Get(), it.text, x0 + 9 * sc, top + 4 * sc, x1 - x0 - 18 * sc, rowH - 4 * sc, grey.Get());
+        case MenuRow::Header: {
+            const float inset = float(kMenuHeaderInset) * sc;
+            drawText(d, dw, headerFormat.Get(), it.text, x0 + inset, top + 4 * sc, x1 - x0 - 2 * inset, rowH - 4 * sc, grey.Get());
             break;
+        }
+        case MenuRow::Layouts: {   // écrans miniatures ; survolée, l'icône est en blanc sur le bleu des entrées
+            const size_t n = it.tiles.size();
+            const float iw = float(kMenuLayoutIconW) * sc, ih = float(kMenuLayoutIconH) * sc, pad = 3 * sc;
+            const float iy = top + (rowH - ih) / 2, inset = float(kMenuLayoutInset) * sc, gap = 0.75f * sc;
+            for (size_t k = 0; k < n; ++k) {
+                const MenuTile& t = it.tiles[k];
+                const float ix = x0 + float(layoutIconLeft(n, x1 - x0 > 0 ? (x1 - x0) / sc : 0, int(k))) * sc;
+                const bool hot = it.enabled && t.enabled && p.hoverRow == int(i) && p.hoverTile == int(k);
+                const float a = it.enabled && t.enabled ? 1.0f : 0.35f;
+                if (hot)
+                    d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(ix - pad, iy - pad, ix + iw + pad, iy + ih + pad), 6 * sc, 6 * sc),
+                                            accent.Get());
+                const D2D1_COLOR_F base = hot ? rgba(1, 1, 1, 1) : dark ? rgba(1, 1, 1, 1) : rgba(0, 0, 0, 1);
+                Com<ID2D1SolidColorBrush> frame, mine, others;
+                d->CreateSolidColorBrush(rgba(base.r, base.g, base.b, (hot ? 0.95f : dark ? 0.55f : 0.45f) * a * opacity), &frame);
+                d->CreateSolidColorBrush(rgba(base.r, base.g, base.b, (hot ? 1.0f : dark ? 0.90f : 0.78f) * a * opacity), &mine);
+                d->CreateSolidColorBrush(rgba(base.r, base.g, base.b, (hot ? 0.50f : dark ? 0.32f : 0.24f) * a * opacity), &others);
+                const float stroke = std::max(1.0f, 1.1f * sc);
+                d->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(ix + stroke / 2, iy + stroke / 2, ix + iw - stroke / 2, iy + ih - stroke / 2),
+                                                          4 * sc, 4 * sc),
+                                        frame.Get(), stroke);
+                const float l = ix + inset, tp = iy + inset, w = iw - 2 * inset, h = ih - 2 * inset;
+                for (size_t b = 0; b < t.boxes.size(); ++b) {
+                    const LayoutBox& box = t.boxes[b];
+                    // Cases voisines séparées d'un trait fin ; les bords de l'écran restent à inset du cadre.
+                    const float bl = l + box.left * w + (box.left > 0 ? gap : 0), bt = tp + box.top * h + (box.top > 0 ? gap : 0);
+                    const float br = l + box.right * w - (box.right < 1 ? gap : 0), bb = tp + box.bottom * h - (box.bottom < 1 ? gap : 0);
+                    if (br <= bl || bb <= bt) continue;
+                    d->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(bl, bt, br, bb), 1.6f * sc, 1.6f * sc),
+                                            b == 0 ? mine.Get() : others.Get());
+                }
+            }
+            break;
+        }
         case MenuRow::Slider: {
             const float cy = top + rowH / 2, is = 16 * sc;
             drawGlyph(d, it.glyph, D2D1::RectF(x0 + 10 * sc, cy - is / 2, x0 + 10 * sc + is, cy + is / 2), ink.Get(), it.level,
@@ -735,6 +789,15 @@ void Session::dragSlider(Panel& p, double rowX) {
 }
 
 bool Session::releaseRow(Panel& p, int idx, double rowX) {
+    if (idx >= 0 && p.model->items[size_t(idx)].row == MenuRow::Layouts) {   // icône choisie : son identifiant
+        const MenuItem& it = p.model->items[size_t(idx)];
+        const int k = layoutIconAt(it.tiles.size(), rowWidth(p), rowX);
+        if (it.enabled && k >= 0 && it.tiles[size_t(k)].enabled && it.tiles[size_t(k)].id != 0) {
+            result = it.tiles[size_t(k)].id;
+            done = true;
+        }
+        return true;
+    }
     if (idx < 0 || !p.owned) return false;
     MenuItem& it = p.owned->items[size_t(idx)];
     if (!it.enabled) return it.row != MenuRow::Normal;
@@ -815,6 +878,17 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
             if (dragging) {
                 dragSlider(p, x - kMenuPadding);
                 return 0;
+            }
+            int hoverRow = -1, hoverTile = -1;   // icône de disposition sous le pointeur
+            if (const int r = x >= 0 && x <= p.layout.width ? rowAt(p.layout, *p.model, y) : -1;
+                r >= 0 && p.model->items[size_t(r)].row == MenuRow::Layouts) {
+                hoverTile = layoutIconAt(p.model->items[size_t(r)].tiles.size(), rowWidth(p), x - kMenuPadding);
+                hoverRow = hoverTile >= 0 ? r : -1;
+            }
+            if (hoverRow != p.hoverRow || hoverTile != p.hoverTile) {
+                p.hoverRow = hoverRow;
+                p.hoverTile = hoverTile;
+                render(p);
             }
             int idx = x >= 0 && x <= p.layout.width ? hitTestMenu(p.layout, *p.model, y) : -1;
             if (idx != p.hover) {
@@ -926,10 +1000,10 @@ bool MenuWindow::snapshot(const Env& env, const MenuModel& model, std::vector<st
     p.session = &session;
     p.owned = std::make_unique<MenuModel>(model);
     p.model = p.owned.get();
-    float maxText = 0, maxShortcut = 0;
-    session.measureTexts(p, maxText, maxShortcut);
+    float maxText = 0, maxShortcut = 0, maxHeader = 0;
+    session.measureTexts(p, maxText, maxShortcut, &maxHeader);
     const float sc = env.scale;
-    p.layout = layoutMenu(*p.model, maxText / sc, maxShortcut / sc);
+    p.layout = layoutMenu(*p.model, maxText / sc, maxShortcut / sc, maxHeader / sc);
     w = UINT(std::ceil(p.layout.width * sc));
     h = UINT(std::ceil(p.layout.height * sc));
     Com<IWICImagingFactory> wic;

@@ -38,6 +38,7 @@ enum class MenuRow {
     Tiles,    // rangée de tuiles (tiles)
     Media,    // lecture en cours : text (titre), subtitle (artiste), boutons précédent, lecture/pause, suivant
     Calendar, // mois du Centre de notifications : text (« Octobre 2026 »), date (AAAAMMJJ, le jour mis en avant)
+    Layouts,  // icônes de disposition (menu de la pastille verte) : tiles (id, boxes) ; track renvoie l'id choisi
 };
 constexpr double kMenuHeaderHeight = 22;
 constexpr double kMenuSliderHeight = 30;
@@ -45,6 +46,15 @@ constexpr double kMenuToggleHeight = 26;
 constexpr double kMenuTilesHeight = 62;
 constexpr double kMenuMediaHeight = 50;
 constexpr double kMenuCalendarHeight = 196;   // titre, initiales des jours, six semaines
+constexpr double kMenuLayoutsHeight = 32;
+constexpr double kMenuHeaderInset = 9;      // texte d'un intitulé, depuis chaque bord de la ligne
+// Icônes de disposition : écran miniature, n cases égales sur la ligne (kMenuLayoutSide de marge de chaque côté),
+// l'icône centrée dans la sienne ; ses cases (LayoutBox) dessinées à kMenuLayoutInset du cadre.
+constexpr double kMenuLayoutIconW = 30;
+constexpr double kMenuLayoutIconH = 20;
+constexpr double kMenuLayoutSide = 4;
+constexpr double kMenuLayoutGap = 10;       // écart minimal entre deux icônes
+constexpr double kMenuLayoutInset = 2.5;
 constexpr double kMenuSliderLeft = 36;     // début de la piste (après le pictogramme), depuis le bord de la ligne
 constexpr double kMenuSliderRight = 14;
 constexpr double kMenuTileInset = 4;       // marge des tuiles dans la ligne
@@ -52,10 +62,17 @@ constexpr double kMenuTileGap = 8;
 constexpr double kMenuMediaButton = 28;    // largeur d'un bouton de lecture
 constexpr double kMenuMediaRight = 8;
 
+// Case d'une icône de disposition, en fractions de l'écran miniature (0 à 1).
+struct LayoutBox {
+    float left = 0, top = 0, right = 1, bottom = 1;
+};
+
 struct MenuTile {
     std::wstring title, subtitle;
     Glyph glyph = Glyph::None;
     bool on = false, enabled = true;
+    int id = 0;                     // icône de disposition : identifiant renvoyé par track
+    std::vector<LayoutBox> boxes;   // icône de disposition : la fenêtre visée d'abord (pleine), puis les autres (claires)
 };
 
 struct MenuItem {
@@ -95,6 +112,11 @@ std::vector<CalendarCell> calendarCells(int year, int month, int today);
 double sliderValueAt(double rowWidth, double x);
 int tileAt(std::size_t tiles, double rowWidth, double x);   // -1 hors des tuiles
 int mediaButtonAt(double rowWidth, double x);              // 0 précédent, 1 lecture/pause, 2 suivant, -1
+// Icônes de disposition : bord gauche de l'icône k (points depuis le bord de la ligne) ; icône dont la case contient
+// x, ou -1 ; largeur de ligne minimale pour n icônes.
+double layoutIconLeft(std::size_t icons, double rowWidth, int k);
+int layoutIconAt(std::size_t icons, double rowWidth, double x);
+double layoutsRowWidth(std::size_t icons);
 // Rafraîchissement d'un menu ouvert : refresh modifie une copie ; seules les valeurs sont reprises (jamais la
 // structure), et le curseur en cours de glissement (draggingId) garde la sienne. true si le modèle a été repris.
 bool applyRefresh(MenuModel& m, const std::function<bool(MenuModel&)>& refresh, int draggingId);
@@ -110,8 +132,9 @@ struct MenuLayout {
 // symboles (⌦, ↩, ⎋…), lettres en majuscules. La touche reste celle du PC (⌃ = Ctrl).
 std::wstring macShortcutLabel(std::wstring_view shortcut);
 
-// textWidthMax, shortcutWidthMax : largeurs du texte et du raccourci les plus longs (points), mesurées par l'appelant.
-MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax = 0);
+// textWidthMax, shortcutWidthMax, headerWidthMax : largeurs du texte, du raccourci et de l'intitulé les plus longs
+// (points), mesurées par l'appelant.
+MenuLayout layoutMenu(const MenuModel& m, double textWidthMax, double shortcutWidthMax = 0, double headerWidthMax = 0);
 // Entrée sélectionnable suivante (dir = +1) ou précédente (-1), en bouclant ; from = -1 pour partir d'un bord.
 int nextSelectable(const MenuModel& m, int from, int dir);
 // Entrée sélectionnable sous y (points depuis le haut du panneau), ou -1.
