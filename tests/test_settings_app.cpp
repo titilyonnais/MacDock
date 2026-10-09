@@ -180,6 +180,16 @@ TEST_CASE(ui_slider_value_and_position) {
     CHECK_NEAR(md::ui::sliderValueAt(md::ui::sliderKnobX(100, 16, 128, 100, 300), 16, 128, 1, 100, 300), 100.0, 1e-9);
 }
 
+TEST_CASE(ui_menu_press_drag_release) {
+    // Plan 46 : comme sur macOS, un menu ouvert par l'appui se choisit en glissant puis en relâchant ; un clic court
+    // le laisse ouvert (second clic pour choisir).
+    CHECK_EQ(md::ui::menuReleaseChoice(2, 0.0f, 0.10), -1);   // clic court, sans bouger : reste ouvert
+    CHECK_EQ(md::ui::menuReleaseChoice(2, 12.0f, 0.15), 2);   // glissé jusqu'à l'élément 2 : choisi
+    CHECK_EQ(md::ui::menuReleaseChoice(1, 0.0f, 0.50), 1);    // appui tenu sur l'élément coché : choisi (inchangé)
+    CHECK_EQ(md::ui::menuReleaseChoice(-1, 30.0f, 0.60), -1); // relâché hors du menu : rien, il reste ouvert
+    CHECK_EQ(md::ui::menuReleaseChoice(0, 3.0f, 0.20), -1);   // tremblement de moins de 4 pt : un clic
+}
+
 TEST_CASE(ui_segments_menu_and_focus) {
     CHECK_EQ(md::ui::segmentAt(105, 100, 400, 3), 0);
     CHECK_EQ(md::ui::segmentAt(250, 100, 400, 3), 1);

@@ -31,13 +31,20 @@
     écran interne sans nom : « Écran intégré » ;
   - libellé : nom, puis la définition, puis « (principal) » ; sans nom, « Écran N » comme avant.
 
-  Tests : `screenLabel` (avec et sans nom, principal) ; `monitorNames` sur ce PC (clés `\\.\DISPLAY…`).
-- [ ] 3. **Menus en appuyer-glisser-relâcher** :
+  Tests : `screenLabels` (avec et sans nom, principal, deux écrans du même modèle) ; `monitorNames` sur ce PC.
+
+  Essai réel (app en mode d'essai) : le menu « Écran du Dock » propose « MAG 272U E16 — 3840 × 2160 (principal) » et
+  « LG ULTRAGEAR — 1920 × 1080 ». `ScreenInfo` existait déjà dans la barre de menus : la structure s'appelle
+  `ScreenChoice` (sinon violation de la règle de définition unique, plantage des tests).
+- [x] 3. **Menus en appuyer-glisser-relâcher** :
   - le menu ouvert par un appui suit le doigt (survol) ;
   - relâché sur un élément après un glisser (4 pt) ou un appui tenu (0,3 s) : choisi ; sinon le menu reste ouvert.
 
   Test : `menuReleaseChoice` (clic court : reste ouvert ; glisser puis relâcher sur un élément : choisi ; hors du
   menu : rien).
+
+  Essai réel (app en mode d'essai, messages postés) : clic court sur « Génie », le menu reste ouvert ; appui, glisser
+  jusqu'à « Windows » et relâcher : choisi, menu fermé ; relâché hors du menu : rien.
 - [ ] 4. **Formats de texte gardés d'une image à l'autre** : cache de la fenêtre (`ui::FormatCache`) passé au peintre,
   formats des paragraphes compris ; vidé au changement de police.
 

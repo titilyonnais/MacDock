@@ -51,6 +51,11 @@ int segmentAt(float x, float left, float right, int count) {
     return std::min(count - 1, int((x - left) / ((right - left) / float(count))));
 }
 
+int menuReleaseChoice(int item, float movedPt, double heldSeconds) {
+    if (item < 0) return -1;
+    return movedPt >= 4.0f || heldSeconds >= 0.3 ? item : -1;
+}
+
 int menuItemAt(float y, float top, float itemHeight, int count) {
     if (itemHeight <= 0 || y < top) return -1;
     const int i = int((y - top) / itemHeight);

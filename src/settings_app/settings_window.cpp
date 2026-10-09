@@ -896,6 +896,7 @@ void SettingsWindow::onMouseDown(float x, float y) {
     }
     if (recording_ >= 0) stopRecording();   // un clic arrête l'écoute (sur un champ de raccourci, elle reprend plus bas)
     if (menu_) {
+        menuPressAt_.reset();
         if (inside(menu_->rect, x, y)) {
             menu_->hover = ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()));
             pressedRow_ = -2;   // relâché sur un élément : choisi
@@ -945,7 +946,11 @@ void SettingsWindow::onMouseDown(float x, float y) {
             if (seg >= 0) setValue(i, double(seg));
             break;
         }
-        case RowKind::Choice: openMenu(i); break;
+        case RowKind::Choice:
+            openMenu(i);
+            menuPressAt_ = D2D1::Point2F(x, y);   // le doigt peut glisser jusqu'à un élément et y relâcher
+            menuPressTick_ = GetTickCount64();
+            break;
         case RowKind::Buttons:
             pressedButton_ = buttonAt(i, x, y);
             if (pressedButton_ < 0) pressedRow_ = -1;
@@ -1027,6 +1032,18 @@ void SettingsWindow::onMouseUp(float x, float y) {
                              ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
                              : -1;
         if (item >= 0) chooseMenu(item);
+        return;
+    }
+    if (menu_ && menuPressAt_ && pressed == menu_->row) {   // l'appui qui l'a ouvert : appuyer, glisser, relâcher
+        const int item = inside(menu_->rect, x, y)
+                             ? ui::menuItemAt(y, menu_->rect.top + mt::menuPadding, mt::menuItem, int(spec(menu_->row).choices.size()))
+                             : -1;
+        const float moved = std::hypot(x - menuPressAt_->x, y - menuPressAt_->y);
+        const double held = double(GetTickCount64() - menuPressTick_) / 1000.0;
+        if (diagnosticCapture())
+            log::info(L"[diag] réglages : relâché %.0f,%.0f pt sur le menu (élément %d, %.0f pt, %.2f s)", x, y, item, moved, held);
+        menuPressAt_.reset();
+        if (const int chosen = ui::menuReleaseChoice(item, moved, held); chosen >= 0) chooseMenu(chosen);
         return;
     }
     if (light >= 0) {

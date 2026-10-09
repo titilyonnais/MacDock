@@ -36,6 +36,9 @@ double sliderValueAt(float x, double min, double max, double step, float left, f
 int segmentAt(float x, float left, float right, int count);
 // Menu ouvert : élément sous y (marge du haut `top`, éléments de `itemHeight`), ou -1.
 int menuItemAt(float y, float top, float itemHeight, int count);
+// Relâchement de l'appui qui a ouvert un menu (macOS) : l'élément sous le doigt (`item`, -1 hors du menu) est choisi
+// après un glisser (4 pt) ou un appui tenu (0,3 s) ; sinon -1, le menu reste ouvert pour un second clic.
+int menuReleaseChoice(int item, float movedPt, double heldSeconds);
 // Tab (ou Maj+Tab) : prochain élément disponible en bouclant ; -1 si aucun.
 int nextFocus(int current, const std::vector<bool>& focusable, bool backwards);
 
