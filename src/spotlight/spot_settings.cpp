@@ -144,6 +144,15 @@ bool atWordStart(const std::wstring& text, const std::wstring& q) {
     return false;
 }
 
+// 0 : début du nom ; 1 : début d'un mot du nom ; 2 : début d'un mot-clé ; -1 : rien. q plié, non vide.
+int matchGroup(const SettingsPage& page, const std::wstring& q) {
+    const std::wstring title = fold(page.title), bare = withoutHyphens(q);
+    if (title.starts_with(q) || (!bare.empty() && withoutHyphens(title).starts_with(bare))) return 0;
+    if (atWordStart(title, q)) return 1;
+    if (atWordStart(fold(page.keywords), q)) return 2;
+    return -1;
+}
+
 } // namespace
 
 const std::vector<SettingsPage>& settingsPages() {
@@ -160,19 +169,21 @@ const std::vector<SettingsPage>& settingsPages() {
 }
 
 std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, const std::wstring& query) {
-    const std::wstring q = fold(query), bare = withoutHyphens(q);
+    const std::wstring q = fold(query);
     std::vector<std::size_t> groups[3];
     if (q.empty()) return {};
-    for (std::size_t i = 0; i < pages.size(); ++i) {
-        const std::wstring title = fold(pages[i].title);
-        if (title.starts_with(q) || (!bare.empty() && withoutHyphens(title).starts_with(bare))) groups[0].push_back(i);
-        else if (atWordStart(title, q)) groups[1].push_back(i);
-        else if (atWordStart(fold(pages[i].keywords), q)) groups[2].push_back(i);
-    }
+    for (std::size_t i = 0; i < pages.size(); ++i)
+        if (const int g = matchGroup(pages[i], q); g >= 0) groups[g].push_back(i);
     std::vector<std::size_t> out = std::move(groups[0]);
     out.insert(out.end(), groups[1].begin(), groups[1].end());
     out.insert(out.end(), groups[2].begin(), groups[2].end());
     return out;
+}
+
+bool settingTitleMatch(const SettingsPage& page, const std::wstring& query) {
+    const std::wstring q = fold(query);
+    const int g = q.empty() ? -1 : matchGroup(page, q);
+    return g == 0 || g == 1;
 }
 
 bool exactSettingTitle(const SettingsPage& page, const std::wstring& query) {

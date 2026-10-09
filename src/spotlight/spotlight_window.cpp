@@ -432,6 +432,8 @@ void Session::updateRegion() {
     const int w = int(std::lround((kPanelW + 2 * kShadow) * sc));
     const int h = int(std::lround((panelHeight(view.sections) + 2 * kShadow) * sc));
     const int r = int(std::lround(2 * (kRadius + kShadow) * sc));
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) hover.regionChanged(cursor);   // le mouvement que Windows envoie ensuite n'en est pas un
     SetWindowRgn(hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r), TRUE);
 }
 

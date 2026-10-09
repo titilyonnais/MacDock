@@ -64,6 +64,9 @@ std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder);
 struct HoverGate {
     POINT last{0, 0};
     void reset(POINT at) { last = at; }
+    // Région du panneau changée (il grandit ou rapetisse) : le pointeur a pu bouger hors du panneau sans qu'il le
+    // sache ; le mouvement que Windows envoie ensuite, à cette même position, n'est pas un déplacement.
+    void regionChanged(POINT cursor) { last = cursor; }
     bool moved(POINT at) {
         const bool changed = at.x != last.x || at.y != last.y;
         last = at;

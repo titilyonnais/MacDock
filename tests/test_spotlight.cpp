@@ -282,6 +282,65 @@ TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le
     CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
 }
 
+TEST_CASE(spot_results_exact_app_beats_setting) {   // relecture du plan 55 : l'app Caméra reste en tête
+    const std::vector<md::SettingsPage> pages{{false, L"Caméra", L"ms-settings:privacy-webcam", L"webcam"}};
+    const std::vector<md::AppEntry> apps{{L"Caméra", L"camera!App"}};
+    for (const wchar_t* q : {L"caméra", L"camera", L"CAMÉRA "}) {
+        const auto r = md::spotlightResults(q, apps, {}, pages);
+        REQUIRE(r.size() == 2);
+        CHECK(r[0].title == L"Meilleur résultat" && r[0].items[0].kind == md::SpotKind::App);
+        CHECK(r[1].title == L"Réglages" && r[1].items[0].kind == md::SpotKind::Setting);
+    }
+}
+
+TEST_CASE(spot_results_app_name_beats_conversion) {   // relecture du plan 55 : « 7 days » cherche « 7 Days to Die »
+    const std::vector<md::AppEntry> apps{{L"7 Days to Die", L"steam7dtd"}, {L"60 Seconds!", L"steam60s"}};
+    const auto d = md::spotlightResults(L"7 days", apps, {}, {});
+    REQUIRE(!d.empty());
+    CHECK(d[0].items[0].kind == md::SpotKind::App && d[0].items[0].title == L"7 Days to Die");
+    const auto s = md::spotlightResults(L"60 sec", apps, {}, {});
+    REQUIRE(!s.empty());
+    CHECK(s[0].items[0].kind == md::SpotKind::App && s[0].items[0].title == L"60 Seconds!");
+    const auto k = md::spotlightResults(L"10 km", apps, {}, {});   // aucune app ne commence ainsi : la conversion reste
+    REQUIRE(!k.empty());
+    CHECK(k[0].items[0].kind == md::SpotKind::Calc);
+}
+
+TEST_CASE(spot_results_keyword_settings_after_documents) {   // relecture du plan 55 : « image » cherche des images
+    const std::vector<md::SettingsPage> pages{
+        {false, L"Arrière-plan", L"ms-settings:personalization-background", L"fond d'écran image"},
+        {false, L"Écran de verrouillage", L"ms-settings:lockscreen", L""},
+    };
+    const std::vector<md::SpotItem> files{{md::SpotKind::File, L"image.png", L"C:\\x", L"C:\\x\\image.png"}};
+    // Un mot-clé seul : jamais en meilleur résultat, et la section après les documents (Entrée : le premier document).
+    const auto i = md::spotlightResults(L"image", {}, files, pages);
+    REQUIRE(i.size() == 2);
+    CHECK(i[0].title == L"Documents");
+    CHECK(i[1].title == L"Réglages" && i[1].items[0].title == L"Arrière-plan");
+    // Sans document : la section seule ; la première ligne reste le réglage.
+    const auto f = md::spotlightResults(L"fond d'écran", {}, {}, pages);
+    REQUIRE(f.size() == 1);
+    CHECK(f[0].title == L"Réglages");
+    // Un nom : meilleur résultat sans app ; sinon la section avant les documents.
+    const auto a = md::spotlightResults(L"arrière", {}, files, pages);
+    REQUIRE(a.size() == 2);
+    CHECK(a[0].title == L"Meilleur résultat" && a[0].items[0].title == L"Arrière-plan");
+    const std::vector<md::AppEntry> apps{{L"Outil Capture d'écran", L"snip!App"}};
+    const auto e = md::spotlightResults(L"écran", apps, files, pages);
+    REQUIRE(e.size() == 3);
+    CHECK(e[0].items[0].kind == md::SpotKind::App);
+    CHECK(e[1].title == L"Réglages" && e[2].title == L"Documents");
+}
+
+TEST_CASE(spot_hover_ignores_region_growth) {   // relecture du plan 55 : pointeur déplacé hors du panneau
+    md::HoverGate g;
+    g.reset({100, 100});            // ouverture
+    // Le pointeur va sous le champ, hors du panneau : aucun WM_MOUSEMOVE n'arrive au panneau.
+    g.regionChanged({100, 400});    // la frappe agrandit le panneau sous le pointeur
+    CHECK(!g.moved({100, 400}));    // le WM_MOUSEMOVE de Windows qui suit ne choisit pas la ligne survolée
+    CHECK(g.moved({101, 400}));
+}
+
 TEST_CASE(spot_hover_needs_a_real_move) {   // plan 55 : panneau qui grandit sous un pointeur immobile
     md::HoverGate g;
     g.reset({4582, 1232});              // pointeur à l'ouverture

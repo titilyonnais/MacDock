@@ -21,5 +21,7 @@ const std::vector<SettingsPage>& settingsPages();
 std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, const std::wstring& query);
 // Le nom de la page est exactement la requête (sans casse, accents, traits d'union ni espaces autour).
 bool exactSettingTitle(const SettingsPage& page, const std::wstring& query);
+// La page est trouvée par son nom (début du nom ou d'un de ses mots), pas seulement par un mot-clé.
+bool settingTitleMatch(const SettingsPage& page, const std::wstring& query);
 
 } // namespace md

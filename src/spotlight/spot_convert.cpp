@@ -24,7 +24,8 @@ struct Unit {
 };
 
 // Unités de base : mètre, kilogramme, kelvin, litre, mètre carré, mètre par seconde, seconde, octet, joule, pascal.
-// Volumes des États-Unis (gallon, quart, pinte, once liquide, tasse). « d », « pi » et « mb » n'y sont pas exprès.
+// Volumes des États-Unis (gallon, quart, pinte, once liquide, tasse). « d », « pi », « mb », « nd » et « pt » n'y sont
+// pas exprès ; les symboles d'une lettre ambigus (C, F, K, o, B) demandent une espace après le nombre.
 const std::vector<Unit>& units() {
     static const std::vector<Unit> table = {
         {L"mm", Cat::Length, 1e-3, 0, L"in", {L"mm"}, {}, {L"millimetre", L"millimetres", L"millimeter", L"millimeters"}},
@@ -46,9 +47,9 @@ const std::vector<Unit>& units() {
         {L"oz", Cat::Mass, 0.028349523125, 0, L"g", {L"oz"}, {}, {L"once", L"onces", L"ounce", L"ounces"}},
         {L"lb", Cat::Mass, 0.45359237, 0, L"kg", {L"lb", L"lbs"}, {}, {L"livre", L"livres", L"pound", L"pounds"}},
 
-        {L"°C", Cat::Temperature, 1, 273.15, L"°F", {L"°C", L"ºC", L"°c", L"℃", L"C", L"° C"}, {},
+        {L"°C", Cat::Temperature, 1, 273.15, L"°F", {L"°C", L"ºC", L"°c", L"℃", L"° C"}, {L"C"},
          {L"celsius", L"degre celsius", L"degres celsius"}},
-        {L"°F", Cat::Temperature, 5.0 / 9, 273.15 - 32 * 5.0 / 9, L"°C", {L"°F", L"ºF", L"°f", L"℉", L"F", L"° F"}, {},
+        {L"°F", Cat::Temperature, 5.0 / 9, 273.15 - 32 * 5.0 / 9, L"°C", {L"°F", L"ºF", L"°f", L"℉", L"° F"}, {L"F"},
          {L"fahrenheit", L"degre fahrenheit", L"degres fahrenheit"}},
         {L"K", Cat::Temperature, 1, 0, L"°C", {}, {L"K"}, {L"kelvin", L"kelvins"}},
 
@@ -59,7 +60,7 @@ const std::vector<Unit>& units() {
         {L"m³", Cat::Volume, 1e3, 0, L"l", {L"m³", L"m3"}, {}, {L"metre cube", L"metres cubes", L"cubic meter", L"cubic meters"}},
         {L"gal", Cat::Volume, 3.785411784, 0, L"l", {L"gal"}, {}, {L"gallon", L"gallons"}},
         {L"qt", Cat::Volume, 0.946352946, 0, L"l", {L"qt"}, {}, {}},
-        {L"pt", Cat::Volume, 0.473176473, 0, L"l", {L"pt"}, {}, {L"pint", L"pints"}},
+        {L"pt", Cat::Volume, 0.473176473, 0, L"l", {}, {}, {L"pint", L"pints"}},   // « 12 pt » : un corps de police
         {L"fl oz", Cat::Volume, 0.0295735295625, 0, L"ml", {L"fl oz", L"fl. oz", L"floz"}, {},
          {L"once liquide", L"onces liquides", L"fluid ounce", L"fluid ounces"}},
         {L"cup", Cat::Volume, 0.2365882365, 0, L"ml", {L"cup", L"cups"}, {}, {L"tasse", L"tasses"}},
@@ -82,7 +83,7 @@ const std::vector<Unit>& units() {
          {L"kilometre par heure", L"kilometres par heure", L"kilometre-heure", L"kilometres-heure", L"kilometres heure"}},
         {L"mph", Cat::Speed, 0.44704, 0, L"km/h", {L"mph", L"mi/h"}, {},
          {L"mile par heure", L"miles par heure", L"miles per hour"}},
-        {L"kn", Cat::Speed, 1852 / 3600.0, 0, L"km/h", {L"kn", L"kt", L"nd"}, {}, {L"noeud", L"noeuds", L"knot", L"knots"}},
+        {L"kn", Cat::Speed, 1852 / 3600.0, 0, L"km/h", {L"kn", L"kt"}, {}, {L"noeud", L"noeuds", L"knot", L"knots"}},   // « 2nd » n'est pas une vitesse
         {L"ft/s", Cat::Speed, 0.3048, 0, L"m/s", {L"ft/s"}, {}, {L"pied par seconde", L"pieds par seconde"}},
 
         {L"ms", Cat::Time, 1e-3, 0, L"", {L"ms"}, {}, {L"milliseconde", L"millisecondes", L"millisecond", L"milliseconds"}},
@@ -93,7 +94,7 @@ const std::vector<Unit>& units() {
         {L"sem", Cat::Time, 604800, 0, L"", {L"sem"}, {}, {L"semaine", L"semaines", L"week", L"weeks"}},
 
         {L"bit", Cat::Data, 0.125, 0, L"o", {L"bit", L"bits"}, {}, {}},
-        {L"o", Cat::Data, 1, 0, L"bit", {L"o"}, {L"B"}, {L"octet", L"octets", L"byte", L"bytes"}},
+        {L"o", Cat::Data, 1, 0, L"bit", {}, {L"o", L"B"}, {L"octet", L"octets", L"byte", L"bytes"}},
         {L"Ko", Cat::Data, 1e3, 0, L"Kio", {L"Ko", L"ko", L"kB", L"KB"}, {}, {L"kilooctet", L"kilooctets", L"kilobyte", L"kilobytes"}},
         {L"Mo", Cat::Data, 1e6, 0, L"Mio", {L"Mo", L"mo", L"MB"}, {}, {L"megaoctet", L"megaoctets", L"megabyte", L"megabytes"}},
         {L"Go", Cat::Data, 1e9, 0, L"Gio", {L"Go", L"go", L"GB", L"gb"}, {}, {L"gigaoctet", L"gigaoctets", L"gigabyte", L"gigabytes"}},

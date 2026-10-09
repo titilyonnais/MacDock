@@ -62,34 +62,62 @@ std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::
     const std::vector<std::size_t> found = searchApps(apps, q);
     const std::vector<std::size_t> pageHits = searchSettings(pages, q);
     constexpr std::size_t kNone = std::size_t(-1);
-    std::size_t next = 0, bestPage = kNone;
+    const std::wstring folded = foldForSearch(q);
+    // Position dans found de la première app qui porte exactement ce nom, ou dont le nom commence ainsi.
+    auto appNamed = [&](bool prefix) {
+        for (std::size_t k = 0; k < found.size(); ++k) {
+            const std::wstring name = foldForSearch(trimmed(apps[found[k]].name));
+            if (prefix ? name.starts_with(folded) : name == folded) return k;
+        }
+        return kNone;
+    };
+    std::size_t bestApp = kNone, bestPage = kNone;
+    const auto conversion = convertUnits(q);
     if (const auto v = evaluateExpression(q)) {
         const std::wstring result = formatNumber(*v);
         best.items.push_back({SpotKind::Calc, result, q + L" =", plainNumber(result)});
-    } else if (const auto c = convertUnits(q)) {   // 6 chiffres, l'unité après une espace insécable
-        const std::wstring result = formatNumber(c->value, 6);
-        best.items.push_back({SpotKind::Calc, result + L'\u00A0' + c->to,
-                              formatNumber(c->amount) + L'\u00A0' + c->from + L" =", plainNumber(result)});
+    } else if (conversion && appNamed(true) == kNone) {   // « 7 days » cherche d'abord « 7 Days to Die »
+        const std::wstring result = formatNumber(conversion->value, 6);   // l'unité après une espace insécable
+        best.items.push_back({SpotKind::Calc, result + L'\u00A0' + conversion->to,
+                              formatNumber(conversion->amount) + L'\u00A0' + conversion->from + L" =",
+                              plainNumber(result)});
     } else {
-        for (std::size_t i : pageHits)
-            if (exactSettingTitle(pages[i], q)) {
-                bestPage = i;
-                break;
-            }
-        if (bestPage == kNone && found.empty() && !pageHits.empty()) bestPage = pageHits[0];
-        if (bestPage != kNone) {
-            best.items.push_back(settingItem(pages[bestPage]));
-        } else if (!found.empty()) {
-            best.items.push_back(appItem(apps[found[0]]));
-            next = 1;
+        // Une app au nom exact, puis un réglage au nom exact, puis la première app, puis le premier réglage trouvé par
+        // son nom (un mot-clé seul ne passe jamais devant les documents).
+        bestApp = appNamed(false);
+        if (bestApp == kNone) {
+            for (std::size_t i : pageHits)
+                if (exactSettingTitle(pages[i], q)) {
+                    bestPage = i;
+                    break;
+                }
         }
+        if (bestApp == kNone && bestPage == kNone) {
+            if (!found.empty()) {
+                bestApp = 0;
+            } else {
+                for (std::size_t i : pageHits)
+                    if (settingTitleMatch(pages[i], q)) {
+                        bestPage = i;
+                        break;
+                    }
+            }
+        }
+        if (bestApp != kNone) best.items.push_back(appItem(apps[found[bestApp]]));
+        else if (bestPage != kNone) best.items.push_back(settingItem(pages[bestPage]));
     }
-    for (std::size_t i = next; i < found.size() && appSection.items.size() < kMaxApps; ++i)
-        appSection.items.push_back(appItem(apps[found[i]]));
+    for (std::size_t k = 0; k < found.size() && appSection.items.size() < kMaxApps; ++k)
+        if (k != bestApp) appSection.items.push_back(appItem(apps[found[k]]));
+    bool namedSetting = false;   // la section a un réglage trouvé par son nom : elle passe avant les documents
     for (std::size_t i : pageHits)
-        if (i != bestPage && settings.items.size() < kMaxSettings) settings.items.push_back(settingItem(pages[i]));
+        if (i != bestPage && settings.items.size() < kMaxSettings) {
+            settings.items.push_back(settingItem(pages[i]));
+            namedSetting = namedSetting || settingTitleMatch(pages[i], q);
+        }
     for (std::size_t i = 0; i < files.size() && docs.items.size() < kMaxFiles; ++i) docs.items.push_back(files[i]);
-    for (SpotSection* s : {&best, &appSection, &settings, &docs})
+    SpotSection* order[] = {&best, &appSection, &settings, &docs};
+    if (!namedSetting) std::swap(order[2], order[3]);   // mots-clés seuls (« image ») : après les documents
+    for (SpotSection* s : order)
         if (!s->items.empty()) out.push_back(std::move(*s));
     return out;
 }

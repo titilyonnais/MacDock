@@ -70,7 +70,7 @@ TEST_CASE(spot_convert_explicit_targets) {
     CONV(L"5 cm in in", 1.968503937, L"cm", L"in");
     CONV(L"1 Go vers Mo", 1000, L"Go", L"Mo");
     CONV(L"98,6 F → C", 37, L"°F", L"°C");
-    CONV(L"98,6F→C", 37, L"°F", L"°C");
+    CONV(L"98,6°F→C", 37, L"°F", L"°C");   // collé : avec le symbole « ° » (relecture du plan 55)
     CONV(L"1 h -> s", 3600, L"h", L"s");
     CONV(L"3 pieds en mètres", 0.9144, L"ft", L"m");
     CONV(L"1 tasse en ml", 236.5882365, L"cup", L"ml");
@@ -109,6 +109,18 @@ TEST_CASE(spot_convert_names_and_case) {
     CHECK(!md::convertUnits(L"3d"));       // « 3D Builder » : jamais « d » pour jour
     CHECK(!md::convertUnits(L"1013 mb"));  // millibar ou mégaoctet ?
     CHECK(!md::convertUnits(L"2 pi"));     // π, pas des pieds
+}
+
+TEST_CASE(spot_convert_short_symbols_need_space) {   // relecture du plan 55 : une recherche n'est pas détournée
+    CHECK(!md::convertUnits(L"2nd"));     // « 2nd », pas des nœuds
+    CHECK(!md::convertUnits(L"12 pt"));   // un corps de police, pas des pintes
+    CHECK(!md::convertUnits(L"100C"));    // une lettre seule demande une espace, comme « 4 K » et « 1 B »
+    CHECK(!md::convertUnits(L"2F"));
+    CHECK(!md::convertUnits(L"1o"));
+    CONV(L"100 C", 212, L"°C", L"°F");
+    CONV(L"100°C", 212, L"°C", L"°F");    // le symbole avec « ° » peut rester collé
+    CONV(L"8 o", 64, L"o", L"bit");
+    CONV(L"2 pints en l", 0.946352946, L"pt", L"l");   // le nom anglais reste
 }
 
 TEST_CASE(spot_convert_data_units) {
