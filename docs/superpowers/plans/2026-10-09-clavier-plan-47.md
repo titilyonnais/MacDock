@@ -25,7 +25,7 @@
   - enregistrement refusé : nouvel essai toutes les 30 s, avertissement une seule fois, puis « raccourci libéré ».
 
   Tests : réglage changé, même réglage enregistré (rien), même réglage refusé (nouvel essai), raccourci désactivé.
-- [ ] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
+- [x] 3. Essai réel (MacDock lancé pour l'essai puis arrêté), documentation, relecture, fusion.
 
 ## Essais réels
 MacDock en diagnostic, lancé puis arrêté :
@@ -34,3 +34,16 @@ MacDock en diagnostic, lancé puis arrêté :
 - dossier d'essai ouvert dans l'Explorateur (« mon autre fichier.txt », « mon rapport.txt », « zèbre.txt ») : « mon r »
   tapé vite sélectionne « mon rapport.txt » sans Coup d'œil ; une espace 1,5 s plus tard l'ouvre. Fenêtre et dossier
   retirés ensuite.
+
+## Relecture
+Rien de critique. Corrigés :
+- la saisie ne se terminait jamais : flèches, Origine, Fin, pages, Tab, Entrée, Échap, effacement, touches F et clic
+  la terminent (« mo », ↓, Espace ouvre le Coup d'œil, vérifié en réel) ;
+- nouveaux essais sans fin : 10 au plus (5 min), pour ne pas prendre Alt+Espace à un lanceur qui redémarre ;
+- raccourcis ⌘ comptés comme saisie, AltGr et opérateurs du pavé non comptés : corrigé ; ⌘Espace laissé à Spotlight ;
+- raccourcis échangés d'un coup (Mission Control ↔ Exposé) : les anciens libérés d'abord.
+
+Mineurs reportés :
+- deux réglages identiques (écrits à la main) : le second est refusé comme « pris par une autre app » ;
+- le délai d'une seconde n'est pas mesuré contre celui de l'Explorateur (non documenté) ;
+- le refus d'un raccourci n'apparaît que dans le journal, pas dans Réglages › Clavier.
