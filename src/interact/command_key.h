@@ -28,8 +28,10 @@ std::optional<Chord> commandChord(unsigned vk, bool shift, bool explorer = false
 
 class CommandKeys {
 public:
-    // Une frappe physique (les nôtres, simulées, ne passent pas par ici). shift : Maj enfoncée.
-    CommandAction onKey(unsigned vk, bool down, bool shift, bool explorer = false);
+    // Une frappe physique (les nôtres, simulées, ne passent pas par ici). shift : Maj enfoncée. macDockKey : une touche
+    // que MacDock prend lui-même avec ⌘ (⌘` : fenêtre suivante) ; elle passe sans rendre Alt à Windows, ⌘ reste ⌘.
+    CommandAction onKey(unsigned vk, bool down, bool shift, bool explorer = false, bool macDockKey = false);
+    bool holding() const { return held_ && !realAlt_; }   // ⌘ tenu, gardé de côté (Alt pas rendu à Windows)
 
 private:
     bool held_ = false;      // Alt de gauche enfoncé, gardé de côté

@@ -3,7 +3,7 @@
 #   ./build.ps1 -Target all -Config Release
 #   ./build.ps1 -Target all -Config Release -OutDir build\Package   (autre dossier : MacDock peut tourner pendant ce temps)
 param(
-    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'forcequitprobe', 'all')] [string]$Target = 'all',
+    [ValidateSet('tests', 'dock', 'menubar', 'launcher', 'settings', 'icons', 'forcequitprobe', 'windowcycleprobe', 'all')] [string]$Target = 'all',
     [ValidateSet('Debug', 'Release')] [string]$Config = 'Debug',
     [string]$OutDir = '',
     [switch]$Run
@@ -78,6 +78,9 @@ $Targets = @{
 # des tests, sans les tests.
 $Targets.forcequitprobe = @{ Exe = 'force_quit_probe.exe'; Sources = @('tests\real\force_quit_probe.cpp') + @($Targets.tests.Sources | Where-Object { $_ -ne 'tests\*.cpp' });
                              Subsystem = 'CONSOLE'; Libs = $Targets.tests.Libs }
+# Sonde de l'essai réel de la fenêtre suivante (plan 59, tests\real\window_cycle_probe.cpp), hors de « all » : Win32 seul.
+$Targets.windowcycleprobe = @{ Exe = 'window_cycle_probe.exe'; Sources = @('tests\real\window_cycle_probe.cpp'); Subsystem = 'CONSOLE';
+                               Libs = @('user32.lib') }
 
 # Shaders HLSL (src\glass\shaders) compilés par le fxc du SDK en en-têtes (g_<nom>) dans build\<Config>\shaders.
 $ShaderDir = Join-Path $OutRoot 'shaders'

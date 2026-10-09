@@ -20,7 +20,7 @@ const std::map<std::string, std::wstring>& paneKeywords() {
         {"menubar", L"macdock horloge icônes volume"},
         {"windows", L"macdock pastilles génie réduire"},
         {"desktop", L"macdock coins actifs exposé"},
-        {"keyboard", L"macdock raccourcis touche commande"},
+        {"keyboard", L"macdock raccourcis touche commande fenêtre suivante"},
         {"screenshots", L"macdock capture enregistrement de l'écran vignette"},
         {"sounds", L"macdock effets sonores"},
         {"font", L"macdock sf pro"},

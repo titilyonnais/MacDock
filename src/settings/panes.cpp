@@ -279,6 +279,9 @@ std::vector<GroupSpec> keyboardPane() {
     keys.rows.push_back(shortcut(L"Spotlight", [](auto& m) -> auto& { return m.dock.spotlightHotkey; }));
     keys.rows.push_back(pick(RowKind::Choice, L"Sélecteur d'apps", {L"⌥⇥ façon macOS", L"Celui de Windows"},
                              std::vector<std::wstring>{L"alt+tab", L"off"}, [](auto& m) -> auto& { return m.dock.appSwitcherHotkey; }));
+    keys.rows.push_back(pick(RowKind::Choice, L"Fenêtre suivante de l'app", {L"⌥` façon macOS", L"Désactivée"},
+                             std::vector<std::wstring>{L"alt+backtick", L"off"}, [](auto& m) -> auto& { return m.dock.windowCycleHotkey; },
+                             L"La touche sous Échap (² sur un clavier AZERTY) ; avec Maj, la précédente"));
     keys.rows.push_back(shortcut(L"Forcer à quitter", [](auto& m) -> auto& { return m.dock.forceQuitHotkey; },
                                  L"Les apps ouvertes, pour arrêter celle qui ne répond plus"));
     out.push_back(keys);
