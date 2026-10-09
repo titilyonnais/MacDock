@@ -1004,6 +1004,21 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - Raccourci affiché dans le menu  même quand Windows l'a refusé au Dock.
 - À essayer avec toi : taper vraiment ⌥⊞⎋ (le menu Démarrer ne doit pas s'ouvrir), aussi avec « Alt de gauche joue ⌘ ».
 
+### Plan 55 — Spotlight : réglages et conversions, 9 octobre après-midi (session autonome)
+
+- **Conversions** comme la calculatrice : `10 km` → 6,21371 mi, `100 °F en °C`, `500 Go` → 465,661 Gio, `90 min` →
+  1,5 h ; dix catégories, symboles en casse exacte et noms en français ou en anglais. `4K`, `3d`, `2 pi` ou
+  `1013 mb` ne sont pas pris pour des unités (une vidéo 4K, une app 3D, π, des millibars ?). Entrée copie le nombre.
+- **Section « Réglages »** : 69 pages des Paramètres de Windows 11 avec leurs mots-clés (`fond d'écran` → Arrière-plan,
+  `mot de passe` → Options de connexion) et les 11 sections de Réglages MacDock avec leur tuile, ouvertes par
+  `--pane`. Une page n'ouvre jamais autre chose qu'une adresse `ms-settings:`.
+- **Défaut trouvé à l'essai réel et corrigé** (il datait du premier Spotlight) : quand le panneau grandissait sous
+  ton pointeur immobile, Windows signalait un mouvement et la ligne passée sous le pointeur était choisie ; Entrée
+  ouvrait alors un document au lieu du meilleur résultat. Seul un vrai mouvement de souris choisit une ligne.
+- **Essais réels** : ton Dock recompilé et relancé, Spotlight ouvert par son message, requêtes envoyées à sa seule
+  fenêtre (`10 km en miles`, `wifi`, `dock`) : résultats et icônes exacts, fermé par Échap sans rien lancer ni
+  copier ; captures de sa seule fenêtre, effacées après lecture.
+
 ## Mineurs reportés — plan 53
 - `launchInstaller` ne revérifie pas que la version prête est plus récente ni que son empreinte notée est non vide (un `update.json` abîmé par ce même compte) ; l'installateur part même si la tentative n'a pas pu être notée.
 - Une relance de `release.yml` garde l'ancienne signature : « signature invalide » jusqu'à la nouvelle signature.

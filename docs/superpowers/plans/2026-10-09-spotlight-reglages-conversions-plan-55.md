@@ -44,17 +44,33 @@ Session autonome : aucune question possible, choix faits ici ; aucun push.
   sans changement de comportement), liés dans le Dock avec `pane_icons.cpp`.
 
 ## Tâches
-- [ ] 1. **Conversions** : `formatNumber(v, chiffres)` ; `convertUnits` (analyse, table des unités, unité par défaut,
+- [x] 1. **Conversions** : `formatNumber(v, chiffres)` ; `convertUnits` (analyse, table des unités, unité par défaut,
   échelle des durées). Tests : formes, casse, nombres, chaque catégorie, températures négatives, refus.
-- [ ] 2. **Réglages** : `pane_catalog.*` (déplacement) ; `spot_settings.*` (table, mots-clés, recherche classée).
+- [x] 2. **Réglages** : `pane_catalog.*` (déplacement) ; `spot_settings.*` (table, mots-clés, recherche classée).
   Tests : « wifi », « fond d'écran », « mot de passe », accents et casse, « clavier » (MacDock d'abord), cibles
   `ms-settings:` toutes valides, clés MacDock toutes connues de `paneFromKey`.
-- [ ] 3. **Résultats** : `spotlightResults` avec conversions et réglages (meilleur résultat, section, limites),
+- [x] 3. **Résultats** : `spotlightResults` avec conversions et réglages (meilleur résultat, section, limites),
   `wantsFileSearch`. Tests.
-- [ ] 4. **Fenêtre et Dock** : `SpotKind::Setting` et `SpotKind::Pane` ; icône de l'app Paramètres (chargeur), tuiles
+- [x] 4. **Fenêtre et Dock** : `SpotKind::Setting` et `SpotKind::Pane` ; icône de l'app Paramètres (chargeur), tuiles
   des sections (dessin) ; quatre sections ; choix dans le Dock (`spotAction` pure, testée) ; rendu hors écran.
-- [ ] 5. **Essais réels** : rendus hors écran (« wifi », « 10 km », « dock »), Dock recompilé et relancé, Spotlight
+- [x] 5. **Essais réels** : rendus hors écran (« wifi », « 10 km », « dock »), Dock recompilé et relancé, Spotlight
   ouvert par son message, requêtes envoyées à sa fenêtre, capture de sa seule fenêtre, fermeture par Échap (rien
   lancé, presse-papiers non touché).
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Fait
+- **Décision en chemin** : « wifi » ne trouvait « Wi-Fi » que par un mot-clé ; les traits d'union du nom sont
+  facultatifs, pour la recherche comme pour le nom exact (« wifi », « email »).
+- **Défaut trouvé à l'essai réel** (antérieur au plan) : quand le panneau grandit sous un pointeur immobile, Windows
+  envoie WM_MOUSEMOVE et la ligne survolée était choisie ; Entrée ouvrait alors un document au lieu du meilleur
+  résultat. `HoverGate` : seul un vrai déplacement choisit la ligne survolée. Test vu en échec avant ; revérifié en
+  réel avec le même pointeur.
+- **Essais réels** :
+  - rendus hors écran (`--spotlight-snapshot`) : « 10 km », « wifi », « écran » en sombre, « clavier » : sections,
+    ordre, tuiles des sections de MacDock ; images effacées (elles montraient des noms de fichiers indexés) ;
+  - Dock Release recompilé, relancé en diagnostic ; Spotlight ouvert par le message « MacDockSpotlight », requêtes
+    envoyées à sa fenêtre (WM_CHAR) : « 10 km en miles » → 6,21371 mi, « wifi » → Wi-Fi avec l'icône de l'app
+    Paramètres, « dock » → la section Dock en meilleur résultat ; fermé par Échap, sans Entrée (rien lancé, presse-
+    papiers intact) ; captures de sa seule fenêtre, effacées.
+- Suite : 760 tests verts (Debug et Release).
