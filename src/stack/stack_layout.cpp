@@ -58,3 +58,12 @@ GridGeometry gridLayout(std::size_t count, double tile, double maxHeight) {
 }
 
 } // namespace md
+
+namespace md {
+
+FanLabelColors fanLabelColors(bool hot, AccentColor accent, bool dark) {
+    if (!hot) return {0x29292E, 0xFFFFFF};   // pastille sombre au repos, comme macOS
+    return {accentRgb(accent, dark), onAccentRgb(accent, dark)};
+}
+
+} // namespace md

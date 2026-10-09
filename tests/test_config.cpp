@@ -178,9 +178,11 @@ TEST_CASE(settings_accent_color) {   // plan 57 : couleur d'accentuation, bleu p
 
 TEST_CASE(settings_accent_color_of_raw_json) {   // plan 57 : la barre lit l'accent dans le settings.json du Dock
     CHECK(md::accentColorOf(R"({"accentColor":"orange"})") == md::AccentColor::Orange);
-    CHECK(md::accentColorOf("") == md::AccentColor::Blue);
-    CHECK(md::accentColorOf("{pas du json") == md::AccentColor::Blue);
-    CHECK(md::accentColorOf(R"({"accentColor":"mauve"})") == md::AccentColor::Blue);
+    CHECK(md::accentColorOf("\xEF\xBB\xBF{\"accentColor\":\"purple\"}") == md::AccentColor::Purple);   // avec BOM
+    CHECK(!md::accentColorOf(""));               // illisible : rien, la barre garde l'accent qu'elle avait
+    CHECK(!md::accentColorOf("{pas du json"));
+    CHECK(md::accentColorOf(R"({"accentColor":"mauve"})") == md::AccentColor::Blue);   // inconnue : bleu
+    CHECK(md::accentColorOf("{}") == md::AccentColor::Blue);
 }
 
 TEST_CASE(settings_spotlight_hotkey) {

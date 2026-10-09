@@ -65,8 +65,9 @@ struct Settings {
 constexpr int kSettingsVersion = 2;
 
 Settings settingsFromJson(const json::Value& v);
-// Couleur d'accentuation d'un settings.json brut (lu par la barre de menus) ; illisible ou inconnue : bleu.
-AccentColor accentColorOf(std::string_view settingsJson);
+// Couleur d'accentuation d'un settings.json brut (lu par la barre de menus), BOM accepté ; valeur inconnue : bleu ;
+// fichier illisible (vide, JSON cassé pendant une écriture) : rien.
+std::optional<AccentColor> accentColorOf(std::string_view settingsJson);
 json::Value settingsToJson(const Settings& s);   // écrit "version": kSettingsVersion
 // Fichier sans "version" (v1) : largeSize 128 (ancien défaut) → 80 ; met "version": 2.
 json::Value migrateSettingsJson(const json::Value& v);

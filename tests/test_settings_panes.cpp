@@ -114,9 +114,9 @@ TEST_CASE(settings_general_accent_color) {   // plan 57 : comme Réglages Systè
     // La recherche trouve la ligne par son nom, ses mots-clés et les noms des couleurs.
     for (const wchar_t* q : {L"accentuation", L"violet", L"apparence"}) {
         const auto found = md::searchPanes(q, fullEnv());
-        bool general = false;
-        for (const auto& f : found) general = general || (f.pane == md::PaneId::General && !f.rows.empty());
-        CHECK(general);
+        bool inGeneral = false;
+        for (const auto& f : found) inGeneral = inGeneral || (f.pane == md::PaneId::General && !f.rows.empty());
+        CHECK(inGeneral);
     }
 }
 

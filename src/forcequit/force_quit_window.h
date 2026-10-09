@@ -101,6 +101,6 @@ private:
 
 // Image de la fenêtre (exemple d'apps, une figée, une choisie), à l'échelle 2, sans rien afficher ;
 // `sheet` : avec la feuille de confirmation. MacDock.exe --force-quit-snapshot.
-bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet);
+bool forceQuitSnapshot(const std::wstring& path, bool dark, bool sheet, AccentColor accent = AccentColor::Blue);
 
 } // namespace md

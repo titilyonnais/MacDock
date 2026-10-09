@@ -132,9 +132,11 @@ Settings settingsFromJson(const json::Value& v) {
     return s;
 }
 
-AccentColor accentColorOf(std::string_view settingsJson) {
+std::optional<AccentColor> accentColorOf(std::string_view settingsJson) {
+    if (settingsJson.starts_with("\xEF\xBB\xBF")) settingsJson.remove_prefix(3);   // UTF-8 avec BOM (édité à la main)
     const auto v = json::parse(settingsJson);
-    return v ? settingsFromJson(*v).accentColor : AccentColor::Blue;
+    if (!v) return std::nullopt;
+    return settingsFromJson(*v).accentColor;
 }
 
 json::Value settingsToJson(const Settings& s) {

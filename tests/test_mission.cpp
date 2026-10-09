@@ -212,15 +212,15 @@ TEST_CASE(mission_arrow_keys_pick_neighbor) {
 TEST_CASE(mission_hover_outline_follows_accent) {   // plan 57 : contour de la fenêtre survolée sur l'accent
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     std::vector<md::MissionRect> wins{{100, 100, 800, 600}, {900, 200, 700, 500}};
-    const auto img = md::missionSnapshot(wins, false, 1280, 800, 0, md::AccentColor::Green);
+    const auto img = md::missionSnapshot(wins, false, 1280, 800, 0, md::AccentColor::Pink);   // pas une teinte factice
     const auto rects = md::missionLayout(wins, md::missionArea({0, 0, 1280, 800}, 1), md::kMissionGap,
                                          md::kMissionGap + md::kMissionLabelRoom);
     const md::MissionRect& r = rects[0];
-    int green = 0;   // à gauche de la fenêtre, à mi-hauteur : le contour
+    int pink = 0;   // à gauche de la fenêtre, à mi-hauteur : le contour
     for (int x = int(r.x) - 14; x < int(r.x); ++x) {
         const std::uint8_t* p = &img.px[(std::size_t(r.y + r.h / 2) * 1280 + std::size_t(x)) * 4];
-        if (std::abs(int(p[2]) - 0x30) <= 10 && std::abs(int(p[1]) - 0xD1) <= 10 && std::abs(int(p[0]) - 0x58) <= 10) ++green;   // vert sombre
+        if (std::abs(int(p[2]) - 0xFF) <= 10 && std::abs(int(p[1]) - 0x37) <= 10 && std::abs(int(p[0]) - 0x5F) <= 10) ++pink;   // rose sombre
     }
-    CHECK(green >= 2);
+    CHECK(pink >= 2);
     CoUninitialize();
 }

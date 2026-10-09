@@ -1,7 +1,10 @@
 // Géométrie des piles ouvertes : arc de l'éventail, panneau de la grille (points, logique pure).
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <vector>
+
+#include "../core/accent.h"
 
 namespace md {
 
@@ -11,6 +14,11 @@ struct FanSlot {
 };
 // Emplacements de bas en haut ; au plus kFanMaxItems.
 std::vector<FanSlot> fanLayout(std::size_t count, double tile);
+// Éventail : pastille du nom (0xRRGGBB) et texte dessus ; survolée, sur la couleur d'accentuation (plan 57).
+struct FanLabelColors {
+    std::uint32_t pill, text;
+};
+FanLabelColors fanLabelColors(bool hot, AccentColor accent, bool dark);
 // Nombre d'emplacements de l'éventail dont l'icône tient dans roomPt au-dessus du centre de la pile (1 au moins).
 std::size_t fanCapacity(double tile, double roomPt);
 

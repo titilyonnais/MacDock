@@ -1169,8 +1169,10 @@ MenuWindow::Env MenuBarApp::menuEnv(const Screen& s) const {
 AccentColor MenuBarApp::dockAccent() const {
     const std::wstring path = dataDir_ + L"\\settings.json";
     if (FILETIME t{}; fileTime(path, t) && CompareFileTime(&t, &accentTime_) != 0) {
-        accentTime_ = t;
-        accent_ = accentColorOf(readShared(path));
+        if (const auto a = accentColorOf(readShared(path))) {   // illisible (écriture en cours) : l'accent reste
+            accentTime_ = t;
+            accent_ = *a;
+        }
     }
     return accent_;
 }
