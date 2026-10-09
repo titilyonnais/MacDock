@@ -43,12 +43,15 @@ struct ArrangeCandidate {
     HWND window = nullptr;
     bool eligible = false;   // visible, non réduite, sur ce bureau, à barre de titre, redimensionnable, ni outil ni dialogue
     HMONITOR monitor = nullptr;
+    bool topmost = false;    // « toujours au-dessus » (épinglée)
 };
 // Fenêtres à organiser : `first` (même inadmissible ou absente de la liste), puis les admissibles de l'écran
-// `monitor`, de l'avant vers l'arrière, comme macOS.
+// `monitor`, de l'avant vers l'arrière, comme macOS ; celles « toujours au-dessus » après les autres (avant, si
+// `first` l'est aussi).
 std::vector<HWND> arrangeCandidates(const std::vector<ArrangeCandidate>& zOrder, HWND first, HMONITOR monitor);
 // Range `first` à la première place, puis chaque place suivante avec la prochaine fenêtre qui l'accepte (une fenêtre
-// élevée ou figée refuse : la suivante la remplace). false si `first` n'a pas pu être rangée (rien n'est fait).
+// élevée, figée ou qui ne répond pas en 100 ms est sautée). Chaque fenêtre rangée passe juste sous la précédente, comme
+// sur macOS. false si `first` n'a pas pu être rangée (rien n'est fait).
 bool arrangeWindows(HWND first, Arrangement a);
 
 } // namespace md

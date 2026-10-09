@@ -400,3 +400,14 @@ TEST_CASE(lights_zoom_menu_hover_and_anchor) {
     CHECK_EQ(a2.x - l2.circles[2].right, 2 * (a.x - l.circles[2].right));
     CHECK_EQ(a2.y - l2.circles[2].bottom, 2 * (a.y - l.circles[2].bottom));
 }
+
+TEST_CASE(lights_zoom_menu_still_wanted) {
+    // Relecture du plan 51 : la barre reçoit la demande un peu plus tard ; elle l'ignore si le pointeur est parti, si un
+    // clic est en cours ou si la demande date (barre occupée).
+    const POINT anchor{1000, 500};
+    CHECK(md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, false, 20));
+    CHECK(md::zoomMenuStillWanted(POINT{960, 470}, anchor, 2.0, false, 20));    // 200 % : pastille deux fois plus loin
+    CHECK(!md::zoomMenuStillWanted(POINT{900, 500}, anchor, 1.0, false, 20));   // parti
+    CHECK(!md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, true, 20));    // bouton enfoncé : clic sur la pastille
+    CHECK(!md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, false, 1500)); // demande trop ancienne
+}

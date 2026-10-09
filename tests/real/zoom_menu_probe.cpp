@@ -4,7 +4,10 @@
 //   2. clic sur « Gauche » : A rangée à gauche, menu fermé, A au premier plan ;
 //   3. nouveau survol, Échap : rien ne bouge ; le pointeur resté sur la pastille ne rouvre pas le menu ;
 //   4. « Gauche et droite » : A à gauche, B (la suivante) à droite, seulement si A et B sont les deux premières
-//      fenêtres admissibles de l'écran ; sinon l'essai est sauté et aucune autre fenêtre n'est touchée.
+//      fenêtres admissibles de l'écran ; sinon l'essai est sauté et aucune autre fenêtre n'est touchée. B passe ensuite
+//      juste sous A, devant la fenêtre outil C qui la recouvrait ;
+//   5. « Plein écran » : A reçoit la même commande qu'un clic sur la pastille (WM_SYSCOMMAND SC_MAXIMIZE) ;
+//   6. B activée pendant que le menu est ouvert (comme Alt+Tab) : le menu se ferme et le premier plan reste à B.
 // Avant chaque clic, le pointeur doit être sur un panneau de menu de MacDock, sinon l'essai s'arrête. Le pointeur est
 // remis à sa place à la fin.
 // Compilation (Developer Command Prompt), depuis la racine du dépôt :
@@ -26,12 +29,14 @@
 
 #include "../../src/shell/window_tile.h"
 
-static HWND g_a, g_b;
+static HWND g_a, g_b, g_c;
 static int failures = 0;
+static int g_sysMaximize = 0;   // WM_SYSCOMMAND SC_MAXIMIZE reçus par A
 static bool aborted = false;
 
 static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_DESTROY && h == g_a) PostQuitMessage(0);
+    if (m == WM_SYSCOMMAND && h == g_a && (w & 0xFFF0) == SC_MAXIMIZE) ++g_sysMaximize;
     return DefWindowProcW(h, m, w, l);
 }
 
@@ -354,34 +359,87 @@ static void scenario() {
             if (h != g_a && MonitorFromWindow(h, MONITOR_DEFAULTTONULL) == mon) mine.push_back(h);
         if (mine.empty() || mine.front() != g_b) {
             std::printf("Organiser sauté : une autre fenêtre précède B (%ls)\n", mine.empty() ? L"aucune" : cls(mine.front()).c_str());
-            goto done;
+        } else {
+            // La fenêtre outil C (non admissible) entre A et B : après Organiser, B doit repasser devant elle.
+            SetWindowPos(g_c, g_a, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            SetWindowPos(g_b, g_c, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            m = openMenu(g_a);
+            check(m != nullptr, "menu ouvert pour Organiser");
+            if (!m) goto done;
+            POINT p;
+            if (!iconCenter(" 3.1 (Gauche et droite) x=", p)) {
+                std::printf("icône « Gauche et droite » absente du journal\n");
+                ++failures;
+                goto done;
+            }
+            const RECT bFrame = frame(g_b);
+            if (!click(p)) goto done;
+            check(waitNoMenu(1.5), "menu refermé après Organiser");
+            Sleep(500);
+            const RECT wantA = md::tileRect(md::TileAction::Left, mi.rcWork, original, margin);
+            const RECT wantB = md::tileRect(md::TileAction::Right, mi.rcWork, bFrame, margin);
+            const RECT gotA = frame(g_a), gotB = frame(g_b);
+            std::printf("B : voulu (%ld,%ld)-(%ld,%ld) obtenu (%ld,%ld)-(%ld,%ld)\n", wantB.left, wantB.top, wantB.right,
+                        wantB.bottom, gotB.left, gotB.top, gotB.right, gotB.bottom);
+            check(EqualRect(&wantA, &gotA) != FALSE, "Organiser : A à gauche");
+            check(EqualRect(&wantB, &gotB) != FALSE, "Organiser : B à droite");
+            HWND below = GetWindow(g_a, GW_HWNDNEXT);   // calques des pastilles et fenêtres cachées sautés
+            while (below && (cls(below) == L"MacMenuBarLights" || !IsWindowVisible(below))) below = GetWindow(below, GW_HWNDNEXT);
+            check(below == g_b, "Organiser : B juste sous A, devant la fenêtre outil");
         }
+    }
+
+    // 5. « Plein écran » : la même commande qu'un clic sur la pastille verte.
+    {
         m = openMenu(g_a);
-        check(m != nullptr, "menu ouvert pour Organiser");
+        check(m != nullptr, "menu ouvert pour Plein écran");
         if (!m) goto done;
         POINT p;
-        if (!iconCenter(" 3.1 (Gauche et droite) x=", p)) {
-            std::printf("icône « Gauche et droite » absente du journal\n");
+        if (!iconCenter(" 5 (Plein écran) x=", p)) {
+            std::printf("entrée « Plein écran » absente du journal\n");
             ++failures;
             goto done;
         }
-        const RECT bFrame = frame(g_b);
+        const int before = g_sysMaximize;
         if (!click(p)) goto done;
-        check(waitNoMenu(1.5), "menu refermé après Organiser");
-        Sleep(500);
-        const RECT wantA = md::tileRect(md::TileAction::Left, mi.rcWork, original, margin);
-        const RECT wantB = md::tileRect(md::TileAction::Right, mi.rcWork, bFrame, margin);
-        const RECT gotA = frame(g_a), gotB = frame(g_b);
-        std::printf("B : voulu (%ld,%ld)-(%ld,%ld) obtenu (%ld,%ld)-(%ld,%ld)\n", wantB.left, wantB.top, wantB.right,
-                    wantB.bottom, gotB.left, gotB.top, gotB.right, gotB.bottom);
-        check(EqualRect(&wantA, &gotA) != FALSE, "Organiser : A à gauche");
-        check(EqualRect(&wantB, &gotB) != FALSE, "Organiser : B à droite");
+        check(waitNoMenu(1.5), "menu refermé après Plein écran");
+        Sleep(700);
+        check(g_sysMaximize == before + 1, "Plein écran : commande SC_MAXIMIZE reçue par A");
+        check(IsZoomed(g_a) != FALSE, "Plein écran : A agrandie");
+        ShowWindow(g_a, SW_RESTORE);
+        Sleep(600);
+    }
+
+    // 6. B activée pendant que le menu est ouvert (comme Alt+Tab) : le premier plan reste à B.
+    {
+        m = openMenu(g_a);
+        check(m != nullptr, "menu ouvert (passage à une autre fenêtre)");
+        if (!m) goto done;
+        if (cls(GetForegroundWindow()) != L"MacDockMenu") {
+            std::printf("le menu n'a pas le premier plan : essai sauté\n");
+        } else {
+            // Frappe qui débloque le premier plan (Alt, touche non attribuée, Alt), reçue par le menu de MacDock.
+            INPUT in[4] = {};
+            for (auto& i : in) i.type = INPUT_KEYBOARD;
+            in[0].ki.wVk = VK_MENU;
+            in[1].ki.wVk = 0xE8;
+            in[2].ki.wVk = 0xE8;
+            in[2].ki.dwFlags = KEYEVENTF_KEYUP;
+            in[3].ki.wVk = VK_MENU;
+            in[3].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(4, in, sizeof(INPUT));
+            SetForegroundWindow(g_b);
+            check(waitNoMenu(1.5), "menu refermé quand B prend le premier plan");
+            Sleep(700);
+            check(GetForegroundWindow() == g_b, "premier plan resté à B, pas rendu à A");
+        }
     }
 
 done:
     SetCursorPos(saved.x, saved.y);
     std::printf("%s\n", aborted ? "ARRÊTÉ" : failures ? "ÉCHEC" : "tout est exact");
-    DestroyWindow(g_b);
+    PostMessageW(g_c, WM_CLOSE, 0, 0);
+    PostMessageW(g_b, WM_CLOSE, 0, 0);
     PostMessageW(g_a, WM_CLOSE, 0, 0);
 }
 
@@ -401,7 +459,12 @@ int wmain() {
                           work.top + 300, 700, 460, nullptr, nullptr, wc.hInstance, nullptr);
     g_a = CreateWindowExW(WS_EX_TOPMOST, wc.lpszClassName, L"Essai de la pastille verte (MacDock)", WS_OVERLAPPEDWINDOW,
                           work.left + 260, work.top + 220, 900, 560, nullptr, nullptr, wc.hInstance, nullptr);
+    // Fenêtre outil (jamais organisée), posée là où B ira : B doit repasser devant elle.
+    g_c = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, wc.lpszClassName, L"Essai C (MacDock)",
+                          WS_POPUP | WS_BORDER, (work.left + work.right) / 2 + 100, work.top + 200, 500, 400, nullptr, nullptr,
+                          wc.hInstance, nullptr);
     ShowWindow(g_b, SW_SHOWNOACTIVATE);
+    ShowWindow(g_c, SW_SHOWNOACTIVATE);
     ShowWindow(g_a, SW_SHOWNORMAL);
     std::thread t(scenario);
     MSG msg;

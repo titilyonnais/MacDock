@@ -82,7 +82,7 @@ bool arrangeEligible(HWND h) {
 
 BOOL CALLBACK collectCandidate(HWND h, LPARAM lp) {   // EnumWindows : de l'avant vers l'arrière
     reinterpret_cast<std::vector<ArrangeCandidate>*>(lp)->push_back(
-        {h, arrangeEligible(h), MonitorFromWindow(h, MONITOR_DEFAULTTONULL)});
+        {h, arrangeEligible(h), MonitorFromWindow(h, MONITOR_DEFAULTTONULL), (GetWindowLongPtrW(h, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0});
     return TRUE;
 }
 } // namespace
@@ -149,9 +149,13 @@ std::vector<TileAction> arrangementSlots(Arrangement a) {
 }
 
 std::vector<HWND> arrangeCandidates(const std::vector<ArrangeCandidate>& zOrder, HWND first, HMONITOR monitor) {
-    std::vector<HWND> out{first};
+    bool firstTopmost = false;
     for (const ArrangeCandidate& c : zOrder)
-        if (c.window != first && c.eligible && c.monitor == monitor) out.push_back(c.window);
+        if (c.window == first) firstTopmost = c.topmost;
+    std::vector<HWND> out{first};
+    for (const bool band : {firstTopmost, !firstTopmost})   // la bande de la fenêtre choisie d'abord
+        for (const ArrangeCandidate& c : zOrder)
+            if (c.window != first && c.eligible && c.monitor == monitor && c.topmost == band) out.push_back(c.window);
     return out;
 }
 
@@ -224,9 +228,20 @@ bool arrangeWindows(HWND first, Arrangement a) {
     const std::vector<HWND> order = arrangeCandidates(z, first, MonitorFromWindow(first, MONITOR_DEFAULTTONEAREST));
     const std::vector<TileAction> slots = arrangementSlots(a);
     if (slots.empty() || !tileWindow(first, slots[0])) return false;
+    HWND above = first;
     std::size_t next = 1;
     for (std::size_t s = 1; s < slots.size(); ++s)
-        while (next < order.size() && !tileWindow(order[next++], slots[s])) {
+        for (; next < order.size(); ++next) {
+            const HWND h = order[next];
+            DWORD_PTR answer = 0;   // occupée (pas de réponse en 100 ms) : sautée, la barre ne se fige pas
+            if (!SendMessageTimeoutW(h, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &answer)) continue;
+            if (!tileWindow(h, slots[s])) continue;
+            // Juste sous la précédente (une fenêtre qui la recouvrait passe derrière), sans changer de bande.
+            if (((GetWindowLongPtrW(h, GWL_EXSTYLE) ^ GetWindowLongPtrW(above, GWL_EXSTYLE)) & WS_EX_TOPMOST) == 0)
+                SetWindowPos(h, above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+            above = h;
+            ++next;
+            break;
         }
     return true;
 }

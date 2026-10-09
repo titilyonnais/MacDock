@@ -100,6 +100,12 @@ struct Session {
     std::vector<std::unique_ptr<Panel>> panels;
     int result = 0;
     bool done = false;
+    MenuClose closed = MenuClose::Escape;   // la première raison l'emporte
+    void close(MenuClose why) {
+        if (done) return;
+        done = true;
+        closed = why;
+    }
     bool captureVisible = false;   // capture d'écran en cours : panneaux visibles aux captures
     ULONGLONG thawAt = 0;          // fin du gel du verre après la capture
     UINT swallowUp = 0;   // relâchement à absorber : celui du clic extérieur qui a fermé le menu
@@ -186,7 +192,7 @@ struct Session {
         if (!bar || bar->titles.size() < 2 || bar->current < 0) return false;
         const int n = int(bar->titles.size());
         result = menuSwitchResult(((bar->current + dir) % n + n) % n);
-        done = true;
+        close(MenuClose::Switched);
         return true;
     }
     void openSubmenu(Panel& p, int index, bool selectFirst);
@@ -217,7 +223,7 @@ LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
         int k = barTitleAt(g_session->bar->titles, pt, g_session->bar->current);
         if (k >= 0) {
             g_session->result = menuSwitchResult(k);
-            g_session->done = true;
+            g_session->close(MenuClose::Switched);
             if (!g_session->panels.empty()) PostMessageW(g_session->panels.front()->hwnd, WM_NULL, 0, 0);
         }
     }
@@ -233,7 +239,7 @@ LRESULT CALLBACK outsideClickHook(int code, WPARAM wp, LPARAM lp) {
         if (!inside && !g_session->done) {
             // Comme sur macOS, le clic qui ferme le menu n'atteint rien d'autre (ni l'icône du Dock dessous) :
             // l'appui et son relâchement sont absorbés.
-            g_session->done = true;
+            g_session->close(MenuClose::Outside);
             g_session->swallowUp = UINT(wp) + 1;   // WM_xBUTTONDOWN + 1 = WM_xBUTTONUP
             if (!g_session->panels.empty()) PostMessageW(g_session->panels.front()->hwnd, WM_NULL, 0, 0);
             return 1;
@@ -797,7 +803,7 @@ bool Session::releaseRow(Panel& p, int idx, double rowX) {
         const int k = layoutIconAt(it.tiles.size(), rowWidth(p), rowX);
         if (it.enabled && k >= 0 && it.tiles[size_t(k)].enabled && it.tiles[size_t(k)].id != 0) {
             result = it.tiles[size_t(k)].id;
-            done = true;
+            close(MenuClose::Chosen);
         }
         return true;
     }
@@ -814,7 +820,7 @@ bool Session::releaseRow(Panel& p, int idx, double rowX) {
         case MenuRow::Tiles: {
             const int k = tileAt(it.tiles.size(), rowWidth(p), rowX);
             if (k < 0 || !it.tiles[size_t(k)].enabled) return true;
-            if (live && live->tile && live->tile(it.id, k)) done = true;
+            if (live && live->tile && live->tile(it.id, k)) close(MenuClose::Chosen);
             render(p);
             return true;
         }
@@ -859,7 +865,7 @@ void Session::activate(Panel& p, int index) {
         return;
     }
     result = it.id;
-    done = true;
+    close(MenuClose::Chosen);
 }
 
 LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
@@ -965,7 +971,7 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
                         closeBelow(int(panels.size()) - 2);
                         render(*panels.back());
                     } else {
-                        done = true;
+                        close(MenuClose::Escape);
                     }
                     break;
                 default: break;
@@ -973,7 +979,8 @@ LRESULT Session::handle(Panel& p, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_ACTIVATE:
-            if (LOWORD(wp) == WA_INACTIVE && !panelOf(reinterpret_cast<HWND>(lp))) done = true;   // clic ailleurs
+            // Activation partie ailleurs (Alt+Tab, ⊞) : les clics à côté sont absorbés par le crochet avant.
+            if (LOWORD(wp) == WA_INACTIVE && !panelOf(reinterpret_cast<HWND>(lp))) close(MenuClose::Deactivated);
             return 0;
         case WM_MENU_BACKDROP:
             onBackdrop();
@@ -1037,7 +1044,9 @@ bool MenuWindow::snapshot(const Env& env, const MenuModel& model, std::vector<st
     return SUCCEEDED(bmp->CopyPixels(&all, w * 4, UINT(bgra.size()), bgra.data()));
 }
 
-int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar, const Live* live) {
+int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar, const Live* live,
+                      MenuClose* closed) {
+    if (closed) *closed = MenuClose::Escape;
     if (model.items.empty()) return 0;
     WNDCLASSEXW wc{sizeof wc};
     wc.lpfnWndProc = panelProc;
@@ -1090,7 +1099,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
         bool press = msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN || msg.message == WM_MBUTTONDOWN ||
                      msg.message == WM_NCLBUTTONDOWN || msg.message == WM_NCRBUTTONDOWN;
         if (press && !session.panelOf(msg.hwnd)) {
-            session.done = true;
+            session.close(MenuClose::Outside);
             continue;
         }
         if (session.panelOf(msg.hwnd) && (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP)) {
@@ -1115,6 +1124,7 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
         MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
     }
     int result = session.result;
+    if (closed) *closed = session.closed;
     session.capture.stop();
     session.panels.clear();
     if (env.trace) log::info(L"[trace] menu : choix %d", result);

@@ -89,3 +89,14 @@ TEST_CASE(tile_arrange_candidates_follow_stacking_order) {
     CHECK((md::arrangeCandidates(z, b, m1) == std::vector<HWND>{b, a, d, e}));
     CHECK((md::arrangeCandidates({}, a, m1) == std::vector<HWND>{a}));
 }
+
+TEST_CASE(tile_arrange_candidates_always_on_top_last) {
+    // Relecture du plan 51 : une fenêtre « toujours au-dessus » (épinglée) vient après les fenêtres ordinaires, même si
+    // elle est devant dans l'ordre d'affichage ; la fenêtre choisie épinglée prend d'abord les autres épinglées.
+    const HWND a = reinterpret_cast<HWND>(0x10), b = reinterpret_cast<HWND>(0x20), pinned = reinterpret_cast<HWND>(0x30);
+    const HMONITOR m1 = reinterpret_cast<HMONITOR>(0x1);
+    const std::vector<md::ArrangeCandidate> z = {{pinned, true, m1, true}, {a, true, m1, false}, {b, true, m1, false}};
+    CHECK((md::arrangeCandidates(z, a, m1) == std::vector<HWND>{a, b, pinned}));
+    const std::vector<md::ArrangeCandidate> z2 = {{a, true, m1, true}, {b, true, m1, false}, {pinned, true, m1, true}};
+    CHECK((md::arrangeCandidates(z2, a, m1) == std::vector<HWND>{a, pinned, b}));
+}

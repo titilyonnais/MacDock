@@ -211,6 +211,7 @@ private:
     BarMenus menus_;
     std::wstring clock_;
     Screen* menuScreen_ = nullptr;   // barre du menu ouvert (sa capsule)
+    MenuClose lastClose_ = MenuClose::Escape;   // ce qui a fermé le dernier menu (premier plan à rendre ?)
     int highlight_ = -1;
     std::vector<HWND> hidden_;   // fenêtres masquées par « Masquer… »
 

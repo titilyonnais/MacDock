@@ -121,6 +121,11 @@ POINT zoomMenuAnchor(const LightsLayout& l, double scale) {
     return {l.circles[2].right + gap, l.circles[2].bottom + gap};
 }
 
+bool zoomMenuStillWanted(POINT cursor, POINT anchor, double scale, bool buttonDown, unsigned ageMs) {
+    const LONG reach = std::lround(30 * scale);   // la pastille est à moins de 20 pt de l'ancrage
+    return !buttonDown && ageMs <= 400 && std::abs(cursor.x - anchor.x) <= reach && std::abs(cursor.y - anchor.y) <= reach;
+}
+
 LightsMouse lightsMouse(bool doubleClick, int hit, const bool enabled[3]) {
     if (hit < 0) return doubleClick ? LightsMouse::Zoom : LightsMouse::Drag;
     return !doubleClick && enabled[hit] ? LightsMouse::Press : LightsMouse::None;

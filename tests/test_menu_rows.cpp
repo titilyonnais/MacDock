@@ -273,3 +273,13 @@ TEST_CASE(menu_rows_layout_icons_drawn) {
         md::writePng(std::wstring(dump) + L"\\menu-layouts-light.png", px.data(), w, h);
     CoUninitialize();
 }
+
+TEST_CASE(menu_close_returns_focus) {
+    // Relecture du plan 51 : un menu fermé par Échap ou par un clic à côté rend le clavier à l'app d'avant ; fermé parce
+    // que l'utilisateur est passé ailleurs (Alt+Tab, ⊞), le premier plan reste à ce qu'il a choisi.
+    CHECK(md::menuCloseReturnsFocus(md::MenuClose::Escape));
+    CHECK(md::menuCloseReturnsFocus(md::MenuClose::Outside));
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Deactivated));
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Chosen));     // l'action choisie décide
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Switched));   // un autre menu de la barre s'ouvre
+}

@@ -11,6 +11,8 @@ namespace {
 double heightOf(const MenuItem& it) { return it.separator() ? kMenuSeparatorHeight : menuRowHeight(it.row); }
 } // namespace
 
+bool menuCloseReturnsFocus(MenuClose c) { return c == MenuClose::Escape || c == MenuClose::Outside; }
+
 double menuRowHeight(MenuRow r) {
     switch (r) {
         case MenuRow::Header: return kMenuHeaderHeight;

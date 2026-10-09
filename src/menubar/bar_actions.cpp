@@ -112,9 +112,9 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             if (!liveWindow(target)) return false;
             minimizeWindow(target);
             return true;
-        case ActionKind::Zoom:
+        case ActionKind::Zoom:   // comme un clic sur la pastille verte : l'app reçoit la commande (animation, refus)
             if (!liveWindow(target)) return false;
-            ShowWindowAsync(target, IsZoomed(target) ? SW_RESTORE : SW_MAXIMIZE);
+            PostMessageW(target, WM_SYSCOMMAND, IsZoomed(target) ? SC_RESTORE : SC_MAXIMIZE, 0);
             forceForeground(target);
             return true;
         case ActionKind::Tile:   // macOS 26 : Remplir, Centrer, moitiés, quarts, taille précédente

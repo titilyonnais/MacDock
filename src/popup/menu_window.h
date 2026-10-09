@@ -45,9 +45,9 @@ public:
         std::function<bool(MenuModel&)> refresh;            // toutes les 500 ms (voir applyRefresh)
     };
     // Ouvre le menu du côté demandé, centré sur le point d'ancrage (écran) ; renvoie l'identifiant choisi, 0 si
-    // rien n'est choisi, ou menuSwitchResult(k) (barre de menus).
+    // rien n'est choisi, ou menuSwitchResult(k) (barre de menus). `closed` : ce qui l'a fermé (premier plan à rendre ?).
     static int track(const Env& env, const MenuModel& model, POINT anchorScreen, Side side = Side::Above,
-                     const BarLink* bar = nullptr, const Live* live = nullptr);
+                     const BarLink* bar = nullptr, const Live* live = nullptr, MenuClose* closed = nullptr);
     // Rendu hors écran du menu (verre dépoli, sans fenêtre ni capture) : image BGRA prémultipliée w x h pixels
     // (vérifications, --snapshot de la barre). COM doit être initialisé.
     static bool snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h);

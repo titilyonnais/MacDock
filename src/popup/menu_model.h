@@ -101,6 +101,12 @@ struct MenuModel {
     double width = 0;   // points ; 0 = selon le texte
 };
 
+// Ce qui a fermé un menu. Échap ou un clic à côté rendent le clavier à l'app d'avant ; une perte d'activation (Alt+Tab,
+// ⊞, autre fenêtre activée) laisse le premier plan à ce que l'utilisateur a choisi ; après un choix, l'action décide ;
+// un autre menu de la barre s'ouvre (Switched).
+enum class MenuClose { Chosen, Escape, Outside, Deactivated, Switched };
+bool menuCloseReturnsFocus(MenuClose c);
+
 double menuRowHeight(MenuRow r);
 // Grille d'un mois, lundi en premier (comme en France) : 42 cases ; today : jour mis en avant (0 : aucun).
 struct CalendarCell {

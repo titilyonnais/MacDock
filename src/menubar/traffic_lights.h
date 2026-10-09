@@ -70,6 +70,9 @@ int hitLight(const LightsLayout& l, POINT screen);   // 0 fermer, 1 réduire, 2 
 constexpr unsigned kZoomMenuDelayMs = 700;
 bool zoomMenuHover(int hit, int pressed, bool dragging, const bool enabled[3]);
 POINT zoomMenuAnchor(const LightsLayout& l, double scale);
+// La barre reçoit la demande un peu plus tard : encore voulue si le pointeur est toujours près de l'ancrage (sur la
+// pastille), sans bouton enfoncé (clic en cours sur elle) et si la demande a moins de 400 ms (barre occupée).
+bool zoomMenuStillWanted(POINT cursor, POINT anchor, double scale, bool buttonDown, unsigned ageMs);
 UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, SC_MAXIMIZE ou SC_RESTORE
 // Couleur la plus fréquente (à 8 niveaux près par canal), 0xRRGGBB ; 0 sans échantillon.
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);
