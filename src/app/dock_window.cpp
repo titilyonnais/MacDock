@@ -137,11 +137,12 @@ void DockApp::loadConfig(bool initial) {
             log::info(L"settings.json migré de la v1 à la v%d", kSettingsVersion);
         }
         settings_ = settingsFromJson(s.value);
+        savedSettings_ = settingsToJson(settings_);
     }
     if (shouldImportDefaultPins(s, settings_)) {
         settings_.pinned = defaultPins();
         settings_.pinnedInitialized = true;
-        saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+        saveSettings();
         log::info(L"Premier lancement : %zu épingles par défaut", settings_.pinned.size());
     }
     auto m = loadJsonFile(dataDir_ + L"\\dock-metrics.json");
@@ -1560,7 +1561,10 @@ bool DockApp::stepGenie(double now) {
 }
 
 void DockApp::saveSettings() {
-    saveJsonFileAtomic(dataDir_ + L"\\settings.json", settingsToJson(settings_));
+    // Relu juste avant : ce que l'app Réglages a écrit depuis notre dernière lecture n'est pas écrasé.
+    const std::wstring path = dataDir_ + L"\\settings.json";
+    const json::Value now = settingsToJson(settings_);
+    if (saveJsonFileAtomic(path, dockSettingsToWrite(loadJsonFile(path), savedSettings_, now))) savedSettings_ = now;
 }
 
 void DockApp::showContextMenu(std::optional<std::size_t> index) {

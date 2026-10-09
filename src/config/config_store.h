@@ -23,4 +23,13 @@ bool saveJsonFileAtomic(const std::wstring& path, const json::Value& v);
 // pour un fichier invalide ou illisible (on écraserait les épingles de l'utilisateur).
 bool shouldImportDefaultPins(const LoadResult& file, const Settings& parsed);
 
+// Fusion par différence : `file` reçoit les clés de `after` dont la valeur (sérialisée) diffère de `before`, et perd
+// celles que `after` n'a plus (« Écran principal » retire screen) ; ses autres clés (inconnues de nous, épingles du
+// Dock) restent telles quelles.
+json::Value mergeChanged(json::Value file, const json::Value& before, const json::Value& after);
+// Ce que le Dock écrit dans settings.json : seulement ce qu'il a changé depuis sa dernière lecture ou écriture
+// (`lastSaved`), sur le fichier relu juste avant. Une clé écrite entre-temps par l'app Réglages, avant que le Dock
+// relise le fichier, reste donc. Fichier absent, invalide ou illisible : tout.
+json::Value dockSettingsToWrite(const LoadResult& file, const json::Value& lastSaved, const json::Value& now);
+
 } // namespace md

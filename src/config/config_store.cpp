@@ -90,5 +90,25 @@ bool shouldImportDefaultPins(const LoadResult& file, const Settings& parsed) {
     if (file.wasInvalid || file.unreadable) return false;
     return !parsed.pinnedInitialized;
 }
+
+namespace {
+bool same(const json::Value* a, const json::Value& b) { return a && json::serialize(*a, false) == json::serialize(b, false); }
+} // namespace
+
+json::Value mergeChanged(json::Value file, const json::Value& before, const json::Value& after) {
+    if (!after.isObject()) return file;
+    if (!file.isObject()) file = json::Value(json::Object{});
+    for (const auto& [key, value] : after.asObject())
+        if (!same(before.find(key), value)) file.set(key, value);
+    if (before.isObject())
+        for (const auto& [key, value] : before.asObject())
+            if (!after.find(key)) file.erase(key);
+    return file;
+}
+
+json::Value dockSettingsToWrite(const LoadResult& file, const json::Value& lastSaved, const json::Value& now) {
+    if (!file.fromFile || file.wasInvalid || file.unreadable) return now;
+    return mergeChanged(file.value, lastSaved, now);
+}
 } // namespace md
 

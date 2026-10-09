@@ -164,6 +164,7 @@ private:
     bool snapshot_ = false;
     std::wstring dataDir_;
     Settings settings_;
+    json::Value savedSettings_;   // settings.json tel que le Dock l'a lu ou écrit en dernier : il n'écrit que la différence
     Metrics metrics_;
     AppModel model_;
     WindowTracker tracker_;

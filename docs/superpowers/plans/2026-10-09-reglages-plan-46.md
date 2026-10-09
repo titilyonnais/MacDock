@@ -15,7 +15,7 @@
   en recréent un à chaque appel.
 
 ## Tâches
-- [ ] 1. **Le Dock n'écrit que ce qu'il a changé** :
+- [x] 1. **Le Dock n'écrit que ce qu'il a changé** :
   - `mergeChanged` passe de `src/settings` à `src/config/config_store` (le Dock ne compile pas `src/settings`) ;
   - `dockSettingsToWrite(fichier, dernier écrit ou lu, maintenant)` : fichier absent, invalide ou illisible, tout ;
     sinon, la fusion par différence ;
@@ -23,6 +23,9 @@
 
   Tests : une clé écrite par l'app Réglages entre-temps reste quand le Dock enregistre la sienne ; fichier absent :
   tout est écrit.
+
+  Décision : pas d'essai réel de la course entre le Dock et l'app (il faudrait changer tes vrais réglages du Dock) ;
+  les tests de la fusion et de `dockSettingsToWrite` la couvrent.
 - [ ] 2. **Vrais noms des écrans** :
   - `QueryDisplayConfig` et `DisplayConfigGetDeviceInfo` : nom du moniteur pour chaque source GDI (`\\.\DISPLAY1`) ;
     écran interne sans nom : « Écran intégré » ;

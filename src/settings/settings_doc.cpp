@@ -13,8 +13,6 @@ namespace {
 std::wstring dockPath(const std::wstring& dir) { return dir + L"\\settings.json"; }
 std::wstring barPath(const std::wstring& dir) { return dir + L"\\menubar.json"; }
 
-bool same(const json::Value* a, const json::Value& b) { return a && json::serialize(*a, false) == json::serialize(b, false); }
-
 // Chemin sans guillemets ni espaces autour, barres unifiées, en minuscules : pour comparer deux commandes Run.
 std::wstring normalizedPath(std::wstring v) {
     while (!v.empty() && (v.front() == L' ' || v.front() == L'"')) v.erase(v.begin());
@@ -45,17 +43,6 @@ DockFile readDock(const std::wstring& dir) {
     return {std::move(migrated), std::move(parsed), r.wasInvalid || r.unreadable};
 }
 } // namespace
-
-json::Value mergeChanged(json::Value file, const json::Value& before, const json::Value& after) {
-    if (!after.isObject()) return file;
-    if (!file.isObject()) file = json::Value(json::Object{});
-    for (const auto& [key, value] : after.asObject())
-        if (!same(before.find(key), value)) file.set(key, value);
-    if (before.isObject())
-        for (const auto& [key, value] : before.asObject())
-            if (!after.find(key)) file.erase(key);
-    return file;
-}
 
 SettingsModel loadModel(const std::wstring& dir, ModelFiles* status, const SettingsIo* io) {
     SettingsModel m;
