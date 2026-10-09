@@ -188,6 +188,42 @@ TEST_CASE(controller_attention_stops_when_app_closes) {
     CHECK(!f.c.tick(1.0 / 60));
 }
 
+TEST_CASE(controller_attention_ignored_for_active_app) {
+    // Comme requestUserAttention sur macOS : sans effet quand l'app est déjà au premier plan.
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.setActiveApp(L"c:\\a.exe");
+    f.c.setAttention(L"c:\\a.exe", true);
+    f.c.tick(1.0 / 60);
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+}
+
+TEST_CASE(controller_attention_stops_for_good_when_app_activates) {
+    // Claude fait clignoter sa fenêtre un nombre fixe de fois : des clignotements arrivent encore après son activation.
+    // Ils ne doivent pas relancer un rebond que plus rien n'arrêterait (l'app est déjà au premier plan).
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);
+    for (int i = 0; i < 30; ++i) f.c.tick(1.0 / 60);
+    CHECK(f.c.isBouncing(L"c:\\a.exe"));
+    f.c.setActiveApp(L"c:\\a.exe");
+    for (int i = 0; i < 180; ++i) f.c.tick(1.0 / 60);
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    f.c.setAttention(L"c:\\a.exe", true);   // clignotement tardif
+    for (int i = 0; i < 60; ++i) f.c.tick(1.0 / 60);
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+}
+
+TEST_CASE(controller_attention_again_once_app_inactive) {
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.setActiveApp(L"c:\\a.exe");
+    f.c.setActiveApp(L"");   // le bureau passe au premier plan : plus aucune app active
+    f.c.setAttention(L"c:\\a.exe", true);
+    f.c.tick(1.0 / 60);
+    CHECK(f.c.isBouncing(L"c:\\a.exe"));
+}
+
 TEST_CASE(controller_hit_test_separator) {
     Fixture f;   // a, b, c, séparateur, corbeille
     bool found = false;

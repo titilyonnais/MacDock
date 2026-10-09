@@ -1439,6 +1439,9 @@ void DockApp::endSwitch(bool activate) {
 void DockApp::activateItem(const DockItem& item) {
     switch (item.kind) {
         case ItemKind::App:
+            // Clic sur une icône qui rebondit pour attirer l'attention : vu, le rebond s'arrête (même si l'app était déjà
+            // au premier plan et qu'aucun changement de premier plan ne suit).
+            controller_.setAttention(item.appId, false);
             if (const AppClick click = model_.clickActionFor(item.appId); click.kind == AppClick::Kind::Restore) {
                 restoreFromDock(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(click.windows.front())));   // génie
             } else if (click.kind != AppClick::Kind::Launch) {
@@ -2989,15 +2992,24 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         RECT r{};
         if (!IsIconic(h) && IsWindowVisible(h) && visibleBounds(h, r)) lastSeen_[toId(h)] = r;
     };
+    ev.foreground = [this](HWND h) {
+        // App active, comme sur macOS : celle de la fenêtre au premier plan, ou de sa propriétaire (dialogue) ; aucune
+        // pour le bureau. Ses clignotements ne font pas rebondir son icône.
+        std::wstring app = model_.appOfWindow(toId(h));
+        if (app.empty())
+            if (HWND owner = GetAncestor(h, GA_ROOTOWNER)) app = model_.appOfWindow(toId(owner));
+        controller_.setActiveApp(app);
+        requestFrame();
+    };
     ev.activated = [this](HWND h) {
         mru_.touch(model_.appOfWindow(toId(h)));
-        controller_.setAttention(model_.appOfWindow(toId(h)), false);
+        controller_.setActiveApp(model_.appOfWindow(toId(h)));   // arrête son rebond d'attention
         checkFullscreen();
         noteForeground();
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
-        if (trace_) log::info(L"[trace] attention %p", h);
+        if (trace_) log::info(L"[trace] attention %p (%s)", h, model_.appOfWindow(toId(h)).c_str());
         controller_.setAttention(model_.appOfWindow(toId(h)), true);
         requestFrame();
     };

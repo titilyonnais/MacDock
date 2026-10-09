@@ -238,9 +238,15 @@ void DockController::stopLaunchBounce(const std::wstring& appId) {
     it->second.stopAt = std::ceil(it->second.elapsed / period) * period;
 }
 
+void DockController::setActiveApp(const std::wstring& appId) {
+    activeApp_ = appId;
+    setAttention(appId, false);
+}
+
 void DockController::setAttention(const std::wstring& appId, bool on) {
     if (appId.empty()) return;
     auto it = bounces_.find(appId);
+    if (on && appId == activeApp_) return;   // déjà au premier plan : un clignotement tardif ne relance rien
     if (on) {
         if (it == bounces_.end() || !it->second.attention) bounces_[appId] = Bounce{0, true, -1};
         dirty_ = true;

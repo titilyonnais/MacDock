@@ -90,7 +90,10 @@ public:
 
     void startLaunchBounce(const std::wstring& appId);
     void stopLaunchBounce(const std::wstring& appId);
+    // Rebond d'attention (clignotement de la fenêtre) : comme requestUserAttention sur macOS, sans effet pour l'app
+    // active, et arrêté quand l'app le devient.
     void setAttention(const std::wstring& appId, bool on);
+    void setActiveApp(const std::wstring& appId);   // app au premier plan ; vide : aucune (bureau…)
     bool isBouncing(const std::wstring& appId) const { return bounces_.contains(appId); }
 
     // Hauteur réservée à l'écran (AppBar) et hauteur totale de la fenêtre, en pixels.
@@ -159,6 +162,7 @@ private:
     bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
+    std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône
     double tooltipOpacity_ = 0;
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;
