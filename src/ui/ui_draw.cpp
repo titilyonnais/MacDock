@@ -121,33 +121,64 @@ std::wstring interfaceFont(IDWriteFactory* dwrite) {
     return L"Segoe UI";
 }
 
+namespace {
+// Formes du fond (le contenu autour du panneau, les anneaux de l'ombre), gardées tant que la fabrique et la taille ne
+// changent pas : le fond est peint à chaque image (ressorts, défilement, feuilles).
+struct BackgroundShapes {
+    ComPtr<ID2D1Factory> factory;
+    float width = -1, height = -1;
+    ComPtr<ID2D1Geometry> outside;
+    ComPtr<ID2D1Geometry> rings[4];
+};
+
+// `shape` moins `hole` ; nul si Direct2D refuse (mémoire).
+ComPtr<ID2D1Geometry> minus(ID2D1Factory* f, ID2D1Geometry* shape, ID2D1Geometry* hole) {
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (!shape || !hole || FAILED(f->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return nullptr;
+    if (FAILED(shape->CombineWithGeometry(hole, D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get())) || FAILED(sink->Close())) return nullptr;
+    return path;
+}
+
+const BackgroundShapes& backgroundShapes(ID2D1Factory* f, float width, float height) {
+    static BackgroundShapes cache;
+    if (cache.factory.Get() == f && cache.width == width && cache.height == height) return cache;
+    cache = BackgroundShapes{};
+    cache.factory = f;
+    cache.width = width;
+    cache.height = height;
+    const Panel panel = sidebarPanel(height);
+    ComPtr<ID2D1RoundedRectangleGeometry> hole;
+    ComPtr<ID2D1RectangleGeometry> all;
+    if (FAILED(f->CreateRoundedRectangleGeometry(
+            D2D1::RoundedRect(D2D1::RectF(panel.left, panel.top, panel.right, panel.bottom), panel.radius, panel.radius), &hole)) ||
+        FAILED(f->CreateRectangleGeometry(D2D1::RectF(0, 0, width, height), &all)))
+        return cache;
+    cache.outside = minus(f, all.Get(), hole.Get());
+    for (int k = 0; k < 4; ++k) {   // ombre douce : quatre anneaux, jamais sur le verre
+        const float d = float(4 - k) * 1.5f;
+        ComPtr<ID2D1RoundedRectangleGeometry> ring;
+        if (SUCCEEDED(f->CreateRoundedRectangleGeometry(
+                D2D1::RoundedRect(D2D1::RectF(panel.left - d, panel.top - d * 0.6f, panel.right + d, panel.bottom + d * 1.4f),
+                                  panel.radius + d, panel.radius + d),
+                &ring)))
+            cache.rings[k] = minus(f, ring.Get(), hole.Get());
+    }
+    return cache;
+}
+}  // namespace
+
 void drawWindowBackground(Painter& p, float width, float height) {
     const Panel panel = sidebarPanel(height);
     const D2D1_ROUNDED_RECT glass = D2D1::RoundedRect(D2D1::RectF(panel.left, panel.top, panel.right, panel.bottom), panel.radius,
                                                       panel.radius);
-    ID2D1Factory* f = p.factory();
-    ComPtr<ID2D1RoundedRectangleGeometry> hole;
-    f->CreateRoundedRectangleGeometry(glass, &hole);
-    // Une forme moins le panneau : le contenu autour, puis chaque anneau de l'ombre (jamais sur le verre).
-    auto fillOutside = [&](ID2D1Geometry* shape, Rgba color) {
-        ComPtr<ID2D1PathGeometry> path;
-        ComPtr<ID2D1GeometrySink> sink;
-        if (FAILED(f->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return;
-        shape->CombineWithGeometry(hole.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get());
-        sink->Close();
-        p.rt()->FillGeometry(path.Get(), p.brush(color));
-    };
-    ComPtr<ID2D1RectangleGeometry> all;
-    f->CreateRectangleGeometry(D2D1::RectF(0, 0, width, height), &all);
-    fillOutside(all.Get(), p.pal().window);
-    for (int k = 4; k >= 1; --k) {   // ombre douce, plus marquée près du panneau
-        const float d = float(k) * 1.5f;
-        ComPtr<ID2D1RoundedRectangleGeometry> ring;
-        f->CreateRoundedRectangleGeometry(D2D1::RoundedRect(D2D1::RectF(panel.left - d, panel.top - d * 0.6f, panel.right + d,
-                                                                       panel.bottom + d * 1.4f),
-                                                            panel.radius + d, panel.radius + d),
-                                          &ring);
-        fillOutside(ring.Get(), withAlpha(p.pal().shadow, 0.10f));
+    const BackgroundShapes& shapes = backgroundShapes(p.factory(), width, height);
+    if (shapes.outside) {
+        p.rt()->FillGeometry(shapes.outside.Get(), p.brush(p.pal().window));
+        for (const auto& ring : shapes.rings)
+            if (ring) p.rt()->FillGeometry(ring.Get(), p.brush(withAlpha(p.pal().shadow, 0.10f)));
+    } else {   // sans géométrie : le contenu à droite du panneau, la barre latérale dessous (sans marge ni ombre)
+        p.rt()->FillRectangle(D2D1::RectF(metrics::sidebarWidth, 0, width, height), p.brush(p.pal().window));
     }
     p.rt()->FillRoundedRectangle(glass, p.brush(p.pal().sidebarTint));   // verre : le fond acrylique transparaît
     p.rt()->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(panel.left + 0.5f, panel.top + 0.5f, panel.right - 0.5f, panel.bottom - 0.5f),
@@ -240,14 +271,15 @@ float menuWidth(Painter& p, const std::vector<std::wstring>& items) {
     return std::ceil(widest) + 26 + 24;
 }
 
-void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused) {
+void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused, float trailing) {
     const float h = r.bottom - r.top, cy = (r.top + r.bottom) / 2;
     p.fillRound(r, h / 2, p.pal().controlFill);
     ID2D1SolidColorBrush* ink = p.brush(p.pal().secondaryText);
     p.rt()->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(r.left + 14, cy - 1), 4.5f, 4.5f), ink, 1.4f);
     p.rt()->DrawLine(D2D1::Point2F(r.left + 17.3f, cy + 2.3f), D2D1::Point2F(r.left + 20.5f, cy + 5.5f), ink, 1.6f);
-    if (text.empty()) p.text(L"Rechercher", D2D1::RectF(r.left + 27, r.top, r.right - 8, r.bottom), metrics::fontBody, p.pal().tertiaryText);
-    else p.text(text, D2D1::RectF(r.left + 27, r.top, r.right - 8, r.bottom), metrics::fontBody, p.pal().text);
+    const D2D1_RECT_F inner = D2D1::RectF(r.left + 27, r.top, r.right - std::max(8.f, trailing), r.bottom);
+    if (text.empty()) p.text(L"Rechercher", inner, metrics::fontBody, p.pal().tertiaryText);
+    else p.text(text, inner, metrics::fontBody, p.pal().text);
     if (focused) drawFocusRing(p, r, h / 2);
 }
 
@@ -259,10 +291,13 @@ void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, 
     const bool dark = darkPalette(p.pal());
     for (int i = 0; i < 3; ++i) {
         const D2D1_POINT_2F c{first.x + i * kLightSpacing, first.y};
-        const bool gray = !active || i == disabled;
+        const bool gray = i == disabled || (!active && !hover);   // inactive : en couleur au survol (comme la barre)
         Rgba fill = gray ? rgb(dark ? 0x4E4F52 : 0xDDDDDD) : rgb(kFill[i]);
-        const Rgba edge = gray ? rgb(dark ? 0x3E3F42 : 0xC4C3C6) : rgb(kEdge[i]);
-        if (i == pressed && !gray) fill = mix(fill, rgb(0x000000), 0.22f);
+        Rgba edge = gray ? rgb(dark ? 0x3E3F42 : 0xC4C3C6) : rgb(kEdge[i]);
+        if (i == pressed && !gray) {   // enfoncée : centre et liseré plus sombres
+            fill = mix(fill, rgb(0x000000), 0.22f);
+            edge = mix(edge, rgb(0x000000), 0.22f);
+        }
         p.fillCircle(c, kLightRadius, edge);
         p.fillCircle(c, kLightRadius - 0.6f, fill);
         if (hover && !gray) {   // ×, −, +

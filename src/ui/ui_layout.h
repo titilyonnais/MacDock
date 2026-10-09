@@ -44,6 +44,8 @@ struct Panel {
     float left = 0, top = 0, right = 0, bottom = 0, radius = 0;
 };
 Panel sidebarPanel(float windowHeight);
+// Bas de la zone visible des sections (au-dessus de l'arrondi du bas) : le dessin s'y arrête, les clics aussi.
+float sidebarVisibleBottom(float windowHeight);
 bool insidePanel(const Panel& p, float x, float y);   // coins arrondis compris
 
 // Barre latérale : haut de chaque ligne, sections en groupes de `sizes` lignes.

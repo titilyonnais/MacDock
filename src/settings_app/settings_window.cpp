@@ -355,12 +355,13 @@ void SettingsWindow::recreateGraphics() {
 void SettingsWindow::drawSidebar(ui::Painter& p, float h) {
     const ui::Palette& pal = p.pal();
     const ui::Panel panel = ui::sidebarPanel(h);   // les sections restent dans le panneau (défilement de la fenêtre)
-    p.rt()->PushAxisAlignedClip(D2D1::RectF(panel.left, panel.top, panel.right, panel.bottom - panel.radius / 2),
+    p.rt()->PushAxisAlignedClip(D2D1::RectF(panel.left, panel.top, panel.right, ui::sidebarVisibleBottom(h)),
                                 D2D1_ANTIALIAS_MODE_ALIASED);
-    ui::drawWindowLights(p, D2D1::Point2F(kLightsX, kLightsY), active_, lightsHover_, lightsPressed_, 2);
-    ui::drawSearchField(p, kSearch, query_, searchFocused_);
-    if (searchFocused_) {   // curseur d'insertion après le texte
-        const float x = kSearch.left + 27 + (query_.empty() ? 0.f : p.textWidth(query_, mt::fontBody)) + 1;
+    ui::drawWindowLights(p, D2D1::Point2F(kLightsX, kLightsY), active_, lightsHover_, lightsPressedInside_ ? lightsPressed_ : -1, 2);
+    ui::drawSearchField(p, kSearch, query_, searchFocused_, query_.empty() ? 0.f : kSearch.right - searchClear().left);
+    if (searchFocused_) {   // curseur d'insertion après le texte, jamais sur ⓧ
+        const float x = std::min(kSearch.left + 27 + (query_.empty() ? 0.f : p.textWidth(query_, mt::fontBody)) + 1,
+                                 query_.empty() ? kSearch.right - 8 : searchClear().left - 2);
         p.rt()->DrawLine(D2D1::Point2F(x, kSearch.top + 7), D2D1::Point2F(x, kSearch.bottom - 7), p.brush(pal.accent), 1.2f);
     }
     if (!query_.empty()) {   // ⓧ : efface la recherche
@@ -866,6 +867,7 @@ int SettingsWindow::controlAt(float x, float y) const {
 
 int SettingsWindow::sidebarAt(float x, float y) const {
     if (x < mt::sidebarInset || x > mt::sidebarWidth - mt::sidebarInset) return -1;
+    if (y > ui::sidebarVisibleBottom(heightPt())) return -1;   // sous la limite visible du panneau : rien n'est cliquable
     return ui::sidebarRowAt(y, sidebarTops_);
 }
 
@@ -900,6 +902,7 @@ void SettingsWindow::onMouseDown(float x, float y) {
     }
     if (const int l = lightAt(x, y); l >= 0 && l < 2) {
         lightsPressed_ = l;
+        lightsPressedInside_ = true;
         InvalidateRect(hwnd_, nullptr, FALSE);
         return;
     }
@@ -973,6 +976,13 @@ void SettingsWindow::onMouseMove(float x, float y, bool buttonDown) {
                               : -1;
         if (hover != menu_->hover) {
             menu_->hover = hover;
+            dirty = true;
+        }
+    }
+    if (lightsPressed_ >= 0) {   // pastille enfoncée : sombre seulement tant que le doigt reste dessus
+        const bool insideLight = lightAt(x, y) == lightsPressed_;
+        if (insideLight != lightsPressedInside_) {
+            lightsPressedInside_ = insideLight;
             dirty = true;
         }
     }
@@ -1222,7 +1232,10 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (pt.y < edge) return HTTOP;
                 if (pt.y >= LONG(pxH_) - edge) return HTBOTTOM;
             }
-            if (y < mt::titleBar && lightAt(x, y) < 0 && !inside(kSearch, x, y)) return HTCAPTION;
+            // Le rectangle de survol des pastilles reste à nous : entre deux cercles, une zone de titre ferait quitter la
+            // fenêtre au pointeur (WM_MOUSELEAVE) et clignoter leurs symboles.
+            const bool overLights = x < kLightsX + 2 * ui::kLightSpacing + 12 && y < kLightsY + 12;
+            if (y < mt::titleBar && !overLights && !inside(kSearch, x, y)) return HTCAPTION;
             return HTCLIENT;
         }
         case WM_GETMINMAXINFO: {

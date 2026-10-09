@@ -75,12 +75,12 @@ float segmentedWidth(Painter& p, const std::vector<std::wstring>& labels);
 // Menu ouvert : `checked` coché, `hover` sur l'accent ; éléments de metrics::menuItem.
 void drawMenu(Painter& p, D2D1_RECT_F r, const std::vector<std::wstring>& items, int checked, int hover);
 float menuWidth(Painter& p, const std::vector<std::wstring>& items);
-// Champ de recherche en capsule, loupe et texte (ou « Rechercher » en gris).
-void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused);
+// Champ de recherche en capsule, loupe et texte (ou « Rechercher » en gris) ; `trailing` : place gardée à droite (ⓧ).
+void drawSearchField(Painter& p, D2D1_RECT_F r, const std::wstring& text, bool focused, float trailing = 0);
 // Anneau de focus autour de r.
 void drawFocusRing(Painter& p, D2D1_RECT_F r, float radius);
-// Pastilles de la fenêtre (fermer, réduire, agrandir), le premier centre en `first` ; grises si inactive ; symboles au
-// survol ; `disabled` : indice grisé (agrandir), -1 sinon.
+// Pastilles de la fenêtre (fermer, réduire, agrandir), le premier centre en `first` ; grises si inactive (en couleur au
+// survol, comme la barre de menus) ; symboles au survol ; `disabled` : indice grisé (agrandir), -1 sinon.
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled = -1);
 constexpr float kLightRadius = 7, kLightSpacing = 23;
 

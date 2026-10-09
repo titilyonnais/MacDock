@@ -74,6 +74,11 @@ Panel sidebarPanel(float windowHeight) {
     return {in, in, metrics::sidebarWidth - in, windowHeight - in, metrics::sidebarFloatRadius};
 }
 
+float sidebarVisibleBottom(float windowHeight) {
+    const Panel p = sidebarPanel(windowHeight);
+    return p.bottom - p.radius / 2;
+}
+
 bool insidePanel(const Panel& p, float x, float y) {
     if (x < p.left || x > p.right || y < p.top || y > p.bottom) return false;
     // Dans un coin : à moins d'un rayon du centre de son arrondi.
