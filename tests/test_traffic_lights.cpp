@@ -1,4 +1,7 @@
 // Feux tricolores : éligibilité, géométrie, rendu, couleur du fond.
+#include <windows.h>
+#include <dwmapi.h>
+
 #include <cstdlib>
 
 #include "minitest.h"
@@ -216,6 +219,17 @@ TEST_CASE(lights_own_mark_on_a_real_window) {   // plan 56 : la propriété pos�
     CHECK(md::drawsOwnLights(h));
     md::unmarkOwnLights(h);
     CHECK(!md::drawsOwnLights(h));
+    DestroyWindow(h);
+}
+
+TEST_CASE(lights_own_frame_round_without_border) {   // relecture du plan 56 : le liseré de Windows ne revient pas
+    const HWND h = CreateWindowExW(0, L"STATIC", L"essai", WS_OVERLAPPEDWINDOW, 0, 0, 120, 80, nullptr, nullptr, nullptr,
+                                   nullptr);
+    REQUIRE(h != nullptr);
+    CHECK(md::applyOwnFrame(h));   // le DWM accepte les coins et le liseré absent (qui ne se relit pas)
+    DWORD corner = 0;
+    CHECK(SUCCEEDED(DwmGetWindowAttribute(h, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner)));
+    CHECK(corner == 2);   // DWMWCP_ROUND
     DestroyWindow(h);
 }
 

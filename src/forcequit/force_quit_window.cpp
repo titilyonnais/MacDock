@@ -111,8 +111,7 @@ bool ForceQuitWindow::open(HINSTANCE instance, Env env, const std::wstring& pres
         return false;
     }
     markOwnLights(hwnd_);   // la barre de menus n'y pose pas ses pastilles : la fenêtre dessine les siennes
-    const DWORD corner = 2;   // DWMWCP_ROUND
-    DwmSetWindowAttribute(hwnd_, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner);
+    applyOwnFrame(hwnd_);   // coins arrondis, sans liseré (la barre ne règle plus son apparence)
     updateTheme();
     SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     reload();

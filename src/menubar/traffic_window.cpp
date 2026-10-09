@@ -303,8 +303,8 @@ TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
     info.iconic = false;
     if (!lightsLayerWanted(info, mode_, effectiveDpi(target))) {
         if (diagnosticCapture() && target == active_)
-            log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
-                      info.style, int(info.elevated));
+            log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d, pastilles à elle %d)", target,
+                      info.className.c_str(), info.style, int(info.elevated), int(info.ownLights));
         return nullptr;
     }
     auto layer = std::make_unique<Layer>();

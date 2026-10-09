@@ -53,14 +53,14 @@ TEST_CASE(window_look_skips_special_windows) {
     CHECK(!md::macWindowLook(elevated, false, 96).has_value());
 }
 
-// Fenêtre qui couvre tout son écran sans être agrandie (vidéo en plein écran dans Chrome, jeu sans bordure) : coins
-// rendus à Windows, sinon l'écran entier garde quatre coins arrondis sur fond noir.
 TEST_CASE(window_look_skips_macdock_own_lights) {   // plan 56 : l'app Réglages garde son apparence
     auto w = notepad();
     w.ownLights = true;
     CHECK(!md::macWindowLook(w, false, 96).has_value());
 }
 
+// Fenêtre qui couvre tout son écran sans être agrandie (vidéo en plein écran dans Chrome, jeu sans bordure) : coins
+// rendus à Windows, sinon l'écran entier garde quatre coins arrondis sur fond noir.
 TEST_CASE(window_look_leaves_fullscreen_windows_square) {
     auto video = notepad();
     video.monitor = RECT{0, 0, 1920, 1080};

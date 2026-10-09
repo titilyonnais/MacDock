@@ -179,8 +179,7 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
     DwmExtendFrameIntoClientArea(hwnd_, &glass);
     const int backdrop = 3;   // DWMSBT_TRANSIENTWINDOW : acrylique derrière la barre latérale translucide
     DwmSetWindowAttribute(hwnd_, 38 /* DWMWA_SYSTEMBACKDROP_TYPE */, &backdrop, sizeof backdrop);
-    const DWORD corner = 2;   // DWMWCP_ROUND
-    DwmSetWindowAttribute(hwnd_, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner);
+    applyOwnFrame(hwnd_);   // coins arrondis, sans liseré (la barre ne règle plus son apparence)
     updateDark();
     if (!initGraphics()) return false;
     SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
