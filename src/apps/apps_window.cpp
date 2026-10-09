@@ -195,9 +195,9 @@ struct Painter {
             }
             if (ID2D1Bitmap1* bmp = iconOf(app))
                 d->DrawBitmap(bmp, D2D1::RectF(ix, top, ix + icon, top + icon), a, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
-            const float lw = float(g.cellW) - 12;
+            const float lw = float(appsLabelWidth(g));   // dans le halo, donc dans la zone du clic
             if (IDWriteTextLayout* l = label(v, app, lw)) {
-                const D2D1_POINT_2F at{x0 + 6, top + icon + kLabelGap};
+                const D2D1_POINT_2F at{x0 + (float(g.cellW) - lw) / 2, top + icon + kLabelGap};
                 d->DrawTextLayout({at.x + 0.8f, at.y + 0.8f}, l, shadow.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
                 d->DrawTextLayout(at, l, white.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
             }
@@ -541,7 +541,8 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 const double cx = view.W / 2;   // le champ de recherche ne ferme pas la vue
                 const bool inSearch = std::abs(x - cx) <= view.g.searchW / 2 && y >= view.g.searchTop &&
                                       y <= view.g.searchTop + view.g.searchH;
-                if (!inSearch) done = true;   // un clic dans le vide ferme, comme sur macOS
+                // Un clic dans le vide ferme, comme sur macOS ; pas pendant l'ouverture, où la grille est encore zoomée.
+                if (!inSearch && view.appear >= 1) done = true;
             }
             return 0;
         }

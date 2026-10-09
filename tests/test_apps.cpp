@@ -97,6 +97,10 @@ TEST_CASE(apps_hit_only_on_icon_and_name) {
     CHECK_EQ(md::appsHit(g, 0, cx, r.bottom - 6, 40), 0);       // son nom
     CHECK_EQ(md::appsHit(g, 0, r.right + 4, cy, 40), -1);       // entre deux icônes
     CHECK_EQ(md::appsHit(g, 0, cx, r.bottom + 6, 40), -1);      // sous le nom
+    // Relecture : le nom est mis en page dans la zone (deux lignes, puis « … ») ; un nom long reste cliquable partout.
+    CHECK(md::appsLabelWidth(g) <= r.right - r.left - 8 + 1e-9);
+    CHECK(md::appsLabelWidth(g) > g.icon);
+    CHECK_EQ(md::appsHit(g, 0, cx - md::appsLabelWidth(g) / 2 + 2, r.bottom - 6, 40), 0);   // début d'un nom long
     const md::AppsBox next = md::appsItemRect(g, 1);            // case voisine : même zone, décalée d'une case
     CHECK(std::abs((next.left - r.left) - g.cellW) < 1e-9);
     CHECK_EQ(md::appsHit(g, 0, (next.left + next.right) / 2, cy, 40), 1);

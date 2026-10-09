@@ -243,6 +243,13 @@ RECT genieVisibleRect(const RECT& window, SIZE thumb) {
     return RECT{left, window.top, left + thumb.cx, window.top + thumb.cy};
 }
 
+RECT thumbnailFrame(const RECT& window, const std::optional<RECT>& frame, SIZE thumb) {
+    if (thumb.cx <= 0 || thumb.cy <= 0) return window;
+    if (frame && std::abs((frame->right - frame->left) - thumb.cx) <= 1 && std::abs((frame->bottom - frame->top) - thumb.cy) <= 1)
+        return *frame;
+    return genieVisibleRect(window, thumb);
+}
+
 RECT genieStartRect(const std::optional<RECT>& lastSeen, const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monitor,
                     bool toolWindow, SIZE src) {
     if (lastSeen && !IsRectEmpty(&*lastSeen)) return *lastSeen;

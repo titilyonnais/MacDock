@@ -36,12 +36,14 @@ AppsGeometry appsLayout(double screenW, double screenH, std::size_t count) {
 
 int pageOf(const AppsGeometry& g, int index) { return index < 0 ? 0 : index / std::max(1, g.perPage); }
 
+double appsLabelWidth(const AppsGeometry& g) { return std::max(1.0, std::min(g.cellW - 12, g.icon + 40)); }
+
 AppsBox appsItemRect(const AppsGeometry& g, int slot) {
     const int columns = std::max(1, g.columns);
     const double x0 = g.gridLeft + (slot % columns) * g.cellW, y0 = g.gridTop + (slot / columns) * g.cellH;
     const double top = y0 + std::max(0.0, (g.cellH - g.icon - kAppsLabelGap - kAppsLabelH) / 2);
-    const double ix = x0 + (g.cellW - g.icon) / 2;
-    return {ix - 12, top - 8, ix + g.icon + 12, top + g.icon + kAppsLabelGap + kAppsLabelH + 4};
+    const double half = std::max(g.icon + 24, appsLabelWidth(g) + 8) / 2, cx = x0 + g.cellW / 2;
+    return {cx - half, top - 8, cx + half, top + g.icon + kAppsLabelGap + kAppsLabelH + 4};
 }
 
 int appsHit(const AppsGeometry& g, int page, double x, double y, std::size_t count) {
