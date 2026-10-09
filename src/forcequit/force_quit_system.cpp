@@ -98,11 +98,17 @@ std::vector<FqProcess> sessionProcesses() {
     PROCESSENTRY32W pe{sizeof pe};
     for (BOOL more = Process32FirstW(snap, &pe); more; more = Process32NextW(snap, &pe)) {
         DWORD s = 0;
-        if (pe.th32ProcessID <= 4 || !ProcessIdToSessionId(pe.th32ProcessID, &s) || s != session) continue;
+        if (pe.th32ProcessID <= 4) continue;
         FqProcess p;
         p.pid = pe.th32ProcessID;
+        if (!ProcessIdToSessionId(pe.th32ProcessID, &s)) {   // protégé (csrss, dwm, winlogon…) : gardé par son nom
+            p.exePath = pe.szExeFile;
+            out.push_back(std::move(p));
+            continue;
+        }
+        if (s != session) continue;
         p.exePath = processImagePath(pe.th32ProcessID);
-        if (p.exePath.empty()) p.exePath = pe.szExeFile;   // processus protégé : son nom seulement
+        if (p.exePath.empty()) p.exePath = pe.szExeFile;
         p.aumid = processAppUserModelId(pe.th32ProcessID);
         out.push_back(std::move(p));
     }

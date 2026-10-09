@@ -98,18 +98,36 @@ TEST_CASE(force_quit_targets_never_wrong_process) {
         {14, L"Contoso.App_abc!App", L"C:\\Windows\\explorer.exe"},   // jamais l'Explorateur, même avec le même AUMID
         {77, L"", L"C:\\Apps\\MacDock\\MacDock.exe"},
     };
-    CHECK((md::forceQuitTargets(app, processes, 77) == std::vector<unsigned long>{10, 11}));
-    // App de bureau (pas d'AUMID empaqueté) : seulement les propriétaires de ses fenêtres.
+    // Propriétaires de ses fenêtres seulement : les autres processus de même AUMID n'ont rien à voir (relecture).
+    CHECK((md::forceQuitTargets(app, processes, 77) == std::vector<unsigned long>{10}));
+    // App du Store réduite (aucune fenêtre à elle) : ses processus par son AUMID, jamais l'Explorateur.
+    md::FqApp minimized = app;
+    minimized.pids.clear();
+    CHECK((md::forceQuitTargets(minimized, processes, 77) == std::vector<unsigned long>{10, 11}));
+    // App de bureau : seulement les propriétaires de ses fenêtres ; un PID absent de l'instantané (processus protégé,
+    // ou parti puis repris) n'est jamais visé.
     md::FqApp desktop;
     desktop.appId = L"exe:c:\\apps\\notes.exe";
     desktop.pids = {20, 21};
     CHECK((md::forceQuitTargets(desktop, {{20, L"", L"C:\\Apps\\notes.exe"}, {22, L"", L"C:\\Apps\\notes.exe"}}, 77) ==
-           std::vector<unsigned long>{20, 21}));
+           std::vector<unsigned long>{20}));
     // Fenêtre d'ApplicationFrameHost ou de MacDock remontée par erreur : refusée.
     md::FqApp frame;
     frame.pids = {13, 78};
     CHECK(md::forceQuitTargets(frame, {{13, L"", L"C:\\Windows\\System32\\ApplicationFrameHost.exe"},
                                        {78, L"", L"C:\\Apps\\MacDock\\MacMenuBar.exe"}}, 77).empty());
+}
+
+TEST_CASE(force_quit_targets_package_shared_by_tools) {   // relecture du plan 54, critique 1
+    // Un AUMID de paquet désigne un exécutable (PowerShell 7 du Store), pas l'app vue : deux PowerShell le portent,
+    // une seule fenêtre à forcer ; l'autre, sans fenêtre (un script, un outil), n'est jamais visé.
+    md::FqApp pwsh;
+    pwsh.appId = L"aumid:Microsoft.PowerShell_8wekyb3d8bbwe!App";
+    pwsh.aumid = L"Microsoft.PowerShell_8wekyb3d8bbwe!App";
+    pwsh.pids = {16032};
+    const std::wstring exe = L"C:\\Program Files\\WindowsApps\\Microsoft.PowerShell\\pwsh.exe";
+    CHECK((md::forceQuitTargets(pwsh, {{16032, pwsh.aumid, exe}, {12200, pwsh.aumid, exe}}, 1) ==
+           std::vector<unsigned long>{16032}));
 }
 
 TEST_CASE(force_quit_explorer_detection) {
@@ -178,6 +196,18 @@ TEST_CASE(force_quit_session_processes) {
     for (const md::FqProcess& p : md::sessionProcesses())
         if (p.pid == GetCurrentProcessId()) found = _wcsicmp(p.exePath.c_str(), self) == 0 && p.aumid.empty();
     CHECK(found);   // ce processus, son exécutable, pas d'AUMID (pas empaqueté)
+}
+
+TEST_CASE(force_quit_session_processes_keep_protected) {   // relecture du plan 54, important 1
+    // csrss (session illisible sans droits élevés) reste dans l'instantané, par son nom : la liste des processus
+    // jamais arrêtés le reconnaît (sinon son PID passerait pour inconnu).
+    bool csrss = false;
+    for (const md::FqProcess& p : md::sessionProcesses()) {
+        const std::size_t slash = p.exePath.find_last_of(L"\\/");
+        const std::wstring name = slash == std::wstring::npos ? p.exePath : p.exePath.substr(slash + 1);
+        csrss = csrss || _wcsicmp(name.c_str(), L"csrss.exe") == 0;
+    }
+    CHECK(csrss);
 }
 
 TEST_CASE(force_quit_terminates_own_child_only) {

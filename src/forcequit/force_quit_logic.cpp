@@ -86,12 +86,14 @@ std::vector<unsigned long> forceQuitTargets(const FqApp& app, const std::vector<
         if (pid == 0 || pid == 4 || pid == self) return false;
         for (const FqProcess& p : processes)
             if (p.pid == pid) return !protectedExe(p.exePath);
-        return true;   // absent de l'instantané des processus : propriétaire d'une fenêtre de l'app
+        return false;   // absent de l'instantané : processus inconnu, ou parti (son PID pourrait être repris)
     };
     std::vector<unsigned long> out;
     for (unsigned long pid : app.pids)
         if (allowed(pid)) out.push_back(pid);
-    if (!app.aumid.empty())
+    // App du Store réduite (aucune fenêtre à elle) : ses processus par son AUMID. Jamais sinon : un AUMID de paquet
+    // désigne un exécutable (PowerShell 7 du Store…), pas l'app vue, et d'autres processus sans fenêtre le portent.
+    if (!app.aumid.empty() && app.pids.empty())
         for (const FqProcess& p : processes)
             if (!p.aumid.empty() && sameText(p.aumid, app.aumid) && allowed(p.pid)) out.push_back(p.pid);
     sortUnique(out);

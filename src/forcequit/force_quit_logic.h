@@ -33,8 +33,8 @@ struct FqProcess {
     unsigned long pid = 0;
     std::wstring aumid, exePath;
 };
-// Processus à arrêter pour une app : les propriétaires de ses fenêtres et, pour une app empaquetée, tous les processus
-// de même AUMID (une app du Store réduite n'a plus de fenêtre à elle). Jamais 0 ni 4, ni `self`, ni l'Explorateur,
+// Processus à arrêter pour une app : les propriétaires de ses fenêtres ; sans aucun (app du Store réduite), les
+// processus de même AUMID. Jamais un PID absent de `processes`, 0 ni 4, ni `self`, ni l'Explorateur,
 // ApplicationFrameHost, dwm, csrss, winlogon, ni les processus de MacDock (Dock, barre, lanceur).
 std::vector<unsigned long> forceQuitTargets(const FqApp& app, const std::vector<FqProcess>& processes, unsigned long self);
 
