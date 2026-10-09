@@ -21,8 +21,6 @@ namespace {
 constexpr wchar_t kLightsClass[] = L"MacMenuBarLights";
 constexpr UINT_PTR kSampleTimer = 1;   // couleur remesurée 200 ms après le dernier déplacement
 constexpr UINT_PTR kProbeTimer = 2;    // boutons de Windows resondés une fois le redimensionnement calmé
-constexpr UINT_PTR kBounceTimer = 3;   // rebond de la pastille relâchée
-constexpr double kBounceMs = 240;
 // Fenêtre qui retrouve sa barre de titre (sortie du plein écran) : l'app la redessine un peu après avoir pris sa
 // nouvelle taille ; les pastilles attendent, pour ne pas flotter sur l'ancienne image.
 constexpr UINT_PTR kRevealTimer = 5;
@@ -757,7 +755,6 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
                 case LightsMouse::Press:   // sur une fenêtre inactive aussi, sans l'activer (macOS)
                     l.pressed = hit;
                     l.state.pressed = hit;
-                    l.state.bouncing = -1;
                     SetCapture(from);
                     paint(l);
                     if (hit == 1) announceMinimize(l.target, p);   // le génie se prépare avant le relâchement
@@ -797,13 +794,11 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             const int pressed = l.pressed;
             l.pressed = -1;
             ReleaseCapture();
-            // Petit rebond élastique de la pastille relâchée (Golden Gate), puis la commande.
-            l.state.pressed = -1;
-            l.state.bouncing = pressed;
-            l.state.bounce = 1 - 0.06;
-            l.bounceStart = GetTickCount64();
-            SetTimer(from, kBounceTimer, 15, nullptr);
-            paint(l);
+            // Tahoe : la pastille reprend sa teinte (déjà repeinte par WM_CAPTURECHANGED), sans rebond, puis la commande.
+            if (l.state.pressed >= 0) {
+                l.state.pressed = -1;
+                paint(l);
+            }
             if (hitLight(l.layout, screenPoint()) == pressed && IsWindow(l.target))
                 PostMessageW(l.target, WM_SYSCOMMAND, lightCommand(pressed, IsZoomed(l.target) != FALSE), 0);
             return 0;
@@ -819,16 +814,6 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
             } else if (wp == kProbeTimer) {
                 KillTimer(from, kProbeTimer);
                 place(l, true, true);
-            } else if (wp == kBounceTimer) {
-                const double t = double(GetTickCount64() - l.bounceStart) / kBounceMs;
-                if (t >= 1 || l.state.bouncing < 0) {
-                    KillTimer(from, kBounceTimer);
-                    l.state.bouncing = -1;
-                    l.state.bounce = 1;
-                } else {   // ressort amorti : 0,94 → léger dépassement → 1
-                    l.state.bounce = 1 - 0.06 * std::cos(2.4 * 3.14159265358979 * t) * std::exp(-3.5 * t);
-                }
-                if (l.shown) paint(l);
             }
             return 0;
         default: break;

@@ -834,6 +834,34 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   - tests plus serrés.
 - **Limite** : le rayon de 26 des fenêtres de Tahoe est impossible avec le cadre de Windows (8 px).
 
+### Plan 44 — le reste de Golden Gate vers Tahoe, nuit du 9 octobre
+
+- **Durées de macOS 26 Tahoe** (Golden Gate les raccourcissait d'environ 12 %) :
+  - génie 0,55 s et échelle 0,30 s ;
+  - masquage du Dock 0,45 s et « poof » 0,35 s, ton `dock-metrics.json` migré en v5 (une valeur que tu avais
+    choisie reste) ;
+  - Mission Control 0,30 s, écran Apps 0,20 s, piles 0,24 et 0,14 s, Spotlight 0,12 s ;
+  - Spotlight affiche de nouveau « Recherche Spotlight » (« Rechercher ou demander » était celui de macOS 27).
+- **Pastilles enfoncées** : plus sombres, sans rétrécir ni rebondir, comme dans Tahoe.
+- **Défaut important trouvé à l'essai réel et corrigé** : depuis la relecture du 8 octobre au soir, **le génie ne
+  partait plus quand tu réduisais une fenêtre** (pastille jaune, bouton de Windows, Win+↓) ; Windows animait la
+  réduction à sa place. Le Dock attendait la case de la fenêtre réduite, qui n'existe qu'après la réduction.
+- **« Masquer » comme sur macOS** (barre de menus, menu du Dock, ⌘Tab) : les fenêtres disparaissent d'un coup, sans
+  génie ni case au Dock ; un clic sur l'icône de l'app ou « Tout afficher » les réaffiche de même.
+- **Essais réels** sur des fenêtres d'essai à moi, MacDock lancé puis arrêté :
+  - pastille jaune enfoncée : plus sombre, même taille, puis génie de 0,56 s ;
+  - Win+↓ : génie, puis animations de Windows rendues 1,7 s après ;
+  - « Masquer » : ni génie ni case ; animations rendues 0,4 s après le retour.
+- **Relecture indépendante** : rien de critique ; trois points importants corrigés :
+  - Win+↓ traité sur le fil du Dock ;
+  - « Masquer » sans génies en chaîne ;
+  - les autres durées de Golden Gate.
+- **Mineurs reportés** :
+  - appui relâché hors de la pastille, ou app qui se cache dans la zone de notification : 1,5 s sans animations
+    de Windows ;
+  - une seconde réduction pendant un génie coupe le premier net ;
+  - Win+↓ ne prépare pas le génie à l'avance (≈ 0,1 s d'attente de la carte graphique).
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

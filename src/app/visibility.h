@@ -19,8 +19,8 @@ struct VisibilityInputs {
 struct VisibilityTimings {
     double showDelay = 0;        // avant l'apparition (macOS : autohide-delay)
     double leaveDelay = 0.5;     // le Dock reste un instant après le départ du curseur
-    double showSeconds = 0.40;
-    double hideSeconds = 0.40;
+    double showSeconds = 0.45;   // macOS 26 Tahoe (comme autohideShowSeconds)
+    double hideSeconds = 0.45;
 };
 
 class Visibility {

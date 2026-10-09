@@ -67,9 +67,7 @@ std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);
 
 struct LightsState {
     bool hover = false;                          // symboles ×, −, + (survol du groupe)
-    int pressed = -1;                            // pastille sous le doigt : plus sombre, un peu enfoncée
-    int bouncing = -1;                           // pastille relâchée : petit rebond élastique (rayon × bounce)
-    double bounce = 1;
+    int pressed = -1;                            // pastille sous le doigt : plus sombre
     bool enabled[3] = {true, true, true};        // indisponible : gris, sans action
     bool dark = false;                           // thème de la barre de titre (gris des pastilles indisponibles)
     bool inactive = false;                       // fenêtre inactive : grises, en couleur au survol (macOS)

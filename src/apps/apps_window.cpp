@@ -17,6 +17,7 @@
 #include <mutex>
 #include <thread>
 
+#include "../anim/tahoe_timing.h"
 #include "../core/diag.h"
 #include "../core/log.h"
 #include "../glass/glass_renderer.h"
@@ -36,7 +37,7 @@ constexpr wchar_t kClass[] = L"MacDockApps";
 constexpr UINT WM_APPS_BACKDROP = WM_APP + 21;
 constexpr UINT WM_APPS_ICON = WM_APP + 22;   // wParam : indice de l'app ; lParam : IconProvider::ImagePtr* à reprendre
 constexpr UINT_PTR kCaretTimer = 1;
-constexpr double kAppearSeconds = 0.18;
+constexpr double kAppearSeconds = tahoe::kLaunchpadAppearSeconds;
 constexpr double kWheelPause = 0.25;          // une page par geste de molette
 constexpr float kNameFont = 12, kSearchFont = 15, kEmptyFont = 17;
 constexpr float kLabelH = 32, kLabelGap = 6;  // nom sous l'icône, deux lignes au plus

@@ -219,8 +219,8 @@ std::vector<GenieVertex> genieMesh(MinimizeEffect e, SIZE src, const RECT& from,
 }
 
 double minimizeDuration(MinimizeEffect e, bool slow) {
-    // Golden Gate : ~12 % plus court que Tahoe (0,55 s et 0,3 s).
-    const double base = e == MinimizeEffect::Genie ? 0.48 : e == MinimizeEffect::Scale ? 0.26 : 0.0;
+    // macOS 26 Tahoe (Golden Gate les raccourcissait de ~12 % : 0,48 s et 0,26 s).
+    const double base = e == MinimizeEffect::Genie ? 0.55 : e == MinimizeEffect::Scale ? 0.30 : 0.0;
     return slow ? base * 8 : base;
 }
 
@@ -253,6 +253,11 @@ GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minim
     if (minimized) return live ? GenieReact::Start : GenieReact::Nothing;
     // Restaurée ailleurs pendant son animation : annulée ; pendant la fin d'une ouverture, c'est notre restauration.
     return run.active && !run.settling && run.source == window ? GenieReact::Cancel : GenieReact::Nothing;
+}
+
+MinimizeAnnounce minimizeAnnounce(bool hide, MinimizeEffect effect, bool minimizesToTile) {
+    if (hide) return {true, true};
+    return {effect != MinimizeEffect::Windows && minimizesToTile, false};
 }
 
 bool genieTakesMinimize(bool held, bool windowsAnimates) { return held || !windowsAnimates; }

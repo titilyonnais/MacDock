@@ -108,6 +108,11 @@ void AppModel::setTrashFull(bool full) {
     touch();
 }
 
+bool AppModel::minimizesToTile(WindowId id) const {
+    auto w = windows_.find(id);
+    return w != windows_.end() && !isHidden(w->second.appId);
+}
+
 bool AppModel::isHidden(const std::wstring& appId) const {
     auto a = apps_.find(appId);
     return a != apps_.end() && a->second.hidden;

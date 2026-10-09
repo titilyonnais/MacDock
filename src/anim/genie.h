@@ -86,6 +86,15 @@ GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minim
 // annoncée) ou si Windows n'anime pas les réductions (choix de l'utilisateur) ; sinon deux animations se
 // superposeraient (barre des tâches, ⊞M, app qui se réduit elle-même) et Windows anime seul.
 bool genieTakesMinimize(bool held, bool windowsAnimates);
+// Réduction annoncée au Dock (pastille, bouton de Windows, ⊞↓, menus) : `hold` coupe les animations de Windows avant
+// la réduction quand le Dock l'anime lui-même (effet du Dock, case au Dock une fois réduite). `hide` : « Masquer »
+// (macOS) ; l'app est masquée (`hideApp`) et ses fenêtres disparaissent d'un coup, sans génie ni animation de Windows,
+// quel que soit l'effet de réduction.
+struct MinimizeAnnounce {
+    bool hold = false;
+    bool hideApp = false;
+};
+MinimizeAnnounce minimizeAnnounce(bool hide, MinimizeEffect effect, bool minimizesToTile);
 // Une animation va en remplacer une autre : une restauration interrompue doit quand même aboutir.
 bool genieMustRestoreFirst(const GenieRun& run);
 

@@ -298,3 +298,23 @@ TEST_CASE(model_app_click_follows_macos) {
     CHECK(c.kind == md::AppClick::Kind::Unhide);
     CHECK_EQ(c.windows.size(), std::size_t(3));
 }
+
+TEST_CASE(model_window_will_minimize_to_a_tile) {
+    // Génie armé à l'appui, avant la réduction : une fenêtre connue d'une app visible aura sa case une fois réduite.
+    md::AppModel m;
+    const auto a = idOf(L"C:\\a.exe");
+    m.windowOpened(0x10, a);
+    CHECK(m.minimizesToTile(0x10));
+    CHECK(!m.minimizesToTile(0x99));   // inconnue du Dock : pas de case, Windows anime
+    // Réduite, la prédiction est vérifiée : la case « win:16 » est bien là, et seulement si minimizesToTile le disait.
+    auto hasTile = [&] {
+        const auto k = keys(m);
+        return std::find(k.begin(), k.end(), L"win:16") != k.end();
+    };
+    m.windowMinimized(0x10, true);
+    CHECK(m.minimizesToTile(0x10));
+    CHECK(hasTile());
+    m.setHidden(a.appId, true);         // « Masquer » : ses fenêtres réduites ne deviennent pas des cases
+    CHECK(!m.minimizesToTile(0x10));
+    CHECK(!hasTile());
+}

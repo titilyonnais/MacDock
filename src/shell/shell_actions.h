@@ -20,6 +20,12 @@ bool openMacDockSettings(const std::wstring& pane);
 // fenêtre sans que Windows joue aussi la sienne.
 void minimizeWindow(HWND hwnd, int command = SW_MINIMIZE);
 void minimizeAll(const std::vector<HWND>& windows);
+// MacDockWillMinimize (wParam : la fenêtre) : lParam 0 pour une réduction, kAnnounceHide pour « Masquer ».
+constexpr LPARAM kAnnounceHide = 1;
+// « Masquer » (macOS) : le Dock masque l'app et coupe les animations de Windows avant la réduction ; les fenêtres
+// disparaissent d'un coup, sans génie ni case au Dock, et reviennent de même.
+void hideWindow(HWND hwnd, int command = SW_MINIMIZE);
+void hideAll(const std::vector<HWND>& windows);
 void openRecycleBin();
 void openFolder(const std::wstring& path);
 void openStartMenu();

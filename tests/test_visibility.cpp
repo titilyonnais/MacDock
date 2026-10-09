@@ -35,6 +35,18 @@ TEST_CASE(autohide_shows_at_edge_then_hides_after_delay) {
     CHECK(v.wakeAt() < 0);
 }
 
+TEST_CASE(autohide_default_durations_are_tahoe) {
+    // macOS 26 Tahoe : le Dock apparaît en 0,45 s (Golden Gate raccourcissait à 0,40 s).
+    md::Visibility v;
+    run(v, autohide(), 0, 2);
+    auto edge = autohide();
+    edge.cursorAtEdge = true;
+    run(v, edge, 2, 2.42);
+    CHECK(v.shown() < 1);   // pas encore entièrement là après 0,42 s
+    run(v, edge, 2.42, 2.5);
+    CHECK_EQ(v.shown(), 1.0);
+}
+
 TEST_CASE(autohide_off_always_shown) {
     md::Visibility v;
     run(v, md::VisibilityInputs{}, 0, 3);

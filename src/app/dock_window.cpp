@@ -1250,7 +1250,7 @@ void DockApp::switcherKey(int id) {
             break;
         case kHotSwitchHide:   // comme « Masquer » du menu du Dock
             model_.setHidden(switchApps_[sel], true);
-            minimizeAll(toHwnds(model_.windowsOf(switchApps_[sel])));
+            hideAll(toHwnds(model_.windowsOf(switchApps_[sel])));   // d'un coup, sans génie
             switch_.hideSelected();
             requestFrame();
             break;
@@ -1388,19 +1388,35 @@ void DockApp::armGenie(HWND w, POINT pt) {
     if (trace_) log::info(L"[trace] réduction annoncée %p", static_cast<void*>(w));
 }
 
-void DockApp::holdTransitions(HWND w) {
-    if (snapshot_ || settings_.minimizeEffect == MinimizeEffect::Windows || !w) return;
+void DockApp::holdTransitions(HWND w, bool always) {
+    if (snapshot_ || (!always && settings_.minimizeEffect == MinimizeEffect::Windows) || !w) return;
     if (trace_ && !transitions_.held(w)) log::info(L"[trace] animations de Windows coupées pour %p", static_cast<void*>(w));
     transitions_.hold(w, nowSeconds() + 1.5);
     SetTimer(hwnd_, kTransitionTimer, 400, nullptr);
 }
 
 bool DockApp::genieWouldAnimate(HWND w) {
-    return settings_.minimizeEffect != MinimizeEffect::Windows && controller_.restingTile(toId(w)).has_value();
+    // La case n'existe qu'une fois la fenêtre réduite : avant, on demande au modèle si elle en aura une.
+    return settings_.minimizeEffect != MinimizeEffect::Windows && model_.minimizesToTile(toId(w));
 }
 
-void DockApp::announceMinimize(HWND w) {
-    if (!snapshot_ && w && IsWindow(w) && !IsIconic(w) && genieWouldAnimate(w)) holdTransitions(w);
+void DockApp::announceMinimize(HWND w, bool hide) {
+    if (snapshot_ || !w || !IsWindow(w) || IsIconic(w)) return;
+    const MinimizeAnnounce a = minimizeAnnounce(hide, settings_.minimizeEffect, model_.minimizesToTile(toId(w)));
+    if (a.hideApp) {   // ses fenêtres réduites ne deviennent pas des cases ; un clic sur l'app les réaffiche
+        const std::wstring app = model_.appOfWindow(toId(w));
+        if (!app.empty()) model_.setHidden(app, true);
+    }
+    if (a.hold) holdTransitions(w, a.hideApp);
+}
+
+HeldState DockApp::heldState(HWND w) {
+    HeldState s;
+    s.iconic = IsIconic(w) != FALSE;
+    s.appHidden = model_.isHidden(model_.appOfWindow(toId(w)));
+    s.genieArmed = genie_.armed() == w;
+    s.genieRunning = genie_.active() && genie_.source() == w;
+    return s;
 }
 
 void DockApp::onButton(bool down, POINT pt) {
@@ -1650,7 +1666,7 @@ void DockApp::showContextMenu(std::optional<std::size_t> index) {
             break;
         case kCmdHide:
             model_.setHidden(item.appId, true);
-            minimizeAll(toHwnds(model_.windowsOf(item.appId)));
+            hideAll(toHwnds(model_.windowsOf(item.appId)));   // d'un coup, sans génie
             break;
         case kCmdQuit:
             for (HWND h : toHwnds(model_.windowsOf(item.appId))) PostMessageW(h, WM_CLOSE, 0, 0);
@@ -2059,11 +2075,16 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                 case CommandAction::Kind::Pass: break;
             }
         }
-        // ⊞↓ sur une fenêtre ni agrandie ni réduite : Windows va la réduire, le génie l'animera seul.
+        // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.
+        // Annoncée au fil du Dock (modèle, minuterie des animations) et de façon synchrone : coupée avant la réduction.
         if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
             !(GetAsyncKeyState(VK_SHIFT) & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+            static const auto arranged = reinterpret_cast<BOOL(WINAPI*)(HWND)>(
+                reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "IsWindowArranged")));
             const HWND fg = GetAncestor(GetForegroundWindow(), GA_ROOT);
-            if (fg && IsWindowVisible(fg) && !IsZoomed(fg)) self_->announceMinimize(fg);
+            if (fg && IsWindowVisible(fg) && !IsZoomed(fg) && !(arranged && arranged(fg)))
+                SendMessageTimeoutW(self_->hwnd_, self_->willMinimizeMsg_, reinterpret_cast<WPARAM>(fg), 0,
+                                    SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, nullptr);   // sans réentrer dans le crochet
         }
         // Captures d'écran : viseur ouvert (Échap, Espace), puis ⊞⇧3 et ⊞⇧4 (Explorer garde ces raccourcis).
         static bool escTaken = false;   // Échap a fermé le viseur : avalée jusqu'à son relâchement
@@ -2201,7 +2222,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
-        announceMinimize(reinterpret_cast<HWND>(wp));
+        announceMinimize(reinterpret_cast<HWND>(wp), lp == kAnnounceHide);
         return 0;
     }
     if (msg == genieArmMsg_ && genieArmMsg_) {   // pastille jaune enfoncée : la réduction arrive au relâchement
@@ -2443,13 +2464,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 noteForeground();   // place de la fenêtre active (ancrage au clavier compris), pour l'effet génie
                 return 0;
             }
-            if (wp == kTransitionTimer) {   // réduite, ou animée par le génie : retenue ; sinon animations rendues
-                transitions_.release(nowSeconds(), [this](HWND h) {
-                    return IsIconic(h) || genie_.armed() == h || (genie_.active() && genie_.source() == h);
-                });
-                // Toutes réduites (ou aucune) : plus rien à surveiller avant leur retour (ev.minimized, ev.closed).
+            if (wp == kTransitionTimer) {   // génie armé ou en cours, ou masquée : retenue ; sinon animations rendues
+                transitions_.release(nowSeconds(), [this](HWND h) { return transitionBusy(heldState(h)); });
+                // Plus que des fenêtres masquées (ou aucune) : rien à surveiller avant leur retour (ev.minimized, ev.closed).
                 bool waiting = false;
-                for (HWND h : transitions_.windows()) waiting = waiting || (IsWindow(h) && !IsIconic(h));
+                for (HWND h : transitions_.windows()) waiting = waiting || (IsWindow(h) && !transitionParked(heldState(h)));
                 if (!waiting) KillTimer(hwnd_, kTransitionTimer);
                 return 0;
             }

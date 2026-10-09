@@ -254,6 +254,28 @@ TEST_CASE(lights_pressed_is_darker) {
     CHECK(pressed[i + 2] + 20 < normal[i + 2]);   // rouge plus sombre sous le doigt
 }
 
+TEST_CASE(lights_pressed_keeps_its_size) {
+    // macOS 26 Tahoe : la pastille enfoncée s'assombrit sans rétrécir (le rétrécissement et le rebond au relâchement
+    // venaient de Golden Gate). À 300 % pour que l'écart soit mesurable.
+    const auto l = md::lightsOverButtons(RECT{586, 0, 1000, 90}, 288);
+    md::LightsState st;
+    st.patchColor = 0xF3F3F3;
+    const int w = l.window.right - l.window.left;
+    const LONG cy = (l.circles[0].top + l.circles[0].bottom) / 2 - l.window.top;
+    auto redWidth = [&](const std::vector<std::uint8_t>& px) {   // largeur rouge de la première pastille au centre
+        int n = 0;
+        for (LONG x = l.circles[0].left - 2; x <= l.circles[0].right + 2; ++x) {
+            const std::uint8_t* p = &px[(std::size_t(cy) * w + (x - l.window.left)) * 4];
+            if (int(p[2]) - int(p[1]) > 60) ++n;   // rouge, pas le gris du fond
+        }
+        return n;
+    };
+    const int normal = redWidth(md::renderLights(l, st, 3.0));
+    CHECK(normal > 30);
+    st.pressed = 0;
+    CHECK_EQ(redWidth(md::renderLights(l, st, 3.0)), normal);
+}
+
 TEST_CASE(lights_zoomed_frame_clipped_to_work_area) {
     // Bloc-notes agrandi (mesuré) : cadre déclaré dès y = 35, sous la barre de menus (zone de travail dès 48). Les
     // pastilles et la couleur de leur fond se prennent dans la partie visible.

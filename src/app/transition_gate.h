@@ -22,6 +22,20 @@ bool transitionsMarked(HWND window);
 // laissées marquées. `onlyProcess` : seulement celles de ce processus (0 : toutes). Renvoie leur nombre.
 int releaseOrphanTransitions(DWORD onlyProcess = 0);
 
+// Fenêtre retenue, vue par le Dock.
+struct HeldState {
+    bool iconic = false;
+    bool appHidden = false;      // son app est masquée (« Masquer »)
+    bool genieArmed = false;     // génie armé sur elle (appui sur « réduire »)
+    bool genieRunning = false;   // génie en cours sur elle
+};
+// Retenue encore : génie armé ou en cours sur elle, ou réduite par « Masquer » (elle reviendra d'un coup, comme sur
+// macOS). Réduite par le génie : rendue une fois le génie fini, pour qu'une restauration hors du Dock (⌘Tab, Alt+Tab)
+// garde l'animation de Windows ; le Dock la recoupe avant son propre génie de restauration.
+bool transitionBusy(const HeldState& s);
+// Garée jusqu'à son retour (réduite et masquée) : la minuterie n'a plus à la surveiller.
+bool transitionParked(const HeldState& s);
+
 class TransitionGate {
 public:
     explicit TransitionGate(TransitionApi api) : api_(std::move(api)) {}
