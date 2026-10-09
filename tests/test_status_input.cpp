@@ -5,6 +5,7 @@
 
 #include "minitest.h"
 #include "../src/core/json.h"
+#include "../src/menubar/bar_renderer.h"
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/status_input.h"
 #include "../src/menubar/status_menus.h"
@@ -116,4 +117,40 @@ TEST_CASE(input_installed_layouts_real) {   // les dispositions de cette session
         CHECK(!l.name.empty());
         CHECK(l.code.size() == 2);   // « FR », « US »
     }
+}
+
+TEST_CASE(bar_renderer_draws_boxed_code) {   // plan 58 : « FR » dans une boîte arrondie, comme les sources de macOS
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        r.setFont(L"", 13);
+        auto longestRun = [&](bool boxed) {   // plus longue suite horizontale de pixels allumés dans la case
+            md::BarFrame f;
+            f.darkText = true;
+            md::BarDrawItem it;
+            it.text = L"FR";
+            it.boxed = boxed;
+            it.x = 100;
+            it.width = 30;
+            f.items.push_back(it);
+            const UINT w = 200, h = 24;
+            std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+            if (!r.renderToImage(f, bg, w, h, out)) return -1;
+            int best = 0;
+            for (UINT y = 0; y < h; ++y) {
+                int run = 0;
+                for (UINT x = 0; x < w; ++x) {
+                    const bool lit = out[(size_t(y) * w + x) * 4 + 3] > 90;
+                    run = lit ? run + 1 : 0;
+                    best = std::max(best, run);
+                    if (lit) CHECK(x >= 100 && x < 130);   // rien hors de la case
+                }
+            }
+            return best;
+        };
+        CHECK(longestRun(true) >= 15);   // le bord haut ou bas de la boîte
+        CHECK(longestRun(false) < 12);   // le texte seul n'a pas de long trait horizontal
+    }
+    CoUninitialize();
 }
