@@ -151,7 +151,7 @@ std::wstring hotkeyLabel(const HotkeySpec& s) {
 
 bool hotkeyNeedsRegister(const HotkeySlot& slot, const std::wstring& setting, bool parsable) {
     if (!slot.tried || setting != slot.applied) return true;
-    return parsable && !slot.registered;
+    return parsable && !slot.registered && slot.retries < kHotkeyRetries;
 }
 
 bool hotkeyConflict(std::wstring_view a, std::wstring_view b) {

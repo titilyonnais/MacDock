@@ -34,9 +34,13 @@ struct HotkeySlot {
     bool registered = false;
     bool tried = false;
     bool refused = false;   // RegisterHotKey a échoué : réessayé
+    int retries = 0;        // nouveaux essais déjà faits pour ce réglage
 };
+// Nouveaux essais d'un raccourci refusé : 10, toutes les 30 s (les apps qui démarrent avec la session) ; au-delà, le
+// Dock ne le prend plus à un lanceur qui redémarre (PowerToys Run sur Alt+Espace).
+constexpr int kHotkeyRetries = 10;
 // Faut-il (ré)essayer ? Réglage changé, ou dernier essai refusé (raccourci pris par une autre app au démarrage :
-// réessayé jusqu'à ce qu'elle le libère). `parsable` faux : raccourci désactivé, rien à enregistrer.
+// réessayé kHotkeyRetries fois). `parsable` faux : raccourci désactivé, rien à enregistrer.
 bool hotkeyNeedsRegister(const HotkeySlot& slot, const std::wstring& setting, bool parsable);
 
 // Enregistreur de raccourci (app Réglages) : une touche appuyée, avec les modificateurs tenus (MOD_…).

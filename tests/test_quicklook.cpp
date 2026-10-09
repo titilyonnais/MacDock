@@ -51,6 +51,21 @@ TEST_CASE(quicklook_space_continues_type_ahead) {
     CHECK(!md::typeAheadKey(VK_DOWN, false));
     CHECK(!md::typeAheadKey(VK_ESCAPE, false));
     CHECK(!md::typeAheadKey(VK_SPACE, false));   // l'espace elle-même ne relance pas la saisie
+    CHECK(md::typeAheadKey(VK_MULTIPLY, false));  // opérateurs du pavé numérique
+    CHECK(md::typeAheadKey(VK_DIVIDE, false));
+    // AltGr (Ctrl+Alt) tape « @ € # » : de la saisie, pas un raccourci ; Ctrl seul, Alt seul ou ⊞ : des raccourcis.
+    CHECK(!md::typeAheadCommand(true, true, false));
+    CHECK(md::typeAheadCommand(true, false, false));
+    CHECK(md::typeAheadCommand(false, true, false));
+    CHECK(md::typeAheadCommand(false, false, true));
+    CHECK(!md::typeAheadCommand(false, false, false));
+    // Relecture : se déplacer, valider, renommer ou effacer termine la saisie (« mo », ↓, Espace : le Coup d'œil).
+    for (unsigned vk : {unsigned(VK_DOWN), unsigned(VK_UP), unsigned(VK_LEFT), unsigned(VK_RIGHT), unsigned(VK_HOME),
+                        unsigned(VK_END), unsigned(VK_PRIOR), unsigned(VK_NEXT), unsigned(VK_TAB), unsigned(VK_RETURN),
+                        unsigned(VK_ESCAPE), unsigned(VK_BACK), unsigned(VK_DELETE), unsigned(VK_F2)})
+        CHECK(md::typeAheadEnds(vk));
+    CHECK(!md::typeAheadEnds('M'));
+    CHECK(!md::typeAheadEnds(VK_SHIFT));   // Maj pour une majuscule : la saisie continue
     // Une seconde, comme la sélection par la saisie du Finder.
     CHECK(md::typeAheadActive(10'000, 10'999));
     CHECK(!md::typeAheadActive(10'000, 11'000));

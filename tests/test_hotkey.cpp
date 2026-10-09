@@ -131,4 +131,10 @@ TEST_CASE(hotkey_slot_retries_refused_registration) {
     slot = {L"off", false, true};
     CHECK(!md::hotkeyNeedsRegister(slot, L"off", false));         // désactivé : rien à enregistrer
     CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+up", true));       // réactivé
+    // Relecture : réessayé 5 minutes au plus (10 fois), pour ne pas prendre le raccourci d'un lanceur qui redémarre.
+    slot = {L"alt+space", false, true, true, md::kHotkeyRetries - 1};
+    CHECK(md::hotkeyNeedsRegister(slot, L"alt+space", true));
+    slot.retries = md::kHotkeyRetries;
+    CHECK(!md::hotkeyNeedsRegister(slot, L"alt+space", true));
+    CHECK(md::hotkeyNeedsRegister(slot, L"ctrl+space", true));    // un autre réglage : nouvel essai
 }

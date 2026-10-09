@@ -102,6 +102,8 @@ constexpr int kHotSwitch = 6, kHotSwitchBack = 7, kHotSwitchEsc = 8, kHotSwitchL
               kHotSwitchQuit = 11, kHotSwitchHide = 12, kHotAppExpose = 14;
 constexpr UINT_PTR kSwitchTimer = 0x5357;   // "SW" : Alt toujours enfoncé ?
 constexpr UINT_PTR kHotkeyRetryTimer = 0x484B;   // "HK" : raccourci pris par une autre app, réessayé
+// Instant de la dernière touche d'un nom tapé dans la liste des fichiers (0 : aucune) : fil des crochets seulement.
+ULONGLONG g_typedAt = 0;
 
 double nowSeconds() {
     static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
@@ -184,6 +186,18 @@ void DockApp::applySettings() {
     updateGlass();   // réglage glass modifié à chaud
     shotKeysOn_ = settings_.screenshots && !snapshot_;
     commandKeyOn_ = settings_.altAsCommand && !snapshot_;
+    // Raccourcis échangés d'un coup (Mission Control ↔ Exposé) : les anciens libérés avant d'enregistrer les nouveaux.
+    if (hwnd_) {
+        const auto release = [&](HotkeySlot& slot, int id, const std::wstring& setting) {
+            if (slot.tried && slot.applied != setting && slot.registered) {
+                UnregisterHotKey(hwnd_, id);
+                slot.registered = false;
+            }
+        };
+        release(spotlightHotkey_, kHotSpotlight, settings_.spotlightHotkey);
+        release(missionHotkey_, kHotMission, settings_.missionControlHotkey);
+        release(appExposeHotkey_, kHotAppExpose, settings_.appExposeHotkey);
+    }
     if (spotlightMsg_) registerSpotlightHotkey();   // après le démarrage seulement (fenêtre prête)
     if (missionMsg_) {   // après le démarrage seulement (fenêtre prête)
         registerMissionHotkey();
@@ -1159,8 +1173,10 @@ void DockApp::registerHotkey(HotkeySlot& slot, int id, const std::wstring& setti
                              const wchar_t* what) {
     if (!hwnd_ || !hotkeyNeedsRegister(slot, setting, spec.has_value())) return;
     const bool retry = slot.tried && slot.applied == setting;
+    const int retries = retry ? slot.retries + 1 : 0;
     UnregisterHotKey(hwnd_, id);
     slot = {setting, false, true};
+    slot.retries = retries;
     if (!spec) {
         log::info(L"%s : raccourci désactivé", what);
         return;
@@ -1171,8 +1187,11 @@ void DockApp::registerHotkey(HotkeySlot& slot, int id, const std::wstring& setti
     } else {
         slot.refused = true;
         if (!retry)
-            log::warn(L"%s : raccourci %s déjà pris par une autre app (%lu) ; nouvel essai toutes les 30 s", what,
-                      setting.c_str(), GetLastError());
+            log::warn(L"%s : raccourci %s déjà pris par une autre app (%lu) ; nouvel essai toutes les 30 s pendant 5 min",
+                      what, setting.c_str(), GetLastError());
+        else if (retries >= kHotkeyRetries)
+            log::warn(L"%s : raccourci %s toujours pris : plus de nouvel essai (changer le réglage ou relancer MacDock)", what,
+                      setting.c_str());
         SetTimer(hwnd_, kHotkeyRetryTimer, 30000, nullptr);
     }
 }
@@ -1980,6 +1999,8 @@ void DockApp::renderNow() {
 }
 
 LRESULT CALLBACK DockApp::mouseHookProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && (wp == WM_LBUTTONDOWN || wp == WM_RBUTTONDOWN || wp == WM_MBUTTONDOWN))
+        g_typedAt = 0;   // un clic termine la saisie d'un nom (même fil que le crochet clavier)
     if (code == HC_ACTION && (wp == WM_LBUTTONDOWN || wp == WM_LBUTTONUP) && self_) {
         const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
         // Couverture d'une réduction annoncée montrée ici même : le relâchement n'est pas encore livré à l'app, la
@@ -2057,11 +2078,6 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const unsigned vk = k->vkCode & 0xFF;
         const bool repeat = down && held[vk];
         held[vk] = down;
-        // Nom tapé dans la liste des fichiers : instant de la dernière lettre (l'espace qui suit en fait partie).
-        static ULONGLONG lastTyped = 0;
-        if (down && typeAheadKey(vk, ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_LWIN) |
-                                       GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0))
-            lastTyped = GetTickCount64();
         // Touche ⌘ (option) : avant tout le reste. Nos frappes simulées passent sans être relues.
         bool commandAlt = false;   // Alt rendu à Windows pour cette frappe (pas encore dans l'état du clavier)
         if (self_->commandKeyOn_ && k->dwExtraInfo != kCommandReplay &&
@@ -2082,6 +2098,16 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                     break;
                 case CommandAction::Kind::Pass: break;
             }
+        }
+        // Nom tapé dans la liste des fichiers : instant de la dernière lettre (l'espace qui suit en fait partie) ; se
+        // déplacer, valider ou effacer termine la saisie. Après la touche ⌘ : ses raccourcis ne sont pas de la saisie.
+        if (down && !commandAlt) {
+            if (typeAheadKey(vk, typeAheadCommand((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0,
+                                                  (GetAsyncKeyState(VK_MENU) & 0x8000) != 0,
+                                                  ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0)))
+                g_typedAt = GetTickCount64();
+            else if (typeAheadEnds(vk))
+                g_typedAt = 0;
         }
         // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.
         // Annoncée au fil du Dock (modèle, minuterie des animations) et de façon synchrone : coupée avant la réduction.
@@ -2136,8 +2162,9 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         if ((vk == VK_SPACE || vk == VK_ESCAPE || vk == VK_RETURN) && k->dwExtraInfo != kQuickLookReplay) {
             // Frappes simulées ignorées (une app qui tape un texte) ; acceptées en diagnostic pour les essais.
             const bool injected = (k->flags & LLKHF_INJECTED) != 0 && !diagnosticCapture();
-            const bool mods = ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_SHIFT) |
-                                GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
+            // ⌘Espace (Alt rendu à Windows pour cette frappe, pas encore dans l'état du clavier) : Spotlight, pas l'aperçu.
+            const bool mods = commandAlt || ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU) | GetAsyncKeyState(VK_SHIFT) |
+                                              GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
             QuickLookContext c = quickLookContextNow();
             static bool spaceInName = false;   // décidé à l'appui, gardé pour le relâchement
             if (self_->quickLook_->isOpen()) {
@@ -2148,7 +2175,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
                     if (vk != VK_RETURN) return 1;
                 }
             } else if (vk == VK_SPACE) {
-                if (down && !repeat) spaceInName = typeAheadActive(lastTyped, GetTickCount64());
+                if (down && !repeat) spaceInName = typeAheadActive(g_typedAt, GetTickCount64());
                 c.typeAhead = spaceInName;
                 switch (quickLookKey(vk, down, mods, injected, c)) {
                     case QuickLookKey::Open:
@@ -2489,7 +2516,8 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     registerMissionHotkey();
                     registerAppExposeHotkey();
                 }
-                if (!spotlightHotkey_.refused && !missionHotkey_.refused && !appExposeHotkey_.refused)
+                const auto waiting = [](const HotkeySlot& h) { return h.refused && h.retries < kHotkeyRetries; };
+                if (!waiting(spotlightHotkey_) && !waiting(missionHotkey_) && !waiting(appExposeHotkey_))
                     KillTimer(hwnd_, kHotkeyRetryTimer);
                 return 0;
             }

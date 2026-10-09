@@ -21,9 +21,14 @@ enum class QuickLookKey { Pass, Open, Swallow };
 // Espace seul, frappé (pas simulé), dans la liste des fichiers de l'Explorateur ou du bureau : Open à l'appui,
 // Swallow au relâchement ; tout le reste passe (zones de saisie, autres apps, modificateurs).
 QuickLookKey quickLookKey(unsigned vk, bool down, bool modifiers, bool injected, const QuickLookContext& c);
-// Touche qui fait partie d'un nom tapé dans la liste des fichiers (sélection par la saisie) : lettre, chiffre ou signe,
-// sans Ctrl, Alt ni ⊞ (`commandModifiers`).
-bool typeAheadKey(unsigned vk, bool commandModifiers);
+// Touche qui fait partie d'un nom tapé dans la liste des fichiers (sélection par la saisie) : lettre, chiffre ou signe
+// (pavé numérique compris), hors raccourci (`command`, voir typeAheadCommand).
+bool typeAheadKey(unsigned vk, bool command);
+// Raccourci plutôt que saisie : ⊞, ou Ctrl sans Alt, ou Alt sans Ctrl. AltGr (Ctrl+Alt) tape « @ € # » : de la saisie.
+bool typeAheadCommand(bool ctrl, bool alt, bool win);
+// Touches qui terminent la saisie (se déplacer, valider, renommer, effacer, changer de zone) : l'espace qui suit
+// ouvre le Coup d'œil, comme dans le Finder.
+bool typeAheadEnds(unsigned vk);
 // Saisie en cours : dernière touche de nom il y a moins d'une seconde (`lastTyped` 0 : aucune), comme la sélection par
 // la saisie du Finder, où l'espace continue alors le nom au lieu d'ouvrir le Coup d'œil.
 bool typeAheadActive(unsigned long long lastTyped, unsigned long long now);
