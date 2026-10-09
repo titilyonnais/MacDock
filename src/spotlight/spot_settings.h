@@ -17,9 +17,9 @@ struct SettingsPage {
 // Sections de Réglages MacDock (ordre de la barre latérale), puis pages des Paramètres de Windows 11.
 const std::vector<SettingsPage>& settingsPages();
 // Indices dans l'ordre d'affichage : début du nom, puis début d'un mot du nom, puis début d'un mot-clé ; à égalité,
-// l'ordre de la table. Sans casse ni accents ; requête vide : aucun.
+// l'ordre de la table. Sans casse ni accents, traits d'union du nom facultatifs (« wifi ») ; requête vide : aucun.
 std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, const std::wstring& query);
-// Le nom de la page est exactement la requête (sans casse, accents ni espaces autour).
+// Le nom de la page est exactement la requête (sans casse, accents, traits d'union ni espaces autour).
 bool exactSettingTitle(const SettingsPage& page, const std::wstring& query);
 
 } // namespace md

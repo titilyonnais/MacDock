@@ -4,12 +4,13 @@
 
 #include "../core/strings.h"
 #include "spot_calc.h"
+#include "spot_convert.h"
 
 namespace md {
 
 namespace {
 
-constexpr std::size_t kMaxApps = 6, kMaxFiles = 8;
+constexpr std::size_t kMaxApps = 6, kMaxSettings = 4, kMaxFiles = 8;
 
 std::wstring trimmed(const std::wstring& s) {
     const auto b = s.find_first_not_of(L" \t");
@@ -18,6 +19,19 @@ std::wstring trimmed(const std::wstring& s) {
 }
 
 SpotItem appItem(const AppEntry& e) { return {SpotKind::App, e.name, L"Application", launchTarget(e)}; }
+
+SpotItem settingItem(const SettingsPage& p) {
+    if (p.macDock) return {SpotKind::Pane, p.title, L"Réglages MacDock", p.target};
+    return {SpotKind::Setting, p.title, L"Paramètres Windows", p.target};
+}
+
+// Nombre copié : sans séparateur de milliers, lisible par un tableur.
+std::wstring plainNumber(const std::wstring& shown) {
+    std::wstring plain;
+    for (wchar_t c : shown)
+        if (c != L'\u202F') plain.push_back(c);
+    return plain;
+}
 
 std::wstring percentEncode(const std::wstring& text) {
     static const char hex[] = "0123456789ABCDEF";
@@ -38,27 +52,43 @@ std::wstring percentEncode(const std::wstring& text) {
 } // namespace
 
 std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::vector<AppEntry>& apps,
-                                          const std::vector<SpotItem>& files) {
+                                          const std::vector<SpotItem>& files, const std::vector<SettingsPage>& pages) {
     const std::wstring q = trimmed(query);
     std::vector<SpotSection> out;
     if (q.empty()) return out;
-    SpotSection best{L"Meilleur résultat", {}}, appSection{L"Applications", {}}, docs{L"Documents", {}};
+    SpotSection best{L"Meilleur résultat", {}}, appSection{L"Applications", {}}, settings{L"Réglages", {}},
+        docs{L"Documents", {}};
     const std::vector<std::size_t> found = searchApps(apps, q);
-    std::size_t next = 0;
+    const std::vector<std::size_t> pageHits = searchSettings(pages, q);
+    constexpr std::size_t kNone = std::size_t(-1);
+    std::size_t next = 0, bestPage = kNone;
     if (const auto v = evaluateExpression(q)) {
         const std::wstring result = formatNumber(*v);
-        std::wstring plain;   // copié : sans séparateur de milliers, lisible par un tableur
-        for (wchar_t c : result)
-            if (c != L' ') plain.push_back(c);
-        best.items.push_back({SpotKind::Calc, result, q + L" =", plain});
-    } else if (!found.empty()) {
-        best.items.push_back(appItem(apps[found[0]]));
-        next = 1;
+        best.items.push_back({SpotKind::Calc, result, q + L" =", plainNumber(result)});
+    } else if (const auto c = convertUnits(q)) {   // 6 chiffres, l'unité après une espace insécable
+        const std::wstring result = formatNumber(c->value, 6);
+        best.items.push_back({SpotKind::Calc, result + L'\u00A0' + c->to,
+                              formatNumber(c->amount) + L'\u00A0' + c->from + L" =", plainNumber(result)});
+    } else {
+        for (std::size_t i : pageHits)
+            if (exactSettingTitle(pages[i], q)) {
+                bestPage = i;
+                break;
+            }
+        if (bestPage == kNone && found.empty() && !pageHits.empty()) bestPage = pageHits[0];
+        if (bestPage != kNone) {
+            best.items.push_back(settingItem(pages[bestPage]));
+        } else if (!found.empty()) {
+            best.items.push_back(appItem(apps[found[0]]));
+            next = 1;
+        }
     }
     for (std::size_t i = next; i < found.size() && appSection.items.size() < kMaxApps; ++i)
         appSection.items.push_back(appItem(apps[found[i]]));
+    for (std::size_t i : pageHits)
+        if (i != bestPage && settings.items.size() < kMaxSettings) settings.items.push_back(settingItem(pages[i]));
     for (std::size_t i = 0; i < files.size() && docs.items.size() < kMaxFiles; ++i) docs.items.push_back(files[i]);
-    for (SpotSection* s : {&best, &appSection, &docs})
+    for (SpotSection* s : {&best, &appSection, &settings, &docs})
         if (!s->items.empty()) out.push_back(std::move(*s));
     return out;
 }
@@ -95,7 +125,7 @@ DockClick dockClickGate(bool spotlightOpen, bool modalOpen) {
 
 bool wantsFileSearch(const std::wstring& query) {
     const std::wstring q = trimmed(query);
-    return !q.empty() && !evaluateExpression(q);
+    return !q.empty() && !evaluateExpression(q) && !convertUnits(q);
 }
 
 std::wstring shortFolder(const std::wstring& folder) {

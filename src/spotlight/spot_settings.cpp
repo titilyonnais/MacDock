@@ -1,5 +1,6 @@
 #include "spot_settings.h"
 
+#include <algorithm>
 #include <map>
 #include <string_view>
 
@@ -132,6 +133,11 @@ bool wordStart(const std::wstring& s, std::size_t pos) {
     return pos == 0 || std::wstring_view(L" -(._'/").find(s[pos - 1]) != std::wstring_view::npos;
 }
 
+std::wstring withoutHyphens(std::wstring s) {
+    s.erase(std::remove(s.begin(), s.end(), L'-'), s.end());
+    return s;
+}
+
 bool atWordStart(const std::wstring& text, const std::wstring& q) {
     for (std::size_t pos = text.find(q); pos != std::wstring::npos; pos = text.find(q, pos + 1))
         if (wordStart(text, pos)) return true;
@@ -154,12 +160,12 @@ const std::vector<SettingsPage>& settingsPages() {
 }
 
 std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, const std::wstring& query) {
-    const std::wstring q = fold(query);
+    const std::wstring q = fold(query), bare = withoutHyphens(q);
     std::vector<std::size_t> groups[3];
     if (q.empty()) return {};
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const std::wstring title = fold(pages[i].title);
-        if (title.starts_with(q)) groups[0].push_back(i);
+        if (title.starts_with(q) || (!bare.empty() && withoutHyphens(title).starts_with(bare))) groups[0].push_back(i);
         else if (atWordStart(title, q)) groups[1].push_back(i);
         else if (atWordStart(fold(pages[i].keywords), q)) groups[2].push_back(i);
     }
@@ -170,8 +176,8 @@ std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, 
 }
 
 bool exactSettingTitle(const SettingsPage& page, const std::wstring& query) {
-    const std::wstring q = fold(query);
-    return !q.empty() && fold(page.title) == q;
+    const std::wstring bare = withoutHyphens(fold(query));   // « wifi » : « Wi-Fi »
+    return !bare.empty() && withoutHyphens(fold(page.title)) == bare;
 }
 
 } // namespace md

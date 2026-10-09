@@ -79,3 +79,17 @@ TEST_CASE(spot_settings_word_starts_ranked) {   // « son » ne trouve pas « Pe
     CHECK(md::exactSettingTitle(pages[1], L" SON "));
     CHECK(!md::exactSettingTitle(pages[3], L"son"));
 }
+
+TEST_CASE(spot_settings_hyphens_optional) {   // « wifi » pour « Wi-Fi », « email » pour « E-mail et comptes »
+    const std::vector<md::SettingsPage> pages{
+        {false, L"Wi-Fi", L"ms-settings:network-wifi", L""},
+        {false, L"E-mail et comptes", L"ms-settings:emailandaccounts", L""},
+    };
+    CHECK(md::searchSettings(pages, L"wifi") == std::vector<std::size_t>({0}));
+    CHECK(md::searchSettings(pages, L"wi-fi") == std::vector<std::size_t>({0}));
+    CHECK(md::searchSettings(pages, L"email") == std::vector<std::size_t>({1}));
+    CHECK(md::exactSettingTitle(pages[0], L"WiFi"));
+    CHECK(!md::exactSettingTitle(pages[1], L"email"));
+    CHECK(md::searchSettings(pages, L"--").empty());   // que des traits d'union : rien, pas toutes les pages
+    CHECK(!md::exactSettingTitle(pages[0], L"-"));
+}

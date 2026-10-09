@@ -45,7 +45,7 @@ TEST_CASE(spot_calc_formats_french) {
 TEST_CASE(spot_results_sections) {
     std::vector<md::AppEntry> apps{{L"Calculatrice", L"calc!App"}, {L"Calendrier", L"cal!App"}, {L"Paint", L"paint!App"}};
     std::vector<md::SpotItem> files{{md::SpotKind::File, L"calcul.xlsx", L"C:\\Users\\x\\Documents", L"C:\\Users\\x\\Documents\\calcul.xlsx"}};
-    auto r = md::spotlightResults(L"cal", apps, files);
+    auto r = md::spotlightResults(L"cal", apps, files, {});
     REQUIRE(r.size() == 3);
     CHECK(r[0].title == L"Meilleur résultat" && r[0].items.size() == 1 && r[0].items[0].title == L"Calculatrice");
     CHECK(r[0].items[0].target == L"shell:AppsFolder\\calc!App");
@@ -54,15 +54,15 @@ TEST_CASE(spot_results_sections) {
     CHECK(md::spotCount(r) == 3);
     CHECK(md::spotAt(r, 2)->kind == md::SpotKind::File);
     CHECK(md::spotAt(r, 3) == nullptr);
-    auto c = md::spotlightResults(L"12*(3+4)", apps, {});
+    auto c = md::spotlightResults(L"12*(3+4)", apps, {}, {});
     REQUIRE(!c.empty());
     CHECK(c[0].items[0].kind == md::SpotKind::Calc && c[0].items[0].title == L"84");
     CHECK(c[0].items[0].subtitle == L"12*(3+4) =");
-    CHECK(md::spotlightResults(L"   ", apps, files).empty());
-    CHECK(md::spotlightResults(L"zzz", apps, {}).empty());
+    CHECK(md::spotlightResults(L"   ", apps, files, {}).empty());
+    CHECK(md::spotlightResults(L"zzz", apps, {}, {}).empty());
     std::vector<md::AppEntry> many;
     for (int i = 0; i < 20; ++i) many.push_back({L"App " + std::to_wstring(i), L"a" + std::to_wstring(i)});
-    auto m = md::spotlightResults(L"app", many, {});
+    auto m = md::spotlightResults(L"app", many, {}, {});
     CHECK(m.size() == 2 && m[1].items.size() == 6);   // 1 meilleur + 6 applications
 }
 
@@ -210,4 +210,74 @@ TEST_CASE(spot_clip_and_accept_keep_surrogates) {
     CHECK(md::spotAcceptChar(hi, wchar_t(0xDE00)));
     CHECK(!md::spotAcceptChar(std::wstring(128, L'x'), L'y'));
     CHECK(!md::spotAcceptChar(L"", wchar_t(9)));   // caractère de contrôle
+}
+
+TEST_CASE(spot_results_conversion_is_best) {   // plan 55 : comme un calcul, Entrée copie le nombre seul
+    auto r = md::spotlightResults(L"10 km", {}, {}, {});
+    REQUIRE(r.size() == 1 && r[0].items.size() == 1);
+    const md::SpotItem& it = r[0].items[0];
+    CHECK(r[0].title == L"Meilleur résultat");
+    CHECK(it.kind == md::SpotKind::Calc);
+    CHECK(it.title == L"6,21371\u00A0mi");
+    CHECK(it.subtitle == L"10\u00A0km =");
+    CHECK(it.target == L"6,21371");
+    auto t = md::spotlightResults(L"1 t", {}, {}, {});
+    REQUIRE(!t.empty());
+    CHECK(t[0].items[0].title == L"2\u202F204,62\u00A0lb");
+    CHECK(t[0].items[0].target == L"2204,62");   // sans l'espace fine des milliers
+    CHECK(md::spotlightResults(L"1 500 m", {}, {}, {})[0].items[0].subtitle == L"1\u202F500\u00A0m =");
+    CHECK(!md::wantsFileSearch(L"10 km"));      // pas de recherche de documents pour une conversion
+    CHECK(md::wantsFileSearch(L"10 km de"));
+}
+
+TEST_CASE(spot_results_settings_section) {   // plan 55 : section « Réglages », après Applications
+    const std::vector<md::SettingsPage> pages{
+        {true, L"Dock", L"dock", L"macdock"},
+        {false, L"Wi-Fi", L"ms-settings:network-wifi", L"sans fil"},
+        {false, L"Écran", L"ms-settings:display", L"affichage"},
+        {false, L"Écran de verrouillage", L"ms-settings:lockscreen", L""},
+    };
+    const std::vector<md::AppEntry> apps{{L"Outil Capture d'écran", L"snip!App"}, {L"Dockit", L"dockit!App"}};
+    // Sans app : le premier réglage en meilleur résultat.
+    auto w = md::spotlightResults(L"wifi", apps, {}, pages);
+    REQUIRE(w.size() == 1 && w[0].items.size() == 1);
+    CHECK(w[0].title == L"Meilleur résultat");
+    CHECK(w[0].items[0].kind == md::SpotKind::Setting);
+    CHECK(w[0].items[0].title == L"Wi-Fi");
+    CHECK(w[0].items[0].subtitle == L"Paramètres Windows");
+    CHECK(w[0].items[0].target == L"ms-settings:network-wifi");
+    // Un réglage qui porte exactement ce nom passe devant les apps ; les autres vont dans « Réglages ».
+    auto e = md::spotlightResults(L"écran", apps, {}, pages);
+    REQUIRE(e.size() == 3);
+    CHECK(e[0].items[0].title == L"Écran");
+    CHECK(e[1].title == L"Applications" && e[1].items.size() == 1 && e[1].items[0].title == L"Outil Capture d'écran");
+    CHECK(e[2].title == L"Réglages" && e[2].items.size() == 1 && e[2].items[0].title == L"Écran de verrouillage");
+    // Sinon, l'app d'abord ; la section de Réglages MacDock garde sa clé de --pane.
+    auto d = md::spotlightResults(L"doc", apps, {}, pages);
+    REQUIRE(d.size() == 2);
+    CHECK(d[0].items[0].kind == md::SpotKind::App && d[0].items[0].title == L"Dockit");
+    CHECK(d[1].title == L"Réglages" && d[1].items.size() == 1);
+    CHECK(d[1].items[0].kind == md::SpotKind::Pane);
+    CHECK(d[1].items[0].subtitle == L"Réglages MacDock" && d[1].items[0].target == L"dock");
+    // Quatre réglages au plus ; ordre des sections : meilleur résultat, applications, réglages, documents.
+    std::vector<md::SettingsPage> many;
+    for (int i = 0; i < 10; ++i) many.push_back({false, L"Page " + std::to_wstring(i), L"ms-settings:p" + std::to_wstring(i), L""});
+    auto m = md::spotlightResults(L"page", {}, {}, many);
+    REQUIRE(m.size() == 2);
+    CHECK(m[0].items.size() == 1 && m[1].items.size() == 4);
+    const std::vector<md::SpotItem> files{{md::SpotKind::File, L"écran.png", L"C:\\x", L"C:\\x\\écran.png"}};
+    auto all = md::spotlightResults(L"écran", apps, files, pages);
+    REQUIRE(all.size() == 4);
+    CHECK(all[0].title == L"Meilleur résultat" && all[1].title == L"Applications" && all[2].title == L"Réglages" &&
+          all[3].title == L"Documents");
+}
+
+TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le panneau
+    auto r = md::spotlightResults(L"wifi", {}, {});
+    REQUIRE(!r.empty());
+    CHECK(r[0].items[0].kind == md::SpotKind::Setting && r[0].items[0].title == L"Wi-Fi");
+    auto k = md::spotlightResults(L"clavier", {}, {});
+    REQUIRE(k.size() == 2);
+    CHECK(k[0].items[0].kind == md::SpotKind::Pane && k[0].items[0].target == L"keyboard");   // Réglages MacDock
+    CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
 }

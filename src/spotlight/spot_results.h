@@ -9,15 +9,19 @@
 
 #include "../apps/app_catalog.h"
 #include "../interact/hotkey.h"
+#include "spot_settings.h"
 
 namespace md {
 
-enum class SpotKind { Calc, App, File };
+// Setting : page des Paramètres de Windows ; Pane : section de Réglages MacDock (plan 55).
+enum class SpotKind { Calc, App, File, Setting, Pane };
 
 struct SpotItem {
     SpotKind kind = SpotKind::App;
     std::wstring title, subtitle;
-    std::wstring target;   // App : shell:AppsFolder\… ; File : chemin ; Calc : résultat à copier
+    // App : shell:AppsFolder\… ; File : chemin ; Calc : résultat à copier (calcul ou conversion) ;
+    // Setting : adresse ms-settings: ; Pane : clé de --pane.
+    std::wstring target;
 };
 
 struct SpotSection {
@@ -25,16 +29,18 @@ struct SpotSection {
     std::vector<SpotItem> items;
 };
 
-// Meilleur résultat (le calcul, sinon la première app), Applications (6 au plus), Documents (8 au plus) ;
-// sections vides omises ; requête vide : aucune.
+// Meilleur résultat, Applications (6 au plus), Réglages (4 au plus), Documents (8 au plus) ; sections vides omises ;
+// requête vide : aucune. Meilleur résultat : le calcul, sinon la conversion (« 10 km »), sinon le réglage qui porte
+// exactement ce nom, sinon la première app, sinon le premier réglage.
 std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::vector<AppEntry>& apps,
-                                          const std::vector<SpotItem>& files);
+                                          const std::vector<SpotItem>& files,
+                                          const std::vector<SettingsPage>& pages = settingsPages());
 std::size_t spotCount(const std::vector<SpotSection>& sections);
 const SpotItem* spotAt(const std::vector<SpotSection>& sections, std::size_t index);   // nullptr hors limites
 // Au plus maxRows lignes, dans l'ordre ; les sections vidées disparaissent (panneau sur un petit écran).
 std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t maxRows);
 
-// Recherche de documents utile : requête non vide qui n'est pas un calcul.
+// Recherche de documents utile : requête non vide qui n'est ni un calcul ni une conversion.
 bool wantsFileSearch(const std::wstring& query);
 // Emplacement court d'un document : les deux derniers dossiers, « Documents › Factures ».
 std::wstring shortFolder(const std::wstring& folder);
