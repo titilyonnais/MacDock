@@ -3145,6 +3145,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         requestFrame();
     };
     ev.flashed = [this](HWND h) {
+        controller_.syncClock(nowSeconds());   // le Dock dormait peut-être : le silence de l'épisode est du temps réel
         syncActiveApp();
         const std::wstring app = model_.appOfWindow(toId(h));
         const bool before = controller_.isBouncing(app), episode = controller_.attentionEpisode(app);
@@ -3259,6 +3260,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
             loopAt_ = GetTickCount64();
             loopPhase_ = 1;
         }
+        controller_.syncClock(now);   // épisodes d'attention en temps réel, même quand le Dock dort
         bool animating = controller_.tick(dt);
         if (stepVisibility(now)) animating = true;
         // Fumée et génie ont leurs propres fenêtres : ils cadencent la boucle sans redessiner le Dock (verre compris)

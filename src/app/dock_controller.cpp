@@ -252,7 +252,8 @@ void DockController::setAttention(const std::wstring& appId, bool on) {
         // clignotements suivants prolongent l'épisode sans relancer le rebond (Windows fait clignoter sans fin le
         // bouton d'une app à qui le premier plan a été refusé). L'épisode se termine quand l'app devient active ou se
         // ferme, ou après kAttentionSilence sans clignotement.
-        const bool open = attentionFlash_.contains(appId);
+        const auto episode = attentionFlash_.find(appId);
+        const bool open = episode != attentionFlash_.end() && clock_ - episode->second < kAttentionSilence;
         attentionFlash_[appId] = clock_;
         if (open) return;
         const double train = metrics_.attentionBouncePeriod * std::max(1.0, metrics_.attentionBounceCount);
@@ -283,7 +284,7 @@ bool DockController::tick(double dt) {
     refreshItems();
     bool animating = amount_.step(dt);
 
-    clock_ += dt;
+    if (!clockSynced_) clock_ += dt;
     for (auto it = attentionFlash_.begin(); it != attentionFlash_.end();) {   // épisodes d'attention finis
         if (clock_ - it->second >= kAttentionSilence || !appRunning(it->first)) it = attentionFlash_.erase(it);
         else ++it;

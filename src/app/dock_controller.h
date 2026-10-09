@@ -95,6 +95,12 @@ public:
     void setAttention(const std::wstring& appId, bool on);
     void setActiveApp(const std::wstring& appId);   // app au premier plan ; vide : aucune (bureau…)
     const std::wstring& activeApp() const { return activeApp_; }
+    // Temps réel (secondes) pour les épisodes d'attention : le Dock au repos ne fait pas tourner tick. Sans appel, tick
+    // fait avancer l'horloge (essais).
+    void syncClock(double nowSeconds) {
+        clock_ = nowSeconds;
+        clockSynced_ = true;
+    }
     bool attentionEpisode(const std::wstring& appId) const { return attentionFlash_.contains(appId); }
     bool isBouncing(const std::wstring& appId) const { return bounces_.contains(appId); }
 
@@ -172,6 +178,7 @@ private:
     // un seul train de rebonds ; il se termine 10 s après le dernier clignotement.
     std::map<std::wstring, double> attentionFlash_;
     double clock_ = 0;
+    bool clockSynced_ = false;   // temps réel donné par le Dock (syncClock) ; sinon tick fait avancer l'horloge
     static constexpr double kAttentionSilence = 10;
     double tooltipOpacity_ = 0;
     std::optional<std::size_t> tooltipIndex_;

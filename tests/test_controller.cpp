@@ -151,6 +151,21 @@ TEST_CASE(controller_attention_new_train_after_silence) {
     CHECK(f.c.isBouncing(L"c:\\a.exe"));
 }
 
+TEST_CASE(controller_attention_silence_counts_while_idle) {
+    // Le Dock au repos ne fait pas tourner son animation (tick) : le silence d'un épisode se compte en temps réel, donné
+    // par le Dock (essai réel du 10 octobre : second train manqué après 12,9 s de calme sans aucune image).
+    Fixture f;
+    f.model.windowOpened(1, idOf(L"C:\\a.exe"));
+    f.c.syncClock(100.0);
+    f.c.setAttention(L"c:\\a.exe", true);
+    for (int i = 0; i < 180; ++i) f.c.tick(1.0 / 60);   // train fini
+    CHECK(!f.c.isBouncing(L"c:\\a.exe"));
+    f.c.syncClock(113.0);   // 13 s plus tard, sans une seule image entre-temps
+    f.c.setAttention(L"c:\\a.exe", true);
+    f.c.tick(1.0 / 60);
+    CHECK(f.c.isBouncing(L"c:\\a.exe"));
+}
+
 TEST_CASE(controller_attention_new_train_after_activation) {
     Fixture f;
     f.model.windowOpened(1, idOf(L"C:\\a.exe"));
