@@ -1396,7 +1396,8 @@ void DockApp::holdTransitions(HWND w) {
 }
 
 bool DockApp::genieWouldAnimate(HWND w) {
-    return settings_.minimizeEffect != MinimizeEffect::Windows && controller_.restingTile(toId(w)).has_value();
+    // La case n'existe qu'une fois la fenêtre réduite : avant, on demande au modèle si elle en aura une.
+    return settings_.minimizeEffect != MinimizeEffect::Windows && model_.minimizesToTile(toId(w));
 }
 
 void DockApp::announceMinimize(HWND w) {

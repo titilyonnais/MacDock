@@ -81,6 +81,9 @@ public:
     std::optional<AppIdentity> identityOf(const std::wstring& appId) const;
     std::wstring titleOf(WindowId id) const;
     std::wstring appOfWindow(WindowId id) const;   // vide si inconnue
+    // Réduite, elle aura (ou a déjà) sa case au Dock : fenêtre connue d'une app qui n'est pas masquée. Vrai avant la
+    // réduction aussi, quand le génie s'arme à l'appui sur « réduire ».
+    bool minimizesToTile(WindowId id) const;
     std::uint64_t revision() const { return revision_; }
 
 private:
