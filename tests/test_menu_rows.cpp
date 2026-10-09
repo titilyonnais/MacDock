@@ -198,3 +198,88 @@ TEST_CASE(menu_dump_edit_for_eyes) {   // MACDOCK_DUMP=dossier : menu Édition, 
     }
     CoUninitialize();
 }
+
+TEST_CASE(menu_rows_layout_icons) {
+    // Plan 51 : rangée d'icônes de disposition (menu de la pastille verte), cases égales sur la largeur de la ligne.
+    using namespace md;
+    CHECK(menuRowHeight(MenuRow::Layouts) > kMenuItemHeight);
+    const double w = 200, slot = (w - 2 * kMenuLayoutSide) / 4;
+    CHECK_NEAR(layoutIconLeft(4, w, 0), kMenuLayoutSide + (slot - kMenuLayoutIconW) / 2, 1e-9);
+    CHECK_NEAR(layoutIconLeft(4, w, 3) - layoutIconLeft(4, w, 2), slot, 1e-9);
+    CHECK_EQ(layoutIconAt(4, w, kMenuLayoutSide + 1), 0);   // bord de sa case, à côté de l'icône : elle encore
+    CHECK_EQ(layoutIconAt(4, w, kMenuLayoutSide + slot + 1), 1);
+    CHECK_EQ(layoutIconAt(4, w, w - kMenuLayoutSide - 1), 3);
+    CHECK_EQ(layoutIconAt(4, w, kMenuLayoutSide - 1), -1);
+    CHECK_EQ(layoutIconAt(4, w, w - kMenuLayoutSide + 1), -1);
+    CHECK_EQ(layoutIconAt(0, w, 50), -1);
+    CHECK_NEAR(layoutsRowWidth(4), 2 * kMenuLayoutSide + 4 * (kMenuLayoutIconW + kMenuLayoutGap), 1e-9);
+    // Menu aux textes courts : élargi pour sa rangée.
+    MenuModel m;
+    MenuItem icons;
+    icons.row = MenuRow::Layouts;
+    icons.id = 5;
+    icons.tiles.resize(4);
+    m.items = {icons};
+    const MenuLayout l = layoutMenu(m, 10, 0);
+    CHECK(l.width >= 2 * kMenuPadding + layoutsRowWidth(4));
+    CHECK(!m.items[0].selectable());   // à la souris seulement, comme les autres lignes enrichies
+    CHECK(!m.items[0].separator());
+    CHECK_EQ(rowAt(l, m, l.top[0] + 1), 0);
+    CHECK_EQ(hitTestMenu(l, m, l.top[0] + 1), -1);
+}
+
+TEST_CASE(menu_rows_header_width_counts) {
+    // Un intitulé long (« Déplacer et redimensionner ») élargit le menu au lieu d'être tronqué.
+    md::MenuModel m;
+    md::MenuItem header;
+    header.row = md::MenuRow::Header;
+    header.text = L"Déplacer et redimensionner";
+    m.items = {header};
+    CHECK(md::layoutMenu(m, 10, 0, 300).width >= 2 * md::kMenuPadding + 2 * md::kMenuHeaderInset + 300);
+    CHECK_NEAR(md::layoutMenu(m, 10, 0, 0).width, md::kMenuMinWidth, 1e-9);
+}
+
+TEST_CASE(menu_rows_layout_icons_drawn) {
+    // La case de la fenêtre est pleine, le reste de l'écran miniature vide, à la bonne place.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    md::MenuModel m;
+    md::MenuItem header = row(md::MenuRow::Header);
+    header.text = L"Déplacer et redimensionner";
+    md::MenuItem icons = row(md::MenuRow::Layouts, 20);
+    icons.tiles.resize(2);
+    icons.tiles[0].id = 21;
+    icons.tiles[0].boxes = {{0, 0, 0.5f, 1}};   // moitié gauche
+    icons.tiles[1].id = 22;
+    icons.tiles[1].boxes = {{0.5f, 0, 1, 1}};   // moitié droite
+    m.items = {header, icons};
+    md::MenuWindow::Env env;
+    env.scale = 2;
+    std::vector<std::uint8_t> px;
+    UINT w = 0, h = 0;
+    REQUIRE(md::MenuWindow::snapshot(env, m, px, w, h));
+    const double sc = 2, rowW = double(w) / sc - 2 * md::kMenuPadding;
+    const double top = md::kMenuPadding + md::kMenuHeaderHeight;
+    auto green = [&](double xPt, double yPt) { return px[(std::size_t(yPt * sc) * w + std::size_t(xPt * sc)) * 4 + 1]; };
+    const double innerW = md::kMenuLayoutIconW - 2 * md::kMenuLayoutInset;
+    const double cy = top + md::kMenuLayoutsHeight / 2;
+    const double i0 = md::kMenuPadding + md::layoutIconLeft(2, rowW, 0) + md::kMenuLayoutInset;
+    const double i1 = md::kMenuPadding + md::layoutIconLeft(2, rowW, 1) + md::kMenuLayoutInset;
+    CHECK(green(i0 + innerW * 0.25, cy) < 150);   // thème clair : case pleine, sombre
+    CHECK(green(i0 + innerW * 0.75, cy) > 200);   // l'autre moitié : le fond du menu
+    CHECK(green(i1 + innerW * 0.75, cy) < 150);
+    CHECK(green(i1 + innerW * 0.25, cy) > 200);
+    wchar_t dump[MAX_PATH] = {};   // MACDOCK_DUMP=dossier : image pour un contrôle à l'œil
+    if (GetEnvironmentVariableW(L"MACDOCK_DUMP", dump, MAX_PATH))
+        md::writePng(std::wstring(dump) + L"\\menu-layouts-light.png", px.data(), w, h);
+    CoUninitialize();
+}
+
+TEST_CASE(menu_close_returns_focus) {
+    // Relecture du plan 51 : un menu fermé par Échap ou par un clic à côté rend le clavier à l'app d'avant ; fermé parce
+    // que l'utilisateur est passé ailleurs (Alt+Tab, ⊞), le premier plan reste à ce qu'il a choisi.
+    CHECK(md::menuCloseReturnsFocus(md::MenuClose::Escape));
+    CHECK(md::menuCloseReturnsFocus(md::MenuClose::Outside));
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Deactivated));
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Chosen));     // l'action choisie décide
+    CHECK(!md::menuCloseReturnsFocus(md::MenuClose::Switched));   // un autre menu de la barre s'ouvre
+}

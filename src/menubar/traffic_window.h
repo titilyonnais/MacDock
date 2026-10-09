@@ -34,6 +34,15 @@ public:
     // Capture d'écran du Dock (⊞⇧3, ⊞⇧4) : calques visibles aux captures le temps de la copie. Synchrone (le fil
     // répond en moins de 200 ms, sinon on n'attend plus).
     void setCaptureVisible(bool on);
+    // Pastille verte survolée kZoomMenuDelayMs : `message` posté à `sink` (wParam la fenêtre, lParam le point
+    // d'ancrage écran, x et y sur 16 bits signés), qui ouvre le menu « Déplacer et redimensionner » de macOS 26.
+    void setZoomMenuSink(HWND sink, UINT message) {
+        zoomMessage_ = message;
+        zoomSink_ = sink;
+    }
+    // Menu de la pastille verte de `target` refermé. Sa fenêtre (marge d'ombre comprise) recouvrait la pastille : le
+    // calque a vu le pointeur partir, puis revenir à la fermeture. Resté sur la pastille, il ne rouvre pas le menu.
+    void zoomMenuClosed(HWND target);
 
 private:
     enum class Spot { None, Over };   // pas de pastilles (aucun bouton trouvé), ou sur les boutons de la fenêtre
@@ -65,6 +74,7 @@ private:
         bool refused = false;           // visible mais sans barre de titre (plein écran) : sa barre peut revenir
         ULONGLONG revealAt = 0;         // pastilles retenues jusqu'à cet instant (sortie du plein écran, zoom)
         bool removing = false;          // détruit par nous : pas de recréation
+        bool overZoom = false;          // pointeur sur la pastille verte (le menu part de son entrée sur elle)
     };
 
     void run();
@@ -111,6 +121,8 @@ private:
     std::thread thread_;
     std::atomic<DWORD> threadId_{0};
     std::atomic<HWND> publicTarget_{nullptr};
+    std::atomic<HWND> zoomSink_{nullptr};
+    std::atomic<UINT> zoomMessage_{0};
     static TrafficWindow* self_;
 };
 

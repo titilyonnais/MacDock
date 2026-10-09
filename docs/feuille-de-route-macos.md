@@ -33,22 +33,22 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Passage à macOS 26 Tahoe** : pastilles plates, barre latérale flottante, durées des animations (plans 43 et 44).
 - **Fenêtres** : génie à l'appui sur « réduire », « Masquer » instantané (plan 44) ; pastilles des fenêtres
   recouvertes ou masquées (plan 45) ; plein écran (Brave) sans coins arrondis ni liseré (8 octobre).
+- **Apps et Mission Control** : zones de clic justes, miniatures sans les bordures invisibles, flèches (plan 48).
+- **Icônes des exécutables**, dessinées par le code (plan 49).
+- **« Déplacer et redimensionner »** de macOS 26 : menu Fenêtre (plan 50), Organiser et menu au survol de la pastille
+  verte (plan 51).
 
 ## À faire, par ordre d'effet
-1. **Icônes des exécutables** (app Réglages, Dock, barre de menus), dessinées par le code : l'app Réglages apparaît
-   aujourd'hui dans le Dock avec l'icône générique de Windows.
-2. **Fenêtre : « Déplacer et redimensionner »** de macOS 26 (moitiés, quarts, Remplir, Centrer, taille précédente),
-   dans le menu Fenêtre et au survol de la pastille verte.
-3. **Apps et Mission Control** : zones de clic justes, cadre des miniatures sans les bordures invisibles, flèches.
-4. **Forcer à quitter** (⌥⌘⎋) : liste des apps, « ne répond pas », confirmation.
-5. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
-6. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
+1. **Publication sur GitHub et mises à jour automatiques** (plans 52 et 53, demandés le 9 octobre).
+2. **Forcer à quitter** (⌥⌘⎋) : liste des apps, « ne répond pas », confirmation.
+3. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
+4. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
    - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
    - la liste de fichiers et le volet de l'Explorateur (DirectUI).
-7. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
-8. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
-9. **Couleur d'accentuation** de Réglages Système (huit accents).
+5. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
+6. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+7. **Couleur d'accentuation** de Réglages Système (huit accents).
 
 ## Limites connues
 - Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.

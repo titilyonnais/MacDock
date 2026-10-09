@@ -377,3 +377,37 @@ TEST_CASE(lights_wait_for_restore_animation) {
     CHECK_EQ(md::lightsRestoreWaitMs(true, true), 0u);
     CHECK_EQ(md::lightsRestoreWaitMs(false, false), 0u);
 }
+
+TEST_CASE(lights_zoom_menu_hover_and_anchor) {
+    // Plan 51 : menu de la pastille verte au survol, comme macOS 26 ; pas pendant un appui ou un glisser.
+    const bool all[3] = {true, true, true}, noZoom[3] = {true, true, false};
+    CHECK(md::zoomMenuHover(2, -1, false, all));
+    CHECK(!md::zoomMenuHover(1, -1, false, all));      // pastille jaune
+    CHECK(!md::zoomMenuHover(-1, -1, false, all));     // fond du calque
+    CHECK(!md::zoomMenuHover(2, 2, false, all));       // appui en cours
+    CHECK(!md::zoomMenuHover(2, -1, true, all));       // glisser en cours
+    CHECK(!md::zoomMenuHover(2, -1, false, noZoom));   // pastille verte indisponible
+    CHECK(md::kZoomMenuDelayMs >= 500 && md::kZoomMenuDelayMs <= 1000);
+    // Sous la pastille verte, bord droit du menu juste après elle (les pastilles sont en haut à droite des fenêtres).
+    const md::LightsLayout l = md::lightsOverButtons(RECT{800, 100, 938, 131}, 96);
+    const POINT a = md::zoomMenuAnchor(l, 1.0);
+    CHECK(a.y > l.circles[2].bottom);
+    CHECK(a.y - l.circles[2].bottom <= 8);
+    CHECK(a.x >= l.circles[2].right);
+    CHECK(a.x - l.circles[2].right <= 8);
+    const md::LightsLayout l2 = md::lightsOverButtons(RECT{1600, 200, 1876, 262}, 192);   // 200 % : écarts doublés
+    const POINT a2 = md::zoomMenuAnchor(l2, 2.0);
+    CHECK_EQ(a2.x - l2.circles[2].right, 2 * (a.x - l.circles[2].right));
+    CHECK_EQ(a2.y - l2.circles[2].bottom, 2 * (a.y - l.circles[2].bottom));
+}
+
+TEST_CASE(lights_zoom_menu_still_wanted) {
+    // Relecture du plan 51 : la barre reçoit la demande un peu plus tard ; elle l'ignore si le pointeur est parti, si un
+    // clic est en cours ou si la demande date (barre occupée).
+    const POINT anchor{1000, 500};
+    CHECK(md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, false, 20));
+    CHECK(md::zoomMenuStillWanted(POINT{960, 470}, anchor, 2.0, false, 20));    // 200 % : pastille deux fois plus loin
+    CHECK(!md::zoomMenuStillWanted(POINT{900, 500}, anchor, 1.0, false, 20));   // parti
+    CHECK(!md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, true, 20));    // bouton enfoncé : clic sur la pastille
+    CHECK(!md::zoomMenuStillWanted(POINT{990, 490}, anchor, 1.0, false, 1500)); // demande trop ancienne
+}

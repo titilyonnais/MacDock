@@ -53,6 +53,38 @@ RECT visibleFrame(HWND h, const RECT& window) {
     return v;
 }
 bool resizes(TileAction a) { return a != TileAction::Center && a != TileAction::Previous; }
+
+struct NamedArrangement {
+    Arrangement arrangement;
+    const wchar_t* name;
+};
+constexpr NamedArrangement kArrangements[] = {{Arrangement::LeftRight, L"left-right"},
+                                              {Arrangement::RightLeft, L"right-left"},
+                                              {Arrangement::TopBottom, L"top-bottom"},
+                                              {Arrangement::BottomTop, L"bottom-top"},
+                                              {Arrangement::Quarters, L"quarters"}};
+
+bool isCloaked(HWND h) {   // sur un autre bureau virtuel, ou cachée par DWM
+    DWORD cloaked = 0;
+    return SUCCEEDED(DwmGetWindowAttribute(h, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked;
+}
+
+// Fenêtre d'app qu'on peut organiser : visible sur ce bureau, à barre de titre et redimensionnable, sans propriétaire
+// (dialogues, palettes) ni style outil.
+bool arrangeEligible(HWND h) {
+    if (!IsWindowVisible(h) || IsIconic(h) || isCloaked(h)) return false;
+    const LONG_PTR style = GetWindowLongPtrW(h, GWL_STYLE), ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+    if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME) || (style & WS_CHILD)) return false;
+    if ((ex & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) || GetWindow(h, GW_OWNER)) return false;
+    RECT r{};
+    return GetWindowRect(h, &r) && !IsRectEmpty(&r);
+}
+
+BOOL CALLBACK collectCandidate(HWND h, LPARAM lp) {   // EnumWindows : de l'avant vers l'arrière
+    reinterpret_cast<std::vector<ArrangeCandidate>*>(lp)->push_back(
+        {h, arrangeEligible(h), MonitorFromWindow(h, MONITOR_DEFAULTTONULL), (GetWindowLongPtrW(h, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0});
+    return TRUE;
+}
 } // namespace
 
 std::optional<TileAction> parseTileAction(std::wstring_view name) {
@@ -90,6 +122,41 @@ RECT tileRect(TileAction a, const RECT& work, const RECT& current, int margin) {
         case TileAction::Previous: return current;
     }
     return current;
+}
+
+std::optional<Arrangement> parseArrangement(std::wstring_view name) {
+    for (const NamedArrangement& n : kArrangements)
+        if (name == n.name) return n.arrangement;
+    return std::nullopt;
+}
+
+std::wstring arrangementName(Arrangement a) {
+    for (const NamedArrangement& n : kArrangements)
+        if (n.arrangement == a) return n.name;
+    return L"";
+}
+
+std::vector<TileAction> arrangementSlots(Arrangement a) {
+    switch (a) {
+        case Arrangement::LeftRight: return {TileAction::Left, TileAction::Right};
+        case Arrangement::RightLeft: return {TileAction::Right, TileAction::Left};
+        case Arrangement::TopBottom: return {TileAction::Top, TileAction::Bottom};
+        case Arrangement::BottomTop: return {TileAction::Bottom, TileAction::Top};
+        case Arrangement::Quarters:
+            return {TileAction::TopLeft, TileAction::TopRight, TileAction::BottomLeft, TileAction::BottomRight};
+    }
+    return {};
+}
+
+std::vector<HWND> arrangeCandidates(const std::vector<ArrangeCandidate>& zOrder, HWND first, HMONITOR monitor) {
+    bool firstTopmost = false;
+    for (const ArrangeCandidate& c : zOrder)
+        if (c.window == first) firstTopmost = c.topmost;
+    std::vector<HWND> out{first};
+    for (const bool band : {firstTopmost, !firstTopmost})   // la bande de la fenêtre choisie d'abord
+        for (const ArrangeCandidate& c : zOrder)
+            if (c.window != first && c.eligible && c.monitor == monitor && c.topmost == band) out.push_back(c.window);
+    return out;
 }
 
 RECT anchorTile(TileAction a, const RECT& target, const RECT& got) {
@@ -151,6 +218,31 @@ bool tileWindow(HWND h, TileAction a) {
         if (before().count(h) == 0 || last == placed().end() || !EqualRect(&last->second.frame, &vis)) before()[h] = {vis, pid};
         placed()[h] = {got, pid};
     }
+    return true;
+}
+
+bool arrangeWindows(HWND first, Arrangement a) {
+    if (!IsWindow(first)) return false;
+    std::vector<ArrangeCandidate> z;
+    EnumWindows(collectCandidate, reinterpret_cast<LPARAM>(&z));
+    const std::vector<HWND> order = arrangeCandidates(z, first, MonitorFromWindow(first, MONITOR_DEFAULTTONEAREST));
+    const std::vector<TileAction> slots = arrangementSlots(a);
+    if (slots.empty() || !tileWindow(first, slots[0])) return false;
+    HWND above = first;
+    std::size_t next = 1;
+    for (std::size_t s = 1; s < slots.size(); ++s)
+        for (; next < order.size(); ++next) {
+            const HWND h = order[next];
+            DWORD_PTR answer = 0;   // occupée (pas de réponse en 100 ms) : sautée, la barre ne se fige pas
+            if (!SendMessageTimeoutW(h, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &answer)) continue;
+            if (!tileWindow(h, slots[s])) continue;
+            // Juste sous la précédente (une fenêtre qui la recouvrait passe derrière), sans changer de bande.
+            if (((GetWindowLongPtrW(h, GWL_EXSTYLE) ^ GetWindowLongPtrW(above, GWL_EXSTYLE)) & WS_EX_TOPMOST) == 0)
+                SetWindowPos(h, above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+            above = h;
+            ++next;
+            break;
+        }
     return true;
 }
 
