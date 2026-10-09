@@ -84,3 +84,20 @@ mode diagnostic.
   plan est au maximum sur ce PC). Ton premier clic rend la main. Les essais suivants évitent les fenêtres élevées.
 - **Vu en chemin, pour la tâche 3** : curseur posé sur l'icône d'une app réduite, la boucle tourne ~100 fois par
   seconde sans dessiner.
+- **Reprises demandées par le chef d'orchestre** (39d4251, 25edf78) : app active lue dans le vrai premier plan ; un
+  train de rebonds par épisode ; relais lu vite seulement dans la seconde qui suit un mouvement ; silence du crochet
+  compté depuis son installation ; pointeur confiné ailleurs ; trace du pointeur. Tests : `controller_attention_*`
+  (`one_train_per_episode` et `new_train_after_silence` rouges, puis verts ; `silence_counts_while_idle` rouge, puis
+  vert), `cursor_relay_polls_fast_only_after_a_move` et `cursor_relay_counts_silence_from_hook_installation` (rouges
+  avec l'ancien comportement remis exprès, verts), `pointer_confined_away_from_the_dock` (rouge sur l'ébauche, vert).
+  Suite : 834 cas, un seul échec, `uia_menus_read_and_invoke_fake_app`, dû au Gestionnaire des tâches qui tient le
+  premier plan (vert à 00:44 sur le même code).
+- **Essais réels sans entrée simulée** (Gestionnaire des tâches devant), MacDock relancé deux fois (la seconde pour le
+  défaut trouvé à la première) :
+  - au démarrage, « app active : taskmgr.exe » (le vrai premier plan) ; aucune réinstallation du crochet ;
+  - relais au repos : 46 lectures en 5 s (100 ms) ;
+  - fenêtre d'essai à moi : dix clignotements → « début du rebond » à 01:31:45, un train (~1,9 s), puis « même épisode,
+    train fini » ; 12,9 s de calme puis trois clignotements → nouveau « début du rebond » à 01:32:08 ; fermée à
+    01:32:26 : plus aucune image ensuite ;
+  - trouvé à la première relance et corrigé : le silence d'un épisode se comptait avec l'horloge de l'animation, qui
+    n'avance pas quand le Dock dort ; le second train ne partait pas.
