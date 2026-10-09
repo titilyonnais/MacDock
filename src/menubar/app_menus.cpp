@@ -84,7 +84,7 @@ void logoMenu(Builder& b, const BarContext& c) {
     Builder::separator(m);
     m.model.items.push_back(recentMenu(b, c));
     Builder::separator(m);
-    b.key(m, L"Forcer à quitter…", L"Ctrl+Maj+Échap");
+    b.add(m, L"Forcer à quitter…", {ActionKind::ForceQuit}, c.forceQuitShortcut);
     Builder::separator(m);
     b.add(m, L"Suspendre", {ActionKind::Sleep});
     b.add(m, L"Redémarrer…", {ActionKind::Restart});

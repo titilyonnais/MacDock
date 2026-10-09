@@ -175,6 +175,18 @@ TEST_CASE(force_quit_session_explorer) {
     CHECK(e.name == L"Explorateur de fichiers");
 }
 
+TEST_CASE(force_quit_preselected_app) {
+    // L'app au premier plan à l'ouverture est choisie d'abord : même appId que dans la liste ; le bureau, l'Explorateur.
+    HWND w = CreateWindowExW(0, L"STATIC", L"Essai (MacDock)", WS_OVERLAPPEDWINDOW, 0, 0, 100, 100, nullptr, nullptr, nullptr,
+                             nullptr);
+    REQUIRE(w != nullptr);
+    CHECK(md::forceQuitAppIdOf(w) == md::identifyWindow(w)->appId);
+    DestroyWindow(w);
+    CHECK(md::forceQuitAppIdOf(nullptr).empty());
+    SKIP_ON_CI_IF(!GetShellWindow(), "pas de bureau Windows sur cette machine");
+    CHECK(md::forceQuitAppIdOf(GetShellWindow()) == md::sessionExplorer().appId);
+}
+
 TEST_CASE(force_quit_windows_never_this_process) {
     HWND w = CreateWindowExW(0, L"STATIC", L"Essai (MacDock)", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 0, 0, 100, 100, nullptr,
                              nullptr, nullptr, nullptr);

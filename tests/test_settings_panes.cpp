@@ -119,6 +119,13 @@ TEST_CASE(settings_hot_corners_and_shortcuts) {
     REQUIRE(switcher);
     switcher->set(m, 1);
     CHECK(m.dock.appSwitcherHotkey == L"off");
+    // Plan 54 : Forcer à quitter (⌥⌘⎋), réglable et pris en compte dans les conflits.
+    const md::RowSpec* forceQuit = row(keyboard, L"Forcer à quitter");
+    REQUIRE(forceQuit && forceQuit->kind == md::RowKind::Shortcut);
+    CHECK(forceQuit->text(m) == L"alt+win+escape");
+    forceQuit->setText(m, L"alt+space");
+    CHECK(md::shortcutConflict(m, L"Forcer à quitter") == L"Spotlight");
+    CHECK(md::shortcutConflict(m, L"Spotlight") == L"Forcer à quitter");
 }
 
 TEST_CASE(settings_fonts_and_mods) {

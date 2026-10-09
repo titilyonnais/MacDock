@@ -14,6 +14,7 @@ namespace md {
 
 struct SystemActions {
     std::function<void()> sleep, lock, signOut, restart, shutdown;
+    std::function<void()> forceQuit;   // fenêtre Forcer à quitter du Dock ; sans Dock, le Gestionnaire des tâches
     std::function<bool(const std::wstring& question)> confirm;   // Oui → true
 };
 SystemActions realSystemActions();   // system_actions.cpp (exécutable seulement : jamais dans les tests)

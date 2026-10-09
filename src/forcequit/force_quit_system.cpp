@@ -58,6 +58,21 @@ std::vector<FqWindow> forceQuitWindows() {
     return out;
 }
 
+std::wstring forceQuitAppIdOf(HWND window) {
+    if (!window) return {};
+    HWND root = GetAncestor(window, GA_ROOTOWNER);
+    if (!root) root = window;
+    wchar_t cls[16] = {};
+    GetClassNameW(root, cls, 16);
+    if (wcscmp(cls, L"Ghost") == 0)
+        if (HWND hung = hungWindowOf(root)) root = hung;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(root, &pid);
+    if (isExplorerExe(processImagePath(pid))) return sessionExplorer().appId;   // bureau, dossiers
+    const auto id = identifyWindow(root);
+    return id ? id->appId : std::wstring();
+}
+
 FqApp sessionExplorer() {
     FqApp e;
     DWORD shellPid = 0;

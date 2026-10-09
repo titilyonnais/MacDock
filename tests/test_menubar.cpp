@@ -285,6 +285,16 @@ TEST_CASE(menus_logo_has_system_actions) {
     auto settings = actionOf(b, findItem(logo, L"Réglages MacDock…"));
     CHECK(settings.kind == md::ActionKind::OpenSettings);
     CHECK(settings.arg.empty());   // la section par défaut de l'app
+    // Plan 54 : « Forcer à quitter… » ouvre la fenêtre du Dock, avec le raccourci réglé (mêmes symboles que Réglages).
+    md::BarContext c = appContext();
+    c.forceQuitShortcut = L"⌥⊞⎋";
+    const auto withShortcut = md::buildBarMenus(c);
+    const md::MenuItem* forceQuit = findItem(withShortcut.menus[0], L"Forcer à quitter…");
+    REQUIRE(forceQuit != nullptr);
+    CHECK(actionOf(withShortcut, forceQuit).kind == md::ActionKind::ForceQuit);
+    CHECK(forceQuit->shortcut == L"⌥⊞⎋");
+    CHECK(md::macShortcutLabel(forceQuit->shortcut) == L"⌥⊞⎋");
+    CHECK(findItem(logo, L"Forcer à quitter…")->shortcut.empty());   // raccourci désactivé : rien d'affiché
 }
 
 TEST_CASE(menus_app_named_and_bold) {
@@ -400,6 +410,15 @@ TEST_CASE(bar_target_window_kept_from_open) {
     CHECK(moved.appId == L"explorer");
     auto app = md::keepTarget(moved, notes, md::ForegroundKind::App, L"notes.exe");
     CHECK(app.window == notes);
+}
+
+TEST_CASE(bar_actions_force_quit_asks_dock) {   // plan 54
+    int asked = 0;
+    md::SystemActions sys;
+    sys.forceQuit = [&] { ++asked; };
+    md::ActionContext ctx;   // sans fenêtre cible : l'app figée n'a pas à passer au premier plan
+    CHECK(md::runAction({md::ActionKind::ForceQuit}, ctx, sys));
+    CHECK_EQ(asked, 1);
 }
 
 TEST_CASE(bar_actions_system_confirmed) {

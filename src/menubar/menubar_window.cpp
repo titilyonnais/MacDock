@@ -9,10 +9,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <memory>
+#include <sstream>
 
 #include "../calib/png_io.h"
 #include "../config/config_store.h"
+#include "../config/settings.h"
+#include "../interact/hotkey.h"
 #include "../core/diag.h"
 #include "../sound/sound_play.h"
 #include "../core/log.h"
@@ -47,6 +51,17 @@ constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sort
 constexpr UINT WM_APP_ZOOM_MENU = WM_APP + 8;    // pastille verte survolée : wParam la fenêtre, lParam l'ancrage
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
+
+// Raccourci de Forcer à quitter réglé pour le Dock (settings.json, lu sans rien écrire) : affiché dans le menu  avec les
+// symboles de l'app Réglages (« ⌥⊞⎋ ») ; vide s'il est désactivé.
+std::wstring forceQuitShortcut(const std::wstring& dataDir) {
+    std::ifstream f(dataDir + L"\\settings.json", std::ios::binary);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const auto doc = json::parse(ss.str());
+    const auto spec = parseHotkey(doc && doc->isObject() ? settingsFromJson(*doc).forceQuitHotkey : Settings{}.forceQuitHotkey);
+    return spec ? hotkeyLabel(*spec) : std::wstring();
+}
 
 struct UiaTitles {
     unsigned generation = 0;
@@ -698,6 +713,7 @@ BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     }
     c.source = active_.source;
     c.real = active_.real;
+    c.forceQuitShortcut = forceQuitShortcut(dataDir_);
     c.menuOwner = toId(active_.menuOwner);
     c.recentApps = withIcons(recent_.apps, false, scale);
     PWSTR folder = nullptr;

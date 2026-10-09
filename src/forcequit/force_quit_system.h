@@ -1,6 +1,8 @@
 // Forcer à quitter (plan 54), côté Windows : fenêtres ouvertes (fenêtres fantômes comprises), processus de la session
 // et leur AUMID, l'Explorateur de la session, arrêt des processus.
 #pragma once
+#include <windows.h>
+
 #include <string>
 #include <vector>
 
@@ -14,6 +16,10 @@ std::vector<FqWindow> forceQuitWindows();
 
 // L'Explorateur de la session (le processus du bureau et ceux de ses fenêtres) ; appId vide s'il ne tourne pas.
 FqApp sessionExplorer();
+
+// appId, dans la liste, de l'app d'une fenêtre (celle du premier plan à l'ouverture, choisie d'abord) : sa fenêtre
+// principale, la fenêtre figée derrière une fenêtre fantôme, l'Explorateur pour le bureau et ses fenêtres ; vide sinon.
+std::wstring forceQuitAppIdOf(HWND window);
 
 // Processus de la session, avec leur exécutable et, s'ils sont empaquetés, leur AUMID.
 std::vector<FqProcess> sessionProcesses();

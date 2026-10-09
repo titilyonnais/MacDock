@@ -183,6 +183,7 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
         case ActionKind::ClearRecent: return false;   // exécutées par la barre
         case ActionKind::Sleep: call(sys.sleep); return true;
         case ActionKind::Lock: call(sys.lock); return true;
+        case ActionKind::ForceQuit: call(sys.forceQuit); return true;
         case ActionKind::SignOut:
             if (!confirmed(sys, L"Voulez-vous vraiment fermer la session ? Les apps ouvertes seront fermées.")) return false;
             call(sys.signOut);

@@ -32,6 +32,7 @@ enum class ActionKind {
     OpenSettings,     // app Réglages de MacDock ; arg : section (--pane), vide pour celle par défaut
     Tile,             // fenêtre active rangée (macOS 26) ; arg : action (« left », « fill »… : window_tile.h)
     Arrange,          // fenêtre active et les suivantes organisées (macOS 26) ; arg : « left-right », « quarters »…
+    ForceQuit,        // fenêtre « Forcer des applications à quitter » du Dock (plan 54)
 };
 
 enum class MenuSource { Generic, Win32, Uia };
@@ -65,6 +66,7 @@ struct BarContext {
     std::vector<RawMenuItem> real;
     std::uint64_t menuOwner = 0;   // fenêtre qui possède le menu
     std::vector<RecentEntry> recentApps, recentDocs;   // Éléments récents du menu du système
+    std::wstring forceQuitShortcut;   // raccourci de Forcer à quitter réglé pour le Dock (« ⌥⊞⎋ ») ; vide : aucun
 };
 
 struct BarMenus {

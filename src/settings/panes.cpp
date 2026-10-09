@@ -260,6 +260,8 @@ std::vector<GroupSpec> keyboardPane() {
     keys.rows.push_back(shortcut(L"Spotlight", [](auto& m) -> auto& { return m.dock.spotlightHotkey; }));
     keys.rows.push_back(pick(RowKind::Choice, L"Sélecteur d'apps", {L"⌥⇥ façon macOS", L"Celui de Windows"},
                              std::vector<std::wstring>{L"alt+tab", L"off"}, [](auto& m) -> auto& { return m.dock.appSwitcherHotkey; }));
+    keys.rows.push_back(shortcut(L"Forcer à quitter", [](auto& m) -> auto& { return m.dock.forceQuitHotkey; },
+                                 L"Les apps ouvertes, pour arrêter celle qui ne répond plus"));
     out.push_back(keys);
     return out;
 }
@@ -469,7 +471,8 @@ SidebarView sidebarView(const std::vector<PaneMatch>& matches) {
 std::wstring shortcutConflict(const SettingsModel& m, const std::wstring& name) {
     const std::pair<const wchar_t*, const std::wstring*> all[] = {{L"Spotlight", &m.dock.spotlightHotkey},
                                                                   {L"Mission Control", &m.dock.missionControlHotkey},
-                                                                  {L"Fenêtres de l'app", &m.dock.appExposeHotkey}};
+                                                                  {L"Fenêtres de l'app", &m.dock.appExposeHotkey},
+                                                                  {L"Forcer à quitter", &m.dock.forceQuitHotkey}};
     const std::wstring* self = nullptr;
     for (const auto& [n, v] : all)
         if (name == n) self = v;
