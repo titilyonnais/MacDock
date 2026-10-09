@@ -16,7 +16,8 @@
 namespace md {
 
 // Info : un texte seul ; Value : un texte gris à droite ; Buttons : boutons d'action ; Shortcut : un raccourci saisi.
-enum class RowKind { Switch, Slider, Choice, Segmented, Info, Buttons, Shortcut, Value };
+// Swatches : pastilles de couleur (couleur d'accentuation), choix par indice comme Segmented (plan 57).
+enum class RowKind { Switch, Slider, Choice, Segmented, Info, Buttons, Shortcut, Value, Swatches };
 
 // Actions des boutons, exécutées par la fenêtre (arg : identifiant du mod…).
 enum class PaneAction {
@@ -69,6 +70,7 @@ struct RowSpec {
     // Value : texte gris à droite ; Shortcut : le réglage (« ctrl+alt+up » ou « off »).
     std::function<std::wstring(const SettingsModel&)> text;
     std::function<void(SettingsModel&, const std::wstring&)> setText;   // Shortcut
+    std::function<std::uint32_t(int index, bool dark)> swatch;   // Swatches : teinte 0xRRGGBB de chaque pastille
 };
 
 struct GroupSpec {
