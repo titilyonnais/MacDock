@@ -37,6 +37,10 @@ jobs:
           ./build/Debug/tests.exe | Tee-Object -FilePath tests.txt
           if ($LASTEXITCODE -ne 0) { Select-String -Path tests.txt -Pattern '^\[FAIL\]' ; exit 1 }
 
+      - name: Contrôles de signature
+        shell: pwsh
+        run: ./tests/release_checks.tests.ps1
+
       - name: Compilation Release
         shell: pwsh
         run: foreach ($t in 'dock', 'menubar', 'launcher', 'settings') { ./build.ps1 -Target $t -Config Release }

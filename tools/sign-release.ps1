@@ -2,16 +2,21 @@
 # Windows de ce compte (CNG), non exportable : elle ne quitte jamais ce PC. MacDock n'installe une mise à jour que si
 # SHA256SUMS.txt porte sa signature (SHA256SUMS.txt.sig), vérifiée avec la clé publique de src\update\release_key.h.
 #   ./tools/sign-release.ps1 -CreateKey      crée la clé (une seule fois) et écrit src\update\release_key.h
-#   ./tools/sign-release.ps1 -Tag v0.53.0    après release.yml : télécharge la version publiée, revérifie l'empreinte
-#                                            de l'installateur, signe SHA256SUMS.txt et joint SHA256SUMS.txt.sig
+#   ./tools/sign-release.ps1 -Tag v0.53.0    après release.yml : vérifie d'où vient la version publiée (étiquette
+#                                            d'ici, fichiers envoyés par le run de release.yml, aucun autre run d'un
+#                                            commit inconnu), revérifie l'empreinte de l'installateur et que
+#                                            SHA256SUMS.txt ne contient que sa ligne, signe et joint SHA256SUMS.txt.sig
+#   ./tools/sign-release.ps1 -Tag v0.53.0 -DryRun   tous les contrôles, sans rien signer ni envoyer
 param(
     [switch]$CreateKey,
     [string]$Tag = '',
     [string]$Repo = 'titilyonnais/MacDock',
-    [string]$KeyName = 'MacDock Release'
+    [string]$KeyName = 'MacDock Release',
+    [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'release-checks.ps1')
 Add-Type -AssemblyName System.Security
 $Cng = [System.Security.Cryptography.CngKey]
 
@@ -70,22 +75,47 @@ inline constexpr char kReleaseKeySampleSig[] = "$sampleSig";
 }
 
 if (-not $Tag) { throw 'Préciser -Tag vX.Y.Z (ou -CreateKey).' }
-if (-not $Cng::Exists($KeyName)) { throw "La clé « $KeyName » n'existe pas sur ce PC : signature impossible." }
+if ($Tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Étiquette « $Tag » : vX.Y.Z attendu." }
+if (-not $DryRun -and -not $Cng::Exists($KeyName)) { throw "La clé « $KeyName » n'existe pas sur ce PC : signature impossible." }
+$version = $Tag.Substring(1)
+$installer = "MacDock-Setup-$version.exe"
+
+# D'où vient la version : rien n'est téléchargé tant que ce n'est pas établi.
+$localSha = git -C $Root rev-parse --verify --quiet "$Tag^{commit}"
+if ($LASTEXITCODE -ne 0) { $localSha = '' }
+$remoteSha = gh api "repos/$Repo/commits/$Tag" --jq .sha
+if ($LASTEXITCODE -ne 0) { throw "Étiquette $Tag introuvable sur $Repo." }
+$release = gh api "repos/$Repo/releases/tags/$Tag" | ConvertFrom-Json -DateKind String
+if ($LASTEXITCODE -ne 0) { throw "Version $Tag introuvable sur $Repo." }
+$runs = (gh api "repos/$Repo/actions/runs?per_page=100" | ConvertFrom-Json -DateKind String).workflow_runs
+if ($LASTEXITCODE -ne 0) { throw 'Runs de GitHub Actions illisibles.' }
+$isKnown = { param($sha) git -C $Root cat-file -e "$sha^{commit}" 2>$null; $LASTEXITCODE -eq 0 }
+$problem = Test-Provenance $release $runs $Tag $localSha $remoteSha $isKnown
+if ($problem) { throw "$problem Version NON signée." }
+if (-not $version.Contains('-')) {   # une version (pas une préversion d'essai) vient de main, comme le vérifie release.yml
+    git -C $Root merge-base --is-ancestor $localSha refs/remotes/origin/main
+    if ($LASTEXITCODE -ne 0) { throw "L'étiquette $Tag ne vise pas un commit de main : version NON signée." }
+}
+Write-Host "== Provenance vérifiée : $Tag ($localSha), fichiers envoyés par le run de release.yml."
+
 $dir = Join-Path ([IO.Path]::GetTempPath()) "macdock-sign-$Tag"
 if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
 New-Item -ItemType Directory -Path $dir | Out-Null
-$version = $Tag.Substring(1)
-$installer = "MacDock-Setup-$version.exe"
 gh release download $Tag --repo $Repo --pattern $installer --pattern 'SHA256SUMS.txt' --dir $dir
 if ($LASTEXITCODE -ne 0) { throw "Version $Tag introuvable sur $Repo." }
-# On ne signe que ce qu'on a vérifié : l'installateur publié doit avoir l'empreinte annoncée.
+# On ne signe que ce qu'on a vérifié : l'installateur publié a l'empreinte annoncée, et SHA256SUMS.txt ne contient
+# que sa ligne (la signature ne vaut que pour lui).
 $sumsPath = Join-Path $dir 'SHA256SUMS.txt'
-$line = Get-Content $sumsPath | Where-Object { $_ -match "^([0-9a-f]{64})  $([regex]::Escape($installer))$" } | Select-Object -First 1
-if (-not $line) { throw "SHA256SUMS.txt ne donne pas l'empreinte de $installer." }
-$expected = $line.Substring(0, 64)
-$actual = (Get-FileHash -Algorithm SHA256 (Join-Path $dir $installer)).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw "Empreinte de $installer différente ($actual) : version NON signée." }
 $sums = [IO.File]::ReadAllBytes($sumsPath)
+$actual = (Get-FileHash -Algorithm SHA256 (Join-Path $dir $installer)).Hash.ToLowerInvariant()
+$problem = Test-SumsContent $sums $actual $installer
+if ($problem) { throw "$problem Version NON signée." }
+if ($DryRun) {
+    Write-Host "== Essai à blanc réussi : $installer ($actual) serait signé ; rien n'est signé ni envoyé."
+    Remove-Item -Recurse -Force $dir
+    exit 0
+}
+$expected = $actual
 $signature = Sign-Bytes $sums
 if (-not (Verify-Bytes $sums $signature)) { throw 'Signature invérifiable : rien n''est publié.' }
 $sigPath = Join-Path $dir 'SHA256SUMS.txt.sig'
