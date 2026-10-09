@@ -41,7 +41,8 @@ int jsonVersion(const json::Value& v) {
 
 json::Value migrateMetricsJson(const json::Value& v) {
     if (!v.isObject() || jsonVersion(v) >= kMetricsVersion) return v;
-    // Défauts changés : ceux du plan 1 (v1) en v2, le verre Golden Gate (plus opaque, reflet plus vif) en v3. Une
+    // Défauts changés, version par version (détail en regard de chaque groupe) : plan 1 en v2, verre Golden Gate en v3,
+    // verre recalé en v4, retour à Tahoe en v5, icônes de macOS 26 en v6, proportions du Dock de macOS 26 en v7. Une
     // valeur encore égale à l'ancien défaut suit le nouveau ; une valeur choisie par l'utilisateur reste.
     struct Changed { int before; const char* key; double oldDefault; double newDefault; };
     static const Changed kChanged[] = {

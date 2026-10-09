@@ -1131,6 +1131,15 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Vérifié sur le rendu** : pas de 100,5 px à l'échelle 2 (1,301·P, contre 1,303 sur la VM).
 - **Reste à savoir** : si macOS garde ces proportions à d'autres tailles du Dock (une mesure de la VM à une autre
   taille, avec toi) ; et le verre, que la VM ne montre pas (pas d'accélération graphique).
+- **Relecture** (10 octobre, nuit) : le Dock de ta VM était réglé vers 64–65 pt, pas à 48 ; les valeurs à 48 supposent
+  donc que macOS garde les proportions. **À faire avec toi** : dans la VM, `defaults write com.apple.dock tilesize -int
+  48; killall Dock`, puis une capture. Le point est resté à 4 pt (il ferait ~3 pt converti comme le reste) jusqu'à
+  cette mesure. Corrigé : quand le Dock rétrécit pour tenir sur l'écran (Dock vertical sur un portable), le séparateur
+  sortait du verre et les icônes n'étaient plus centrées.
+
+## Mineurs reportés — plan 61
+- Le point n'est à 5 pt de la forme de l'icône qu'à partir de la taille 47 (3,5 pt à 32, 2,0 à 16) : à trancher avec la
+  mesure à 48.
 
 ## Mineurs reportés — plan 60
 - Forcer à quitter : la case d'attente d'une icône (20 pt pleins, rayon 5) n'a pas la forme de l'icône qui arrive

@@ -122,7 +122,7 @@ std::optional<RECT> DockController::restingTile(std::uint64_t window) {
     const LayoutResult r = computeLayout(in);
     const double size = r.items[index].size * scale_;
     const double cx = toPx(r.items[index].center);
-    const double cy = bgBottomPx() - metrics_.dockPadding * scale_ - size / 2;
+    const double cy = bgBottomPx() - metrics_.dockPadding * shrinkOf(r) * scale_ - size / 2;
     double x0 = cx - size / 2, y0 = cy - size / 2, x1 = cx + size / 2, y1 = cy + size / 2;
     if (edge_.vertical()) {
         const auto a = edge_.toWindow(x0, y0), b = edge_.toWindow(x1, y1);
@@ -637,7 +637,8 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     f.bgBottom = float(bgBottomPx());
     f.bgTop = f.bgBottom - float(r.thickness) * s;
     const DockGeometry g = dockGeometry(settings_.tileSize, metrics_);
-    f.cornerRadius = float(g.cornerRadius) * s;
+    const double k = shrinkOf(r);
+    f.cornerRadius = float(g.cornerRadius * k) * s;
 
     double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     int imgPx = int(std::ceil(large * s));
@@ -650,13 +651,13 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         if (item.kind == ItemKind::Separator) {
             icon.separator = true;
             icon.cy = (f.bgTop + f.bgBottom) / 2;
-            icon.sepLength = float(g.separatorLength) * s;
+            icon.sepLength = float(g.separatorLength * k) * s;
             f.icons.push_back(icon);
             continue;
         }
         icon.size = float(li.size) * s;
-        icon.cy = f.bgBottom - float(metrics_.dockPadding) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
-        icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
+        icon.cy = f.bgBottom - float(metrics_.dockPadding * k) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
+        icon.indicatorY = f.bgBottom - float(g.indicatorCenter * k) * s;
         icon.image = imageFor(item, icons, imgPx);
         icon.indicator = item.kind == ItemKind::App && item.running;
         if (item.kind == ItemKind::MinimizedWindow) icon.window = item.window;
@@ -699,6 +700,11 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
 }
 
 // Repère local → fenêtre réelle (Dock à gauche ou à droite).
+double DockController::shrinkOf(const LayoutResult& r) const {
+    const double full = dockGeometry(settings_.tileSize, metrics_).thickness;
+    return full > 0 && r.thickness > 0 ? std::min(1.0, r.thickness / full) : 1.0;
+}
+
 void DockController::toWindow(RenderFrame& f) const {
     auto a = edge_.toWindow(f.bgLeft, f.bgTop), b = edge_.toWindow(f.bgRight, f.bgBottom);
     f.bgLeft = float(std::min(a.x, b.x));

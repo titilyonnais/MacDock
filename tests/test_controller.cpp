@@ -413,6 +413,33 @@ TEST_CASE(controller_dock_shrinks_to_fit_axis) {
         CHECK(f.icons.front().size < 48);   // cases réduites
         auto hit = c.hitTest(POINT{LONG(f.icons.back().cx), LONG(f.icons.back().cy)});
         CHECK(hit.has_value());             // la dernière icône (Corbeille) reste atteignable
+        // Tout rétrécit avec le verre, dans les mêmes proportions qu'au repos (relecture du plan 61) : le séparateur
+        // reste dans le verre, les icônes au milieu de son épaisseur, le point et les extrémités à leur place.
+        const md::DockGeometry g = md::dockGeometry(s.tileSize, m);
+        const float thickness = vertical ? f.bgRight - f.bgLeft : f.bgBottom - f.bgTop;
+        const float middle = vertical ? (f.bgLeft + f.bgRight) / 2 : (f.bgTop + f.bgBottom) / 2;
+        auto fromEdge = [&](const md::RenderIcon& icon) {   // distance du point au bord de l'écran
+            switch (edge) {
+                case md::DockPosition::Left: return icon.indicatorX - f.bgLeft;
+                case md::DockPosition::Right: return f.bgRight - icon.indicatorX;
+                default: return f.bgBottom - icon.indicatorY;
+            }
+        };
+        const float k = thickness / float(g.thickness);
+        CHECK(k < 0.8f);   // le Dock a bien rétréci
+        CHECK_NEAR(f.cornerRadius, g.cornerRadius * k, 0.05);
+        bool separator = false;
+        for (const auto& icon : f.icons) {
+            if (icon.separator) {
+                separator = true;
+                CHECK(icon.sepLength <= thickness);
+                CHECK_NEAR(icon.sepLength, g.separatorLength * k, 0.05);
+                continue;
+            }
+            CHECK_NEAR(vertical ? icon.cx : icon.cy, middle, 0.05);
+            CHECK_NEAR(fromEdge(icon), g.indicatorCenter * k, 0.05);
+        }
+        CHECK(separator);
     }
 }
 

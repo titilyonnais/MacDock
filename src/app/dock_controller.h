@@ -143,6 +143,9 @@ private:
     double toPx(double points) const { return width_ / 2.0 + points * scale_; }
     double bounceOffset(const std::wstring& appId) const;   // en points
     double hideOffsetPx(const LayoutResult& r) const;       // décalage vers le bas du masquage
+    // Dock rétréci pour tenir sur son axe (sizeInput) : rapport de son épaisseur à celle de la taille réglée. Marges,
+    // séparateur, point et extrémités le suivent, comme les cases.
+    double shrinkOf(const LayoutResult& r) const;
     // Repère local (« comme en bas ») : les méthodes publiques convertissent les points de la fenêtre.
     bool insideLocal(POINT local) const;
     std::optional<std::size_t> hitLocal(POINT local) const;
