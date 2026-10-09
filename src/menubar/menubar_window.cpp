@@ -691,6 +691,10 @@ BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     if (!c.desktop)
         for (WindowId id : model_.windowsOf(active_.appId)) c.windows.push_back({id, model_.titleOf(id)});
     c.activeWindow = toId(target_.window);
+    if (const HWND t = target_.window; t && IsWindow(t)) {   // Déplacer et redimensionner (menu Fenêtre)
+        c.targetResizable = (GetWindowLongPtrW(t, GWL_STYLE) & WS_THICKFRAME) != 0;
+        c.targetIconic = IsIconic(t) != FALSE;
+    }
     c.source = active_.source;
     c.real = active_.real;
     c.menuOwner = toId(active_.menuOwner);

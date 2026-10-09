@@ -42,3 +42,16 @@ TEST_CASE(tile_action_names) {
         CHECK(md::parseTileAction(md::tileActionName(a)) == a);
     CHECK(!md::parseTileAction(L"diagonale").has_value());
 }
+
+TEST_CASE(tile_anchor_when_app_refuses_size) {
+    // Relecture du plan 50 : une app dont la largeur minimale dépasse la moitié (Electron à 150 %) déborde de sa case ;
+    // elle est recalée contre le bord visé, sans déborder de l'écran.
+    using md::TileAction;
+    const RECT right = md::tileRect(TileAction::Right, kWork, kWindow, 8);   // 964..1912
+    const RECT got{964, 56, 2064, 1024};                                       // 1100 de large au lieu de 948
+    CHECK(same(md::anchorTile(TileAction::Right, right, got), RECT{812, 56, 1912, 1024}));
+    const RECT left = md::tileRect(TileAction::Left, kWork, kWindow, 8);
+    CHECK(same(md::anchorTile(TileAction::Left, left, RECT{8, 56, 1108, 1024}), RECT{8, 56, 1108, 1024}));
+    const RECT br = md::tileRect(TileAction::BottomRight, kWork, kWindow, 8);   // 964..1912 × 544..1024
+    CHECK(same(md::anchorTile(TileAction::BottomRight, br, RECT{964, 544, 2064, 1124}), RECT{812, 444, 1912, 1024}));
+}

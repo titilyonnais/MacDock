@@ -57,6 +57,8 @@ struct BarContext {
     bool desktop = false;    // le bureau lui-même : pas de fenêtre à fermer ni d'historique
     std::vector<std::pair<std::uint64_t, std::wstring>> windows;   // fenêtres de l'app (id, titre)
     std::uint64_t activeWindow = 0;
+    bool targetResizable = true;   // fenêtre visée redimensionnable (sinon : Centrer seul, pas Remplir ni les moitiés)
+    bool targetIconic = false;     // fenêtre visée réduite : rien à ranger
     // Vrais menus de l'app (titres et leurs entrées), à la place des menus génériques.
     MenuSource source = MenuSource::Generic;
     std::vector<RawMenuItem> real;

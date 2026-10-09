@@ -549,4 +549,17 @@ TEST_CASE(menus_window_move_and_resize) {
     CHECK(sub(L"En bas à droite").arg == L"bottom-right");
     CHECK(sub(L"Revenir à la taille précédente").arg == L"previous");
     CHECK(!findItem(*w, L"Placer à gauche de l'écran"));   // remplacé par les moitiés
+    // Relecture : un dialogue de taille fixe se centre mais ne s'étire pas ; une fenêtre réduite ne se range pas.
+    auto fixed = appContext();
+    fixed.targetResizable = false;
+    auto bf = md::buildBarMenus(fixed);
+    const md::BarMenu* wf = findMenu(bf, L"Fenêtre");
+    REQUIRE(wf != nullptr);
+    CHECK(!findItem(*wf, L"Remplir")->enabled);
+    CHECK(findItem(*wf, L"Centrer")->enabled);
+    auto iconic = appContext();
+    iconic.targetIconic = true;
+    auto bi = md::buildBarMenus(iconic);
+    CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Centrer")->enabled);
+    CHECK(!findItem(*findMenu(bi, L"Fenêtre"), L"Déplacer et redimensionner")->enabled);
 }
