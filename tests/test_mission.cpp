@@ -190,3 +190,21 @@ TEST_CASE(app_expose_shelf_many_or_degenerate) {
     const md::MissionShelf z = md::missionShelf(lots, md::MissionRect{0, 0, 0, 0}, 24);
     CHECK(z.rects.size() == lots.size());   // une place par fenêtre, même vide (pas de lecture hors limites)
 }
+
+TEST_CASE(mission_arrow_keys_pick_neighbor) {
+    // Plan 48 : comme sur macOS, les flèches déplacent la sélection d'une fenêtre à sa voisine, Entrée la choisit.
+    const std::vector<md::MissionRect> grid{{0, 0, 100, 100}, {120, 0, 100, 100}, {0, 120, 100, 100}, {120, 120, 100, 100}};
+    CHECK_EQ(md::missionNeighbor(grid, 0, 1, 0), 1);    // droite
+    CHECK_EQ(md::missionNeighbor(grid, 0, 0, 1), 2);    // bas
+    CHECK_EQ(md::missionNeighbor(grid, 1, -1, 0), 0);   // gauche
+    CHECK_EQ(md::missionNeighbor(grid, 3, 0, -1), 1);   // haut
+    CHECK_EQ(md::missionNeighbor(grid, 0, -1, 0), 0);   // au bord : la sélection reste
+    CHECK_EQ(md::missionNeighbor(grid, 0, 0, -1), 0);
+    CHECK_EQ(md::missionNeighbor(grid, -1, 1, 0), 0);   // aucune sélection : la première, en haut à gauche
+    CHECK_EQ(md::missionNeighbor({}, -1, 1, 0), -1);
+    // Rangées de hauteurs différentes : la voisine alignée l'emporte sur une plus proche mais décalée.
+    const std::vector<md::MissionRect> rows{{0, 0, 300, 200}, {340, 20, 200, 160}, {60, 260, 200, 120}};
+    CHECK_EQ(md::missionNeighbor(rows, 0, 1, 0), 1);
+    CHECK_EQ(md::missionNeighbor(rows, 1, 0, 1), 2);
+    CHECK_EQ(md::missionNeighbor(rows, 2, 0, -1), 0);
+}

@@ -35,6 +35,10 @@ struct MissionShelf {
 MissionShelf missionShelf(const std::vector<MissionRect>& minimized, const MissionRect& area, double gap, double labelRoom = 0);
 
 int missionHit(const std::vector<MissionRect>& rects, double x, double y);   // -1 : aucune
+// Sélection au clavier (flèches, comme sur macOS) : la fenêtre la plus proche dans la direction (dx, dy dans -1, 0, 1)
+// depuis `from`, les mieux alignées d'abord ; aucune dans cette direction : `from`. Sans sélection (from hors de la
+// liste) : la première en haut à gauche ; liste vide : -1.
+int missionNeighbor(const std::vector<MissionRect>& rects, int from, int dx, int dy);
 MissionRect lerpRect(const MissionRect& a, const MissionRect& b, double t);
 double easeOut(double t);   // cubique, t borné à [0, 1]
 

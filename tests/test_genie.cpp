@@ -369,6 +369,26 @@ TEST_CASE(genie_visible_rect_drops_invisible_borders) {
     CHECK(EqualRect(&other, &o));
 }
 
+TEST_CASE(genie_thumbnail_frame_uses_dwm_bounds) {
+    // Relecture du plan 48 (mesuré) : fenêtre agrandie (-13,-13)-(3853,2173), cadre visible et miniature 3840 x 2160 :
+    // bordures invisibles des quatre côtés. Le cadre de DWM, s'il a la taille de la miniature, fait foi.
+    const RECT maxWin{-13, -13, 3853, 2173}, maxFrame{0, 0, 3840, 2160};
+    const RECT m = md::thumbnailFrame(maxWin, maxFrame, SIZE{3840, 2160});
+    CHECK(EqualRect(&m, &maxFrame));
+    const RECT win{300, 300, 1100, 800}, frame{311, 300, 1089, 789};   // fenêtre normale
+    const RECT n = md::thumbnailFrame(win, frame, SIZE{778, 489});
+    CHECK(EqualRect(&n, &frame));
+    // Pas de cadre de DWM, ou d'une autre taille que la miniature (fenêtre étirée par DWM) : l'estimation d'avant.
+    const RECT e = md::thumbnailFrame(win, std::nullopt, SIZE{778, 489});
+    CHECK(EqualRect(&e, &frame));
+    const RECT other = md::thumbnailFrame(win, RECT{0, 0, 500, 300}, SIZE{778, 489});
+    CHECK(EqualRect(&other, &frame));
+    // Source vide : le rectangle de Windows, jamais un rectangle vide.
+    const RECT tiny{0, 0, 40, 30};
+    const RECT t = md::thumbnailFrame(tiny, std::nullopt, SIZE{0, 0});
+    CHECK(EqualRect(&t, &tiny));
+}
+
 TEST_CASE(genie_minimize_click_is_confirmed_on_release) {
     // Appui sur « réduire » : capture et couverture préparées ; relâché sur place, la réduction va suivre (la
     // couverture s'affiche avant que Windows retire la fenêtre). Sinon, l'annonce tombe. La fenêtre sous le pointeur au

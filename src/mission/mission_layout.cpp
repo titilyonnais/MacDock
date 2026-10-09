@@ -84,6 +84,34 @@ int missionHit(const std::vector<MissionRect>& rects, double x, double y) {
     return -1;
 }
 
+int missionNeighbor(const std::vector<MissionRect>& rects, int from, int dx, int dy) {
+    if (rects.empty()) return -1;
+    const auto cx = [&](int i) { return rects[std::size_t(i)].x + rects[std::size_t(i)].w / 2; };
+    const auto cy = [&](int i) { return rects[std::size_t(i)].y + rects[std::size_t(i)].h / 2; };
+    const int n = int(rects.size());
+    if (from < 0 || from >= n) {   // la première : la plus haute, puis la plus à gauche
+        int best = 0;
+        for (int i = 1; i < n; ++i)
+            if (cy(i) < cy(best) - 0.5 || (std::abs(cy(i) - cy(best)) <= 0.5 && cx(i) < cx(best))) best = i;
+        return best;
+    }
+    int best = from;
+    double bestScore = 0;
+    for (int i = 0; i < n; ++i) {
+        if (i == from) continue;
+        const double ddx = cx(i) - cx(from), ddy = cy(i) - cy(from);
+        const double along = ddx * dx + ddy * dy;              // chemin dans la direction voulue
+        const double across = dx != 0 ? std::abs(ddy) : std::abs(ddx);   // décalage de côté, pénalisé
+        if (along <= 1) continue;
+        const double score = along + 2 * across;
+        if (best == from || score < bestScore) {
+            best = i;
+            bestScore = score;
+        }
+    }
+    return best;
+}
+
 MissionRect lerpRect(const MissionRect& a, const MissionRect& b, double t) {
     return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.w + (b.w - a.w) * t, a.h + (b.h - a.h) * t};
 }

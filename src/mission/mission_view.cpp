@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 
+#include "../anim/genie.h"
 #include "../anim/tahoe_timing.h"
 #include "../calib/png_io.h"
 #include "../core/log.h"
@@ -161,6 +162,8 @@ struct Session {
     double last = 0;
     bool done = false, pressed = false;
     std::optional<HWND> chosen;
+    WPARAM pendingArrow = 0;   // flèche tapée pendant l'ouverture : appliquée quand elle s'achève
+    std::size_t pendingScreen = 0;
 
     bool init();
     bool addScreen(HMONITOR mon);
@@ -171,6 +174,9 @@ struct Session {
     void renderAll();
     void close(std::optional<HWND> choice);
     int hitAt(std::size_t screen, double x, double y) const;
+    void select(std::size_t screen, int thumb);   // contour sur une seule fenêtre, tous écrans confondus
+    int selected() const;                          // fenêtre au contour, tous écrans confondus ; -1 : aucune
+    void arrow(std::size_t keyboard, WPARAM vk);   // flèche reçue par la vue de l'écran `keyboard`
     bool isOurs(HWND h) const {
         for (const Screen& s : screens)
             if (s.hwnd == h) return true;
@@ -272,6 +278,11 @@ void Session::tick() {
     const double speed = (GetKeyState(VK_SHIFT) < 0 ? 1 / kSlow : 1.0) / kAnimSeconds;
     q = std::clamp(q + dir * dt * speed, 0.0, 1.0);
     if (dir < 0 && q <= 0) done = true;
+    if (dir > 0 && q >= 1 && pendingArrow) {   // tapée pendant l'ouverture : pas perdue
+        const WPARAM a = pendingArrow;
+        pendingArrow = 0;
+        arrow(pendingScreen, a);
+    }
     const double e = easeOut(q);
     for (std::size_t i = 0; i < thumbs.size(); ++i) {
         Thumb& th = thumbs[i];
@@ -340,6 +351,47 @@ void Session::close(std::optional<HWND> choice) {
     for (Screen& s : screens) s.hover = -1;
 }
 
+// Contour sur la fenêtre `thumb` de l'écran `screen` (-1 : aucune), et sur aucune autre : un seul contour en tout,
+// même avec plusieurs écrans.
+void Session::select(std::size_t screen, int thumb) {
+    for (std::size_t k = 0; k < screens.size(); ++k) {
+        const int want = k == screen ? thumb : -1;
+        if (screens[k].hover == want) continue;
+        screens[k].hover = want;
+        render(screens[k]);
+    }
+    dcomp->Commit();
+}
+
+int Session::selected() const {
+    for (const Screen& s : screens)
+        if (s.hover >= 0) return s.hover;
+    return -1;
+}
+
+// Flèches : la sélection passe à la fenêtre voisine sur son écran ; sans sélection, depuis l'écran de la vue qui a le
+// clavier s'il a des fenêtres, sinon le premier qui en a. Entrée choisit la fenêtre sélectionnée.
+void Session::arrow(std::size_t keyboard, WPARAM vk) {
+    const int sel = selected();
+    const auto hasWindows = [&](std::size_t k) {
+        return std::any_of(thumbs.begin(), thumbs.end(), [&](const Thumb& th) { return th.alive && th.screen == k; });
+    };
+    std::size_t screen = sel >= 0 ? thumbs[std::size_t(sel)].screen : keyboard;
+    for (std::size_t k = 0; sel < 0 && !hasWindows(screen) && k < screens.size(); ++k)
+        if (hasWindows(k)) screen = k;
+    std::vector<int> index;
+    std::vector<MissionRect> rects;
+    int from = -1;
+    for (std::size_t i = 0; i < thumbs.size(); ++i) {
+        if (!thumbs[i].alive || thumbs[i].screen != screen) continue;
+        if (int(i) == sel) from = int(index.size());
+        index.push_back(int(i));
+        rects.push_back(thumbs[i].to);
+    }
+    const int n = missionNeighbor(rects, from, vk == VK_LEFT ? -1 : vk == VK_RIGHT ? 1 : 0, vk == VK_UP ? -1 : vk == VK_DOWN ? 1 : 0);
+    if (n >= 0 && index[std::size_t(n)] != sel) select(screen, index[std::size_t(n)]);
+}
+
 int Session::hitAt(std::size_t screen, double x, double y) const {
     for (std::size_t i = 0; i < thumbs.size(); ++i) {
         const Thumb& th = thumbs[i];
@@ -355,11 +407,7 @@ LRESULT Session::handle(std::size_t k, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEMOVE: {
             const int h = dir > 0 && q >= 1 ? hitAt(k, x, y) : -1;
-            if (h != s.hover) {
-                s.hover = h;
-                render(s);
-                dcomp->Commit();
-            }
+            if (h != selected()) select(k, h);   // le vide d'un écran retire aussi le contour posé sur un autre
             return 0;
         }
         case WM_LBUTTONDOWN: pressed = true; return 0;
@@ -372,8 +420,18 @@ LRESULT Session::handle(std::size_t k, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_RBUTTONUP: close(std::nullopt); return 0;
         case WM_KEYDOWN:
-            if (wp == VK_ESCAPE) close(std::nullopt);
-            else if (wp == VK_RETURN && s.hover >= 0) close(thumbs[std::size_t(s.hover)].src);
+            if (wp == VK_ESCAPE) {
+                close(std::nullopt);
+            } else if (wp == VK_RETURN) {   // la fenêtre au contour, quel que soit son écran
+                if (const int sel = selected(); sel >= 0) close(thumbs[std::size_t(sel)].src);
+            } else if (wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP || wp == VK_DOWN) {
+                if (dir > 0 && q >= 1) {
+                    arrow(k, wp);
+                } else if (dir > 0) {
+                    pendingArrow = wp;
+                    pendingScreen = k;
+                }
+            }
             return 0;
         case WM_ACTIVATE:
             // Une autre app passe devant : fermeture immédiate. Passer d'une de nos vues à l'autre ne ferme pas.
@@ -480,9 +538,16 @@ std::optional<HWND> MissionView::track(const MenuWindow::Env& env, const Request
         th.src = w.hwnd;
         th.title = w.title;
         th.screen = k;
+        if (FAILED(DwmRegisterThumbnail(s.screens[k].hwnd, w.hwnd, &th.id))) continue;
+        // La miniature n'a que la partie visible (sans les bordures invisibles de ~11 px) : calée dessus, ni étirée ni
+        // décalée sous son contour.
+        SIZE src{};
+        RECT frame{};
+        std::optional<RECT> dwmFrame;
+        if (SUCCEEDED(DwmGetWindowAttribute(w.hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof frame))) dwmFrame = frame;
+        if (SUCCEEDED(DwmQueryThumbnailSourceSize(th.id, &src))) r = thumbnailFrame(r, dwmFrame, src);
         th.from = {double(r.left - s.screens[k].rc.left), double(r.top - s.screens[k].rc.top), double(r.right - r.left),
                    double(r.bottom - r.top)};
-        if (FAILED(DwmRegisterThumbnail(s.screens[k].hwnd, w.hwnd, &th.id))) continue;
         s.thumbs.push_back(std::move(th));
     }
     // Exposé d'une app : ses fenêtres réduites, sur l'écran du curseur, à leur taille normale (pas l'icône de -32000).

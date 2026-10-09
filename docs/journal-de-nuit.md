@@ -902,6 +902,18 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture indépendante** : rien de critique ; fin de la saisie, nouveaux essais limités, AltGr, ⌘Espace laissé à
   Spotlight.
 
+### Plan 48 — Apps et Mission Control, nuit du 9 octobre
+
+- **Écran Apps** : seuls l'icône et son nom répondent au clic ; sur ton écran 4K, un clic entre deux icônes lançait une
+  app. Les noms tiennent sous l'icône, sur deux lignes au plus.
+- **Mission Control** : miniatures calées sur la partie visible des fenêtres (avant : étirées de 2 à 3 %, contour
+  décalé d'environ 11 px ; une fenêtre agrandie partait même 13 px trop haut).
+- **Clavier** : les flèches passent d'une fenêtre à l'autre, Entrée choisit, comme sur macOS. Avec deux écrans, un seul
+  contour.
+- **Essais réels** : Exposé de deux fenêtres d'essai à moi, →, →, Entrée ; mesures des miniatures sur une fenêtre
+  normale et agrandie.
+- **Relecture indépendante** : rien de critique ; noms longs, plusieurs écrans et fenêtres agrandies corrigés.
+
 ## Mineurs reportés — plan 30
 - « lecture » reste affiché après la fin d'un son.
 - L'échelle de l'écran n'est relue qu'à l'ouverture : si l'Explorateur change d'écran pendant l'aperçu, le plein écran garde l'ancienne.

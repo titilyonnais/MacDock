@@ -54,6 +54,10 @@ RECT restoredRect(const WINDOWPLACEMENT& wp, const RECT& work, const RECT& monit
 // comprises : ~11 px à gauche, à droite et en bas, 0 en haut) et la taille de sa miniature DWM (partie visible
 // seule) : centrée en largeur, calée en haut. Rectangle inchangé s'il a déjà cette taille ou en diffère trop.
 RECT genieVisibleRect(const RECT& window, SIZE thumb);
+// Partie visible d'une fenêtre pour caler sa miniature DWM (de taille `thumb`) : le cadre de DWM
+// (DWMWA_EXTENDED_FRAME_BOUNDS) quand il a cette taille, à 1 px près (fenêtre agrandie : bordures invisibles des quatre
+// côtés) ; sinon l'estimation de genieVisibleRect ; source vide : le rectangle de Windows.
+RECT thumbnailFrame(const RECT& window, const std::optional<RECT>& frame, SIZE thumb);
 // Réduction annoncée par l'appui sur « réduire » : confirmée si le bouton est relâché sur place (4 px au plus). Pas de
 // test de la fenêtre sous le pointeur : l'app peut l'avoir déjà retirée.
 bool genieMinimizeConfirmed(POINT down, POINT up);

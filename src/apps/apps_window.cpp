@@ -40,7 +40,7 @@ constexpr UINT_PTR kCaretTimer = 1;
 constexpr double kAppearSeconds = tahoe::kLaunchpadAppearSeconds;
 constexpr double kWheelPause = 0.25;          // une page par geste de molette
 constexpr float kNameFont = 12, kSearchFont = 15, kEmptyFont = 17;
-constexpr float kLabelH = 32, kLabelGap = 6;  // nom sous l'icône, deux lignes au plus
+constexpr float kLabelH = float(kAppsLabelH), kLabelGap = float(kAppsLabelGap);   // nom sous l'icône (apps_layout)
 
 double now() {
     LARGE_INTEGER f, c;
@@ -187,16 +187,17 @@ struct Painter {
             const float top = y0 + std::max(0.0f, (float(g.cellH) - icon - kLabelGap - kLabelH) / 2);
             const float ix = x0 + (float(g.cellW) - icon) / 2;
             if (int(pos) == v.selected || int(pos) == v.hover) {
-                const D2D1_RECT_F halo{ix - 12, top - 8, ix + icon + 12, top + icon + kLabelGap + kLabelH + 4};
+                const AppsBox b = appsItemRect(g, k);   // la zone du clic aussi
+                const D2D1_RECT_F halo{float(b.left), float(b.top), float(b.right), float(b.bottom)};
                 white->SetOpacity(int(pos) == v.selected ? 0.22f : 0.12f);
                 d->FillRoundedRectangle(D2D1::RoundedRect(halo, 16, 16), white.Get());
                 white->SetOpacity(1);
             }
             if (ID2D1Bitmap1* bmp = iconOf(app))
                 d->DrawBitmap(bmp, D2D1::RectF(ix, top, ix + icon, top + icon), a, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
-            const float lw = float(g.cellW) - 12;
+            const float lw = float(appsLabelWidth(g));   // dans le halo, donc dans la zone du clic
             if (IDWriteTextLayout* l = label(v, app, lw)) {
-                const D2D1_POINT_2F at{x0 + 6, top + icon + kLabelGap};
+                const D2D1_POINT_2F at{x0 + (float(g.cellW) - lw) / 2, top + icon + kLabelGap};
                 d->DrawTextLayout({at.x + 0.8f, at.y + 0.8f}, l, shadow.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
                 d->DrawTextLayout(at, l, white.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
             }
@@ -540,7 +541,8 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 const double cx = view.W / 2;   // le champ de recherche ne ferme pas la vue
                 const bool inSearch = std::abs(x - cx) <= view.g.searchW / 2 && y >= view.g.searchTop &&
                                       y <= view.g.searchTop + view.g.searchH;
-                if (!inSearch) done = true;   // un clic dans le vide ferme, comme sur macOS
+                // Un clic dans le vide ferme, comme sur macOS ; pas pendant l'ouverture, où la grille est encore zoomée.
+                if (!inSearch && view.appear >= 1) done = true;
             }
             return 0;
         }
