@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/accent.h"
 #include "../core/json.h"
 #include "hot_corner_action.h"
 
@@ -40,6 +41,7 @@ struct Settings {
     double largeSize = 80;    // borné à [tileSize, 128]
     bool glass = true;        // verre Liquid Glass (capture de l'arrière-plan) ; false = verre dépoli simple
     MinimizeEffect minimizeEffect = MinimizeEffect::Genie;   // réduction des fenêtres dans le Dock
+    AccentColor accentColor = AccentColor::Blue;   // couleur d'accentuation (menus, Spotlight, Réglages…), plan 57
     std::wstring font;        // vide = automatique (SF Pro > Inter > Segoe UI Variable)
     std::wstring screen;      // écran du Dock (nom GDI, ex. \\.\DISPLAY2) ; vide = principal
     // Raccourcis globaux : tout raccourci que parseHotkey accepte (saisi dans l'app Réglages), ou off.

@@ -76,6 +76,7 @@ Settings settingsFromJson(const json::Value& v) {
     const std::wstring effect = readString(v, "minimizeEffect");
     if (effect == L"scale") s.minimizeEffect = MinimizeEffect::Scale;
     else if (effect == L"windows") s.minimizeEffect = MinimizeEffect::Windows;
+    if (const auto accent = accentFromKey(toUtf8(readString(v, "accentColor")))) s.accentColor = *accent;   // inconnue : bleu
     s.font = readString(v, "font");
     s.screen = readString(v, "screen");
     // Raccourcis saisis librement dans l'app Réglages : comme son enregistreur, avec Alt ou ⊞, ou une touche F seule ;
@@ -145,6 +146,7 @@ json::Value settingsToJson(const Settings& s) {
     v.set("minimizeEffect", s.minimizeEffect == MinimizeEffect::Scale     ? "scale"
                             : s.minimizeEffect == MinimizeEffect::Windows ? "windows"
                                                                           : "genie");
+    v.set("accentColor", accentKey(s.accentColor));
     v.set("font", toUtf8(s.font));
     if (!s.screen.empty()) v.set("screen", toUtf8(s.screen));
     v.set("spotlightHotkey", toUtf8(s.spotlightHotkey));

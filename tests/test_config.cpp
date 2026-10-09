@@ -165,6 +165,17 @@ TEST_CASE(settings_minimize_effect) {
     CHECK(md::settingsFromJson(md::settingsToJson(s)).minimizeEffect == md::MinimizeEffect::Windows);
 }
 
+TEST_CASE(settings_accent_color) {   // plan 57 : couleur d'accentuation, bleu par défaut
+    CHECK(md::settingsFromJson(*md::json::parse("{}")).accentColor == md::AccentColor::Blue);
+    auto s = md::settingsFromJson(*md::json::parse(R"({"accentColor":"purple"})"));
+    CHECK(s.accentColor == md::AccentColor::Purple);
+    CHECK(md::settingsFromJson(*md::json::parse(R"({"accentColor":"fuchsia"})")).accentColor == md::AccentColor::Blue);
+    s.accentColor = md::AccentColor::Graphite;
+    const md::json::Value j = md::settingsToJson(s);
+    CHECK(md::settingsFromJson(j).accentColor == md::AccentColor::Graphite);
+    CHECK(md::json::serialize(j, false).find("\"accentColor\":\"graphite\"") != std::string::npos);
+}
+
 TEST_CASE(settings_spotlight_hotkey) {
     md::Settings s = md::settingsFromJson(*md::json::parse("{\"spotlightHotkey\":\"ctrl+space\"}"));
     CHECK(s.spotlightHotkey == L"ctrl+space");
