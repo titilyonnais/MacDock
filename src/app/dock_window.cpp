@@ -1083,17 +1083,22 @@ void DockApp::openSpotlight() {
     menuOpen_ = false;
     resumeCapture();
     if (choice) {
-        const SpotItem& it = choice->item;
-        switch (it.kind) {
-            case SpotKind::Calc:
-                if (!copyText(hwnd_, it.target)) log::warn(L"Spotlight : presse-papiers indisponible");
+        const SpotAction action = spotAction(choice->item, choice->reveal);
+        switch (action.kind) {
+            case SpotActionKind::Copy:
+                if (!copyText(hwnd_, action.arg)) log::warn(L"Spotlight : presse-papiers indisponible");
                 break;
-            case SpotKind::App:
-                launchAsync(it.target);
+            case SpotActionKind::Launch:   // app, document ou page ms-settings:
+                launchAsync(action.arg);
                 break;
-            case SpotKind::File:
-                if (choice->reveal) revealInExplorer(it.target);
-                else launchAsync(it.target);
+            case SpotActionKind::Reveal:
+                revealInExplorer(action.arg);
+                break;
+            case SpotActionKind::OpenPane:   // section de Réglages MacDock
+                openMacDockSettings(action.arg);
+                break;
+            case SpotActionKind::None:
+                log::warn(L"Spotlight : choix ignoré (%s)", choice->item.target.c_str());
                 break;
         }
     }

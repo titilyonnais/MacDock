@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include "../ui/ui_draw.h"
-#include "panes.h"
+#include "pane_catalog.h"
 
 namespace md {
 

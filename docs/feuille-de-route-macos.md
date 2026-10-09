@@ -39,19 +39,20 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
   verte (plan 51).
 - **Publication sur GitHub** (plan 52) et **mises à jour automatiques signées** (plan 53, version 0.53.0).
 - **Forcer à quitter** (⌥⌘⎋, menu ) : la fenêtre de macOS 26 (plan 54).
+- **Spotlight** : conversions d'unités et section « Réglages » (pages des Paramètres de Windows, sections de
+  Réglages MacDock) (plan 55).
 
 ## À faire, par ordre d'effet
-1. **Spotlight** : pages des Réglages de Windows, conversions d'unités.
-2. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
+1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
    installation abandonnée, notification après un redémarrage de l'Explorateur, dossier des téléchargements à la
    désinstallation).
-3. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
+2. **Apps de Windows façon macOS** (recherches du 8 octobre faites) :
    - un mod de contrôles Win32 (uxtheme : boutons, menus, barres de défilement, listes, dialogues) ;
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
    - la liste de fichiers et le volet de l'Explorateur (DirectUI).
-4. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
-5. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
-6. **Couleur d'accentuation** de Réglages Système (huit accents).
+3. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
+4. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+5. **Couleur d'accentuation** de Réglages Système (huit accents).
 
 ## Limites connues
 - Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.

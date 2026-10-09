@@ -45,7 +45,7 @@ TEST_CASE(spot_calc_formats_french) {
 TEST_CASE(spot_results_sections) {
     std::vector<md::AppEntry> apps{{L"Calculatrice", L"calc!App"}, {L"Calendrier", L"cal!App"}, {L"Paint", L"paint!App"}};
     std::vector<md::SpotItem> files{{md::SpotKind::File, L"calcul.xlsx", L"C:\\Users\\x\\Documents", L"C:\\Users\\x\\Documents\\calcul.xlsx"}};
-    auto r = md::spotlightResults(L"cal", apps, files);
+    auto r = md::spotlightResults(L"cal", apps, files, {});
     REQUIRE(r.size() == 3);
     CHECK(r[0].title == L"Meilleur résultat" && r[0].items.size() == 1 && r[0].items[0].title == L"Calculatrice");
     CHECK(r[0].items[0].target == L"shell:AppsFolder\\calc!App");
@@ -54,15 +54,15 @@ TEST_CASE(spot_results_sections) {
     CHECK(md::spotCount(r) == 3);
     CHECK(md::spotAt(r, 2)->kind == md::SpotKind::File);
     CHECK(md::spotAt(r, 3) == nullptr);
-    auto c = md::spotlightResults(L"12*(3+4)", apps, {});
+    auto c = md::spotlightResults(L"12*(3+4)", apps, {}, {});
     REQUIRE(!c.empty());
     CHECK(c[0].items[0].kind == md::SpotKind::Calc && c[0].items[0].title == L"84");
     CHECK(c[0].items[0].subtitle == L"12*(3+4) =");
-    CHECK(md::spotlightResults(L"   ", apps, files).empty());
-    CHECK(md::spotlightResults(L"zzz", apps, {}).empty());
+    CHECK(md::spotlightResults(L"   ", apps, files, {}).empty());
+    CHECK(md::spotlightResults(L"zzz", apps, {}, {}).empty());
     std::vector<md::AppEntry> many;
     for (int i = 0; i < 20; ++i) many.push_back({L"App " + std::to_wstring(i), L"a" + std::to_wstring(i)});
-    auto m = md::spotlightResults(L"app", many, {});
+    auto m = md::spotlightResults(L"app", many, {}, {});
     CHECK(m.size() == 2 && m[1].items.size() == 6);   // 1 meilleur + 6 applications
 }
 
@@ -210,4 +210,176 @@ TEST_CASE(spot_clip_and_accept_keep_surrogates) {
     CHECK(md::spotAcceptChar(hi, wchar_t(0xDE00)));
     CHECK(!md::spotAcceptChar(std::wstring(128, L'x'), L'y'));
     CHECK(!md::spotAcceptChar(L"", wchar_t(9)));   // caractère de contrôle
+}
+
+TEST_CASE(spot_results_conversion_is_best) {   // plan 55 : comme un calcul, Entrée copie le nombre seul
+    auto r = md::spotlightResults(L"10 km", {}, {}, {});
+    REQUIRE(r.size() == 1 && r[0].items.size() == 1);
+    const md::SpotItem& it = r[0].items[0];
+    CHECK(r[0].title == L"Meilleur résultat");
+    CHECK(it.kind == md::SpotKind::Calc);
+    CHECK(it.title == L"6,21371\u00A0mi");
+    CHECK(it.subtitle == L"10\u00A0km =");
+    CHECK(it.target == L"6,21371");
+    auto t = md::spotlightResults(L"1 t", {}, {}, {});
+    REQUIRE(!t.empty());
+    CHECK(t[0].items[0].title == L"2\u202F204,62\u00A0lb");
+    CHECK(t[0].items[0].target == L"2204,62");   // sans l'espace fine des milliers
+    CHECK(md::spotlightResults(L"1 500 m", {}, {}, {})[0].items[0].subtitle == L"1\u202F500\u00A0m =");
+    CHECK(!md::wantsFileSearch(L"10 km"));      // pas de recherche de documents pour une conversion
+    CHECK(md::wantsFileSearch(L"10 km de"));
+}
+
+TEST_CASE(spot_results_settings_section) {   // plan 55 : section « Réglages », après Applications
+    const std::vector<md::SettingsPage> pages{
+        {true, L"Dock", L"dock", L"macdock"},
+        {false, L"Wi-Fi", L"ms-settings:network-wifi", L"sans fil"},
+        {false, L"Écran", L"ms-settings:display", L"affichage"},
+        {false, L"Écran de verrouillage", L"ms-settings:lockscreen", L""},
+    };
+    const std::vector<md::AppEntry> apps{{L"Outil Capture d'écran", L"snip!App"}, {L"Dockit", L"dockit!App"}};
+    // Sans app : le premier réglage en meilleur résultat.
+    auto w = md::spotlightResults(L"wifi", apps, {}, pages);
+    REQUIRE(w.size() == 1 && w[0].items.size() == 1);
+    CHECK(w[0].title == L"Meilleur résultat");
+    CHECK(w[0].items[0].kind == md::SpotKind::Setting);
+    CHECK(w[0].items[0].title == L"Wi-Fi");
+    CHECK(w[0].items[0].subtitle == L"Paramètres Windows");
+    CHECK(w[0].items[0].target == L"ms-settings:network-wifi");
+    // Un réglage qui porte exactement ce nom passe devant les apps ; les autres vont dans « Réglages ».
+    auto e = md::spotlightResults(L"écran", apps, {}, pages);
+    REQUIRE(e.size() == 3);
+    CHECK(e[0].items[0].title == L"Écran");
+    CHECK(e[1].title == L"Applications" && e[1].items.size() == 1 && e[1].items[0].title == L"Outil Capture d'écran");
+    CHECK(e[2].title == L"Réglages" && e[2].items.size() == 1 && e[2].items[0].title == L"Écran de verrouillage");
+    // Sinon, l'app d'abord ; la section de Réglages MacDock garde sa clé de --pane.
+    auto d = md::spotlightResults(L"doc", apps, {}, pages);
+    REQUIRE(d.size() == 2);
+    CHECK(d[0].items[0].kind == md::SpotKind::App && d[0].items[0].title == L"Dockit");
+    CHECK(d[1].title == L"Réglages" && d[1].items.size() == 1);
+    CHECK(d[1].items[0].kind == md::SpotKind::Pane);
+    CHECK(d[1].items[0].subtitle == L"Réglages MacDock" && d[1].items[0].target == L"dock");
+    // Quatre réglages au plus ; ordre des sections : meilleur résultat, applications, réglages, documents.
+    std::vector<md::SettingsPage> many;
+    for (int i = 0; i < 10; ++i) many.push_back({false, L"Page " + std::to_wstring(i), L"ms-settings:p" + std::to_wstring(i), L""});
+    auto m = md::spotlightResults(L"page", {}, {}, many);
+    REQUIRE(m.size() == 2);
+    CHECK(m[0].items.size() == 1 && m[1].items.size() == 4);
+    const std::vector<md::SpotItem> files{{md::SpotKind::File, L"écran.png", L"C:\\x", L"C:\\x\\écran.png"}};
+    auto all = md::spotlightResults(L"écran", apps, files, pages);
+    REQUIRE(all.size() == 4);
+    CHECK(all[0].title == L"Meilleur résultat" && all[1].title == L"Applications" && all[2].title == L"Réglages" &&
+          all[3].title == L"Documents");
+}
+
+TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le panneau
+    auto r = md::spotlightResults(L"wifi", {}, {});
+    REQUIRE(!r.empty());
+    CHECK(r[0].items[0].kind == md::SpotKind::Setting && r[0].items[0].title == L"Wi-Fi");
+    auto k = md::spotlightResults(L"clavier", {}, {});
+    REQUIRE(k.size() == 2);
+    CHECK(k[0].items[0].kind == md::SpotKind::Pane && k[0].items[0].target == L"keyboard");   // Réglages MacDock
+    CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
+}
+
+TEST_CASE(spot_results_exact_app_beats_setting) {   // relecture du plan 55 : l'app Caméra reste en tête
+    const std::vector<md::SettingsPage> pages{{false, L"Caméra", L"ms-settings:privacy-webcam", L"webcam"}};
+    const std::vector<md::AppEntry> apps{{L"Caméra", L"camera!App"}};
+    for (const wchar_t* q : {L"caméra", L"camera", L"CAMÉRA "}) {
+        const auto r = md::spotlightResults(q, apps, {}, pages);
+        REQUIRE(r.size() == 2);
+        CHECK(r[0].title == L"Meilleur résultat" && r[0].items[0].kind == md::SpotKind::App);
+        CHECK(r[1].title == L"Réglages" && r[1].items[0].kind == md::SpotKind::Setting);
+    }
+}
+
+TEST_CASE(spot_results_app_name_beats_conversion) {   // relecture du plan 55 : « 7 days » cherche « 7 Days to Die »
+    const std::vector<md::AppEntry> apps{{L"7 Days to Die", L"steam7dtd"}, {L"60 Seconds!", L"steam60s"}};
+    const auto d = md::spotlightResults(L"7 days", apps, {}, {});
+    REQUIRE(!d.empty());
+    CHECK(d[0].items[0].kind == md::SpotKind::App && d[0].items[0].title == L"7 Days to Die");
+    const auto s = md::spotlightResults(L"60 sec", apps, {}, {});
+    REQUIRE(!s.empty());
+    CHECK(s[0].items[0].kind == md::SpotKind::App && s[0].items[0].title == L"60 Seconds!");
+    const auto k = md::spotlightResults(L"10 km", apps, {}, {});   // aucune app ne commence ainsi : la conversion reste
+    REQUIRE(!k.empty());
+    CHECK(k[0].items[0].kind == md::SpotKind::Calc);
+}
+
+TEST_CASE(spot_results_keyword_settings_after_documents) {   // relecture du plan 55 : « image » cherche des images
+    const std::vector<md::SettingsPage> pages{
+        {false, L"Arrière-plan", L"ms-settings:personalization-background", L"fond d'écran image"},
+        {false, L"Écran de verrouillage", L"ms-settings:lockscreen", L""},
+    };
+    const std::vector<md::SpotItem> files{{md::SpotKind::File, L"image.png", L"C:\\x", L"C:\\x\\image.png"}};
+    // Un mot-clé seul : jamais en meilleur résultat, et la section après les documents (Entrée : le premier document).
+    const auto i = md::spotlightResults(L"image", {}, files, pages);
+    REQUIRE(i.size() == 2);
+    CHECK(i[0].title == L"Documents");
+    CHECK(i[1].title == L"Réglages" && i[1].items[0].title == L"Arrière-plan");
+    // Sans document : la section seule ; la première ligne reste le réglage.
+    const auto f = md::spotlightResults(L"fond d'écran", {}, {}, pages);
+    REQUIRE(f.size() == 1);
+    CHECK(f[0].title == L"Réglages");
+    // Un nom : meilleur résultat sans app ; sinon la section avant les documents.
+    const auto a = md::spotlightResults(L"arrière", {}, files, pages);
+    REQUIRE(a.size() == 2);
+    CHECK(a[0].title == L"Meilleur résultat" && a[0].items[0].title == L"Arrière-plan");
+    const std::vector<md::AppEntry> apps{{L"Outil Capture d'écran", L"snip!App"}};
+    const auto e = md::spotlightResults(L"écran", apps, files, pages);
+    REQUIRE(e.size() == 3);
+    CHECK(e[0].items[0].kind == md::SpotKind::App);
+    CHECK(e[1].title == L"Réglages" && e[2].title == L"Documents");
+}
+
+TEST_CASE(spot_hover_ignores_region_growth) {   // relecture du plan 55 : pointeur déplacé hors du panneau
+    md::HoverGate g;
+    g.reset({100, 100});            // ouverture
+    // Le pointeur va sous le champ, hors du panneau : aucun WM_MOUSEMOVE n'arrive au panneau.
+    g.regionChanged({100, 400});    // la frappe agrandit le panneau sous le pointeur
+    CHECK(!g.moved({100, 400}));    // le WM_MOUSEMOVE de Windows qui suit ne choisit pas la ligne survolée
+    CHECK(g.moved({101, 400}));
+}
+
+TEST_CASE(spot_hover_needs_a_real_move) {   // plan 55 : panneau qui grandit sous un pointeur immobile
+    md::HoverGate g;
+    g.reset({4582, 1232});              // pointeur à l'ouverture
+    CHECK(!g.moved({4582, 1232}));      // WM_MOUSEMOVE de Windows : le panneau a grandi, le pointeur n'a pas bougé
+    CHECK(g.moved({4583, 1232}));       // vrai déplacement : la ligne survolée est choisie
+    CHECK(!g.moved({4583, 1232}));
+    CHECK(g.moved({4582, 1232}));       // retour au point de départ : c'est un déplacement
+}
+
+TEST_CASE(spot_action_for_each_kind) {   // plan 55 : ce que le Dock fait du choix
+    using K = md::SpotActionKind;
+    const auto s = md::spotAction({md::SpotKind::Setting, L"Wi-Fi", L"Paramètres Windows", L"ms-settings:network-wifi"}, false);
+    CHECK(s.kind == K::Launch && s.arg == L"ms-settings:network-wifi");
+    CHECK(md::spotAction({md::SpotKind::Setting, L"x", L"", L"C:\\Windows\\notepad.exe"}, false).kind == K::None);   // une page, rien d'autre
+    const auto p = md::spotAction({md::SpotKind::Pane, L"Dock", L"Réglages MacDock", L"dock"}, false);
+    CHECK(p.kind == K::OpenPane && p.arg == L"dock");
+    CHECK(md::spotAction({md::SpotKind::Pane, L"x", L"", L"inconnue"}, false).kind == K::None);   // clé que --pane ignore
+    const auto c = md::spotAction({md::SpotKind::Calc, L"84", L"", L"84"}, false);
+    CHECK(c.kind == K::Copy && c.arg == L"84");
+    const auto a = md::spotAction({md::SpotKind::App, L"Calculatrice", L"", L"shell:AppsFolder\\calc"}, true);
+    CHECK(a.kind == K::Launch && a.arg == L"shell:AppsFolder\\calc");   // Ctrl+Entrée ne change rien pour une app
+    const auto f = md::spotAction({md::SpotKind::File, L"a.txt", L"", L"C:\\a.txt"}, true);
+    CHECK(f.kind == K::Reveal && f.arg == L"C:\\a.txt");
+    CHECK(md::spotAction({md::SpotKind::File, L"a.txt", L"", L"C:\\a.txt"}, false).kind == K::Launch);
+}
+
+TEST_CASE(spot_snapshot_draws_pane_tile) {   // plan 55 : la tuile de la section, comme dans Réglages MacDock
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto img = md::spotlightSnapshot(L"fenêtres", {}, {}, false, 1280, 800);
+    REQUIRE(img.w == 1280 && img.h == 800);
+    // Première ligne : panneau centré, à 22 % de la hauteur ; sous le champ (52), la marge (6) et le titre de section
+    // (26) ; case de l'icône de 28 pt, à 16 pt du bord gauche et centrée dans la ligne de 40 pt.
+    const int left = (1280 - 680) / 2 + 16, top = int(800 * 0.22) + 52 + 6 + 26 + 6;
+    int purple = 0;   // violet de « Fenêtres » (#6155F5) : ni l'accent bleu de la sélection, ni une case de couleur
+    for (int y = top; y < top + 28; ++y)
+        for (int x = left; x < left + 28; ++x) {
+            const std::uint8_t* px = &img.px[(std::size_t(y) * 1280 + x) * 4];   // B, G, R, A
+            if (px[0] > 200 && px[2] > 70 && px[2] < 160 && px[1] < 120) ++purple;
+        }
+    CHECK(purple > 100);
+    CoUninitialize();
 }

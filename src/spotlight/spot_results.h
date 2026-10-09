@@ -9,15 +9,19 @@
 
 #include "../apps/app_catalog.h"
 #include "../interact/hotkey.h"
+#include "spot_settings.h"
 
 namespace md {
 
-enum class SpotKind { Calc, App, File };
+// Setting : page des Paramètres de Windows ; Pane : section de Réglages MacDock (plan 55).
+enum class SpotKind { Calc, App, File, Setting, Pane };
 
 struct SpotItem {
     SpotKind kind = SpotKind::App;
     std::wstring title, subtitle;
-    std::wstring target;   // App : shell:AppsFolder\… ; File : chemin ; Calc : résultat à copier
+    // App : shell:AppsFolder\… ; File : chemin ; Calc : résultat à copier (calcul ou conversion) ;
+    // Setting : adresse ms-settings: ; Pane : clé de --pane.
+    std::wstring target;
 };
 
 struct SpotSection {
@@ -25,22 +29,50 @@ struct SpotSection {
     std::vector<SpotItem> items;
 };
 
-// Meilleur résultat (le calcul, sinon la première app), Applications (6 au plus), Documents (8 au plus) ;
-// sections vides omises ; requête vide : aucune.
+// Meilleur résultat, Applications (6 au plus), Réglages (4 au plus), Documents (8 au plus) ; sections vides omises ;
+// requête vide : aucune. Meilleur résultat : le calcul, sinon la conversion (« 10 km »), sinon le réglage qui porte
+// exactement ce nom, sinon la première app, sinon le premier réglage.
 std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::vector<AppEntry>& apps,
-                                          const std::vector<SpotItem>& files);
+                                          const std::vector<SpotItem>& files,
+                                          const std::vector<SettingsPage>& pages = settingsPages());
 std::size_t spotCount(const std::vector<SpotSection>& sections);
 const SpotItem* spotAt(const std::vector<SpotSection>& sections, std::size_t index);   // nullptr hors limites
 // Au plus maxRows lignes, dans l'ordre ; les sections vidées disparaissent (panneau sur un petit écran).
 std::vector<SpotSection> spotTrim(std::vector<SpotSection> sections, std::size_t maxRows);
 
-// Recherche de documents utile : requête non vide qui n'est pas un calcul.
+// Ce que le Dock fait du choix : copier le nombre, lancer (app, document, page ms-settings:), montrer le document
+// dans l'Explorateur (Ctrl+Entrée), ouvrir une section de Réglages MacDock ; None pour une cible invalide (page qui
+// n'est pas en ms-settings:, clé que --pane ne connaît pas).
+enum class SpotActionKind { None, Copy, Launch, Reveal, OpenPane };
+struct SpotAction {
+    SpotActionKind kind = SpotActionKind::None;
+    std::wstring arg;
+};
+SpotAction spotAction(const SpotItem& item, bool reveal);
+
+// Recherche de documents utile : requête non vide qui n'est ni un calcul ni une conversion.
 bool wantsFileSearch(const std::wstring& query);
 // Emplacement court d'un document : les deux derniers dossiers, « Documents › Factures ».
 std::wstring shortFolder(const std::wstring& folder);
 
 // Dossier de recherche du Shell (index de Windows) sur folder : search-ms:query=…&crumb=location:…
 std::wstring searchMsUrl(const std::wstring& query, const std::wstring& folder);
+
+// Survol du panneau : Windows envoie aussi WM_MOUSEMOVE quand le panneau grandit sous un pointeur immobile ; seul un
+// vrai déplacement choisit la ligne survolée (sinon Entrée ouvrirait la ligne passée sous le pointeur, pas le meilleur
+// résultat). Positions à l'écran.
+struct HoverGate {
+    POINT last{0, 0};
+    void reset(POINT at) { last = at; }
+    // Région du panneau changée (il grandit ou rapetisse) : le pointeur a pu bouger hors du panneau sans qu'il le
+    // sache ; le mouvement que Windows envoie ensuite, à cette même position, n'est pas un déplacement.
+    void regionChanged(POINT cursor) { last = cursor; }
+    bool moved(POINT at) {
+        const bool changed = at.x != last.x || at.y != last.y;
+        last = at;
+        return changed;
+    }
+};
 
 // Clic sur le Dock (qui n'active jamais) pendant une fenêtre modale : il ferme Spotlight, comme un clic ailleurs ;
 // pendant un menu, une pile ou l'écran Apps, il est ignoré (pas de fenêtre modale dans une autre).
