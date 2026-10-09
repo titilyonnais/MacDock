@@ -1304,6 +1304,7 @@ void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     if (trace_) log::info(L"[trace] barre : menu de la pastille verte (fenêtre %p, ⌥ %d)", static_cast<void*>(window), int(c.option));
     const int r = MenuWindow::track(env, menu.menus.front().model, anchor, MenuWindow::Side::BelowLeft);
     afterMenu();
+    lights_.zoomMenuClosed(window);   // pointeur resté sur la pastille : pas de nouveau menu
     const auto it = r > 0 ? menu.actions.find(r) : menu.actions.end();
     if (it == menu.actions.end()) {   // rien de choisi : le premier plan d'avant revient
         if (before && IsWindow(before) && GetForegroundWindow() != before) SetForegroundWindow(before);

@@ -40,6 +40,9 @@ public:
         zoomMessage_ = message;
         zoomSink_ = sink;
     }
+    // Menu de la pastille verte de `target` refermé. Sa fenêtre (marge d'ombre comprise) recouvrait la pastille : le
+    // calque a vu le pointeur partir, puis revenir à la fermeture. Resté sur la pastille, il ne rouvre pas le menu.
+    void zoomMenuClosed(HWND target);
 
 private:
     enum class Spot { None, Over };   // pas de pastilles (aucun bouton trouvé), ou sur les boutons de la fenêtre

@@ -29,7 +29,7 @@ constexpr UINT_PTR kZoomMenuTimer = 6;   // pastille verte survolée : menu de m
 // Messages postés au fil des pastilles (sans fenêtre : les calques vont et viennent). kMsgEvent : WinEvent reporté
 // (wParam l'événement, lParam la fenêtre) ; kMsgRecreate : calque à refaire (wParam sa fenêtre cible).
 constexpr UINT kMsgAttach = WM_APP + 1, kMsgQuit = WM_APP + 4, kMsgRecreate = WM_APP + 5, kMsgCapture = WM_APP + 6,
-               kMsgEvent = WM_APP + 7, kMsgRestack = WM_APP + 8;
+               kMsgEvent = WM_APP + 7, kMsgRestack = WM_APP + 8, kMsgZoomClosed = WM_APP + 9;
 constexpr std::size_t kMaxLayers = 48;   // au-delà, les fenêtres suivantes restent sans pastilles
 
 bool isCloaked(HWND h) {   // sur un autre bureau virtuel, ou cachée par DWM
@@ -173,6 +173,13 @@ void TrafficWindow::run() {
                     if (Layer* l = consider(target)) l->state.inactive = target != active_;
                     continue;
                 }
+                case kMsgZoomClosed:   // menu de la pastille verte refermé (wParam : sa fenêtre)
+                    if (Layer* l = layerOf(reinterpret_cast<HWND>(m.wParam)); l && l->hwnd) {
+                        KillTimer(l->hwnd, kZoomMenuTimer);   // armé par le retour du pointeur à la fermeture
+                        POINT c{};
+                        l->overZoom = GetCursorPos(&c) && hitLight(l->layout, c) == 2;   // ne repart qu'après une sortie
+                    }
+                    continue;
                 case kMsgCapture:
                     captureVisible_ = m.wParam != 0;
                     for (auto& [h, l] : layers_)
@@ -197,6 +204,10 @@ void TrafficWindow::run() {
 void TrafficWindow::attach(HWND active, LightsMode mode) {
     if (threadId_ && !PostThreadMessageW(threadId_, kMsgAttach, reinterpret_cast<WPARAM>(active), LPARAM(mode)))
         log::warn(L"Feux tricolores : message perdu (%lu)", GetLastError());
+}
+
+void TrafficWindow::zoomMenuClosed(HWND target) {
+    if (threadId_) PostThreadMessageW(threadId_, kMsgZoomClosed, reinterpret_cast<WPARAM>(target), 0);
 }
 
 void TrafficWindow::setCaptureVisible(bool on) {
