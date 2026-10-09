@@ -180,9 +180,11 @@ std::optional<AppIdentity> identifyWindow(HWND hwnd) {
         id.displayName = shellDisplayName(id.launch);
     }
     if (id.launch.empty() || id.displayName.empty()) {
-        // AUMID explicite d'une app de bureau (Chrome, Edge…) : on relance l'exe.
+        // Pas d'AUMID, ou AUMID explicite d'une app de bureau que Windows ne connaît pas (Chrome lancé par un outil…) :
+        // nom, relance et icône par l'exe (shell:AppsFolder\<AUMID> ne mènerait nulle part). Une app empaquetée garde
+        // son AUMID : son exe ne se lance pas directement ; sans exe (app du Store réduite), l'AUMID reste la cible.
         if (id.displayName.empty()) id.displayName = exeDisplayName(id.exePath);
-        if (id.aumid.empty() || id.launch.empty()) id.launch = id.exePath;
+        if (!id.exePath.empty() && (id.aumid.empty() || processAppUserModelId(pid).empty())) id.launch = id.exePath;
     }
     return id;
 }

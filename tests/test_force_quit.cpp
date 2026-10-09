@@ -1,6 +1,15 @@
 // Forcer à quitter (plan 54) : apps de la liste, processus à arrêter, sélection après une relecture (logique pure) ;
 // côté Windows : identité avec PID, processus de la session, arrêt d'un processus d'essai à nous, Explorateur.
 #include <windows.h>
+#pragma warning(push)
+#pragma warning(disable : 4005)   // les en-têtes Shell redéfinissent PID_FIRST_USABLE
+#include <shellapi.h>
+#include <shobjidl.h>
+#include <propsys.h>
+#include <propkey.h>
+#include <propvarutil.h>
+#pragma warning(pop)
+#include <wrl/client.h>
 
 #include <string>
 #include <vector>
@@ -133,6 +142,32 @@ TEST_CASE(force_quit_identity_keeps_pid) {
     const auto id = md::identifyWindow(w);
     REQUIRE(id.has_value());
     CHECK(id->pid == GetCurrentProcessId());
+    DestroyWindow(w);
+}
+
+TEST_CASE(identity_unregistered_aumid_launches_exe) {
+    // Plan 54 (essai réel) : une app de bureau dont l'AUMID explicite n'est pas inscrit (un Chrome lancé par un outil)
+    // est relancée par son exécutable, et son icône vient de lui (avant : shell:AppsFolder\<AUMID>, ni icône ni
+    // relance possibles).
+    HWND w = CreateWindowExW(0, L"STATIC", L"Essai (MacDock)", WS_OVERLAPPEDWINDOW, 0, 0, 100, 100, nullptr, nullptr, nullptr,
+                             nullptr);
+    REQUIRE(w != nullptr);
+    Microsoft::WRL::ComPtr<IPropertyStore> store;
+    REQUIRE(SUCCEEDED(SHGetPropertyStoreForWindow(w, IID_PPV_ARGS(&store))));
+    PROPVARIANT pv;
+    REQUIRE(SUCCEEDED(InitPropVariantFromString(L"MacDock.Essai.NonInscrit", &pv)));
+    REQUIRE(SUCCEEDED(store->SetValue(PKEY_AppUserModel_ID, pv)));
+    PropVariantClear(&pv);
+    const auto id = md::identifyWindow(w);
+    wchar_t self[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    REQUIRE(id.has_value());
+    CHECK(id->aumid == L"MacDock.Essai.NonInscrit");   // le regroupement ne change pas
+    CHECK(_wcsicmp(id->launch.c_str(), self) == 0);
+    CHECK(!id->displayName.empty());
+    PropVariantInit(&pv);
+    store->SetValue(PKEY_AppUserModel_ID, pv);   // propriété retirée avant la fermeture
+    store.Reset();
     DestroyWindow(w);
 }
 
