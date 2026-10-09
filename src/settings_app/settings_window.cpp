@@ -19,6 +19,7 @@
 #include "../config/config_store.h"
 #include "../core/diag.h"
 #include "../core/log.h"
+#include "../core/own_lights.h"
 #include "../core/version.h"
 #include "../interact/hotkey.h"
 #include "../settings/backup.h"
@@ -173,12 +174,12 @@ bool SettingsWindow::create(HINSTANCE instance, const std::wstring& dataDir, Pan
                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX, x, y, w, h, nullptr,
                             nullptr, instance, this);
     if (!hwnd_) return false;
+    markOwnLights(hwnd_);   // la barre de menus n'y pose pas ses pastilles : la fenêtre dessine les siennes
     const MARGINS glass{-1, -1, -1, -1};
     DwmExtendFrameIntoClientArea(hwnd_, &glass);
     const int backdrop = 3;   // DWMSBT_TRANSIENTWINDOW : acrylique derrière la barre latérale translucide
     DwmSetWindowAttribute(hwnd_, 38 /* DWMWA_SYSTEMBACKDROP_TYPE */, &backdrop, sizeof backdrop);
-    const DWORD corner = 2;   // DWMWCP_ROUND
-    DwmSetWindowAttribute(hwnd_, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner);
+    applyOwnFrame(hwnd_);   // coins arrondis, sans liseré (la barre ne règle plus son apparence)
     updateDark();
     if (!initGraphics()) return false;
     SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
@@ -1416,6 +1417,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_CLOSE: DestroyWindow(hwnd_); return 0;
         case WM_DESTROY:
+            unmarkOwnLights(hwnd_);
             stopRecording();
             releaseRecordHook(true);
             WTSUnRegisterSessionNotification(hwnd_);

@@ -12,6 +12,7 @@
 
 #include "../core/diag.h"
 #include "../core/log.h"
+#include "../core/own_lights.h"
 
 namespace md {
 
@@ -117,6 +118,7 @@ LightsWindowInfo readInfo(HWND h) {
     GetWindowThreadProcessId(h, &pid);
     w.ownProcess = pid == GetCurrentProcessId();
     w.elevated = !w.ownProcess && higherIntegrity(pid);
+    w.ownLights = drawsOwnLights(h);   // Réglages MacDock, Forcer à quitter : leurs pastilles à elles
     TITLEBARINFO tb{sizeof tb};
     if (GetTitleBarInfo(h, &tb) && tb.rcTitleBar.bottom > tb.rcTitleBar.top) w.captionBottom = tb.rcTitleBar.bottom;
     MONITORINFO mi{sizeof mi};
@@ -301,8 +303,8 @@ TrafficWindow::Layer* TrafficWindow::consider(HWND target) {
     info.iconic = false;
     if (!lightsLayerWanted(info, mode_, effectiveDpi(target))) {
         if (diagnosticCapture() && target == active_)
-            log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d)", target, info.className.c_str(),
-                      info.style, int(info.elevated));
+            log::info(L"[diag] pastilles %p [%ls] : refusée (style %08lx, élevée %d, pastilles à elle %d)", target,
+                      info.className.c_str(), info.style, int(info.elevated), int(info.ownLights));
         return nullptr;
     }
     auto layer = std::make_unique<Layer>();

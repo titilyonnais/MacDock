@@ -20,6 +20,7 @@ struct LightsWindowInfo {
     bool zoomed = false, iconic = false, ownProcess = false;
     LONG captionBottom = 0;   // bas de la barre de titre (GetTitleBarInfo) ; 0 = inconnu (on prend client.top)
     bool elevated = false;    // processus d'intégrité plus élevée : nos messages seraient refusés (UIPI)
+    bool ownLights = false;   // fenêtre de MacDock qui dessine ses pastilles (own_lights.h) : ni pastilles ni apparence
     RECT monitor{};           // écran de la fenêtre (rcMonitor) ; vide = inconnu
 };
 
