@@ -223,7 +223,7 @@ TEST_CASE(menubar_settings_roundtrip) {
     CHECK(back.clock.weekday);
     CHECK(!back.showSound);
     CHECK_NEAR(back.metrics.height, 30, 1e-9);
-    CHECK_NEAR(md::menuBarSettingsToJson(s).find("version")->asNumber(0), 1, 1e-9);
+    CHECK_NEAR(md::menuBarSettingsToJson(s).find("version")->asNumber(0), 2, 1e-9);
 }
 
 TEST_CASE(menubar_settings_clamped) {
@@ -241,6 +241,50 @@ TEST_CASE(menubar_settings_clamped) {
     auto d = md::menuBarSettingsFromJson(md::json::Value(42));
     CHECK_NEAR(d.metrics.height, 24, 1e-9);
     CHECK(d.showSound);
+}
+
+TEST_CASE(menubar_settings_measures_of_macos_26) {
+    // Plan 64 : mesures de la barre de macOS 26 (VM du 9 octobre). Ligne de base du texte et écart avant l'horloge :
+    // nouvelles mesures, lues, bornées et écrites comme les autres.
+    const md::MenuBarMetrics m;
+    CHECK_NEAR(m.statusWidth, 36, 1e-9);
+    CHECK_NEAR(m.rightMargin, 9, 1e-9);
+    CHECK_NEAR(m.textBaseline, 16, 1e-9);
+    CHECK_NEAR(m.clockGap, 3, 1e-9);
+    md::MenuBarSettings s;
+    s.metrics.textBaseline = 15.5;
+    s.metrics.clockGap = 4;
+    const auto back = md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s));
+    CHECK_NEAR(back.metrics.textBaseline, 15.5, 1e-9);
+    CHECK_NEAR(back.metrics.clockGap, 4, 1e-9);
+    const auto wild = md::menuBarSettingsFromJson(*md::json::parse(R"({"metrics": {"textBaseline": 900, "clockGap": -5}})"));
+    CHECK_NEAR(wild.metrics.textBaseline, 48, 1e-9);
+    CHECK_NEAR(wild.metrics.clockGap, 0, 1e-9);
+}
+
+TEST_CASE(menubar_settings_v1_measures_follow_new_defaults) {
+    // Une mesure encore à l'ancien défaut prend le nouveau ; une valeur choisie reste ; le reste du fichier ne bouge pas.
+    const auto v1 = md::json::parse(
+        R"({"version": 1, "autohide": true, "metrics": {"statusWidth": 30, "rightMargin": 10, "leftMargin": 12}})");
+    REQUIRE(v1.has_value());
+    const md::json::Value v2 = md::migrateMenuBarSettingsJson(*v1);
+    CHECK(v2.find("version") && v2.find("version")->asNumber(0) == 2);
+    CHECK(v2.find("autohide") && v2.find("autohide")->asBool(false));
+    const md::json::Value* m = v2.find("metrics");
+    REQUIRE(m != nullptr);
+    CHECK_NEAR(m->find("statusWidth")->asNumber(0), 36, 1e-9);
+    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 9, 1e-9);
+    CHECK_NEAR(m->find("leftMargin")->asNumber(0), 12, 1e-9);
+    // Choisies par l'utilisateur (fichier sans version : v1) : gardées.
+    const auto mine = md::migrateMenuBarSettingsJson(*md::json::parse(R"({"metrics": {"statusWidth": 32, "rightMargin": 14}})"));
+    CHECK_NEAR(mine.find("metrics")->find("statusWidth")->asNumber(0), 32, 1e-9);
+    CHECK_NEAR(mine.find("metrics")->find("rightMargin")->asNumber(0), 14, 1e-9);
+    CHECK(mine.find("version") && mine.find("version")->asNumber(0) == 2);
+    // Déjà en v2 : 30 est un choix, pas un ancien défaut.
+    const auto chosen = md::migrateMenuBarSettingsJson(*md::json::parse(R"({"version": 2, "metrics": {"statusWidth": 30}})"));
+    CHECK_NEAR(chosen.find("metrics")->find("statusWidth")->asNumber(0), 30, 1e-9);
+    // Pas un objet : rendu tel quel.
+    CHECK(md::migrateMenuBarSettingsJson(md::json::Value(42)).isNumber());
 }
 
 // ---- Menus de la barre ----

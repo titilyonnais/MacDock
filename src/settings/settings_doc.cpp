@@ -46,6 +46,17 @@ DockFile readDock(const std::wstring& dir) {
     Settings parsed = settingsFromJson(migrated);
     return {std::move(migrated), std::move(parsed), r.wasInvalid || r.unreadable};
 }
+
+// menubar.json, de même : migré comme la barre le fait (v1 → v2). Sans cela, une écriture le passerait en v2 avec ses
+// anciens défauts, que la barre prendrait pour des choix.
+struct BarFile {
+    json::Value raw;
+    bool broken = false;
+};
+BarFile readBar(const std::wstring& dir) {
+    LoadResult r = loadJsonFile(barPath(dir));
+    return {migrateMenuBarSettingsJson(r.value), r.wasInvalid || r.unreadable};
+}
 } // namespace
 
 namespace {
@@ -64,17 +75,17 @@ SettingsModel loadModel(const std::wstring& dir, ModelFiles* status, const Setti
     m.autoUpdate = readUpdate(dir).automatic;
     const DockFile dock = readDock(dir);
     m.dock = dock.parsed;
-    const LoadResult bar = loadJsonFile(barPath(dir));
-    m.bar = menuBarSettingsFromJson(bar.value);
-    if (status) *status = {dock.broken, bar.wasInvalid || bar.unreadable};
+    const BarFile bar = readBar(dir);
+    m.bar = menuBarSettingsFromJson(bar.raw);
+    if (status) *status = {dock.broken, bar.broken};
     return m;
 }
 
 bool commit(const std::wstring& dir, const std::function<void(SettingsModel&)>& edit, SettingsModel* result, const SettingsIo* io) {
     DockFile dock = readDock(dir);
-    const LoadResult barFile = loadJsonFile(barPath(dir));
-    const json::Value& barRaw = barFile.value;
-    const bool barBroken = barFile.wasInvalid || barFile.unreadable;
+    const BarFile barFile = readBar(dir);
+    const json::Value& barRaw = barFile.raw;
+    const bool barBroken = barFile.broken;
     SettingsModel m{dock.parsed, menuBarSettingsFromJson(barRaw)};
     m.startup = startupIsOurs(io);
     const bool startupBefore = m.startup;

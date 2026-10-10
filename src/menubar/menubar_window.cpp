@@ -153,6 +153,12 @@ void MenuBarApp::loadSettings(bool initial) {
     if (!initial && (f.wasInvalid || f.unreadable)) {
         log::warn(L"menubar.json ignoré (invalide ou illisible) : réglages actuels conservés");
     } else {
+        if (f.fromFile && jsonVersion(f.value) < kMenuBarSettingsVersion) {
+            // Ancienne version : migrée en mémoire, réécrite (pas en --snapshot, qui ne touche à rien).
+            f.value = migrateMenuBarSettingsJson(f.value);
+            if (ctl_ && saveJsonFileAtomic(path, f.value))
+                log::info(L"menubar.json migré vers la v%d", kMenuBarSettingsVersion);
+        }
         settings_ = menuBarSettingsFromJson(f.value);
     }
     // Fichier absent : on l'écrit avec les valeurs par défaut (pas en --snapshot, qui ne touche à rien).

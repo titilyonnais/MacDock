@@ -394,6 +394,24 @@ TEST_CASE(settings_commit_migrates_a_v1_file) {
     CHECK_NEAR(md::loadModel(dir).dock.largeSize, 128.0, 1e-9);
 }
 
+TEST_CASE(settings_bar_v1_file_is_migrated) {
+    // Plan 64 : l'app Réglages lit menubar.json migré, comme la barre ; une écriture garde la migration (sinon un ancien
+    // défaut, réécrit sous la version 2, passerait pour un choix et la barre ne le migrerait plus).
+    const std::wstring dir = tempDir(L"bar-v1");
+    md::saveJsonFileAtomic(dir + L"\\menubar.json",
+                           *md::json::parse(R"({"version":1,"metrics":{"statusWidth":30,"rightMargin":10,"leftMargin":12}})"));
+    CHECK_NEAR(md::loadModel(dir).bar.metrics.statusWidth, 36.0, 1e-9);
+    REQUIRE(md::commit(dir, [](md::SettingsModel& m) { m.bar.autohide = true; }));
+    const md::json::Value f = readFile(dir + L"\\menubar.json");
+    CHECK(f.find("version") && f.find("version")->asNumber(0) == 2);
+    CHECK(f.find("autohide") && f.find("autohide")->asBool(false));
+    const md::json::Value* m = f.find("metrics");
+    REQUIRE(m != nullptr);
+    CHECK_NEAR(m->find("statusWidth")->asNumber(0), 36.0, 1e-9);
+    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 9.0, 1e-9);
+    CHECK_NEAR(m->find("leftMargin")->asNumber(0), 12.0, 1e-9);
+}
+
 TEST_CASE(ui_draw_buttons_shortcut_and_value) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     {
