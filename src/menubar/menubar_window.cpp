@@ -18,6 +18,7 @@
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../shell/shell_actions.h"
+#include "../screenshot/windows_tool.h"
 #include "../tracker/app_identity.h"
 #include "bar_color.h"
 #include "bar_screens.h"
@@ -32,6 +33,14 @@
 namespace md {
 
 MenuBarApp* MenuBarApp::self_ = nullptr;
+
+namespace {
+
+// Couche de la barre : « toujours au premier plan », sauf sous le voile de l'Outil Capture de Windows (retour du
+// 10 octobre ; seulement pour lui, relecture du plan 69).
+HWND barLayer(bool lowered) { return placementDuringToolSession(lowered).topmost ? HWND_TOPMOST : HWND_NOTOPMOST; }
+
+} // namespace
 
 namespace {
 
@@ -367,7 +376,7 @@ void MenuBarApp::reposition(Screen& s) {
     }
     const int width = s.rect.right - s.rect.left;
     if (s.hwnd) {
-        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, width, s.heightPx,
+        SetWindowPos(s.hwnd, barLayer(lowered_), s.rect.left, s.rect.top - s.yOffsetPx, width, s.heightPx,
                      SWP_NOACTIVATE | (s.visible ? SWP_SHOWWINDOW : 0));
         s.renderer.resize(UINT(width), UINT(s.heightPx));
     }
@@ -990,7 +999,8 @@ void MenuBarApp::abortSamples() {
     }
 }
 
-void MenuBarApp::onScreenshotReveal(bool on) {
+void MenuBarApp::onScreenshotReveal(ShotReveal reveal) {
+    const bool on = reveal != ShotReveal::Off;
     if (on) {
         shotReveal_ = true;
         abortSamples();
@@ -1005,7 +1015,16 @@ void MenuBarApp::onScreenshotReveal(bool on) {
         MenuWindow::setCaptureVisible(false);
         hud_.setCaptureVisible(false);
     }
-    if (trace_ || diagnosticCapture()) log::info(L"[trace] capture d'écran : pastilles %s", on ? L"visibles" : L"exclues de nouveau");
+    // Sous le voile de l'Outil Capture seulement ; remontée seulement si elle avait été abaissée (⊞⇧3 ne touche pas à la
+    // couche : sinon la barre repassait devant Apps et Mission Control ouverts).
+    if (const BarLayerChange layer = barLayerChange(lowered_, reveal); layer.change) {
+        lowered_ = !layer.topmost;
+        for (auto& s : screens_)
+            if (s->hwnd) SetWindowPos(s->hwnd, barLayer(lowered_), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    if (trace_ || diagnosticCapture())
+        log::info(L"[trace] capture d'écran : pastilles %s%s", on ? L"visibles" : L"exclues de nouveau",
+                  lowered_ ? L", barre sous le voile de l'outil" : L"");
 }
 
 void MenuBarApp::stopSamples() {   // une seule duplication d'un écran par processus : le menu capture à son tour
@@ -1173,7 +1192,7 @@ void MenuBarApp::stepVisibility(Screen& s) {
     if (offset != s.yOffsetPx || show != s.visible) {
         s.yOffsetPx = offset;
         s.visible = show;
-        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, 0, 0,
+        SetWindowPos(s.hwnd, barLayer(lowered_), s.rect.left, s.rect.top - s.yOffsetPx, 0, 0,
                      SWP_NOACTIVATE | SWP_NOSIZE | (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
     }
     // Tant que le curseur peut faire apparaître la barre ou qu'elle s'anime, on la suit de près.
@@ -1612,7 +1631,7 @@ LRESULT MenuBarApp::handleScreen(Screen& s, UINT msg, WPARAM wp, LPARAM lp) {
 LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
     if (shotRevealMsg_ && msg == shotRevealMsg_) {
-        onScreenshotReveal(wp != 0);
+        onScreenshotReveal(ShotReveal(std::min<WPARAM>(wp, WPARAM(ShotReveal::UnderVeil))));
         return 1;
     }
     if (taskbarCreated_ && msg == taskbarCreated_) {
@@ -1714,7 +1733,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     render();
                     break;
                 case kHudTimer: stepHud(); break;
-                case kShotRevealTimer: onScreenshotReveal(false); break;
+                case kShotRevealTimer: onScreenshotReveal(ShotReveal::Off); break;
                 case kTrayPruneTimer:
                     if (tray_.prune([](std::uint64_t h) { return IsWindow(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(h))) != FALSE; }))
                         SetTimer(ctl_, kTrayLayoutTimer, 50, nullptr);

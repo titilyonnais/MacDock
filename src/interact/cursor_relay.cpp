@@ -42,7 +42,7 @@ RelayStep CursorRelay::poll(const CursorSample& s) {
 
 unsigned CursorRelay::intervalMs(unsigned long long nowMs) const {
     if (lost_) return kLostMs;
-    return lastMoved_ && nowMs - *lastMoved_ < kFastMs ? 16 : 100;
+    return lastMoved_ && nowMs - *lastMoved_ < kFastMs ? frameMs_ : 100;
 }
 
 unsigned long long CursorRelay::silenceMs(unsigned long long nowMs, unsigned long long lastEventMs,

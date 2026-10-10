@@ -348,7 +348,21 @@ bool IconProvider::adopt(const std::wstring& cacheKey, std::uint64_t generation,
     if (generation != generation_ || cache_.contains(cacheKey)) return false;
     stale_.erase(cacheKey);
     cache_[cacheKey] = std::move(image);
+    forgetOlderPreviews(cacheKey);
     return true;
+}
+
+void IconProvider::forgetOlderPreviews(const std::wstring& cacheKey) {
+    // Préfixe « #stack|clé|px| » : les aperçus d'une même pile à la même taille ne diffèrent que par leurs fichiers.
+    if (!cacheKey.starts_with(L"#stack|")) return;
+    std::size_t bars = 0, end = std::wstring::npos;
+    for (std::size_t i = 0; i < cacheKey.size() && end == std::wstring::npos; ++i)
+        if (cacheKey[i] == L'|' && ++bars == 3) end = i + 1;
+    if (end == std::wstring::npos) return;
+    const std::wstring prefix = cacheKey.substr(0, end);
+    const auto older = [&](const auto& e) { return e.first != cacheKey && e.first.starts_with(prefix); };
+    std::erase_if(cache_, older);
+    std::erase_if(stale_, older);
 }
 
 bool IconProvider::adoptStale(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image) {
@@ -552,10 +566,12 @@ IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const
     if (!any) {   // échec gardé : pas recomposé à chaque image (fichiers disparus, partage hors ligne)
         cache_[cacheKey] = nullptr;
         stale_.erase(cacheKey);
+        forgetOlderPreviews(cacheKey);
         return nullptr;
     }
     auto img = finish(std::move(shaped), s, px);
     cache_[cacheKey] = img;
+    forgetOlderPreviews(cacheKey);
     return img;
 }
 

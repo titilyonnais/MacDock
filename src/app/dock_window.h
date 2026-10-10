@@ -17,6 +17,7 @@
 #include "../forcequit/force_quit_window.h"
 #include "../glass/backdrop_capture.h"
 #include "../interact/command_key.h"
+#include "../config/file_stamp.h"
 #include "../icons/icon_provider.h"
 #include "../icons/icon_worker.h"
 #include "../interact/hot_corners.h"
@@ -70,6 +71,7 @@ private:
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
 
     void loadConfig(bool initial);
+    void readConfig(bool initial);   // lecture des fichiers seule (loadConfig : empreintes avant, application après)
     void applySettings();
     void savePinned();
     void saveSettings();
@@ -114,7 +116,7 @@ private:
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
     void endSwitch(bool activate);                             // fin de session ; active l'app choisie
-    void checkHotCorner(POINT screen);                         // coins actifs : pointeur poussé dans un coin
+    void checkHotCorner(POINT screen, bool blocked = false);   // coins actifs : pointeur poussé dans un coin
     void runHotCorner(HotCornerAction action);
     bool fullscreenAt(POINT screen) const;   // plein écran sur l'écran du point (jeu, vidéo, présentation)
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock
@@ -144,11 +146,12 @@ private:
     void revealForCapture(bool dock, bool lights);   // Dock et pastilles visibles aux captures, le temps de la copie
     void concealAfterCapture();
     // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock visible à ses captures tant qu'il est devant.
-    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai.
-    void onToolShot(DWORD keyTime);
+    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai ; veil : voile de sélection attendu.
+    void onToolShot(DWORD keyTime, bool veil);
     void revealForTool();   // comme revealForCapture, au plus vite (l'outil copie l'écran 100 à 300 ms après la touche)
     void tickToolReveal();
-    static bool captureToolInFront();
+    void applyToolLayer();  // sous le voile de l'outil (ToolReveal::lowered), ou de nouveau devant tout
+    static HWND captureToolInFront();   // fenêtre de l'Outil Capture au premier plan, sinon nullptr
     static bool shotIgnores(HWND h);   // jamais visées en mode fenêtre, jamais comptées comme recouvrantes
     void onBackdrop();
     void watchTrash();
@@ -184,6 +187,7 @@ private:
     Metrics metrics_;
     AppModel model_;
     WindowTracker tracker_;
+    ConfigWatch configWatch_;   // settings.json et dock-metrics.json, empreintes prises avant chaque lecture
     IconProvider icons_;
     IconWorker iconWorker_;        // plan 67 : icônes du rendu courant préparées hors du fil du Dock
     double tilesWaitSince_ = 0, stacksWaitSince_ = 0;   // [diag] première image qui attendait une case, un aperçu
@@ -232,6 +236,7 @@ private:
     bool revealDock_ = false, revealLights_ = false, shotPausedCapture_ = false;
     ToolReveal toolReveal_;              // révélation tenue pour l'Outil Capture de Windows
     bool toolRevealOn_ = false;          // MacDock visible à ses captures (rien ne le referme avant la fin)
+    bool toolLowered_ = false;           // sous son voile : hors de la couche « toujours au premier plan », sans pointeur
     bool toolWasInFront_ = false;        // pour la trace : l'outil vient d'apparaître ou de partir
     ULONGLONG toolBarPingAt_ = 0;        // dernière relance de la barre (sa sécurité coupe après 3 s)
     ULONGLONG toolRevealAt_ = 0;         // début de la révélation (traces)

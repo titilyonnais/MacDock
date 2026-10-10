@@ -37,7 +37,10 @@ public:
     // GetCursorPos a échoué (bureau sécurisé : verrouillage, invite de l'UAC) : lecture lente jusqu'au retour.
     void cursorLost(unsigned long long nowMs);
     bool active() const { return active_; }
-    unsigned intervalMs(unsigned long long nowMs) const;   // ~60 Hz dans la seconde qui suit un mouvement, ~10 Hz sinon
+    // Au rythme de l'écran (setFrameMs, 16 ms par défaut) dans la seconde qui suit un mouvement, ~10 Hz sinon.
+    unsigned intervalMs(unsigned long long nowMs) const;
+    // Durée d'une image de l'écran du Dock (6 ms à 165 Hz), bornée de 2 à 16 ms.
+    void setFrameMs(unsigned ms) { frameMs_ = ms < 2 ? 2 : (ms > 16 ? 16 : ms); }
     // Silence du crochet : depuis son dernier mouvement vu, ou depuis son installation s'il est plus récent (0 : jamais).
     static unsigned long long silenceMs(unsigned long long nowMs, unsigned long long lastEventMs,
                                         unsigned long long installedMs);
@@ -49,6 +52,7 @@ private:
     unsigned long long lastDelivery_ = 0;
     std::optional<unsigned long long> lastReinstall_;
     bool lost_ = false;
+    unsigned frameMs_ = 16;
 };
 
 // Pointeur confiné par une autre app (GetClipCursor plus petit que le bureau) dans une zone qui ne contient pas le

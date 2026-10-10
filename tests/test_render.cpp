@@ -152,9 +152,9 @@ TEST_CASE(render_glass_shadow_outside_only) {
     CHECK(below > 205);   // à peine
 }
 
-TEST_CASE(render_glass_rim_is_hairline_not_glow) {
-    // Mesuré sur le Dock réel (2x) : un liseré clair d'un seul pixel, puis le verre presque aussitôt ; pas de halo
-    // de plusieurs points le long du bord.
+TEST_CASE(render_glass_has_no_white_rim) {
+    // Retour du 10 octobre : le Liquid Glass de macOS 26 n'a pas de contour blanc autour du Dock (le liseré clair d'un
+    // pixel de la v4 est retiré) ; et toujours pas de halo de plusieurs points le long du bord.
     ComScope com;
     md::DockRenderer r;
     REQUIRE(r.initOffscreen());
@@ -166,7 +166,7 @@ TEST_CASE(render_glass_rim_is_hairline_not_glow) {
     auto g = [&](int y) { return int(img[(size_t(y) * kW + x) * 4 + 1]); };
     const int top = int(std::ceil(f.bgTop)), inner = g(int((f.bgTop + f.bgBottom) / 2));
     const int rim = std::max({g(top), g(top + 1), g(top + 2)});
-    CHECK(rim - inner >= 30);         // le liseré se voit
+    CHECK(rim - inner <= 8);          // pas de contour clair au bord
     CHECK(g(top + 5) - inner <= 14);  // 2,5 pt sous le bord : déjà le verre
     CHECK(g(top + 10) - inner <= 7);
 }

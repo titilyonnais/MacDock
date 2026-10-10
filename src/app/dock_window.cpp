@@ -148,6 +148,13 @@ bool DockApp::systemDarkMode() {
 }
 
 void DockApp::loadConfig(bool initial) {
+    // Empreintes prises avant la lecture : une écriture de l'app Réglages pendant celle-ci sera relue (relecture du
+    // plan 69).
+    configWatch_.read([&] { readConfig(initial); });
+    applySettings();
+}
+
+void DockApp::readConfig(bool initial) {
     auto s = loadJsonFile(dataDir_ + L"\\settings.json");
     // Au rechargement à chaud, un fichier invalide ou illisible ne change rien : on garde l'état courant.
     if (!initial && (s.wasInvalid || s.unreadable)) {
@@ -185,7 +192,6 @@ void DockApp::loadConfig(bool initial) {
         return json::serialize(*settingsToJson(t).find("pinned"));
     };
     if (initial || pinsJson(model_.pinnedEntries()) != pinsJson(settings_.pinned)) model_.loadPinned(settings_.pinned);
-    applySettings();
 }
 
 void DockApp::applySettings() {
@@ -283,8 +289,9 @@ bool DockApp::stepVisibility(double now) {
         if (trace_) log::info(L"[trace] Dock %s", hidden ? L"masqué" : L"visible");
     }
     // Entièrement masqué : plus de capture de l'arrière-plan (une vidéo derrière le ferait redessiner pour rien).
+    // Verre voulu (exclusion des captures acquise) : sa première image n'est pas encore là après un arrêt technique.
     switch (backdropForVisibility(hidden, backdropHiddenPause_, capture_.status() == BackdropCapture::Status::Running,
-                                  menuOpen_, glassLive_ && excluded_)) {
+                                  menuOpen_, excluded_)) {
         case BackdropAction::Pause:
             pauseCapture();
             backdropHiddenPause_ = true;
@@ -363,6 +370,8 @@ void DockApp::onDisplayChanged() {
         // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
         capture_.stop();
         glassLive_ = false;
+        if (!keepPauseAfterStop(backdropHiddenPause_, menuOpen_, switchPanel_, revealDock_ || toolRevealOn_))
+            capturePaused_ = false;   // plus de raison de pause : updateGlass relance la capture
         if (initRenderer()) {
             RECT rc;
             GetClientRect(hwnd_, &rc);
@@ -417,7 +426,8 @@ void DockApp::reposition() {
     placedPosition_ = edge;
     placedScreen_ = settings_.screen;
     if (trace_) log::info(L"[trace] zone réservée : %d px (bord %d)", appBar_ ? reserve : 0, int(edge));
-    SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
+    SetWindowPos(hwnd_, placementDuringToolSession(toolLowered_).topmost ? HWND_TOPMOST : HWND_NOTOPMOST, origin_.x,
+                 origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
     controller_.setViewport(UINT(width), UINT(height), scale_);
@@ -462,13 +472,15 @@ void DockApp::updateGlass() {
         requestFrame();
         return;
     }
-    if (capture_.status() == BackdropCapture::Status::Off) restartCapture();
+    // Capture mise en pause exprès (Dock masqué, menu, ⌥⇥, révélation) : sa propre reprise la relance (relecture de la
+    // nuit : un rechargement des réglages la relançait, verre redessiné Dock masqué, dépoli pendant une révélation).
+    if (capture_.status() == BackdropCapture::Status::Off && !capturePaused_) restartCapture();
 }
 
 void DockApp::restartCapture() {
     capture_.stop();
     glassLive_ = false;
-    capturePaused_ = false;
+    capturePaused_ = backdropHiddenPause_ = false;
     if (!excluded_) return;
     if (toolRevealOn_) {   // Dock visible aux captures : il se verrait lui-même ; reprise à la fin de la révélation
         capturePaused_ = true;
@@ -560,11 +572,7 @@ void DockApp::revealForTool() {
     // l'écran plus tard, la composition suivante suffit.
     revealDock_ = excluded_;
     shotPausedCapture_ = false;
-    if (revealDock_) {
-        SetWindowDisplayAffinity(hwnd_, WDA_NONE);
-        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
-        if (shotPausedCapture_) pauseCapture();
-    }
+    if (revealDock_) SetWindowDisplayAffinity(hwnd_, WDA_NONE);
     MenuWindow::setCaptureVisible(true);
     SpotlightWindow::setCaptureVisible(true);
     AppsWindow::setCaptureVisible(true);
@@ -572,17 +580,46 @@ void DockApp::revealForTool() {
     switcher_.setCaptureVisible(true);
     revealLights_ = false;
     if (shotRevealMsg_)
-        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) revealLights_ = PostMessageW(bar, shotRevealMsg_, 1, 0) != FALSE;
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr))
+            revealLights_ = PostMessageW(bar, shotRevealMsg_,
+                                         WPARAM(toolLowered_ ? ShotReveal::UnderVeil : ShotReveal::Visible), 0) != FALSE;
+    // Capture du verre arrêtée en dernier : elle attend son fil jusqu'à 100 ms, et tout le reste est déjà visible à
+    // l'outil (relecture de la nuit).
+    if (revealDock_) {
+        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
+        if (shotPausedCapture_) pauseCapture();
+    }
 }
 
-void DockApp::onToolShot(DWORD keyTime) {
+// Sous le voile de l'Outil Capture (ToolReveal::lowered) : le Dock quitte la couche « toujours au premier plan » (sous le
+// voile, toujours au-dessus des apps) et ignore le pointeur ; de nouveau devant tout et à l'écoute dès que le voile part,
+// même si l'outil reste devant (éditeur ; relecture du plan 69).
+void DockApp::applyToolLayer() {
+    const bool lowered = toolRevealOn_ && toolReveal_.lowered();
+    if (lowered == toolLowered_) return;
+    toolLowered_ = lowered;
+    SetWindowPos(hwnd_, placementDuringToolSession(lowered).topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) onMouse(cursor);   // au repos tout de suite, ou repris sous un curseur immobile
+    if (revealLights_ && shotRevealMsg_)
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) {
+            PostMessageW(bar, shotRevealMsg_, WPARAM(lowered ? ShotReveal::UnderVeil : ShotReveal::Visible), 0);
+            toolBarPingAt_ = GetTickCount64();
+        }
+    if (trace_)
+        log::info(L"[trace] Outil Capture de Windows : Dock et barre %s", lowered ? L"sous son voile" : L"de nouveau devant tout");
+}
+
+void DockApp::onToolShot(DWORD keyTime, bool veil) {
     if (snapshot_) return;
     const ULONGLONG now = GetTickCount64();
     const bool already = toolReveal_.active();
-    toolReveal_.start(now);   // nouvel appui pendant la révélation : prolongée
+    toolReveal_.start(now, veil);   // nouvel appui pendant la révélation : prolongée
+    toolRevealOn_ = true;
+    applyToolLayer();   // sous le voile avant tout le reste (relecture du plan 69 : jusqu'à 100 ms devant lui sinon)
     if (!already) {
         revealForTool();
-        toolRevealOn_ = true;
         toolWasInFront_ = false;
         toolBarPingAt_ = toolRevealAt_ = now;
         if (trace_) {
@@ -597,19 +634,34 @@ void DockApp::onToolShot(DWORD keyTime) {
     SetTimer(hwnd_, kToolRevealTimer, 250, nullptr);
 }
 
+namespace {
+// Voile de sélection de l'Outil Capture : sa fenêtre couvre tout son écran, sans être une fenêtre agrandie à barre de
+// titre (l'éditeur de l'outil, même agrandi, n'en est pas un).
+bool fullscreenToolWindow(HWND w) {
+    RECT r{};
+    MONITORINFO mi{sizeof mi};
+    if (!GetWindowRect(w, &r) || !GetMonitorInfoW(MonitorFromWindow(w, MONITOR_DEFAULTTONEAREST), &mi)) return false;
+    return isFullscreenWindow(r, mi.rcMonitor, IsZoomed(w) != FALSE,
+                              (GetWindowLongPtrW(w, GWL_STYLE) & WS_CAPTION) == WS_CAPTION);
+}
+} // namespace
+
 void DockApp::tickToolReveal() {
     if (!toolRevealOn_) {   // minuterie tardive
         KillTimer(hwnd_, kToolRevealTimer);
         return;
     }
     const ULONGLONG now = GetTickCount64();
-    const bool tool = captureToolInFront();
+    const HWND toolWindow = captureToolInFront();
+    const bool tool = toolWindow != nullptr;
+    const bool veil = tool && fullscreenToolWindow(toolWindow);   // le voile de sélection, pas l'éditeur
     if (trace_ && tool != toolWasInFront_) log::info(L"[trace] Outil Capture de Windows %s", tool ? L"devant" : L"parti");
     toolWasInFront_ = tool;
-    if (toolReveal_.keep(now, tool)) {
+    if (toolReveal_.keep(now, tool, veil)) {
+        applyToolLayer();
         if (revealLights_ && shotRevealMsg_ && now - toolBarPingAt_ >= 1000)   // la sécurité de la barre coupe après 3 s
             if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) {
-                PostMessageW(bar, shotRevealMsg_, 1, 0);
+                PostMessageW(bar, shotRevealMsg_, WPARAM(toolLowered_ ? ShotReveal::UnderVeil : ShotReveal::Visible), 0);
                 toolBarPingAt_ = now;
                 if (trace_) log::info(L"[trace] Outil Capture de Windows : barre relancée");
             }
@@ -617,6 +669,7 @@ void DockApp::tickToolReveal() {
     }
     KillTimer(hwnd_, kToolRevealTimer);
     toolRevealOn_ = false;
+    applyToolLayer();   // de nouveau devant tout, pointeur repris
     StackWindow::setCaptureVisible(false);
     switcher_.setCaptureVisible(false);
     concealAfterCapture();
@@ -634,19 +687,19 @@ void DockApp::tickToolReveal() {
                                               : L"déjà en marche ou coupé");
 }
 
-bool DockApp::captureToolInFront() {
+HWND DockApp::captureToolInFront() {
     const HWND fg = GetForegroundWindow();
     DWORD pid = 0;
-    if (!fg || !GetWindowThreadProcessId(fg, &pid) || !pid) return false;
+    if (!fg || !GetWindowThreadProcessId(fg, &pid) || !pid) return nullptr;
     HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return false;
+    if (!p) return nullptr;
     wchar_t path[MAX_PATH] = {};
     DWORD n = MAX_PATH;
     const bool ok = QueryFullProcessImageNameW(p, 0, path, &n) != FALSE;
     CloseHandle(p);
-    if (!ok) return false;
+    if (!ok) return nullptr;
     const wchar_t* name = wcsrchr(path, L'\\');
-    return isCaptureToolProcess(name ? name + 1 : path);
+    return isCaptureToolProcess(name ? name + 1 : path) ? fg : nullptr;
 }
 
 namespace {
@@ -886,8 +939,13 @@ void DockApp::onMouse(POINT screen) {
         confinedLogged_ = confined;
         if (trace_) log::info(L"[trace] pointeur %s", confined ? L"confiné ailleurs par une autre app : hors du Dock" : L"libre");
     }
-    controller_.setPointerAway(confined);
-    if (confined) {
+    // Outil Capture de Windows devant : son voile couvre le Dock, qui ne s'agrandit ni ne prend les clics.
+    const bool away = confined || placementDuringToolSession(toolLowered_).pointerIgnored;
+    controller_.setPointerAway(away);
+    if (away) {
+        // Un coin atteint pendant ce temps est vu bloqué : il ne part pas quand le Dock reprend le pointeur resté au
+        // coin (relecture du plan 69).
+        checkHotCorner(screen, confined || placementDuringToolSession(toolLowered_).hotCornersBlocked);
         if (cursorInDock_ || cursorAtEdge_) {
             cursorInDock_ = cursorAtEdge_ = false;
             if (settings_.autohide) requestFrame();
@@ -934,7 +992,7 @@ void DockApp::syncPointer() {
     setTransparent(!*inside);
 }
 
-void DockApp::checkHotCorner(POINT screen) {
+void DockApp::checkHotCorner(POINT screen, bool forceBlocked) {
     if (cornerScreens_.empty())
         for (const MonitorInfo& m : enumMonitors()) cornerScreens_.push_back(m.rect);
     const std::optional<Corner> at = cornerAt(screen, cornerScreens_);
@@ -943,7 +1001,7 @@ void DockApp::checkHotCorner(POINT screen) {
     // son coin le referme.
     const bool button = ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
     const bool modal = menuOpen_ && !(action == HotCornerAction::MissionControl && MissionView::isOpen());
-    const bool blocked = button || switch_.active() || modal || (at && fullscreenAt(screen));
+    const bool blocked = forceBlocked || button || switch_.active() || modal || (at && fullscreenAt(screen));
     if (corners_.update(at, screen, blocked) && action != HotCornerAction::Off)
         PostMessageW(hwnd_, WM_APP_CORNER, WPARAM(action), 0);
 }
@@ -2305,6 +2363,8 @@ void DockApp::renderNow() {
     }
     capture_.stop();
     glassLive_ = false;
+    if (!keepPauseAfterStop(backdropHiddenPause_, menuOpen_, switchPanel_, revealDock_ || toolRevealOn_))
+        capturePaused_ = false;   // plus de raison de pause : updateGlass relance la capture
     if (initRenderer()) {
         RECT rc;
         GetClientRect(hwnd_, &rc);
@@ -2440,10 +2500,12 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         }
         // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock se montre à ses captures, sans retenir la
         // touche.
-        if ((vk == VK_SNAPSHOT || vk == 'S') &&
-            windowsShotKey(vk, down, repeat, wasDown, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
-                           (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0))
-            PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT, 0, LPARAM(k->time));
+        if (vk == VK_SNAPSHOT || vk == 'S') {
+            const bool win = ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0;
+            if (windowsShotKey(vk, down, repeat, wasDown, win, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0))
+                PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT,
+                             WPARAM(toolShowsVeil(vk, win, (GetAsyncKeyState(VK_MENU) & 0x8000) != 0)), LPARAM(k->time));
+        }
         // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.
         // Annoncée au fil du Dock (modèle, minuterie des animations) et de façon synchrone : coupée avant la réduction.
         if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
@@ -2604,18 +2666,45 @@ void DockApp::startMouseThread() {
         // Relais du crochet souris (plan 62) : il se tait sous une app en administrateur, quand un autre crochet le prive,
         // ou quand une app déplace le curseur (SetCursorPos). La position lue prend alors le relais, sur ce fil.
         CursorRelay relay;
+        // Au rythme de l'écran du Dock (retour du 10 octobre : à 16 ms, la minuterie de Windows donnait 30 à 60 lectures
+        // par seconde, « impression de 30 fps » sous une app en administrateur sur un écran à 165 Hz).
+        {
+            MONITORINFOEXW mi{};
+            mi.cbSize = sizeof mi;
+            DEVMODEW dm{};
+            dm.dmSize = sizeof dm;
+            if (GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), &mi) &&
+                EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm) && dm.dmDisplayFrequency > 1)
+                relay.setFrameMs(1000 / dm.dmDisplayFrequency);
+        }
         HWND foreground = nullptr;
         bool elevated = false;
         ULONGLONG installedAt = GetTickCount64();   // le silence du crochet se compte depuis son installation
         unsigned interval = relay.intervalMs(installedAt);
-        UINT_PTR timer = SetTimer(nullptr, 0, interval, nullptr);
+        // Minuterie haute résolution (précise à la milliseconde, sans changer la résolution de tout le système) ; l'attente
+        // pompe les messages, ce que demandent les crochets bas niveau de ce fil.
+        HANDLE tick = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (!tick) tick = CreateWaitableTimerW(nullptr, FALSE, nullptr);   // avant Windows 10 1803
+        const auto arm = [&tick](unsigned ms) {
+            LARGE_INTEGER due{};
+            due.QuadPart = -LONGLONG(ms) * 10000;
+            SetWaitableTimer(tick, &due, LONG(ms), nullptr, nullptr, FALSE);
+        };
+        arm(interval);
         int polls = 0;
         ULONGLONG pollsSince = installedAt;
         RECT lastClip{};
         bool clipKnown = false;
-        MSG msg;
-        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-            if (msg.message != WM_TIMER || msg.hwnd) continue;
+        for (bool running = true; running;) {
+            const DWORD woke = MsgWaitForMultipleObjectsEx(1, &tick, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            if (woke == WAIT_OBJECT_0 + 1) {   // messages : crochets, WM_QUIT
+                MSG msg;
+                while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+                    if (msg.message == WM_QUIT) running = false;
+                    else DispatchMessageW(&msg);
+                continue;
+            }
+            if (woke != WAIT_OBJECT_0) continue;
             const ULONGLONG now = GetTickCount64();
             if (trace_ && (++polls, now - pollsSince >= 5000)) {
                 log::info(L"[perf] relais de la souris : %d lectures en 5 s (intervalle %u ms)", polls, interval);
@@ -2627,7 +2716,7 @@ void DockApp::startMouseThread() {
                 relay.cursorLost(now);
                 if (const unsigned want = relay.intervalMs(now); want != interval) {
                     interval = want;
-                    timer = SetTimer(nullptr, timer, interval, nullptr);
+                    arm(interval);
                 }
                 continue;
             }
@@ -2661,10 +2750,10 @@ void DockApp::startMouseThread() {
                           relay.active() && elevated ? L" (app en administrateur au premier plan)" : L"");
             if (const unsigned want = relay.intervalMs(now); want != interval) {
                 interval = want;
-                timer = SetTimer(nullptr, timer, interval, nullptr);
+                arm(interval);
             }
         }
-        KillTimer(nullptr, timer);
+        CloseHandle(tick);
         if (keys) UnhookWindowsHookEx(keys);
         if (hook) UnhookWindowsHookEx(hook);
     });
@@ -2826,7 +2915,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg == toolTestMsg_ && toolTestMsg_) {   // essai : comme ⊞⇧S, sans clavier
-        onToolShot(0);
+        onToolShot(0, true);
         return 0;
     }
     if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
@@ -2952,7 +3041,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_APP_TOOL_SHOT:
-            onToolShot(DWORD(lp));
+            onToolShot(DWORD(lp), wp != 0);
             return 0;
         case WM_APP_SHOT:   // touche neutre déjà envoyée par le crochet
             if (wp == 1) takeScreenShot(lp != 0);
@@ -3139,6 +3228,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kConfigTimer) {
                 KillTimer(hwnd_, kConfigTimer);
+                // Le dossier est surveillé en entier, et la barre y réécrit ses récents à chaque changement d'app : rien à
+                // relire si les fichiers du Dock n'ont pas changé (relecture de la nuit).
+                if (!configWatch_.changed()) return 0;
                 double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
                 double heightBefore = DockController::windowHeightPx(settings_, metrics_, scale_);
                 loadConfig(false);
@@ -3323,6 +3415,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     trace_ = options.trace;
     snapshot_ = !options.snapshot.empty();
     dataDir_ = appDataDir();
+    configWatch_ = ConfigWatch({dataDir_ + L"\\settings.json", dataDir_ + L"\\dock-metrics.json"});
     log::init(dataDir_ + L"\\logs");
     log::info(L"MacDock démarre");
     std::wstring iconDir = dataDir_ + L"\\icons";
