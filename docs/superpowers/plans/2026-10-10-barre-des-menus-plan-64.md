@@ -6,7 +6,8 @@
 les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 
 ## Mesures (VM macOS 26 en 1x contre rendu hors écran de MacDock, en points)
-- Ligne de base du texte : 16,0 sur la VM, ~16,9 dans MacDock (texte trop bas de 0,9).
+- Ligne de base du texte : 16,0 sur la VM, 16,47 dans MacDock (texte trop bas de 0,45 ; « ~16,9 » dans une première
+  mesure qui mélangeait les méthodes, voir « Décisions en cours de route »).
 - Écart d'encre entre titres : 21,2 en moyenne sur la VM, 22,1 dans MacDock (la largeur de texte est arrondie à
   l'entier supérieur : +0,5 en moyenne).
 - Pas entre icônes d'état (loupe → Centre de contrôle) : 36,0 sur la VM, 30 dans MacDock. Avec la troisième icône de la
@@ -53,7 +54,7 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 - [x] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
 - [x] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
 - [x] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).
-- [ ] 7. **Essais réels** : rendu hors écran mesuré contre la VM, Release, barre relancée.
+- [x] 7. **Essais réels** : rendu hors écran mesuré contre la VM, Release, barre relancée.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
 
@@ -90,3 +91,45 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
   simples donnent 10,34 pt (1x) et 10,70 (2x) entre la date et l'heure, contre 10,35 sur la VM.
 - **`clockGap` 1,5 et `rightMargin` 8,4** (au lieu de 3 et 9) : mesurés sur ces rendus, icône → date 23,88 (1x) et
   24,10 (2x) contre 23,99 ; marge droite 19,27 et 19,76 contre 19,71.
+- **Pas de « trak » dans ce plan** (contrordre du chef d'orchestre, 04 h 40) : le texte de MacDock est 1 à 1,6 pt plus
+  large par mot que celui de la VM. Cause trouvée : CoreText applique la table AAT « trak » de SF Pro (lue dans la
+  police installée : −12/2048 em à 13 pt, soit −0,076 pt par caractère ; +0,151 pt à 9,4 pt), DirectWrite l'ignore.
+  L'appliquer à la seule barre la rendrait plus serrée que les menus ouverts juste dessous : plan à part pour tout le
+  texte de MacDock (barre, menus, infobulle du Dock, Spotlight, Réglages). Ébauche testée gardée hors du dépôt.
+
+## Tableau final (une seule méthode)
+Bords à 50 % de l'encre, encre normalisée côté par côté (85 % de noir à droite sur la VM comme dans MacDock), fond pris
+sur les lignes du haut de la barre ; rendus de MacDock passés par le chemin de la VM (`simulate_vm.py` : rendu 1x, étiré
+x 1,625 en bilinéaire). « Avant » : rendu du 10 octobre à 3 h 23 (horloge « sam. 10 oct. 3:23 ») ; « après » :
+`--time 2026-10-09T22:17`, la même horloge que la capture. Points.
+
+| Cote | VM macOS 26 | Avant | Après 1x | Après 2x |
+|---|---|---|---|---|
+| Ligne de base du texte | 16,02 | 16,51 | 16,03 | 16,05 |
+| Écart d'encre entre titres (moyenne) | 22,30 | 22,50 | 21,40 | 21,70 |
+| Pas entre les deux icônes (centres) | 36,43 | 29,74 | 36,06 | 36,11 |
+| Icône → début de la date (encre) | 23,83 | 19,35 | 23,32 | 23,84 |
+| Centre de l'icône → début de la date | 30,30 | 26,43 | 29,78 | 30,34 |
+| Date → heure (encre) | 10,06 | 6,12 | 9,70 | 10,23 |
+| Fin de l'heure → bord droit | 19,59 | 21,26 | 19,11 | 19,54 |
+| Largeur de la loupe (50 %) | 12,07 | 12,81 | 12,13 | 12,26 |
+| Largeur du Centre de contrôle (50 %) | 12,95 | 14,16 | 12,94 | 13,01 |
+
+Dessins (ajustement du même modèle, VM contre « après ») : loupe à 0,06 pt près (anneau 1,32 / 1,36, manche 1,90 / 1,90) ;
+Centre de contrôle à 0,15 pt près (contour 1,27 / 1,24, pistes 6,48 et 5,80 / 6,33 et 5,79).
+
+Écarts restants, expliqués :
+- **À l'échelle 1**, le texte est calé au pixel entier : jusqu'à 0,5 pt de décalage (icône → date, marge droite). À
+  l'échelle 2 (l'écran de l'utilisateur), tout est à 0,3 pt près, sauf les deux lignes suivantes.
+- **Écart entre titres** : 21,7 contre 22,3. Mesuré proprement, macOS met ~10,4 pt de marge de chaque côté d'un titre
+  (MacDock : 10). L'ancien arrondi à l'entier supérieur masquait l'écart (22,50) ; la marge sera recalée avec le plan
+  « trak », qui revoit la largeur de tout le texte en même temps.
+- **Pas des icônes** : 36,1 contre 36,4 : MacDock garde des cases fixes de 36, macOS donne à chaque icône sa largeur.
+
+## Limites
+- Une seule capture de la VM, à l'échelle 1 et sans accélération graphique (barre grise opaque) : couleurs et
+  transparence ne sont pas des cibles. Côté gauche (pomme, nom de l'app, titres) en noir plein sur la VM, côté droit à
+  85 % : MacDock dessine tout à 85 %, noté sans être changé.
+- Icônes mesurées : loupe et Centre de contrôle. Son, saisie (« FR »), Wi-Fi et batterie n'apparaissent pas sur la VM :
+  non mesurés.
+- Largeur des mots : 1 à 1,6 pt de trop par mot (table « trak », plan à venir).
