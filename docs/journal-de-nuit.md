@@ -1188,6 +1188,32 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Limites** : ⊞Impr. écran et Alt+Impr. écran copient l'écran sans attendre ; une app en administrateur au premier plan
   cache la touche ; enregistrements et partages d'écran (OBS, Teams) non couverts.
 
+### Plan 67 — Icônes du Dock préparées hors de son fil, nuit du 10 octobre (seul)
+
+- **Pourquoi** : tu veux un Dock « tout le temps fluide ». Ses icônes (extraction, forme, ombre, aperçus des piles)
+  étaient préparées sur son fil, pendant la construction de chaque image : 41 à 104 ms par image au démarrage, 52,5 ms à
+  l'arrivée d'une nouvelle app, autant de saccades.
+- **Maintenant** : un fil à part prépare les icônes ; le Dock ne fait que les demander, garde l'ancienne image (ou une
+  case vide) en attendant, puis range l'image prête et redessine. Les cases passent avant les aperçus des piles.
+- **Mesuré en vrai** (mode diagnostic) : 0,1 ms par image au démarrage, toutes les icônes prêtes en 854 ms (aperçu de
+  la pile Téléchargements compris) ; nouvelle app : 0,0 ms, icône prête en 57 ms ; au repos, rien ne change (10 à 14
+  tours de boucle en 5 s).
+- **Inchangé** : le sélecteur ⌥⇥, la liste d'une pile et le glisser préparent encore leurs icônes tout de suite (en
+  général déjà prêtes) ; le rendu hors écran reste complet.
+- **Relecture** : deux importants corrigés. Une case dont l'image change (Corbeille qui se remplit, aperçu d'une pile
+  pendant un téléchargement) garde sa dernière image au lieu de se vider ou de montrer l'icône du dossier ; un message
+  perdu ne coupe plus les icônes.
+
+## Mineurs reportés — plan 67
+- Ancrage d'une pile ou d'un menu (`openStack`, menu du Dock) : `buildFrame` y prépare encore en synchrone les icônes
+  manquantes, comme avant le plan (peu après un changement de thème, ~700 ms au clic droit).
+- Anciens aperçus d'une même pile gardés en file : ils sont préparés puis jetés ; une vignette bloquée (partage hors
+  ligne) retient les icônes derrière elle (un seul fil).
+- À la sortie, un fil détaché (travail de plus de 300 ms) peut survivre aux statiques détruites (fabrique WIC, tables des
+  formes, journal) : risque faible de plantage à la fermeture, comme les fils déjà détachés de Spotlight et des piles.
+- Fil des icônes en priorité normale (« sous la normale » le laisserait moins disputer le processeur au Dock).
+- Aucune garde contre un `beginAsync` imbriqué (impossible aujourd'hui).
+
 ## Mineurs reportés — plan 63
 - Capture « fenêtre » de MacDock (⊞⇧4, Espace) pendant une révélation : le Dock apparaît par-dessus la fenêtre.
 - Enregistrement ⊞⇧5 pendant une révélation : le Dock, les pastilles et les menus apparaissent dans la vidéo, puis

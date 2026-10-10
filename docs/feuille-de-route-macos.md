@@ -53,6 +53,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
   espacées de 36 pt, horloge à chiffres fixes (plan 64).
 - **MacDock visible à l'Outil Capture de Windows** (⊞⇧S, Impr. écran), le temps qu'il est ouvert (plan 63 ; vrai essai
   au clavier à faire avec toi).
+- **Icônes du Dock préparées hors de son fil** : une icône lente ne fait plus saccader le Dock (plan 67).
 
 ## À faire, par ordre d'effet
 - **Apparence Clair / Sombre / Automatique** (ta demande du 10 octobre, MacDock et Windows, automatique au lever et au

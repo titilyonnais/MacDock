@@ -64,7 +64,7 @@ Dock « tout le temps fluide ».
   - WM_APP_ICONS ;
   - `renderNow` en mode hors du fil (budget en repli) ;
   - arrêt avant la destruction de la fenêtre.
-- [ ] 5. **Mesure réelle**, MacDock relancé en diagnostic : démarrage, pile Téléchargements, fenêtre d'essai, repos.
+- [x] 5. **Mesure réelle**, MacDock relancé en diagnostic : démarrage, pile Téléchargements, fenêtre d'essai, repos.
   Puis relecture indépendante, corrections, fusion locale.
 
 ## Fait
@@ -76,6 +76,33 @@ Dock « tout le temps fluide ».
 - **Tâche 4** : branchement dans le Dock (démarrage hors rendu hors écran, WM_APP_ICONS, `renderNow`, arrêt avant la
   fenêtre). Collage d'une fenêtre et de sa boucle, non testable en unité : vérifié par la mesure réelle (tâche 5).
   Suite complète : 884 cas, un échec dû à l'environnement (`uia_menus_read_and_invoke_fake_app`).
+- **Tâche 5, mesure réelle** (MacDock de la branche relancé une fois, mode diagnostic, sans entrée simulée) :
+  - démarrage, avant (`main`, 07:01:58) : « modèle » 82,7, 41,0, 31,9, 17,5, 59,2, 15,6, 23,6 et 104,3 ms ; après
+    (07:35:42) : 0,1 ms par image ; toutes les icônes prêtes en 854 ms (« [diag] icônes du Dock prêtes »), aperçu de la
+    pile Téléchargements compris (affichée « Pile ») ; la sentinelle ne signale rien ;
+  - fenêtre d'essai (PowerShell, ouverte puis refermée par moi) : avant 52,5 ms ; après 0,0 ms, icône prête en 57 ms ;
+  - repos après : 14, 10, 10 tours de boucle en 5 s (avant : 10 à 12).
+
+## Relecture indépendante (opus) : « Avec corrections »
+Aucun critique ; données partagées, COM, arrêt, générations et notifications après l'arrêt jugés sûrs.
+- **Important 1, case vide ou icône du dossier pendant la préparation d'une image de clé nouvelle** (Corbeille qui se
+  remplit ; aperçu de pile renouvelé à chaque rafraîchissement pendant un téléchargement : aperçu, dossier, aperçu).
+  Corrigé (72b0f54) : la case garde sa dernière image (`DockController::lastImages_`, signal `deferrals()` du
+  fournisseur) ; une pile en attente d'aperçu ne demande plus l'icône du dossier, qui ne sert qu'à une pile sans aperçu
+  possible. Tests `controller_tile_keeps_last_image_while_new_one_prepared` et
+  `controller_stack_preview_waits_without_folder_flash` rouges, puis verts.
+- **Important 2, un message WM_APP_ICONS perdu coupait les icônes jusqu'au redémarrage.** Corrigé (72b0f54) : la
+  notification rend « message parti », et le fil renotifie toutes les 250 ms tant que des résultats attendent sans être
+  repris. Test `icon_worker_renotifies_when_a_message_is_lost` rouge, puis vert.
+- **Corrigés en passant** : redessin dès qu'un résultat est repris, même refusé (mineur 1, collage non testable en
+  unité) ; tests du fil sans attente fragile ni vérification qui passerait à tort (mineur 6 : nombre de résultats prêts,
+  sortie du fil détaché prouvée, appartement COM vérifié avec son code de retour, copie des réglages vérifiée).
+- **Mineurs reportés** (journal) : ancrage des piles et des menus encore synchrone ; anciens aperçus d'une même pile
+  gardés en file ; fil détaché à la sortie face aux statiques ; priorité du fil ; `beginAsync` imbriqué.
+- **Refusé de juger** (par le relecteur) : fabrique WIC partagée d'un appartement à l'autre ; gestionnaires du Shell
+  sans `ThreadingModel` ; les mesures et l'échec des menus, non reproduits ; la boucle modale qui perd des messages.
+
+Suite complète après les corrections : 888 cas, un échec dû à l'environnement.
 
 ## Gardes (comportements d'aujourd'hui, inchangés)
 - Rendu hors écran complet.
