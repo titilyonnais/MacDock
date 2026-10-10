@@ -38,12 +38,19 @@ qui clignotent, titres décalés, pastilles qui sautent.
 
 ## Tâches
 - [x] 1. « Système » : la recherche ne descend pas dans une barre de titre. Tests : arbre factice façon VMware (barre de
-  titre seule : aucun titre), barre de titre et vraie barre (titres de la vraie) (a091c33).
+  titre seule : aucun titre), barre de titre et vraie barre (titres de la vraie) (a091c33). Vérification réelle (vrai
+  code de la barre, lecture seule) : 0 titre pour les deux fenêtres de VMware (avant : « Système »).
 - [x] 2. Séance de menus : app changée → fin ; mise en page attendue → refaite, titre retrouvé. Test de la règle
   (8be249b).
 - [x] 3. Bascule instantanée : graphismes gardés, sans fondu entre titres, relais sans trou (b3edb2a). Mesure réelle
   (fenêtre d'essai, rafales, souris laissée par toi) : nouveau menu complet 30 à 45 ms après le survol (avant : premiers
   pixels ~140 ms, complet ~300 ms, ~90 ms sans menu) ; « choix » → panneau en verre réel en ~2 ms (avant ~75 ms).
-- [ ] 4. Première ouverture : mesure (traces de durée), récents seulement pour le logo, puis mesure.
-- [ ] 5. Quitter une app : reproduction (vraies apps, rafales, traces), causes, corrections testées.
+- [x] 4. Première ouverture (f532343) : mesures (trace, tes clics) : ~70 ms de fenêtre de menu à la première ouverture
+  (0,9 s ce matin : les icônes des apps récentes sont prêtes dès le démarrage de la barre, 144 ms avant tout clic), 2 ms
+  de préparation d'un titre à l'autre ; les icônes des documents récents (~90 ms au premier menu) ne sont plus préparées
+  que pour le menu du logo.
+- [x] 5. Quitter une app (d0ae632) : enregistrement pendant que tu fermais la VM : Windows a donné la main au Terminal
+  caché derrière VMware, puis à Claude 265 ms plus tard ; la barre affichait les deux. Quand la fenêtre d'app active
+  vient de se fermer ou de se cacher, la barre (titres et pastilles) attend que le premier plan se pose, au plus
+  350 ms ; un changement ordinaire passe tout de suite.
 - [ ] 6. Relecture indépendante, corrections, fusion locale.
