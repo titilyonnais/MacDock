@@ -1157,6 +1157,39 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Mode diagnostic** : une sentinelle note quand le crochet se tait ou que la boucle bloque, et pourquoi la boucle
   tourne.
 
+### Plan 64 — Barre des menus d'après ta VM, nuit du 10 octobre (seul)
+
+- **Ce que tu m'avais demandé** : « revois toute l'interface… bon arrondi, tout pareil » ; après le Dock (plans 60 et
+  61), la barre des menus, mesurée sur ta capture de macOS 26.
+- **Texte** posé sur sa ligne de base, à 16 pt du haut comme sur macOS (il était 0,45 pt trop bas).
+- **Icônes d'état** espacées de 36 pt (30 avant) ; **loupe** et **Centre de contrôle** redessinés aux cotes de ta capture
+  (un dessin paramétré, ajusté pixel à pixel sur l'image de la VM) : deux interrupteurs comme macOS 26, en haut piste
+  creuse et bouton plein, en bas piste pleine et bouton creux.
+- **Horloge** « Ven. 9 oct.  22:17 » : jour avec majuscule, deux espaces, chiffres à chasse fixe comme macOS (elle ne
+  bouge plus d'une minute à l'autre) ; écarts avant l'horloge et au bord droit recalés.
+- **`menubar.json` en version 2** : au premier lancement, la barre migre ton fichier (seules les mesures restées aux
+  anciens défauts changent) ; l'app Réglages et l'import d'une sauvegarde lisent aussi le fichier migré.
+- **Mesuré** d'une seule façon sur ta capture : à 0,3 pt près à l'échelle de ton écran, sauf deux écarts expliqués
+  dans le plan (marge des titres, pas des icônes). Le menu « Aller » de l'Explorateur était déjà là.
+- **Trouvaille** : sur macOS, SF Pro est resserré selon sa taille (table « trak » de la police, ignorée par Windows) ;
+  nos mots sont 1 à 1,6 pt trop larges. Plan à part, pour tout le texte de MacDock.
+
+## Décisions prises sans toi (plan 64)
+- **Dessins à moi** de la loupe et du Centre de contrôle, d'après les mesures : pas les symboles d'Apple.
+- **Texte à 85 % de noir partout** : sur la VM, le nom de l'app et les titres sont d'un noir plein (les icônes et
+  l'horloge à 85 %) ; la VM n'ayant pas d'accélération graphique, la couleur n'était pas une cible.
+- **Marge des titres gardée à 10 pt** (macOS : ~10,4 mesuré) jusqu'au plan « trak », qui recalera la largeur de tout le
+  texte en même temps.
+
+## Mineurs reportés — plan 64
+- Manche de la loupe : son bout arrondi déborde de 0,25 pt dans le verre de l'anneau (macOS : pas de bosse).
+- Horloge : la mise en page n'est refaite que si la longueur du texte change (avec les chiffres fixes, au changement de
+  jour) : jusqu'au prochain changement d'app, l'horloge peut déborder de 1,5 pt de sa case.
+- `MacMenuBar --snapshot --scale` sans borne (une valeur absurde fait planter le rendu) ; virgule décimale non lue ;
+  `--time` invalide ignoré sans avertissement.
+- Écart de 1,5 pt avant l'horloge : zone morte au clic gauche (le clic droit ouvre le menu de la barre).
+- Échec de la réécriture de `menubar.json` migré non noté dans le journal (la migration reste appliquée en mémoire).
+
 ## Décisions prises sans toi (plan 62)
 - **Rebond d'attention : un seul train par épisode**, comme une demande « informative » sur macOS. Une app qui continue
   de clignoter (Claude, quand Windows lui a refusé le premier plan, clignote sans fin) ne rebondit plus jusqu'au matin.

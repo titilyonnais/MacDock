@@ -153,6 +153,12 @@ void MenuBarApp::loadSettings(bool initial) {
     if (!initial && (f.wasInvalid || f.unreadable)) {
         log::warn(L"menubar.json ignoré (invalide ou illisible) : réglages actuels conservés");
     } else {
+        if (f.fromFile && jsonVersion(f.value) < kMenuBarSettingsVersion) {
+            // Ancienne version : migrée en mémoire, réécrite (pas en --snapshot, qui ne touche à rien).
+            f.value = migrateMenuBarSettingsJson(f.value);
+            if (ctl_ && saveJsonFileAtomic(path, f.value))
+                log::info(L"menubar.json migré vers la v%d", kMenuBarSettingsVersion);
+        }
         settings_ = menuBarSettingsFromJson(f.value);
     }
     // Fichier absent : on l'écrit avec les valeurs par défaut (pas en --snapshot, qui ne touche à rien).
@@ -764,12 +770,13 @@ void MenuBarApp::layoutScreen(Screen& s) {
     s.layoutIn.rightMargin = m.rightMargin;
     for (const auto& menu : menus_.menus) {
         if (menu.logo) s.layoutIn.leftWidths.push_back(m.logoSize + 2 * pad);
-        else s.layoutIn.leftWidths.push_back(std::ceil(s.renderer.measure(menu.title, menu.bold) / s.scale) + 2 * pad);
+        else s.layoutIn.leftWidths.push_back(textBoxWidth(s.renderer.measure(menu.title, menu.bold), s.scale, pad));
     }
     for (const auto& item : status_)
         s.layoutIn.rightWidths.push_back(item.kind == StatusKind::Clock
-                                             ? std::ceil(s.renderer.measure(clock_, false) / s.scale) + 2 * pad
+                                             ? textBoxWidth(s.renderer.measure(clock_, false, true), s.scale, pad)
                                              : m.statusWidth);
+    if (!status_.empty() && status_.back().kind == StatusKind::Clock) s.layoutIn.lastGap = m.clockGap;
     // Trop d'icônes d'apps : celles de gauche cèdent la place au logo et au nom de l'app (comme sur macOS).
     const std::size_t fit = trayFit(s.layoutIn, trayLaid_.size(), m.statusWidth);
     s.trayFirst = trayLaid_.size() - fit;
@@ -853,7 +860,10 @@ BarFrame MenuBarApp::frame(const Screen& s) const {
     }
     for (std::size_t j = 0; trayN + j < s.layout.rightX.size() && j < status_.size(); ++j) {
         BarDrawItem it;
-        if (status_[j].kind == StatusKind::Clock) it.text = clock_;
+        if (status_[j].kind == StatusKind::Clock) {   // chiffres à chasse fixe, comme macOS
+            it.text = clock_;
+            it.tabular = true;
+        }
         if (status_[j].kind == StatusKind::Input) {   // « FR » dans sa boîte
             it.text = status_[j].text;
             it.boxed = true;
@@ -941,7 +951,8 @@ void MenuBarApp::pollInput() {
 
 void MenuBarApp::updateClock() {
     SYSTEMTIME t;
-    GetLocalTime(&t);
+    if (fixedTime_) t = *fixedTime_;
+    else GetLocalTime(&t);
     clock_ = formatClock(t, settings_.clock);
 }
 
@@ -1749,6 +1760,14 @@ int MenuBarApp::runSnapshot(const Options& options) {
     GetDpiForMonitor(s.monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
     s.dpi = dpiX;
     s.scale = float(dpiX) / 96.0f;
+    if (options.scale > 0) {   // autre échelle : même écran en points, image plus grande ou plus petite
+        const float k = options.scale / s.scale;
+        s.rect.right = s.rect.left + LONG(std::lround((s.rect.right - s.rect.left) * k));
+        s.rect.bottom = s.rect.top + LONG(std::lround((s.rect.bottom - s.rect.top) * k));
+        s.scale = options.scale;
+        s.dpi = UINT(std::lround(96 * s.scale));
+    }
+    fixedTime_ = options.time;
     s.heightPx = int(std::lround(settings_.metrics.height * s.scale));
     s.font = s.renderer.setFont(settings_.font, float(settings_.metrics.fontSize) * s.scale);
     screens_.push_back(std::move(owned));

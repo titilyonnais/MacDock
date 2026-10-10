@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../config/metrics.h"
 #include "../core/strings.h"
 
 namespace md {
@@ -59,6 +60,8 @@ MenuBarSettings menuBarSettingsFromJson(const json::Value& v) {
         t.statusWidth = readBounded(*m, "statusWidth", t.statusWidth, 10, 60);
         t.rightMargin = readBounded(*m, "rightMargin", t.rightMargin, 0, 60);
         t.statusIconSize = readBounded(*m, "statusIconSize", t.statusIconSize, 8, 32);
+        t.textBaseline = readBounded(*m, "textBaseline", t.textBaseline, 0, 48);
+        t.clockGap = readBounded(*m, "clockGap", t.clockGap, 0, 60);
     }
     return s;
 }
@@ -96,8 +99,33 @@ json::Value menuBarSettingsToJson(const MenuBarSettings& s) {
     m.set("statusWidth", t.statusWidth);
     m.set("rightMargin", t.rightMargin);
     m.set("statusIconSize", t.statusIconSize);
+    m.set("textBaseline", t.textBaseline);
+    m.set("clockGap", t.clockGap);
     v.set("metrics", m);
     return v;
+}
+
+json::Value migrateMenuBarSettingsJson(const json::Value& v) {
+    if (!v.isObject() || jsonVersion(v) >= kMenuBarSettingsVersion) return v;
+    struct Changed { int before; const char* key; double oldDefault; double newDefault; };
+    static const Changed kChanged[] = {
+        // v2 : barre mesurée sur macOS 26 (plan 64).
+        {2, "statusWidth", 30, 36},
+        {2, "rightMargin", 10, 8.4},
+    };
+    const int from = jsonVersion(v);
+    json::Value out = v;
+    if (const json::Value* metrics = v.find("metrics"); metrics && metrics->isObject()) {
+        json::Value m = *metrics;
+        for (const Changed& c : kChanged) {
+            const json::Value* f = m.find(c.key);
+            if (from >= c.before || !f || !f->isNumber() || std::fabs(f->asNumber(0) - c.oldDefault) >= 1e-9) continue;
+            m.set(c.key, c.newDefault);   // défaut de l'époque : suit le nouveau
+        }
+        out.set("metrics", std::move(m));
+    }
+    out.set("version", kMenuBarSettingsVersion);
+    return out;
 }
 
 } // namespace md

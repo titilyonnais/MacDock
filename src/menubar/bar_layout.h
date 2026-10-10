@@ -11,6 +11,7 @@ struct BarLayoutInput {
     std::vector<double> leftWidths;    // logo, nom de l'app, menus (largeur de case, marges comprises)
     std::vector<double> rightWidths;   // de gauche à droite (l'horloge en dernier)
     std::size_t keepLeft = 2;          // toujours visibles (logo, nom de l'app)
+    double lastGap = 0;                // écart de plus avant la dernière case de droite (l'horloge)
 };
 
 struct BarLayout {
@@ -26,5 +27,9 @@ struct BarHit {
 // Les menus qui toucheraient la partie droite sont masqués (comme sur macOS), sauf les keepLeft premiers.
 BarLayout layoutBar(const BarLayoutInput& in);
 BarHit hitTestBar(const BarLayout& l, const BarLayoutInput& in, double x);
+// Largeur de la partie droite, écart avant l'horloge compris.
+double rightPartWidth(const BarLayoutInput& in);
+// Case de texte, en points : le texte mesuré (pixels) ramené à l'échelle de l'écran, sans arrondi, et ses deux marges.
+double textBoxWidth(double textPx, double scale, double padding);
 
 } // namespace md
