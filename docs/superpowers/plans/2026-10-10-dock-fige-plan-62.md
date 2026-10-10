@@ -152,3 +152,6 @@ génie indépendant des messages SHELLHOOK ; code de diagnostic gratuit hors dia
 - `FullscreenWatch` garde sur le fil du Dock des crochets limités au processus de l'app en plein écran (déplacements,
   masquage) : à mesurer pendant une vidéo en plein écran.
 - La sentinelle et les compteurs du mode diagnostic restent en place (ils ne coûtent rien hors diagnostic).
+- Le budget d'icônes de 10 ms par image n'est pas un plafond : une icône lente (ou l'aperçu d'une pile) prend encore
+  20 à 137 ms dans une seule image (03:21:42.634 : « modèle 137,5 ms »). Le vrai remède : préparer les icônes hors du
+  fil du Dock, comme l'écran Apps.
