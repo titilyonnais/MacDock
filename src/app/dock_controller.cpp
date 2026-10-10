@@ -357,8 +357,13 @@ IconProvider::ImagePtr DockController::imageFor(const DockItem& item, IconProvid
         case ItemKind::AppsButton: return icons.appsButton(px);
         case ItemKind::Stack:
             // « Afficher comme : Pile » : les derniers éléments empilés ; dossier vide ou illisible → son icône.
-            if (item.stackDisplay == StackDisplay::Stack && !item.stackPreview.empty())
+            if (item.stackDisplay == StackDisplay::Stack && !item.stackPreview.empty()) {
+                const std::uint64_t asked = icons.deferrals();
                 if (auto img = icons.composeStack(item.key, item.stackPreview, px)) return img;
+                // Aperçu en préparation (plan 67) : la case garde sa dernière image (buildFrame) ; l'icône du dossier ne
+                // sert qu'à une pile sans aperçu possible (dossier vide ou illisible).
+                if (icons.deferrals() != asked) return nullptr;
+            }
             return icons.get(L"stack:" + item.launch, item.launch, px);
         case ItemKind::Trash: return icons.trash(item.trashFull, px);
         case ItemKind::MinimizedWindow: {
@@ -663,6 +668,7 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     int imgPx = int(std::ceil(large * s));
 
+    std::map<std::wstring, IconProvider::ImagePtr> lastImages;   // celles de cette image, pour la suivante
     for (std::size_t i = 0; i < items_.size(); ++i) {
         const DockItem& item = items_[i];
         RenderIcon icon;
@@ -678,7 +684,11 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         icon.size = float(li.size) * s;
         icon.cy = f.bgBottom - float(metrics_.dockPadding * k) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
         icon.indicatorY = f.bgBottom - float(g.indicatorCenter * k) * s;
+        const std::uint64_t asked = icons.deferrals();
         icon.image = imageFor(item, icons, imgPx);
+        if (!icon.image && icons.deferrals() != asked)   // nouvelle image en préparation : la case garde la dernière
+            if (auto it = lastImages_.find(item.key); it != lastImages_.end()) icon.image = it->second;
+        if (icon.image) lastImages[item.key] = icon.image;
         icon.indicator = item.kind == ItemKind::App && item.running;
         if (item.kind == ItemKind::MinimizedWindow) icon.window = item.window;
         if ((dropItem_ && *dropItem_ == i) || (pressIndex_ && *pressIndex_ == i && !drag_)) icon.dim = 0.3f;
@@ -689,6 +699,7 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         }
         f.icons.push_back(std::move(icon));
     }
+    lastImages_ = std::move(lastImages);
 
     if (tooltipIndex_ && *tooltipIndex_ < items_.size() && tooltipOpacity_ > 0) {
         const DockItem& item = items_[*tooltipIndex_];

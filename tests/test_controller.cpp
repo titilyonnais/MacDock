@@ -564,3 +564,73 @@ TEST_CASE(controller_resting_tile_of_minimized_window) {
     REQUIRE(hidden.has_value());
     CHECK(EqualRect(&*hidden, &*tile));
 }
+
+TEST_CASE(controller_tile_keeps_last_image_while_new_one_prepared) {
+    // Relecture du plan 67 : la Corbeille qui se remplit (autre image, autre clé) restait vide le temps que le fil des
+    // icônes prépare la nouvelle. La case garde sa dernière image jusqu'à l'arrivée de la nouvelle.
+    Fixture f;
+    md::IconProvider icons;
+    std::size_t t = 0;
+    while (f.c.itemAt(t) && f.c.itemAt(t)->kind != md::ItemKind::Trash) ++t;
+    REQUIRE(f.c.itemAt(t) != nullptr);
+    const auto empty = f.c.buildFrame(false, icons).icons[t].image;   // hors du mode « fil » : préparée tout de suite
+    REQUIRE(empty != nullptr);
+    f.model.setTrashFull(true);
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(f.c.buildFrame(false, icons).icons[t].image == empty);   // la dernière image, pas une case vide
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    CHECK(jobs[0].cacheKey.starts_with(L"trash-full"));
+    const auto full = std::make_shared<md::IconProvider::Image>();
+    CHECK(icons.adopt(jobs[0].cacheKey, jobs[0].generation, full));
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(f.c.buildFrame(false, icons).icons[t].image == full);
+    icons.endAsync();
+}
+
+TEST_CASE(controller_stack_preview_waits_without_folder_flash) {
+    // Relecture du plan 67 : un aperçu de pile en préparation montrait l'icône du dossier (aperçu, dossier, aperçu à
+    // chaque rafraîchissement pendant un téléchargement). La case garde l'aperçu précédent ; sans aperçu précédent, elle
+    // attend vide. L'icône du dossier ne sert qu'à une pile sans aperçu possible.
+    md::AppModel model;
+    md::DockController c;
+    md::Settings s;
+    md::Metrics m;
+    md::IconProvider icons;
+    s.showRecents = false;
+    model.setShowRecents(false);
+    const std::wstring dir = L"C:\\Pile-essai";
+    model.loadPinned({{md::PinKind::Stack, L"", dir, L"Essai"}});
+    c.init(s, m, &model);
+    c.setViewport(1000, UINT(md::DockController::windowHeightPx(s, m, 1)), 1);
+    std::size_t k = 0;
+    while (c.itemAt(k) && c.itemAt(k)->kind != md::ItemKind::Stack) ++k;
+    REQUIRE(c.itemAt(k) != nullptr);
+    model.setStackPreview(L"stack:" + dir, {md::FileRef(dir + L"\\a.txt", 1)});
+    std::vector<md::IconJob> jobs;
+    const auto folderJobs = [&] {
+        int n = 0;
+        for (const md::IconJob& j : jobs) n += j.spec.kind == md::IconJobKind::App && j.spec.key == L"stack:" + dir;
+        return n;
+    };
+    // Démarrage : l'aperçu en préparation laisse la case vide, sans passer par l'icône du dossier.
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(c.buildFrame(false, icons).icons[k].image == nullptr);
+    icons.endAsync();
+    CHECK(folderJobs() == 0);
+    const auto first = std::make_shared<md::IconProvider::Image>();
+    for (const md::IconJob& j : jobs)   // tout arrive : l'aperçu, et les autres cases (Corbeille)
+        icons.adopt(j.cacheKey, j.generation,
+                    j.spec.kind == md::IconJobKind::Stack ? first : std::make_shared<md::IconProvider::Image>());
+    jobs.clear();
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(c.buildFrame(false, icons).icons[k].image == first);
+    // Un téléchargement change l'aperçu : la case garde le précédent pendant la préparation du nouveau.
+    model.setStackPreview(L"stack:" + dir, {md::FileRef(dir + L"\\b.txt", 2), md::FileRef(dir + L"\\a.txt", 1)});
+    CHECK(c.buildFrame(false, icons).icons[k].image == first);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    CHECK(jobs[0].spec.kind == md::IconJobKind::Stack);
+    CHECK(folderJobs() == 0);
+}

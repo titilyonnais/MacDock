@@ -93,6 +93,9 @@ public:
     bool adopt(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image);
     // Monte à chaque vidage du cache (thème, réglages des icônes, écran).
     std::uint64_t generation() const { return generation_; }
+    // Images demandées sans être prêtes (mode « hors du fil » ou budget dépassé), depuis la création : un appel qui fait
+    // monter ce compte a laissé sa case en attente.
+    std::uint64_t deferrals() const { return deferrals_; }
     IconStyle style() const;   // réglages actuels, copiés dans chaque travail
     // Fil des icônes : cache et réserve oubliés (le Dock a vidé le sien).
     void forget() {
@@ -122,7 +125,7 @@ public:
 private:
     bool budget_ = false, deferred_ = false;
     AsyncSink async_;
-    std::uint64_t generation_ = 0;
+    std::uint64_t generation_ = 0, deferrals_ = 0;
     ImagePtr requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority);
     std::map<std::wstring, ImagePtr> stale_;   // anciennes images, affichées en attendant les nouvelles
     ImagePtr deferStale(const std::wstring& cacheKey);   // budget dépassé : l'ancienne image s'il y en a une

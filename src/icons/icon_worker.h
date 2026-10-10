@@ -24,8 +24,10 @@ public:
     ~IconWorker() { stop(); }
 
     // Démarre le fil (COM en STA). notify : appelée sur le fil des icônes quand des résultats attendent, une fois
-    // jusqu'à la reprise suivante, jamais après stop() ; le Dock y poste un message à sa fenêtre. false : pas de fil.
-    bool start(std::function<void()> notify, Builder build = buildIconJob);
+    // jusqu'à la reprise suivante, jamais après stop() ; le Dock y poste un message à sa fenêtre et rend true s'il est
+    // parti. Tant que des résultats attendent sans être repris (message perdu), elle est rappelée toutes les 250 ms.
+    // false : pas de fil.
+    bool start(std::function<bool()> notify, Builder build = buildIconJob);
     bool running() const { return shared_ != nullptr; }
     // Fil du Dock : demande (doublons, générations dépassées et demandes après l'arrêt ignorés).
     void request(IconJob job);
@@ -34,6 +36,7 @@ public:
     // File vidée, plus rien de publié, puis le fil est rejoint ; pris plus de waitMs dans un travail long (vignette sur
     // un partage réseau), il est laissé finir seul : ses données sont partagées et il ne publie plus rien.
     void stop(DWORD waitMs = 300);
+    std::size_t ready() const;   // résultats prêts, pas encore repris (essais)
 
 private:
     struct Shared;

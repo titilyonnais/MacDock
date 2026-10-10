@@ -371,6 +371,7 @@ IconProvider::ImagePtr IconProvider::requestAsync(IconSpec spec, const std::wstr
 
 IconProvider::ImagePtr IconProvider::deferStale(const std::wstring& cacheKey) {
     deferred_ = true;
+    ++deferrals_;
     if (auto it = stale_.find(cacheKey); it != stale_.end()) return it->second;
     return nullptr;
 }

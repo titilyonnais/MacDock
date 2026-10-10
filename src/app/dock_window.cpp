@@ -3168,10 +3168,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             wakePosted_ = false;
             return 0;
         case WM_APP_ICONS: {   // plan 67 : images prêtes sur le fil des icônes
-            bool any = false;
-            for (IconResult& r : iconWorker_.take(icons_.generation()))
-                any |= icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
-            if (any) requestFrame();
+            std::vector<IconResult> ready = iconWorker_.take(icons_.generation());
+            for (IconResult& r : ready) icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+            // Même un résultat refusé (image préparée entre-temps ici) redessine : sa case l'attendait peut-être.
+            if (!ready.empty()) requestFrame();
             return 0;
         }
         case WM_APP_PING:
@@ -3334,7 +3334,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!snapshot_) {
         // Icônes du rendu courant préparées hors du fil du Dock (plan 67) ; sans ce fil, budget de 10 ms par image.
         const HWND dock = hwnd_;
-        if (!iconWorker_.start([dock] { PostMessageW(dock, WM_APP_ICONS, 0, 0); }))
+        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }))
             log::warn(L"Fil des icônes indisponible : icônes préparées sur le fil du Dock");
         if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);

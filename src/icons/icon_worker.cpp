@@ -12,7 +12,7 @@ struct IconWorker::Shared {
     std::mutex lock;
     IconJobs jobs;
     bool notified = false;   // une notification est partie, pas encore suivie d'une reprise
-    std::function<void()> notify;
+    std::function<bool()> notify;
     Builder build;
     HANDLE wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);   // demande ou arrêt
     HANDLE done = CreateEventW(nullptr, TRUE, FALSE, nullptr);    // le fil est sorti
@@ -25,14 +25,18 @@ struct IconWorker::Shared {
 namespace {
 
 // Attente d'un travail en pompant les messages : un fil COM en STA doit les traiter (appels entre appartements,
-// extensions du Shell qui créent des fenêtres).
-void waitPumping(HANDLE wake) {
-    if (MsgWaitForMultipleObjectsEx(1, &wake, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE) != WAIT_OBJECT_0 + 1) return;
-    MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+// extensions du Shell qui créent des fenêtres). false : délai écoulé.
+bool waitPumping(HANDLE wake, DWORD timeout) {
+    const DWORD r = MsgWaitForMultipleObjectsEx(1, &wake, timeout, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+    if (r == WAIT_TIMEOUT) return false;
+    if (r == WAIT_OBJECT_0 + 1) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
     }
+    return true;
 }
 
 } // namespace
@@ -65,7 +69,17 @@ void IconWorker::run(const std::shared_ptr<Shared>& s) {
                 job = s->jobs.next();
             }
             if (!job) {
-                waitPumping(s->wake);
+                // Des résultats attendent sans être repris : le message a pu se perdre (file pleine, boucle modale qui
+                // vide la file sans le distribuer). Nouvelle notification toutes les 250 ms tant qu'ils attendent.
+                DWORD timeout = INFINITE;
+                {
+                    std::lock_guard g(s->lock);
+                    if (s->jobs.ready() > 0) timeout = 250;
+                }
+                if (!waitPumping(s->wake, timeout)) {
+                    std::lock_guard g(s->lock);
+                    if (!s->jobs.stopped() && s->jobs.ready() > 0 && s->notify) s->notified = s->notify();
+                }
                 continue;
             }
             if (job->generation != generation) {   // le Dock a vidé son cache : ce fil oublie le sien
@@ -76,17 +90,14 @@ void IconWorker::run(const std::shared_ptr<Shared>& s) {
             std::lock_guard g(s->lock);
             s->jobs.complete(job->cacheKey, job->generation, std::move(image));
             // Sous le verrou : après stop(), plus aucune notification ne part.
-            if (!s->jobs.stopped() && s->jobs.ready() > 0 && !s->notified && s->notify) {
-                s->notified = true;
-                s->notify();
-            }
+            if (!s->jobs.stopped() && s->jobs.ready() > 0 && !s->notified && s->notify) s->notified = s->notify();
         }
     }
     if (SUCCEEDED(co)) CoUninitialize();
     SetEvent(s->done);
 }
 
-bool IconWorker::start(std::function<void()> notify, Builder build) {
+bool IconWorker::start(std::function<bool()> notify, Builder build) {
     if (shared_) return true;
     auto s = std::make_shared<Shared>();
     if (!s->wake || !s->done || !build) return false;
@@ -116,6 +127,12 @@ std::vector<IconResult> IconWorker::take(std::uint64_t current) {
     std::lock_guard g(shared_->lock);
     shared_->notified = false;
     return shared_->jobs.take(current);
+}
+
+std::size_t IconWorker::ready() const {
+    if (!shared_) return 0;
+    std::lock_guard g(shared_->lock);
+    return shared_->jobs.ready();
 }
 
 void IconWorker::stop(DWORD waitMs) {
