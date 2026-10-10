@@ -19,13 +19,17 @@
 - Nom exact aux pluriels près **en second recours** : « son » reste la page Son de Windows (nom exact) avant la section
   Sons de MacDock ; « capture d'écran » donne la section Captures d'écran quand aucun nom n'est exact tel quel.
 - Une recherche vidée par la normalisation (« -- ») ne trouve rien, comme avant.
+- Le dernier mot tapé n'est jamais mis au singulier : il est peut-être en cours de frappe, ou n'est pas un pluriel.
 
 ## Tâches
 - [x] 1. Conversions : tests puis code.
 - [x] 2. Recherche des réglages : tests puis code ; gardes (« son », « mises à jour », « -- », « pas »).
 - [x] 3. Rendus `--spotlight-snapshot` de « –40 °C en °F », « wi fi », « capture d'écran » : bon premier résultat
   (−40 °F ; Wi-Fi des Paramètres Windows ; Captures d'écran de Réglages MacDock), puis effacés.
-- [ ] 4. Relecture indépendante, corrections, fusion.
+- [x] 4. Relecture indépendante (opus) : « Avec corrections ». Le dernier mot tapé n'est plus mis au singulier
+  (« tous », « docs », « mais », « mods » trouvaient de faux noms devant les documents) ; les deux passes du nom exact
+  sont couvertes avec la vraie table (vues rouges par mutation) ; test « EN » renforcé ; commentaires à jour. Coût
+  accepté : « sons » ne trouve plus la page Son de Windows (la section Sons reste), « couleurs » plus Filtres de couleur.
 
 ## Gardes (comportements d'aujourd'hui, inchangés)
 « 4K », « 3d », « 12 pt », « 2nd », « 100C » ne sont pas convertis ; « 7 days » cherche d'abord l'app « 7 Days to Die » ;

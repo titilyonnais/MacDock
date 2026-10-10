@@ -40,7 +40,8 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Publication sur GitHub** (plan 52) et **mises à jour automatiques signées** (plan 53, version 0.53.0).
 - **Forcer à quitter** (⌥⌘⎋, menu ) : la fenêtre de macOS 26 (plan 54).
 - **Spotlight** : conversions d'unités et section « Réglages » (pages des Paramètres de Windows, sections de
-  Réglages MacDock) (plan 55).
+  Réglages MacDock) (plan 55) ; finitions la nuit du 10 octobre : « –40 °C » au tiret, espaces fines, « EN », « wi fi »,
+  « capture d'écran ».
 - **Couleur d'accentuation** de Réglages Système (huit accents), appliquée partout dans MacDock (plan 57).
 - **Menu de saisie** du clavier dans la barre de menus (« FR », « US »), comme celui de macOS (plan 58).
 - **Fenêtre suivante de l'app** au clavier (`` ⌥` ``, comme `` ⌘` `` de macOS) (plan 59).

@@ -1283,15 +1283,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 ## Mineurs reportés — plan 55
 - « Clavier » (Windows) ouvre `ms-settings:keyboard`, rangée par Microsoft avec la langue ; la page Clavier de
   Windows 11 est sous Accessibilité (`ms-settings:easeofaccess-keyboard`). À vérifier en réel.
-- Recherche : « wi fi » (avec une espace) ne trouve rien, « capture d'écran » au singulier ne trouve pas la section
-  « Captures d'écran », les traits d'union ne sont facultatifs que dans les noms (« hautparleurs ») ; « mise à jour »
-  met À propos (MacDock) avant Windows Update.
+- ~~Recherche : « wi fi » (avec une espace) ne trouve rien, « capture d'écran » au singulier ne trouve pas la section
+  « Captures d'écran », les traits d'union ne sont facultatifs que dans les noms (« hautparleurs »)~~ : corrigé la nuit
+  du 10 octobre (`fix/spotlight-55`). Reste : « mise à jour » met À propos (MacDock) avant Windows Update (une question
+  de goût, à décider avec toi).
 - `--pane` en échec silencieux si `MacDockSettings.exe` manque (rien au journal).
 - Tuile « Police » dessinée en Segoe UI au lieu de la police de l'interface ; un peintre recréé à chaque image
   pendant l'apparition.
-- Saisies non comprises : « –40 °C » (tiret demi-cadratin), U+2009 comme séparateur de milliers, mots de liaison en
-  majuscules (« EN »), « 1 GO », « 1 ML » ; deux pliages identiques (`foldName`, `fold`) ; le commentaire de
-  `formatNumber` ne dit pas qu'au-delà de 10^chiffres, tous les chiffres entiers s'affichent.
+- ~~Saisies non comprises : « –40 °C » (tiret demi-cadratin), U+2009 comme séparateur de milliers, mots de liaison en
+  majuscules (« EN »)~~ : corrigé la nuit du 10 octobre. Restent : « 1 GO », « 1 ML » (la casse y change le sens, à
+  décider avec toi) ; deux pliages identiques (`foldName`, `fold`) ; le commentaire de `formatNumber` ne dit pas
+  qu'au-delà de 10^chiffres, tous les chiffres entiers s'affichent.
 - Vu à l'essai réel, antérieur au plan : la barre de menus pose ses pastilles en double (en haut à droite) sur la
   fenêtre de Réglages MacDock, qui a déjà les siennes.
 
