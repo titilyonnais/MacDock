@@ -332,8 +332,46 @@ void IconProvider::setDark(bool dark) {
     clear();
 }
 
+void IconProvider::beginAsync(AsyncSink sink) {
+    async_ = std::move(sink);
+    deferred_ = false;
+}
+
+void IconProvider::endAsync() {
+    async_ = nullptr;
+    if (!deferred_) stale_.clear();   // tout est arrivé : la réserve ne sert plus
+}
+
+bool IconProvider::adopt(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image) {
+    // Génération dépassée (réglages, thème ou écran changés depuis la demande), ou image déjà préparée ici entre-temps
+    // (sélecteur ⌥⇥, glisser) : celle du cache reste.
+    if (generation != generation_ || cache_.contains(cacheKey)) return false;
+    stale_.erase(cacheKey);
+    cache_[cacheKey] = std::move(image);
+    return true;
+}
+
+IconStyle IconProvider::style() const {
+    IconStyle s;
+    s.strict = strict_;
+    s.dark = dark_;
+    s.shapeRatio = shapeRatio_;
+    s.cornerRatio = cornerRatio_;
+    s.jailInset = jailInset_;
+    s.shadowOpacity = shadowOpacity_;
+    s.customDir = customDir_;
+    return s;
+}
+
+IconProvider::ImagePtr IconProvider::requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority) {
+    spec.style = style();
+    async_(IconJob{cacheKey, generation_, priority, std::move(spec)});
+    return deferStale(cacheKey);   // l'ancienne image s'il y en a une, sinon une case vide
+}
+
 IconProvider::ImagePtr IconProvider::deferStale(const std::wstring& cacheKey) {
     deferred_ = true;
+    ++deferrals_;
     if (auto it = stale_.find(cacheKey); it != stale_.end()) return it->second;
     return nullptr;
 }
@@ -342,6 +380,7 @@ IconProvider::ImagePtr IconProvider::get(const std::wstring& key, const std::wst
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = key + L"|" + std::to_wstring(px);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (async_) return requestAsync({IconJobKind::App, key, parsingName, {}, px, {}}, cacheKey, 0);
     if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) return deferStale(cacheKey);   // à l'image suivante
     auto img = build(key, parsingName, px);
     stale_.erase(cacheKey);
@@ -487,6 +526,7 @@ IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const
     std::wstring cacheKey = L"#stack|" + key + L"|" + std::to_wstring(px);
     for (auto& f : files) cacheKey += L"|" + f.path + L"@" + std::to_wstring(f.modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (async_) return requestAsync({IconJobKind::Stack, key, {}, files, px, {}}, cacheKey, 1);   // après les cases
     if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) return deferStale(cacheKey);   // vignettes lentes
     const int s = iconShapePx(px, shapeRatio_);   // même forme que les icônes d'apps, même ombre
     Pixels shaped(size_t(s) * s * 4, 0);
@@ -516,6 +556,7 @@ IconProvider::ImagePtr IconProvider::appsButton(int px) {
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = L"#apps|" + std::to_wstring(px);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (async_) return requestAsync({IconJobKind::AppsButton, {}, {}, {}, px, {}}, cacheKey, 0);
     const int s = iconShapePx(px, shapeRatio_);
     Pixels shaped = dark_ ? plate(s, cornerRatio_, hex(0x3A3A3C), hex(0x1C1C1E), 0.2)
                           : plate(s, cornerRatio_, hex(0xFFFFFF), hex(0xE9E9EE), 0.7);

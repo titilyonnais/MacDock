@@ -1,6 +1,9 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <memory>
+#include <vector>
+
 #include "minitest.h"
 #include "../src/icons/icon_provider.h"
 
@@ -166,4 +169,98 @@ TEST_CASE(icons_keep_old_image_while_reloading) {
     const auto fresh = icons.get(L"app:essai-reserve", L"", 64);
     CHECK(fresh != nullptr);
     CHECK(fresh != old);
+}
+
+TEST_CASE(icons_async_requests_instead_of_building) {
+    // Plan 67 : pendant le rendu courant du Dock, une icône absente du cache est demandée au fil des icônes (copie des
+    // réglages et génération comprises) ; la case attend, puis l'image rangée sert aux images suivantes.
+    md::IconProvider icons;
+    icons.setDark(true);
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-fil", L"C:/nulle-part/essai.exe", 64) == nullptr);
+    CHECK(icons.deferred());
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    CHECK(jobs[0].cacheKey == L"app:essai-fil|64");
+    CHECK(jobs[0].generation == icons.generation());
+    CHECK(jobs[0].priority == 0);
+    CHECK(jobs[0].spec.kind == md::IconJobKind::App);
+    CHECK(jobs[0].spec.key == L"app:essai-fil" && jobs[0].spec.parsingName == L"C:/nulle-part/essai.exe");
+    CHECK(jobs[0].spec.px == 64);
+    CHECK(jobs[0].spec.style == icons.style());
+    CHECK(jobs[0].spec.style.dark);
+    // Résultat rangé : en cache, plus de demande.
+    auto im = std::make_shared<md::IconProvider::Image>();
+    im->size = 64;
+    CHECK(icons.adopt(jobs[0].cacheKey, jobs[0].generation, im));
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-fil", L"C:/nulle-part/essai.exe", 64) == im);
+    CHECK(!icons.deferred());
+    icons.endAsync();
+    CHECK(jobs.size() == 1);
+}
+
+TEST_CASE(icons_async_outdated_result_rejected) {
+    // Réglages changés pendant la préparation : le résultat de l'ancienne génération est jeté, la case redemande.
+    md::IconProvider icons;
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-generation", L"", 64) == nullptr);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    icons.setDark(true);   // vidage du cache : génération suivante
+    CHECK(icons.generation() > jobs[0].generation);
+    CHECK(!icons.adopt(jobs[0].cacheKey, jobs[0].generation, std::make_shared<md::IconProvider::Image>()));
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-generation", L"", 64) == nullptr);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 2);
+    CHECK(jobs[1].generation == icons.generation());
+    CHECK(jobs[1].spec.style.dark);
+}
+
+TEST_CASE(icons_async_keeps_old_image_until_new_arrives) {
+    // Pendant un rechargement (thème), l'ancienne image reste dans la case jusqu'à l'arrivée de la nouvelle.
+    md::IconProvider icons;
+    const auto old = icons.get(L"app:essai-attente", L"", 64);   // préparée ici, hors du mode « fil »
+    REQUIRE(old != nullptr);
+    icons.setDark(true);
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-attente", L"", 64) == old);
+    CHECK(icons.deferred());
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    const auto fresh = std::make_shared<md::IconProvider::Image>();
+    CHECK(icons.adopt(jobs[0].cacheKey, jobs[0].generation, fresh));
+    CHECK(icons.get(L"app:essai-attente", L"", 64) == fresh);
+}
+
+TEST_CASE(icons_async_stack_previews_after_tiles) {
+    // Aperçus de piles et bouton Apps passent aussi par le fil ; les aperçus après les cases.
+    md::IconProvider icons;
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.composeStack(L"stack:essai-fil", {md::FileRef(L"C:/nulle-part/essai.txt", 1)}, 64) == nullptr);
+    CHECK(icons.appsButton(64) == nullptr);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 2);
+    CHECK(jobs[0].spec.kind == md::IconJobKind::Stack && jobs[0].priority == 1);
+    CHECK(jobs[0].spec.key == L"stack:essai-fil" && jobs[0].spec.files.size() == 1);
+    CHECK(jobs[1].spec.kind == md::IconJobKind::AppsButton && jobs[1].priority == 0);
+}
+
+TEST_CASE(icons_async_adopt_keeps_image_built_meanwhile) {
+    // Une image préparée entre-temps sur le fil du Dock (sélecteur ⌥⇥, glisser) n'est pas remplacée par le résultat.
+    md::IconProvider icons;
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-double", L"", 64) == nullptr);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    const auto built = icons.get(L"app:essai-double", L"", 64);   // synchrone, comme aujourd'hui
+    REQUIRE(built != nullptr);
+    CHECK(!icons.adopt(jobs[0].cacheKey, jobs[0].generation, std::make_shared<md::IconProvider::Image>()));
+    CHECK(icons.get(L"app:essai-double", L"", 64) == built);
 }

@@ -67,6 +67,7 @@ constexpr UINT WM_APP_QUICKLOOK = WM_APP + 30;      // wParam : fenêtre au prem
 constexpr UINT WM_APP_QUICKLOOK_KEY = WM_APP + 31;  // wParam : touche pendant l'aperçu (Espace, Échap, Entrée)
 constexpr UINT WM_APP_SHOT = WM_APP + 32;        // wParam : 1 écran entier (⊞⇧3), 2 viseur (⊞⇧4) ; lParam : ⌃
 constexpr UINT WM_APP_SHOT_KEY = WM_APP + 33;    // wParam : ShotSessionKey (Échap, Espace pendant le viseur)
+constexpr UINT WM_APP_ICONS = WM_APP + 36;       // images prêtes sur le fil des icônes (plan 67)
 constexpr UINT WM_APP_TOOL_SHOT = WM_APP + 35;   // ⊞⇧S ou Impr. écran : l'Outil Capture de Windows arrive (plan 63)
 constexpr UINT WM_APP_SHOT_SAVED = WM_APP + 34;  // wParam : écrit ; lParam : std::wstring* (chemin, à libérer)
 constexpr UINT_PTR kToolRevealTimer = 0x5452;    // "TR" : l'Outil Capture de Windows est-il toujours devant ?
@@ -2240,12 +2241,24 @@ void DockApp::requestFrame() {
 void DockApp::renderNow() {
     const bool timing = diagnosticCapture();
     const double t0 = timing ? nowSeconds() : 0;
-    // Icônes préparées 10 ms par image au plus (plan 62) : au démarrage, toutes d'un coup bloquaient la boucle ~700 ms ;
-    // celles qui manquent arrivent aux images suivantes.
-    icons_.beginBudget(10);
+    // Icônes préparées hors du fil du Dock (plan 67) : une image absente est demandée au fil des icônes, la case garde
+    // l'ancienne image ou reste vide, et l'arrivée du résultat (WM_APP_ICONS) demande une image. Sans ce fil : 10 ms
+    // par image au plus (plan 62), celles qui manquent aux images suivantes.
+    const bool iconThread = iconWorker_.running();
+    if (iconThread) icons_.beginAsync([this](IconJob job) { iconWorker_.request(std::move(job)); });
+    else icons_.beginBudget(10);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
-    icons_.endBudget();
-    if (icons_.deferred()) requestFrame();
+    if (iconThread) {
+        icons_.endAsync();
+        if (icons_.deferred() && iconsWaitSince_ == 0) iconsWaitSince_ = nowSeconds();
+        else if (!icons_.deferred() && iconsWaitSince_ != 0) {
+            if (timing) log::info(L"[diag] icônes du Dock prêtes en %.0f ms", (nowSeconds() - iconsWaitSince_) * 1000);
+            iconsWaitSince_ = 0;
+        }
+    } else {
+        icons_.endBudget();
+        if (icons_.deferred()) requestFrame();
+    }
     const double t1 = timing ? nowSeconds() : 0;
     if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
         loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
@@ -3154,6 +3167,13 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_WAKE:
             wakePosted_ = false;
             return 0;
+        case WM_APP_ICONS: {   // plan 67 : images prêtes sur le fil des icônes
+            std::vector<IconResult> ready = iconWorker_.take(icons_.generation());
+            for (IconResult& r : ready) icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+            // Même un résultat refusé (image préparée entre-temps ici) redessine : sa case l'attendait peut-être.
+            if (!ready.empty()) requestFrame();
+            return 0;
+        }
         case WM_APP_PING:
             lastUiBeat_ = GetTickCount64();
             return 0;
@@ -3312,6 +3332,10 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!(snapshot_ ? renderer_.init(hwnd_) : initRenderer())) { log::error(L"Initialisation graphique impossible"); return 2; }
     renderer_.setGpuTiming(trace_);
     if (!snapshot_) {
+        // Icônes du rendu courant préparées hors du fil du Dock (plan 67) ; sans ce fil, budget de 10 ms par image.
+        const HWND dock = hwnd_;
+        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }))
+            log::warn(L"Fil des icônes indisponible : icônes préparées sur le fil du Dock");
         if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);
         poofSprite_.create(instance);
@@ -3581,6 +3605,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         dropTarget_->Release();
         dropTarget_ = nullptr;
     }
+    iconWorker_.stop();   // plus aucune icône publiée vers la fenêtre (plan 67)
     recorder_.stop();   // un enregistrement en cours est finalisé
     viewfinder_.cancel();
     shotToolbar_.close();

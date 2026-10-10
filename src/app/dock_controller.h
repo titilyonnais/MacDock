@@ -187,6 +187,9 @@ private:
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;
     double shown_ = 1;
+    // Plan 67 : dernière image de chaque case, gardée pendant que le fil des icônes prépare la suivante (Corbeille qui se
+    // remplit, aperçu de pile renouvelé).
+    std::map<std::wstring, IconProvider::ImagePtr> lastImages_;
     EdgeFrame edge_;
     std::optional<std::size_t> dropItem_;   // icône visée par un dépôt
 
