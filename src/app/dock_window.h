@@ -145,11 +145,12 @@ private:
     void revealForCapture(bool dock, bool lights);   // Dock et pastilles visibles aux captures, le temps de la copie
     void concealAfterCapture();
     // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock visible à ses captures tant qu'il est devant.
-    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai.
-    void onToolShot(DWORD keyTime);
+    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai ; veil : voile de sélection attendu.
+    void onToolShot(DWORD keyTime, bool veil);
     void revealForTool();   // comme revealForCapture, au plus vite (l'outil copie l'écran 100 à 300 ms après la touche)
     void tickToolReveal();
-    static bool captureToolInFront();
+    void applyToolLayer();  // sous le voile de l'outil (ToolReveal::lowered), ou de nouveau devant tout
+    static HWND captureToolInFront();   // fenêtre de l'Outil Capture au premier plan, sinon nullptr
     static bool shotIgnores(HWND h);   // jamais visées en mode fenêtre, jamais comptées comme recouvrantes
     void onBackdrop();
     void watchTrash();
@@ -234,6 +235,7 @@ private:
     bool revealDock_ = false, revealLights_ = false, shotPausedCapture_ = false;
     ToolReveal toolReveal_;              // révélation tenue pour l'Outil Capture de Windows
     bool toolRevealOn_ = false;          // MacDock visible à ses captures (rien ne le referme avant la fin)
+    bool toolLowered_ = false;           // sous son voile : hors de la couche « toujours au premier plan », sans pointeur
     bool toolWasInFront_ = false;        // pour la trace : l'outil vient d'apparaître ou de partir
     ULONGLONG toolBarPingAt_ = 0;        // dernière relance de la barre (sa sécurité coupe après 3 s)
     ULONGLONG toolRevealAt_ = 0;         // début de la révélation (traces)

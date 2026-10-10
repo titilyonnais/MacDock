@@ -97,3 +97,62 @@ TEST_CASE(windows_tool_session_disarms_hot_corners) {
     CHECK(!corners.update(md::Corner::TopLeft, at, md::placementDuringToolSession(false).hotCornersBlocked).has_value());
     CHECK(!md::placementDuringToolSession(false).hotCornersBlocked);
 }
+
+TEST_CASE(windows_tool_lowered_only_under_the_veil) {
+    // Relecture du plan 69 : abaissés et sans pointeur pendant tout la révélation, le Dock et la barre restaient
+    // insensibles tant que l'éditeur de l'outil était devant (jusqu'à 2 min). Seulement sous le voile, désormais.
+    md::ToolReveal r;
+    r.start(0, true);                      // ⊞⇧S : voile attendu
+    CHECK(r.lowered());                    // tout de suite, avant qu'il apparaisse
+    CHECK(r.keep(250, false, false));
+    CHECK(r.lowered());                    // en l'attendant
+    CHECK(r.keep(500, true, true));
+    CHECK(r.lowered());                    // voile devant
+    CHECK(r.keep(5000, true, false));      // sélection faite : l'éditeur de l'outil est devant
+    CHECK(!r.lowered());                   // Dock et barre de nouveau devant tout, pointeur repris
+    CHECK(r.active());                     // toujours visibles aux captures
+    r.start(6000, true);                   // nouvelle ⊞⇧S depuis l'éditeur
+    CHECK(r.lowered());
+}
+
+TEST_CASE(windows_tool_no_veil_no_lowering) {
+    md::ToolReveal r;
+    r.start(0, false);                     // ⊞Impr. écran : capture directe, sans voile
+    CHECK(!r.lowered());
+    CHECK(r.keep(1000, false, false));
+    CHECK(!r.lowered());
+}
+
+TEST_CASE(windows_tool_veil_never_seen) {
+    md::ToolReveal r;
+    r.start(0, true);
+    CHECK(r.keep(1000, false, false));
+    CHECK(r.lowered());
+    CHECK(r.keep(md::ToolReveal::kVeilWaitMs, false, false));   // voile jamais venu : on ne l'attend plus
+    CHECK(!r.lowered());
+}
+
+TEST_CASE(windows_tool_veil_keys) {
+    CHECK(md::toolShowsVeil('S', true, false));            // ⊞⇧S
+    CHECK(md::toolShowsVeil(VK_SNAPSHOT, false, false));   // Impr. écran seul : Windows 11 ouvre l'outil
+    CHECK(!md::toolShowsVeil(VK_SNAPSHOT, true, false));   // ⊞Impr. écran : enregistrée directement
+    CHECK(!md::toolShowsVeil(VK_SNAPSHOT, false, true));   // Alt+Impr. écran : fenêtre copiée
+}
+
+TEST_CASE(windows_tool_bar_layer_follows_the_veil_only) {
+    // Relecture du plan 69 : ⊞⇧3 faisait passer la barre sous les fenêtres « toujours au premier plan », puis devant
+    // Apps et Mission Control ouverts. Elle ne change de couche que pour le voile de l'outil.
+    using md::ShotReveal;
+    CHECK(!md::barLayerChange(false, ShotReveal::Visible).change);     // ⊞⇧3 : la barre reste à sa place
+    CHECK(!md::barLayerChange(false, ShotReveal::Off).change);         // fin d'une ⊞⇧3 : rien à remonter
+    const md::BarLayerChange down = md::barLayerChange(false, ShotReveal::UnderVeil);
+    CHECK(down.change);
+    CHECK(!down.topmost);
+    CHECK(!md::barLayerChange(true, ShotReveal::UnderVeil).change);    // relance : déjà dessous
+    const md::BarLayerChange up = md::barLayerChange(true, ShotReveal::Visible);   // voile parti (éditeur devant)
+    CHECK(up.change);
+    CHECK(up.topmost);
+    const md::BarLayerChange end = md::barLayerChange(true, ShotReveal::Off);
+    CHECK(end.change);
+    CHECK(end.topmost);
+}

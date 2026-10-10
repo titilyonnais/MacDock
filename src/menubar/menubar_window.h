@@ -18,6 +18,7 @@
 #include "../icons/icon_provider.h"
 #include "../model/app_model.h"
 #include "../popup/menu_window.h"
+#include "../screenshot/windows_tool.h"
 #include "../tracker/window_tracker.h"
 #include "app_menus.h"
 #include "backdrop_sampler.h"
@@ -150,7 +151,7 @@ private:
     void startSamples();
     void stopSamples();   // avant un menu : il capture l'écran à son tour (la pastille du HUD aussi)
     void abortSamples();  // capture d'écran du Dock : échantillons arrêtés, couleur du texte inchangée
-    void onScreenshotReveal(bool on);   // ⊞⇧3, ⊞⇧4 : barre et pastilles visibles aux captures, le temps de la copie
+    void onScreenshotReveal(ShotReveal reveal);   // ⊞⇧3, ⊞⇧4 : barre et pastilles visibles aux captures, le temps de la copie
     void registerVolumeKeys();          // touches de volume reprises selon settings_.hud (échec journalisé)
     void onVolumeKey(int id);           // volume +, −, sourdine : réglage puis pastille
     void showHud(const HudContent& c);  // pastille sur l'écran du curseur, ravivée
@@ -173,6 +174,7 @@ private:
     UINT taskbarCreated_ = 0;   // « TaskbarCreated » : l'Explorateur a redémarré et oublié les zones réservées
     UINT shotRevealMsg_ = 0;   // « MacDockScreenshotReveal » (wParam 1 : visibles aux captures, 0 : exclues de nouveau)
     bool shotReveal_ = false;  // capture d'écran du Dock en cours : pas d'échantillon (il exclurait la barre)
+    bool lowered_ = false;     // sous le voile de l'Outil Capture : hors de la couche « toujours au premier plan »
     std::wstring dataDir_;
     MenuBarSettings settings_;
     FILETIME settingsTime_{};
