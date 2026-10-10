@@ -589,10 +589,9 @@ TEST_CASE(controller_tile_keeps_last_image_while_new_one_prepared) {
     icons.endAsync();
 }
 
-TEST_CASE(controller_stack_preview_waits_without_folder_flash) {
-    // Relecture du plan 67 : un aperçu de pile en préparation montrait l'icône du dossier (aperçu, dossier, aperçu à
-    // chaque rafraîchissement pendant un téléchargement). La case garde l'aperçu précédent ; sans aperçu précédent, elle
-    // attend vide. L'icône du dossier ne sert qu'à une pile sans aperçu possible.
+TEST_CASE(controller_stack_preview_waits_with_folder_then_previous) {
+    // Plans 67 et 68 : une pile à froid (sans aperçu précédent) montre l'icône de son dossier en attendant son aperçu ;
+    // au renouvellement (téléchargement), l'aperçu précédent reste, sans repasser par le dossier.
     md::AppModel model;
     md::DockController c;
     md::Settings s;
@@ -609,28 +608,40 @@ TEST_CASE(controller_stack_preview_waits_without_folder_flash) {
     REQUIRE(c.itemAt(k) != nullptr);
     model.setStackPreview(L"stack:" + dir, {md::FileRef(dir + L"\\a.txt", 1)});
     std::vector<md::IconJob> jobs;
-    const auto folderJobs = [&] {
-        int n = 0;
-        for (const md::IconJob& j : jobs) n += j.spec.kind == md::IconJobKind::App && j.spec.key == L"stack:" + dir;
-        return n;
+    const auto sink = [&](md::IconJob j) { jobs.push_back(std::move(j)); };
+    const auto isFolder = [&](const md::IconJob& j) {
+        return j.spec.kind == md::IconJobKind::App && j.spec.key == L"stack:" + dir;
     };
-    // Démarrage : l'aperçu en préparation laisse la case vide, sans passer par l'icône du dossier.
-    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    // À froid : l'aperçu et l'icône du dossier sont demandés ; la case attend.
+    icons.beginAsync(sink);
     CHECK(c.buildFrame(false, icons).icons[k].image == nullptr);
     icons.endAsync();
-    CHECK(folderJobs() == 0);
+    int folderJobs = 0;
+    md::IconJob previewJob;
+    for (const md::IconJob& j : jobs) {
+        folderJobs += isFolder(j);
+        if (j.spec.kind == md::IconJobKind::Stack) previewJob = j;
+    }
+    CHECK(folderJobs == 1);
+    REQUIRE(previewJob.spec.kind == md::IconJobKind::Stack);
+    // L'icône du dossier arrive avant l'aperçu : elle est montrée en attendant.
+    const auto folder = std::make_shared<md::IconProvider::Image>();
+    for (const md::IconJob& j : jobs)
+        if (j.spec.kind != md::IconJobKind::Stack)
+            icons.adopt(j.cacheKey, j.generation, isFolder(j) ? folder : std::make_shared<md::IconProvider::Image>());
+    icons.beginAsync(sink);
+    CHECK(c.buildFrame(false, icons).icons[k].image == folder);
+    icons.endAsync();
+    // L'aperçu arrive : il remplace le dossier.
     const auto first = std::make_shared<md::IconProvider::Image>();
-    for (const md::IconJob& j : jobs)   // tout arrive : l'aperçu, et les autres cases (Corbeille)
-        icons.adopt(j.cacheKey, j.generation,
-                    j.spec.kind == md::IconJobKind::Stack ? first : std::make_shared<md::IconProvider::Image>());
+    CHECK(icons.adopt(previewJob.cacheKey, previewJob.generation, first));
     jobs.clear();
-    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    icons.beginAsync(sink);
     CHECK(c.buildFrame(false, icons).icons[k].image == first);
-    // Un téléchargement change l'aperçu : la case garde le précédent pendant la préparation du nouveau.
+    // Renouvellement : l'aperçu précédent reste pendant la préparation du nouveau, sans repasser par le dossier.
     model.setStackPreview(L"stack:" + dir, {md::FileRef(dir + L"\\b.txt", 2), md::FileRef(dir + L"\\a.txt", 1)});
     CHECK(c.buildFrame(false, icons).icons[k].image == first);
     icons.endAsync();
     REQUIRE(jobs.size() == 1);
     CHECK(jobs[0].spec.kind == md::IconJobKind::Stack);
-    CHECK(folderJobs() == 0);
 }

@@ -686,8 +686,11 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         icon.indicatorY = f.bgBottom - float(g.indicatorCenter * k) * s;
         const std::uint64_t asked = icons.deferrals();
         icon.image = imageFor(item, icons, imgPx);
-        if (!icon.image && icons.deferrals() != asked)   // nouvelle image en préparation : la case garde la dernière
-            if (auto it = lastImages_.find(item.key); it != lastImages_.end()) icon.image = it->second;
+        if (!icon.image && icons.deferrals() != asked) {   // nouvelle image en préparation
+            if (auto it = lastImages_.find(item.key); it != lastImages_.end()) icon.image = it->second;   // la dernière
+            else if (item.kind == ItemKind::Stack)   // pile à froid (plan 68) : l'icône de son dossier en attendant
+                icon.image = icons.get(L"stack:" + item.launch, item.launch, imgPx);
+        }
         if (icon.image) lastImages[item.key] = icon.image;
         icon.indicator = item.kind == ItemKind::App && item.running;
         if (item.kind == ItemKind::MinimizedWindow) icon.window = item.window;

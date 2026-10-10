@@ -3174,10 +3174,19 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_APP_ICONS: {   // plan 67 : images prêtes sur le fil des icônes
             std::vector<IconResult> ready = iconWorker_.take(icons_.generation());
-            if (diagnosticCapture())   // plan 68 : les travaux les plus lents, avec leur clé (tronquée)
-                for (const IconResult& r : ready)
+            int fromDisk = 0;
+            for (IconResult& r : ready) {
+                if (r.provisional) {   // plan 68 : ancienne image du disque, montrée en attendant la nouvelle
+                    fromDisk += icons_.adoptStale(r.cacheKey, r.generation, std::move(r.image)) ? 1 : 0;
+                    continue;
+                }
+                if (diagnosticCapture())   // les travaux les plus lents, avec leur clé (tronquée)
                     log::info(L"[diag] icône préparée en %.1f ms : %.80s", r.buildMs, r.cacheKey.c_str());
-            for (IconResult& r : ready) icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+                icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+            }
+            if (fromDisk > 0 && diagnosticCapture())
+                log::info(L"[diag] icônes depuis le disque : %d en %.0f ms", fromDisk,
+                          tilesWaitSince_ != 0 ? (nowSeconds() - tilesWaitSince_) * 1000 : 0.0);
             // Même un résultat refusé (image préparée entre-temps ici) redessine : sa case l'attendait peut-être.
             if (!ready.empty()) requestFrame();
             return 0;
@@ -3342,7 +3351,14 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!snapshot_) {
         // Icônes du rendu courant préparées hors du fil du Dock (plan 67) ; sans ce fil, budget de 10 ms par image.
         const HWND dock = hwnd_;
-        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }))
+        // Plan 68 : cache des icônes sur disque, propre à la machine (%LOCALAPPDATA%), pour un Dock complet dès le début.
+        std::wstring iconCache;
+        wchar_t* local = nullptr;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)) && local)
+            iconCache = std::wstring(local) + L"\\MacDock\\icon-cache";
+        CoTaskMemFree(local);
+        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }, buildIconJob,
+                               iconCache))
             log::warn(L"Fil des icônes indisponible : icônes préparées sur le fil du Dock");
         if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);
