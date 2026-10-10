@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "minitest.h"
+#include "test_helpers.h"
+#include "../src/icons/icon_disk_cache.h"
 #include "../src/icons/icon_worker.h"
 
 namespace {
@@ -221,4 +223,90 @@ TEST_CASE(icon_worker_real_shell_icon) {
     int opaque = 0;
     for (std::size_t i = 3; i < r[0].image->bgra.size(); i += 4) opaque += r[0].image->bgra[i] > 0;
     CHECK(opaque > 96 * 96 / 4);
+}
+
+namespace {
+
+// Constructeur qui peint toute l'image d'une valeur (l'icône « change » avec elle) ; préparation retenue à l'entrée.
+struct Painter {
+    std::atomic<int> value{1};
+    HANDLE gate = CreateEventW(nullptr, TRUE, TRUE, nullptr);
+    ~Painter() { CloseHandle(gate); }
+};
+
+md::IconWorker::Builder painter(std::shared_ptr<Painter> p) {
+    return [p](md::IconProvider&, const md::IconSpec& spec) {
+        WaitForSingleObject(p->gate, 5000);
+        auto im = std::make_shared<md::IconProvider::Image>();
+        im->size = spec.px;
+        im->bgra.assign(std::size_t(spec.px) * spec.px * 4, std::uint8_t(p->value.load()));
+        return md::IconProvider::ImagePtr(im);
+    };
+}
+
+} // namespace
+
+TEST_CASE(icon_worker_disk_image_first_then_fresh_only_if_changed) {
+    // Plan 68 : au démarrage, l'image gardée sur disque arrive avant toute préparation ; la nouvelle ne la remplace que si
+    // elle a changé (sinon la même image devient définitive : rien ne bouge à l'écran), et le disque suit.
+    const std::wstring dir = md::testTempDir();
+    auto p = std::make_shared<Painter>();
+    auto n = std::make_shared<Notifier>();
+    md::IconJob a = job(L"a|16", 1);
+    a.spec.px = 16;
+    {   // premier démarrage : rien sur disque ; l'image préparée y est écrite
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        w.request(a);
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        const auto r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(!r[0].provisional);
+    }
+    const std::wstring key = md::iconDiskKey(a.cacheKey, a.spec.style);
+    const auto stored = md::IconDiskCache(dir).read(key);
+    REQUIRE(stored != nullptr);
+    CHECK(stored->bgra[0] == 1);
+    {   // même icône : l'ancienne d'abord, puis elle devient définitive telle quelle
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        ResetEvent(p->gate);
+        w.request(a);
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        auto r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(r[0].provisional);
+        REQUIRE(r[0].image != nullptr);
+        CHECK(r[0].image->bgra[0] == 1);
+        const auto provisional = r[0].image;
+        SetEvent(p->gate);
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(!r[0].provisional);
+        CHECK(r[0].image == provisional);   // inchangée : la même image, aucun remplacement à l'écran
+    }
+    p->value = 2;   // l'icône de l'app a changé
+    {   // l'ancienne d'abord, puis la nouvelle, qui remplace aussi celle du disque
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        ResetEvent(p->gate);
+        w.request(a);
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        auto r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(r[0].provisional);
+        REQUIRE(r[0].image != nullptr);
+        CHECK(r[0].image->bgra[0] == 1);
+        SetEvent(p->gate);
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(!r[0].provisional);
+        REQUIRE(r[0].image != nullptr);
+        CHECK(r[0].image->bgra[0] == 2);
+    }
+    const auto updated = md::IconDiskCache(dir).read(key);
+    REQUIRE(updated != nullptr);
+    CHECK(updated->bgra[0] == 2);
 }

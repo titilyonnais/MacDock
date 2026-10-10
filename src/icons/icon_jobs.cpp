@@ -46,6 +46,23 @@ void IconJobs::stop() {
     ready_.clear();
 }
 
+std::optional<IconJob> IconJobs::nextDiskRead() {
+    if (stopped_) return std::nullopt;
+    Entry* best = nullptr;
+    for (Entry& e : queue_)
+        if (!e.diskChecked &&
+            (!best || (e.job.priority != best->job.priority ? e.job.priority < best->job.priority : e.seq < best->seq)))
+            best = &e;
+    if (!best) return std::nullopt;
+    best->diskChecked = true;
+    return best->job;   // copie : le travail reste en file pour sa préparation
+}
+
+void IconJobs::offer(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image) {
+    if (stopped_ || generation < newest_ || !image) return;   // arrêt, ou cache du Dock vidé depuis la demande
+    ready_.push_back({cacheKey, generation, std::move(image), 0, true});
+}
+
 IconJobs::State IconJobs::state(const std::wstring& cacheKey, std::uint64_t generation) const {
     for (const Entry& e : queue_)
         if (e.job.cacheKey == cacheKey && e.job.generation == generation) return State::Queued;

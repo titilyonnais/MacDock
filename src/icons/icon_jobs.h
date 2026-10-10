@@ -16,6 +16,7 @@ struct IconResult {
     std::uint64_t generation = 0;
     IconProvider::ImagePtr image;   // nullptr : échec gardé (aperçu de pile sans image)
     double buildMs = 0;             // durée de la préparation (mode diagnostic)
+    bool provisional = false;       // ancienne image lue sur disque (plan 68), montrée en attendant la nouvelle
 };
 
 // État des demandes. Sans verrou : le fil des icônes l'enveloppe du sien.
@@ -29,6 +30,11 @@ public:
     bool request(IconJob job);
     // Fil des icônes : le travail le plus prioritaire (0 d'abord), puis le plus ancien ; il passe « en cours ».
     std::optional<IconJob> next();
+    // Fil des icônes, avant toute préparation (plan 68) : un travail en file dont l'image n'a pas encore été cherchée sur
+    // disque, les cases d'abord ; il reste en file pour sa préparation.
+    std::optional<IconJob> nextDiskRead();
+    // Fil des icônes : image lue sur disque, à montrer en attendant la nouvelle (jetée si dépassée ou après l'arrêt).
+    void offer(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image);
     // Fil des icônes : fin d'un travail ; le résultat attend d'être repris (jeté s'il est dépassé ou après l'arrêt).
     void complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image,
                   double buildMs = 0);
@@ -46,6 +52,7 @@ private:
     struct Entry {
         IconJob job;
         std::uint64_t seq = 0;
+        bool diskChecked = false;   // image déjà cherchée sur disque
     };
     std::vector<Entry> queue_;
     std::set<std::pair<std::wstring, std::uint64_t>> running_;

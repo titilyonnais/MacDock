@@ -351,6 +351,12 @@ bool IconProvider::adopt(const std::wstring& cacheKey, std::uint64_t generation,
     return true;
 }
 
+bool IconProvider::adoptStale(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image) {
+    if (generation != generation_ || !image || cache_.contains(cacheKey)) return false;
+    stale_[cacheKey] = std::move(image);   // montrée en attendant (deferStale), remplacée par adopt()
+    return true;
+}
+
 IconStyle IconProvider::style() const {
     IconStyle s;
     s.strict = strict_;

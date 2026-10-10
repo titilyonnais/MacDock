@@ -27,7 +27,8 @@ public:
     // jusqu'à la reprise suivante, jamais après stop() ; le Dock y poste un message à sa fenêtre et rend true s'il est
     // parti. Tant que des résultats attendent sans être repris (message perdu), elle est rappelée toutes les 250 ms.
     // false : pas de fil.
-    bool start(std::function<bool()> notify, Builder build = buildIconJob);
+    // diskDir (plan 68) : dossier du cache sur disque ; vide, pas de cache.
+    bool start(std::function<bool()> notify, Builder build = buildIconJob, std::wstring diskDir = {});
     bool running() const { return shared_ != nullptr; }
     // Fil du Dock : demande (doublons, générations dépassées et demandes après l'arrêt ignorés).
     void request(IconJob job);

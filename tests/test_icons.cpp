@@ -264,3 +264,25 @@ TEST_CASE(icons_async_adopt_keeps_image_built_meanwhile) {
     CHECK(!icons.adopt(jobs[0].cacheKey, jobs[0].generation, std::make_shared<md::IconProvider::Image>()));
     CHECK(icons.get(L"app:essai-double", L"", 64) == built);
 }
+
+TEST_CASE(icons_disk_image_shown_while_waiting) {
+    // Plan 68 : une image relue sur disque est montrée tout de suite, en attendant la nouvelle, qui la remplace.
+    md::IconProvider icons;
+    std::vector<md::IconJob> jobs;
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-disque", L"", 64) == nullptr);
+    icons.endAsync();
+    REQUIRE(jobs.size() == 1);
+    const auto fromDisk = std::make_shared<md::IconProvider::Image>();
+    CHECK(icons.adoptStale(jobs[0].cacheKey, jobs[0].generation, fromDisk));
+    icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+    CHECK(icons.get(L"app:essai-disque", L"", 64) == fromDisk);   // tout de suite
+    CHECK(icons.deferred());                                       // la nouvelle est toujours attendue
+    icons.endAsync();
+    const auto fresh = std::make_shared<md::IconProvider::Image>();
+    CHECK(icons.adopt(jobs[0].cacheKey, jobs[0].generation, fresh));
+    CHECK(icons.get(L"app:essai-disque", L"", 64) == fresh);
+    CHECK(!icons.adoptStale(jobs[0].cacheKey, jobs[0].generation, fromDisk));   // arrivée après la nouvelle : jetée
+    icons.setDark(true);
+    CHECK(!icons.adoptStale(jobs[0].cacheKey, jobs[0].generation, fromDisk));   // génération dépassée : jetée
+}

@@ -95,6 +95,9 @@ public:
     void endAsync();
     // Résultat du fil des icônes : rangé s'il est de la génération courante et pas déjà préparé ici entre-temps.
     bool adopt(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image);
+    // Ancienne image lue sur disque (plan 68) : montrée tout de suite en attendant la nouvelle (réserve), si elle est de
+    // la génération courante et qu'aucune image n'est déjà prête.
+    bool adoptStale(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image);
     // Monte à chaque vidage du cache (thème, réglages des icônes, écran).
     std::uint64_t generation() const { return generation_; }
     // Images demandées sans être prêtes (mode « hors du fil » ou budget dépassé), depuis la création : un appel qui fait
