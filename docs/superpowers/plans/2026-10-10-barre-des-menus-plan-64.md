@@ -51,7 +51,7 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 - [x] 2. **Réglages** (`menubar_settings.*`) : nouveaux défauts, `textBaseline` et `clockGap`, migration v1 → v2. Tests.
 - [x] 3. **Mise en page** (`bar_layout.*`, `menubar_window.cpp`) : écart avant l'horloge, titres sans arrondi. Tests.
 - [x] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
-- [ ] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
+- [x] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
 - [ ] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).
 - [ ] 7. **Essais réels** : rendu hors écran mesuré contre la VM, Release, barre relancée.
 
@@ -68,3 +68,14 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 - **« FR » garde son centrage** : ses majuscules sont déjà au milieu de la boîte à 0,5 px près (SF Pro, Segoe UI,
   Inter Tight, Arial, Georgia, mesuré). Le poser sur la ligne de base de la barre le mettrait trop bas dans sa boîte.
   Test gardé comme garde-fou (vert avant comme après).
+- **Icônes d'état : cotes ajustées sur la capture, plus de « 1,1 » ni de « ~1,0 »** (`fit_icons.py`,
+  `fit_cc_global.py`) : sur la VM, le nom de l'app, les titres et la pomme sont d'un noir plein, mais les icônes
+  d'état, la date et l'heure sont à 85 % de noir ; les premières épaisseurs, normalisées sur le noir de « Finder » et
+  sans les queues du flou, étaient trop faibles. Ajustement d'un dessin paramétré, rendu en 1x puis étiré x 1,625 comme
+  VMware, comparé pixel à pixel (écart moyen 3,4 et 3,7 niveaux de gris, sans erreur systématique) :
+  - loupe : anneau de 4,50 de rayon, trait 1,32 ; manche à 45,6°, jusqu'à 9,16 du centre, trait 1,90 ; boîte
+    12,5 x 12,7, haut à 6,36 (un peu plus bas que le milieu de la barre) ;
+  - Centre de contrôle : 13,19 x 13,30 ; piste du haut de 6,48, contour de 1,27, bouton plein de 5,09 x 2,98 à 0,48 du
+    contour ; écart de 1,02 ; piste du bas de 5,80, pleine, bouton creux de 5,47 x 3,38 bordé de 1,21.
+  Notre rendu, passé par le même chemin et ajusté de même, retombe sur ces cotes à 0,15 pt près (le plus souvent
+  moins de 0,09). Dessins à nous (champs de distance et formes Direct2D), aucun symbole d'Apple.
