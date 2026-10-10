@@ -48,8 +48,13 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Proportions du Dock de macOS 26**, mesurées sur la VM : marges, espacement, séparateurs, points (plan 61).
 - **Dock plus réactif** : relais du crochet souris, rebond d'attention comme sur macOS, boucle qui ne tourne plus
   à vide, démarrage plus rapide (plan 62 ; VMware, qui garde le curseur posé sur le Dock, reste à essayer avec toi).
+- **Barre des menus de macOS 26**, mesurée sur la VM : texte sur sa ligne de base, loupe et Centre de contrôle, icônes
+  espacées de 36 pt, horloge à chiffres fixes (plan 64).
 
 ## À faire, par ordre d'effet
+0. **Approche de SF Pro (« trak »)** : CoreText resserre SF Pro selon sa taille (−0,076 pt par caractère à 13 pt,
+   d'après la table de la police installée), DirectWrite ne le fait pas ; à appliquer à tout le texte de MacDock (barre,
+   menus, infobulle du Dock, Spotlight, Réglages), puis recaler la marge des titres de la barre (~10,4 pt).
 1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
    installation abandonnée, notification après un redémarrage de l'Explorateur, dossier des téléchargements à la
    désinstallation).

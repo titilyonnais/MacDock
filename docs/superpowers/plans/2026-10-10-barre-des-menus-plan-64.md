@@ -126,6 +126,28 @@ Centre de contrôle à 0,15 pt près (contour 1,27 / 1,24, pistes 6,48 et 5,80 /
   « trak », qui revoit la largeur de tout le texte en même temps.
 - **Pas des icônes** : 36,1 contre 36,4 : MacDock garde des cases fixes de 36, macOS donne à chaque icône sa largeur.
 
+## Fait
+- Sept commits de tâches (aad32ba à 11e60cb) et un de corrections (9620eb3) sur `feat/barre-vm-64`.
+- Suite : 857 cas, un seul échec, dû à l'environnement (`uia_menus_read_and_invoke_fake_app` : le Gestionnaire des
+  tâches, en administrateur, tient le premier plan).
+- `menubar.json` de l'utilisateur intact jusqu'à la fusion (empreinte A736607B… vérifiée après chaque rendu).
+
+## Relecture indépendante (opus)
+Verdict « avec corrections », aucun critique. Corrigés, rouge puis vert :
+- **Important** : la ligne de base ignorait la taille du texte (un texte de 20 pt dans une barre de 34 remontait de
+  6 px) ; l'écart au milieu suit maintenant `fontSize` (`bar_renderer_text_sits_on_its_baseline`, deux cas ajoutés).
+- **Mineur regradé important** : un titre à saut de ligne se dessinait sous la barre ; sa première ligne se pose sur la
+  ligne de base (`bar_renderer_multiline_title_keeps_first_line`).
+- Commentaire périmé d'un test, documentation (README, journal, feuille de route) : faits.
+
+## Mineurs reportés
+- Manche de la loupe : son bout arrondi déborde de 0,25 pt dans le verre de l'anneau.
+- Horloge : mise en page refaite seulement quand la longueur du texte change (au changement de jour, jusqu'à 1,5 pt de
+  débord de sa case jusqu'au prochain changement d'app).
+- `--scale` sans borne, virgule décimale non lue, `--time` invalide ignoré sans avertissement.
+- Écart avant l'horloge : zone morte au clic gauche.
+- Échec de la réécriture du fichier migré non noté dans le journal.
+
 ## Limites
 - Une seule capture de la VM, à l'échelle 1 et sans accélération graphique (barre grise opaque) : couleurs et
   transparence ne sont pas des cibles. Côté gauche (pomme, nom de l'app, titres) en noir plein sur la VM, côté droit à
