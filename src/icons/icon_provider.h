@@ -1,6 +1,7 @@
 // Extraction et mise en forme des icônes du Dock (Shell + WIC).
 #pragma once
 #include <chrono>
+#include <functional>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -30,6 +31,25 @@ struct IconStyle {
     double shadowOpacity = 0.5;
     std::wstring customDir;
     bool operator==(const IconStyle&) const = default;
+};
+
+// Ce qu'il faut préparer, avec la copie des réglages des icônes au moment de la demande.
+enum class IconJobKind { App, Stack, AppsButton };
+struct IconSpec {
+    IconJobKind kind = IconJobKind::App;
+    std::wstring key;             // App : clé (appId, chemin…) ; Stack : clé de la pile
+    std::wstring parsingName;     // App : nom Shell
+    std::vector<FileRef> files;   // Stack : derniers éléments (le premier au-dessus)
+    int px = 0;
+    IconStyle style;
+};
+
+// Travail du fil des icônes (plan 67), demandé par le fournisseur du Dock pendant son rendu courant.
+struct IconJob {
+    std::wstring cacheKey;          // identité de l'image dans le cache du Dock
+    std::uint64_t generation = 0;   // génération du cache du Dock au moment de la demande
+    int priority = 0;               // 0 : case du Dock ; 1 : aperçu de pile, préparé après
+    IconSpec spec;
 };
 
 class IconProvider {
@@ -63,6 +83,22 @@ public:
         if (!deferred_) stale_.clear();   // tout est refait : la réserve ne sert plus
     }
     bool deferred() const { return deferred_; }
+    // Plan 67 : entre beginAsync et endAsync (rendu courant du Dock), une image absente du cache est demandée à `sink`
+    // (copie des réglages et génération comprises) au lieu d'être préparée ici : get(), composeStack() et appsButton()
+    // rendent l'ancienne image ou nullptr, et deferred() le signale. adopt() range ensuite le résultat.
+    using AsyncSink = std::function<void(IconJob)>;
+    void beginAsync(AsyncSink sink);
+    void endAsync();
+    // Résultat du fil des icônes : rangé s'il est de la génération courante et pas déjà préparé ici entre-temps.
+    bool adopt(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image);
+    // Monte à chaque vidage du cache (thème, réglages des icônes, écran).
+    std::uint64_t generation() const { return generation_; }
+    IconStyle style() const;   // réglages actuels, copiés dans chaque travail
+    // Fil des icônes : cache et réserve oubliés (le Dock a vidé le sien).
+    void forget() {
+        cache_.clear();
+        stale_.clear();
+    }
     ImagePtr appsButton(int px);            // icône « Apps » dessinée par le code
     ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
     // Élément de pile : vignette Shell (images…) ou icône du fichier, telle quelle (ni plaque ni forme),
@@ -80,10 +116,14 @@ public:
     void clear() {
         for (auto& [k, v] : cache_) stale_[k] = std::move(v);
         cache_.clear();
+        ++generation_;   // plan 67 : les résultats du fil des icônes demandés avant sont dépassés
     }
 
 private:
     bool budget_ = false, deferred_ = false;
+    AsyncSink async_;
+    std::uint64_t generation_ = 0;
+    ImagePtr requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority);
     std::map<std::wstring, ImagePtr> stale_;   // anciennes images, affichées en attendant les nouvelles
     ImagePtr deferStale(const std::wstring& cacheKey);   // budget dépassé : l'ancienne image s'il y en a une
     std::chrono::steady_clock::time_point budgetEnd_{};

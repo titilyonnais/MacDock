@@ -11,24 +11,6 @@
 
 namespace md {
 
-// Ce qu'il faut préparer, avec la copie des réglages des icônes au moment de la demande.
-enum class IconJobKind { App, Stack, AppsButton };
-struct IconSpec {
-    IconJobKind kind = IconJobKind::App;
-    std::wstring key;             // App : clé (appId, chemin…) ; Stack : clé de la pile
-    std::wstring parsingName;     // App : nom Shell
-    std::vector<FileRef> files;   // Stack : derniers éléments (le premier au-dessus)
-    int px = 0;
-    IconStyle style;
-};
-
-struct IconJob {
-    std::wstring cacheKey;          // identité de l'image dans le cache du Dock
-    std::uint64_t generation = 0;   // génération du cache du Dock au moment de la demande
-    int priority = 0;               // 0 : case du Dock ; 1 : aperçu de pile, préparé après
-    IconSpec spec;
-};
-
 struct IconResult {
     std::wstring cacheKey;
     std::uint64_t generation = 0;
