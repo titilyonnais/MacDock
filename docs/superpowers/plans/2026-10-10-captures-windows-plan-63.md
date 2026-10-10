@@ -37,7 +37,7 @@ d'écran Windows » (⊞⇧S ou Impr. écran, l'Outil Capture de Windows 11).
   écran avec ou sans modificateurs, ⊞⇧S ; jamais à la répétition ni au relâchement) ; `ToolReveal` (début, prolongation
   tant que l'outil est devant, fin 500 ms après, minimum 3 s, maximum 2 min, nouvel appui pendant la révélation :
   prolonge) ; `isCaptureToolProcess(nom)`. Tests.
-- [ ] 2. **Dock** (`dock_window.*`) : crochet → `WM_APP_TOOL_SHOT` ; révélation tenue (minuterie de 250 ms : outil
+- [x] 2. **Dock** (`dock_window.*`) : crochet → `WM_APP_TOOL_SHOT` ; révélation tenue (minuterie de 250 ms : outil
   devant ?, relance de la barre chaque seconde) ; `concealAfterCapture` n'éteint rien pendant une révélation pour
   Windows ; `restartCapture`/`resumeCapture` attendent sa fin. Piles et sélecteur : `setCaptureVisible`. Tests de ce qui
   est pur (ordre des décisions) ; le reste à l'essai.

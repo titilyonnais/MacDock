@@ -67,7 +67,9 @@ constexpr UINT WM_APP_QUICKLOOK = WM_APP + 30;      // wParam : fenêtre au prem
 constexpr UINT WM_APP_QUICKLOOK_KEY = WM_APP + 31;  // wParam : touche pendant l'aperçu (Espace, Échap, Entrée)
 constexpr UINT WM_APP_SHOT = WM_APP + 32;        // wParam : 1 écran entier (⊞⇧3), 2 viseur (⊞⇧4) ; lParam : ⌃
 constexpr UINT WM_APP_SHOT_KEY = WM_APP + 33;    // wParam : ShotSessionKey (Échap, Espace pendant le viseur)
+constexpr UINT WM_APP_TOOL_SHOT = WM_APP + 35;   // ⊞⇧S ou Impr. écran : l'Outil Capture de Windows arrive (plan 63)
 constexpr UINT WM_APP_SHOT_SAVED = WM_APP + 34;  // wParam : écrit ; lParam : std::wstring* (chemin, à libérer)
+constexpr UINT_PTR kToolRevealTimer = 0x5452;    // "TR" : l'Outil Capture de Windows est-il toujours devant ?
 constexpr UINT_PTR kShotResumeTimer = 0x5352;    // "SR" : capture du verre reprise, Dock de nouveau exclu
 constexpr UINT_PTR kRecordTimer = 0x5245;        // "RE" : durée de l'enregistrement dans la pastille
 constexpr ULONG_PTR kCommandReplay = 0x4D44434B;   // "MDCK" : frappes envoyées par la touche ⌘ (le crochet les laisse)
@@ -467,6 +469,10 @@ void DockApp::restartCapture() {
     glassLive_ = false;
     capturePaused_ = false;
     if (!excluded_) return;
+    if (toolRevealOn_) {   // Dock visible aux captures : il se verrait lui-même ; reprise à la fin de la révélation
+        capturePaused_ = true;
+        return;
+    }
     RECT rc;
     GetWindowRect(hwnd_, &rc);
     capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
@@ -481,7 +487,7 @@ void DockApp::pauseCapture() {
 }
 
 void DockApp::resumeCapture() {
-    if (!capturePaused_) return;
+    if (!capturePaused_ || toolRevealOn_) return;   // révélation pour l'Outil Capture : reprise à sa fin
     if (!excluded_) {   // verre coupé entre-temps : sans exclusion des captures, le Dock se capturerait lui-même
         capturePaused_ = false;
         return;
@@ -505,6 +511,7 @@ bool DockApp::shotIgnores(HWND h) {
 }
 
 void DockApp::revealForCapture(bool dock, bool lights) {
+    if (toolRevealOn_) return;   // déjà visible pour l'Outil Capture de Windows
     revealDock_ = dock && excluded_;
     shotPausedCapture_ = false;
     if (revealDock_) {
@@ -528,6 +535,7 @@ void DockApp::revealForCapture(bool dock, bool lights) {
 }
 
 void DockApp::concealAfterCapture() {
+    if (toolRevealOn_) return;   // l'Outil Capture de Windows garde MacDock visible jusqu'à sa fin
     MenuWindow::setCaptureVisible(false);
     SpotlightWindow::setCaptureVisible(false);
     AppsWindow::setCaptureVisible(false);
@@ -538,6 +546,61 @@ void DockApp::concealAfterCapture() {
     if (revealLights_)
         if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) PostMessageW(bar, shotRevealMsg_, 0, 0);
     revealDock_ = revealLights_ = false;
+}
+
+void DockApp::onToolShot() {
+    if (snapshot_) return;
+    const ULONGLONG now = GetTickCount64();
+    const bool already = toolReveal_.active();
+    toolReveal_.start(now);   // nouvel appui pendant la révélation : prolongée
+    if (!already) {
+        revealForCapture(true, true);
+        toolRevealOn_ = true;
+        toolWasInFront_ = false;
+        toolBarPingAt_ = now;
+        StackWindow::setCaptureVisible(true);
+        switcher_.setCaptureVisible(true);
+        if (trace_) log::info(L"[trace] Outil Capture de Windows : MacDock visible à ses captures");
+    }
+    SetTimer(hwnd_, kToolRevealTimer, 250, nullptr);
+}
+
+void DockApp::tickToolReveal() {
+    const ULONGLONG now = GetTickCount64();
+    const bool tool = captureToolInFront();
+    if (trace_ && tool != toolWasInFront_) log::info(L"[trace] Outil Capture de Windows %s", tool ? L"devant" : L"parti");
+    toolWasInFront_ = tool;
+    if (toolReveal_.keep(now, tool)) {
+        if (revealLights_ && shotRevealMsg_ && now - toolBarPingAt_ >= 1000)   // la sécurité de la barre coupe après 3 s
+            if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) {
+                PostMessageW(bar, shotRevealMsg_, 1, 0);
+                toolBarPingAt_ = now;
+            }
+        return;
+    }
+    KillTimer(hwnd_, kToolRevealTimer);
+    toolRevealOn_ = false;
+    StackWindow::setCaptureVisible(false);
+    switcher_.setCaptureVisible(false);
+    concealAfterCapture();
+    // Capture du verre retenue pendant la révélation (menu fermé, écran changé…) : reprise, Dock de nouveau exclu.
+    if (capturePaused_ && excluded_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
+    if (trace_) log::info(L"[trace] Outil Capture de Windows : MacDock de nouveau exclu des captures");
+}
+
+bool DockApp::captureToolInFront() {
+    const HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (!fg || !GetWindowThreadProcessId(fg, &pid) || !pid) return false;
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return false;
+    wchar_t path[MAX_PATH] = {};
+    DWORD n = MAX_PATH;
+    const bool ok = QueryFullProcessImageNameW(p, 0, path, &n) != FALSE;
+    CloseHandle(p);
+    if (!ok) return false;
+    const wchar_t* name = wcsrchr(path, L'\\');
+    return isCaptureToolProcess(name ? name + 1 : path);
 }
 
 namespace {
@@ -2309,6 +2372,11 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             else if (typeAheadEnds(vk))
                 g_typedAt = 0;
         }
+        // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock se montre à ses captures, sans retenir la
+        // touche.
+        if (windowsShotKey(vk, down, repeat, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
+                           (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0))
+            PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT, 0, 0);
         // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.
         // Annoncée au fil du Dock (modèle, minuterie des animations) et de façon synchrone : coupée avant la réduction.
         if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
@@ -2690,6 +2758,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         openForceQuit();
         return 0;
     }
+    if (msg == toolTestMsg_ && toolTestMsg_) {   // essai : comme ⊞⇧S, sans clavier
+        onToolShot();
+        return 0;
+    }
     if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
         announceMinimize(reinterpret_cast<HWND>(wp), lp == kAnnounceHide);
         return 0;
@@ -2812,6 +2884,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case WM_APP_TOOL_SHOT:
+            onToolShot();
+            return 0;
         case WM_APP_SHOT:   // touche neutre déjà envoyée par le crochet
             if (wp == 1) takeScreenShot(lp != 0);
             else if (wp == 2) startRegionShot(lp != 0);
@@ -2876,6 +2951,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == kRecordTimer) {
                 recPill_.update(recorder_.seconds());
+                return 0;
+            }
+            if (wp == kToolRevealTimer) {
+                tickToolReveal();
                 return 0;
             }
             if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
@@ -3264,6 +3343,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     willMinimizeMsg_ = RegisterWindowMessageW(L"MacDockWillMinimize");
     ChangeWindowMessageFilterEx(hwnd_, willMinimizeMsg_, MSGFLT_ALLOW, nullptr);
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
+    toolTestMsg_ = RegisterWindowMessageW(L"MacDockTestToolReveal");
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
     registerAppExposeHotkey();

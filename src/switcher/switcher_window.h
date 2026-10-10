@@ -29,6 +29,8 @@ public:
     void remove(std::size_t index);   // app fermée (Q) : retirée de la rangée
     void hide();
     bool visible() const;
+    // Visible aux captures (Outil Capture de Windows) ; son verre se fige pendant ce temps.
+    void setCaptureVisible(bool on);
     std::function<void(std::size_t)> onClick;   // clic sur une icône
 
 private:
