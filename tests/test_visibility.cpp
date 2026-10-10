@@ -181,3 +181,13 @@ TEST_CASE(backdrop_never_resumes_without_glass) {
     // pas repartir : sans exclusion des captures, le Dock se capturerait lui-même.
     CHECK(md::backdropForVisibility(false, true, false, false, false) == md::BackdropAction::None);
 }
+
+TEST_CASE(visibility_glass_pause_after_a_technical_stop) {
+    // Relecture du plan 69 : capture du verre arrêtée par une perte du périphérique graphique, ou par l'écran passé sur
+    // une autre carte, pendant une pause : le verre restait dépoli. La pause ne tient que si sa raison tient encore.
+    CHECK(!md::keepPauseAfterStop(false, false, false, false));   // reprise juste lancée : le verre repart
+    CHECK(md::keepPauseAfterStop(true, false, false, false));     // Dock masqué : sa règle le reprendra
+    CHECK(md::keepPauseAfterStop(false, true, false, false));     // menu ouvert
+    CHECK(md::keepPauseAfterStop(false, false, true, false));     // panneau ⌥⇥
+    CHECK(md::keepPauseAfterStop(false, false, false, true));     // MacDock visible aux captures
+}

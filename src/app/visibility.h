@@ -55,6 +55,11 @@ BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool cap
 enum class ShotResume { Now, Later, Never };
 ShotResume shotResume(bool paused, bool pausedForHidden, bool held, bool revealing);
 
+// Capture du verre arrêtée pour une raison technique (périphérique graphique perdu, écran passé sur une autre carte)
+// pendant une pause : la pause n'est gardée que si une raison de pause tient encore (Dock masqué, menu, panneau ⌥⇥,
+// MacDock visible aux captures) ; sinon le verre repart tout de suite (relecture du plan 69 : il restait dépoli).
+bool keepPauseAfterStop(bool pausedForHidden, bool menuOpen, bool switchPanel, bool revealing);
+
 // La fenêtre couvre-t-elle tout l'écran (tolérance de 1 px) ?
 bool coversMonitor(const RECT& window, const RECT& monitor);
 // Plein écran : couvre l'écran sans être une fenêtre maximisée à barre de titre (qui couvre tout l'écran

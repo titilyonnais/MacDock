@@ -51,6 +51,10 @@ BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool cap
     return pausedForHidden && !menuOpen && glassActive ? BackdropAction::Resume : BackdropAction::None;
 }
 
+bool keepPauseAfterStop(bool pausedForHidden, bool menuOpen, bool switchPanel, bool revealing) {
+    return pausedForHidden || menuOpen || switchPanel || revealing;
+}
+
 bool coversMonitor(const RECT& w, const RECT& m) {
     return w.left <= m.left + 1 && w.top <= m.top + 1 && w.right >= m.right - 1 && w.bottom >= m.bottom - 1;
 }

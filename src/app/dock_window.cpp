@@ -289,8 +289,9 @@ bool DockApp::stepVisibility(double now) {
         if (trace_) log::info(L"[trace] Dock %s", hidden ? L"masqué" : L"visible");
     }
     // Entièrement masqué : plus de capture de l'arrière-plan (une vidéo derrière le ferait redessiner pour rien).
+    // Verre voulu (exclusion des captures acquise) : sa première image n'est pas encore là après un arrêt technique.
     switch (backdropForVisibility(hidden, backdropHiddenPause_, capture_.status() == BackdropCapture::Status::Running,
-                                  menuOpen_, glassLive_ && excluded_)) {
+                                  menuOpen_, excluded_)) {
         case BackdropAction::Pause:
             pauseCapture();
             backdropHiddenPause_ = true;
@@ -369,6 +370,8 @@ void DockApp::onDisplayChanged() {
         // L'écran du Dock est passé sur une autre carte (station d'accueil, eGPU) : on suit.
         capture_.stop();
         glassLive_ = false;
+        if (!keepPauseAfterStop(backdropHiddenPause_, menuOpen_, switchPanel_, revealDock_ || toolRevealOn_))
+            capturePaused_ = false;   // plus de raison de pause : updateGlass relance la capture
         if (initRenderer()) {
             RECT rc;
             GetClientRect(hwnd_, &rc);
@@ -477,7 +480,7 @@ void DockApp::updateGlass() {
 void DockApp::restartCapture() {
     capture_.stop();
     glassLive_ = false;
-    capturePaused_ = false;
+    capturePaused_ = backdropHiddenPause_ = false;
     if (!excluded_) return;
     if (toolRevealOn_) {   // Dock visible aux captures : il se verrait lui-même ; reprise à la fin de la révélation
         capturePaused_ = true;
@@ -2360,6 +2363,8 @@ void DockApp::renderNow() {
     }
     capture_.stop();
     glassLive_ = false;
+    if (!keepPauseAfterStop(backdropHiddenPause_, menuOpen_, switchPanel_, revealDock_ || toolRevealOn_))
+        capturePaused_ = false;   // plus de raison de pause : updateGlass relance la capture
     if (initRenderer()) {
         RECT rc;
         GetClientRect(hwnd_, &rc);
