@@ -5,6 +5,7 @@
 #include "../src/core/json.h"
 #include "../src/menubar/bar_color.h"
 #include "../src/menubar/bar_layout.h"
+#include "../src/menubar/menu_session.h"
 #include "../src/menubar/clock_format.h"
 #include "../src/menubar/foreground_rules.h"
 #include "../src/menubar/menubar_settings.h"
@@ -837,4 +838,13 @@ TEST_CASE(menus_zoom_button_menu) {
     CHECK(bfo.menus[0].model.items[3].tiles[0].enabled);   // Centrer
     CHECK(!bfo.menus[0].model.items[3].tiles[1].enabled);
     CHECK(!bfo.menus[0].model.items[1].tiles[0].enabled);
+}
+
+TEST_CASE(bar_menu_session_follows_the_app) {
+    // Plan 71 (ta photo 1) : l'app active changeait pendant une séance de menus, et les menus de la nouvelle app se
+    // dessinaient dans les cases de l'ancienne (« Claude » centré dans la case de « VMware Workstation »).
+    CHECK(md::menuSessionStep(false, false) == md::MenuSessionStep::Continue);
+    CHECK(md::menuSessionStep(false, true) == md::MenuSessionStep::Relayout);   // horloge, icônes : refaite, même titre
+    CHECK(md::menuSessionStep(true, false) == md::MenuSessionStep::End);        // autre app : menus refermés, comme macOS
+    CHECK(md::menuSessionStep(true, true) == md::MenuSessionStep::End);
 }

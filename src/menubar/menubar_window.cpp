@@ -24,6 +24,7 @@
 #include "bar_screens.h"
 #include "clock_format.h"
 #include "foreground_rules.h"
+#include "menu_session.h"
 #include "shortcut.h"
 #include "status_brightness.h"
 #include "status_network.h"
@@ -1306,8 +1307,33 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
     menuScreen_ = &s;
     int current = int(index), previous = -1;
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
+    const std::wstring openedApp = active_.appId;   // l'app dont les menus sont ouverts
     for (;;) {
         menuOpen_ = false;
+        // Avant chaque titre (plan 71) : autre app au premier plan → la séance se ferme ; mise en page demandée pendant le
+        // menu → refaite, le même titre retrouvé (sinon les menus se dessinaient dans des cases périmées).
+        const MenuSessionStep step = menuSessionStep(active_.appId != openedApp, layoutPending_);
+        if (step == MenuSessionStep::End) {
+            if (trace_) log::info(L"[trace] barre : app changée pendant le menu, menus refermés");
+            break;
+        }
+        if (step == MenuSessionStep::Relayout) {
+            const int oldLeft = int(s.layout.leftVisible);
+            const bool isTitle = current >= 0 && current < oldLeft && std::size_t(current) < menus_.menus.size();
+            const std::wstring title = isTitle ? menus_.menus[std::size_t(current)].title : std::wstring();
+            const int statusIndex = current >= oldLeft ? current - oldLeft : -1;
+            relayout();
+            render();
+            const int newLeft = int(s.layout.leftVisible);
+            if (statusIndex >= 0) {
+                current = newLeft + statusIndex;
+            } else {
+                current = -1;
+                for (int i = 0; i < newLeft && std::size_t(i) < menus_.menus.size(); ++i)
+                    if (menus_.menus[std::size_t(i)].title == title) current = i;
+                if (current < 0) break;
+            }
+        }
         const int left = int(s.layout.leftVisible), n = left + int(status_.size());
         const auto hasMenu = [&](int i) { return i < left || opensMenu(status_[std::size_t(i - left)].kind); };
         if (previous >= 0 && current >= 0 && current < n && !hasMenu(current)) {
