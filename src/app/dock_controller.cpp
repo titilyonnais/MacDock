@@ -200,7 +200,14 @@ std::optional<std::size_t> DockController::hoveredIndex() const {
     return hitLocal(p);
 }
 
+void DockController::setPointerAway(bool away) {
+    if (away == pointerAway_) return;
+    pointerAway_ = away;
+    if (away) setCursor(std::nullopt);
+}
+
 void DockController::setCursor(std::optional<POINT> window) {
+    if (pointerAway_) window.reset();   // confiné ailleurs : la position restée sur le Dock ne compte pas
     refreshItems();
     pointerKnown_ = window.has_value();
     std::optional<POINT> clientPx;
@@ -220,7 +227,7 @@ void DockController::setCursor(std::optional<POINT> window) {
 }
 
 std::optional<bool> DockController::recheckPointer(POINT window) {
-    if (!pointerKnown_) return std::nullopt;
+    if (!pointerKnown_ || pointerAway_) return std::nullopt;
     setCursor(window);
     return cursorInside_;
 }

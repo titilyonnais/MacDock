@@ -110,12 +110,13 @@ TEST_CASE(cursor_relay_counts_silence_from_hook_installation) {
 }
 
 TEST_CASE(pointer_confined_away_from_the_dock) {
-    // Une app qui confine le pointeur (ClipCursor : VMware qui prend la souris, un jeu) dans une zone qui ne contient
-    // pas tout le Dock : le curseur ne peut pas y être, le Dock fait comme s'il était ailleurs.
-    const RECT desktop{0, 0, 3840, 2160}, dock{900, 1950, 2940, 2160};
-    CHECK(!md::pointerConfinedAway(desktop, desktop, dock));                  // libre
-    CHECK(md::pointerConfinedAway(RECT{0, 0, 3840, 2027}, desktop, dock));    // fenêtre au-dessus du Dock
-    CHECK(md::pointerConfinedAway(RECT{1000, 400, 2000, 2100}, desktop, dock));   // une partie du Dock seulement
-    CHECK(!md::pointerConfinedAway(RECT{0, 0, 3840, 2160}, RECT{-1920, 0, 3840, 2160}, dock));   // l'écran du Dock entier
-    CHECK(md::pointerConfinedAway(RECT{-1920, 0, 0, 1080}, RECT{-1920, 0, 3840, 2160}, dock));   // l'autre écran
+    // Une app qui confine le pointeur (ClipCursor) dans une zone qui ne contient pas le curseur : il y sera ramené au
+    // prochain mouvement, le Dock le traite comme ailleurs. Curseur dans la zone, ou pointeur libre : rien ne change.
+    const RECT desktop{0, 0, 3840, 2160};
+    const POINT onDock{2300, 2090};
+    CHECK(!md::pointerConfinedAway(desktop, desktop, onDock));                                  // libre
+    CHECK(md::pointerConfinedAway(RECT{0, 0, 3840, 2027}, desktop, onDock));                    // zone au-dessus du Dock
+    CHECK(!md::pointerConfinedAway(RECT{0, 0, 3840, 2027}, desktop, POINT{2300, 1500}));        // curseur dans la zone
+    CHECK(!md::pointerConfinedAway(RECT{0, 0, 3840, 2160}, RECT{-1920, 0, 3840, 2160}, onDock));   // l'écran du Dock
+    CHECK(md::pointerConfinedAway(RECT{-1920, 0, 0, 1080}, RECT{-1920, 0, 3840, 2160}, onDock));   // l'autre écran
 }

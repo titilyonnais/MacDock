@@ -54,6 +54,8 @@ public:
 
     void setCursor(std::optional<POINT> clientPx);   // nullopt = souris hors du Dock
     bool pointerInside() const { return cursorInside_; }
+    // Pointeur confiné ailleurs par une autre app : positions ignorées, le Dock le croit hors de lui.
+    void setPointerAway(bool away);
     // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
     // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
     // n'est pas suivi (menu ouvert, rien reçu encore).
@@ -171,6 +173,7 @@ private:
     Spring amount_;
     std::optional<double> cursor_;      // points sur l'axe principal
     bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
+    bool pointerAway_ = false;          // pointeur confiné ailleurs par une autre app : positions ignorées
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône

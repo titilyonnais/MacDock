@@ -284,6 +284,22 @@ TEST_CASE(controller_attention_again_once_app_inactive) {
     CHECK(f.c.isBouncing(L"c:\\a.exe"));
 }
 
+TEST_CASE(controller_pointer_away_survives_recheck) {
+    // Relecture du plan 62 : pointeur confiné ailleurs par une autre app, le Dock le met hors de lui ; la réévaluation de
+    // chaque tour de boucle (recheckPointer, position réelle restée sur le Dock) ne doit pas le remettre dedans.
+    Fixture f;
+    f.c.setCursor(f.at(0));
+    CHECK(f.c.pointerInside());
+    f.c.setPointerAway(true);
+    CHECK(!f.c.pointerInside());
+    f.c.setCursor(f.at(0));
+    CHECK(!f.c.pointerInside());
+    CHECK(!f.c.recheckPointer(f.at(0)).value_or(false));
+    f.c.setPointerAway(false);   // confinement levé : la position compte de nouveau
+    f.c.setCursor(f.at(0));
+    CHECK(f.c.pointerInside());
+}
+
 TEST_CASE(controller_hit_test_separator) {
     Fixture f;   // a, b, c, séparateur, corbeille
     bool found = false;

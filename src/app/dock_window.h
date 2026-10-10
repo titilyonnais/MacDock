@@ -300,7 +300,7 @@ private:
     void startSentinel();
     // Pointeur confiné ailleurs par une autre app (VMware qui prend la souris…) : le Dock fait comme s'il était hors de
     // lui. Trace du mode diagnostic : confinement, curseur affiché ou caché, fenêtre qui capture la souris.
-    bool pointerConfinedElsewhere() const;
+    bool pointerConfinedElsewhere(POINT cursor) const;
     bool confinedLogged_ = false;
     std::wstring pointerState() const;
     void tracePointer(const wchar_t* why);

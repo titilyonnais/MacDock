@@ -45,8 +45,9 @@ private:
     std::optional<unsigned long long> lastReinstall_;
 };
 
-// Pointeur confiné par une autre app (GetClipCursor plus petit que le bureau) dans une zone qui ne contient pas tout
-// le Dock : le Dock fait comme si le pointeur était ailleurs. MacDock n'appelle jamais ClipCursor lui-même.
-bool pointerConfinedAway(const RECT& clip, const RECT& desktop, const RECT& dock);
+// Pointeur confiné par une autre app (GetClipCursor plus petit que le bureau) dans une zone qui ne contient pas le
+// curseur : il y sera ramené au prochain mouvement, le Dock fait comme s'il était ailleurs. MacDock n'appelle jamais
+// ClipCursor lui-même.
+bool pointerConfinedAway(const RECT& clip, const RECT& desktop, POINT cursor);
 
 } // namespace md

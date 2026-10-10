@@ -40,12 +40,11 @@ unsigned long long CursorRelay::silenceMs(unsigned long long nowMs, unsigned lon
     return nowMs > since ? nowMs - since : 0;
 }
 
-bool pointerConfinedAway(const RECT& clip, const RECT& desktop, const RECT& dock) {
+bool pointerConfinedAway(const RECT& clip, const RECT& desktop, POINT cursor) {
     const bool confined = clip.left > desktop.left || clip.top > desktop.top || clip.right < desktop.right ||
                           clip.bottom < desktop.bottom;
-    const bool holdsDock =
-        clip.left <= dock.left && clip.top <= dock.top && clip.right >= dock.right && clip.bottom >= dock.bottom;
-    return confined && !holdsDock;
+    const bool inside = cursor.x >= clip.left && cursor.x < clip.right && cursor.y >= clip.top && cursor.y < clip.bottom;
+    return confined && !inside;
 }
 
 } // namespace md

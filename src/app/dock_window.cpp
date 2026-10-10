@@ -281,7 +281,7 @@ bool DockApp::stepVisibility(double now) {
     }
     // Entièrement masqué : plus de capture de l'arrière-plan (une vidéo derrière le ferait redessiner pour rien).
     switch (backdropForVisibility(hidden, backdropHiddenPause_, capture_.status() == BackdropCapture::Status::Running,
-                                  menuOpen_)) {
+                                  menuOpen_, glassLive_ && excluded_)) {
         case BackdropAction::Pause:
             pauseCapture();
             backdropHiddenPause_ = true;
@@ -453,6 +453,7 @@ void DockApp::updateGlass() {
     if (!want || !excluded_) {
         capture_.stop();
         glassLive_ = false;
+        capturePaused_ = backdropHiddenPause_ = false;   // plus de verre : aucune pause à reprendre plus tard
         if (excluded_) SetWindowDisplayAffinity(hwnd_, WDA_NONE);
         excluded_ = false;
         requestFrame();
@@ -481,6 +482,10 @@ void DockApp::pauseCapture() {
 
 void DockApp::resumeCapture() {
     if (!capturePaused_) return;
+    if (!excluded_) {   // verre coupé entre-temps : sans exclusion des captures, le Dock se capturerait lui-même
+        capturePaused_ = false;
+        return;
+    }
     RECT rc;
     GetWindowRect(hwnd_, &rc);
     capture_.start(hwnd_, WM_APP_BACKDROP, MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY),
@@ -764,14 +769,23 @@ void DockApp::setTransparent(bool transparent) {
 }
 
 void DockApp::onMouse(POINT screen) {
-    // Pointeur confiné ailleurs par une autre app : le curseur ne peut pas être sur le Dock, même si sa dernière
-    // position y est restée (ClipCursor ne le déplace qu'au mouvement suivant).
-    const bool confined = pointerConfinedElsewhere();
+    // Pointeur confiné ailleurs par une autre app : le curseur sera ramené dans sa zone au prochain mouvement, même si sa
+    // dernière position est restée sur le Dock. Le Dock le croit hors de lui (le contrôleur ignore aussi la réévaluation
+    // de chaque tour), ni coin actif ni poussée d'écran.
+    const bool confined = pointerConfinedElsewhere(screen);
     if (confined != confinedLogged_) {
         confinedLogged_ = confined;
         if (trace_) log::info(L"[trace] pointeur %s", confined ? L"confiné ailleurs par une autre app : hors du Dock" : L"libre");
     }
-    if (confined) screen = POINT{-1000000, -1000000};
+    controller_.setPointerAway(confined);
+    if (confined) {
+        if (cursorInDock_ || cursorAtEdge_) {
+            cursorInDock_ = cursorAtEdge_ = false;
+            if (settings_.autohide) requestFrame();
+        }
+        setTransparent(true);
+        return;
+    }
     POINT client{screen.x - origin_.x, screen.y - origin_.y};
     controller_.setCursor(client);   // ne marque le Dock à redessiner que si son état change
     const bool inside = controller_.pointerInside();
@@ -2529,10 +2543,10 @@ RECT virtualDesktop() {
 }
 } // namespace
 
-bool DockApp::pointerConfinedElsewhere() const {
-    RECT clip{}, dock{};
-    if (!hwnd_ || !GetClipCursor(&clip) || !GetWindowRect(hwnd_, &dock)) return false;
-    return pointerConfinedAway(clip, virtualDesktop(), dock);
+bool DockApp::pointerConfinedElsewhere(POINT cursor) const {
+    RECT clip{};
+    if (!GetClipCursor(&clip)) return false;
+    return pointerConfinedAway(clip, virtualDesktop(), cursor);
 }
 
 std::wstring DockApp::pointerState() const {

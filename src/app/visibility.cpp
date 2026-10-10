@@ -46,9 +46,9 @@ double Visibility::wakeAt() const {
     return rawSince_ + (immediate_ ? 0 : (raw_ ? t_.showDelay : t_.leaveDelay));
 }
 
-BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool captureRunning, bool menuOpen) {
+BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool captureRunning, bool menuOpen, bool glassActive) {
     if (hidden) return captureRunning && !pausedForHidden ? BackdropAction::Pause : BackdropAction::None;
-    return pausedForHidden && !menuOpen ? BackdropAction::Resume : BackdropAction::None;
+    return pausedForHidden && !menuOpen && glassActive ? BackdropAction::Resume : BackdropAction::None;
 }
 
 bool coversMonitor(const RECT& w, const RECT& m) {
