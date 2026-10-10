@@ -91,6 +91,8 @@ struct Session {
     ScreenBackdrop screen;
     WindowBackdrop backdrop;
     GlassTarget glassTarget;
+    bool captureVisible = false;   // visible aux captures : le verre ne se recapture pas (il se verrait)
+    ULONGLONG thawAt = 0;          // reprise du verre, une fois exclue de nouveau
 
     HWND hwnd = nullptr;
     RECT rc{};                 // fenêtre (écran)
@@ -558,7 +560,10 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_STACK_BACKDROP:
-            if (screen.take(env.device) && screen.copyTo(env.device, rc, backdrop)) render();
+            // Image prise à chaque avis (sinon les suivants ne viennent plus), montrée hors des révélations.
+            if (screen.take(env.device) && !captureVisible && GetTickCount64() >= thawAt &&
+                screen.copyTo(env.device, rc, backdrop))
+                render();
             return 0;
         default: break;
     }
@@ -684,6 +689,14 @@ std::wstring StackWindow::track(const Env& env, const Request& request) {
     }
     if (env.trace) log::info(L"[trace] pile : choix %s", s.result.empty() ? L"(aucun)" : s.result.c_str());
     return s.result;
+}
+
+void StackWindow::setCaptureVisible(bool on) {
+    Session* s = g_session;
+    if (!s || s->captureVisible == on) return;
+    s->captureVisible = on;
+    if (!on) s->thawAt = GetTickCount64() + 150;
+    if (!diagnosticCapture() && s->hwnd) SetWindowDisplayAffinity(s->hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
 }
 
 } // namespace md

@@ -28,6 +28,8 @@ public:
     // Chemin choisi (un élément, ou le dossier pour « Ouvrir dans l'Explorateur ») ; vide si fermée sans choix.
     // Si la fenêtre ne peut pas s'ouvrir, renvoie le dossier : le clic sur la pile l'ouvre dans l'Explorateur.
     static std::wstring track(const Env& env, const Request& request);
+    // Pile ouverte visible aux captures (Outil Capture de Windows) ; son verre se fige pendant ce temps.
+    static void setCaptureVisible(bool on);
 };
 
 } // namespace md

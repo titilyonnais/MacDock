@@ -32,6 +32,7 @@
 #include "../screenshot/shot_thumbnail.h"
 #include "../screenshot/shot_toolbar.h"
 #include "../screenshot/shot_viewfinder.h"
+#include "../screenshot/windows_tool.h"
 #include "../switcher/switcher_logic.h"
 #include "../switcher/switcher_window.h"
 #include "../switcher/window_cycle.h"
@@ -141,6 +142,12 @@ private:
     void deliverShots(std::vector<std::pair<HMONITOR, BgraImage>> shots, HMONITOR thumbOn, bool clipboard);
     void revealForCapture(bool dock, bool lights);   // Dock et pastilles visibles aux captures, le temps de la copie
     void concealAfterCapture();
+    // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock visible à ses captures tant qu'il est devant.
+    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai.
+    void onToolShot(DWORD keyTime);
+    void revealForTool();   // comme revealForCapture, au plus vite (l'outil copie l'écran 100 à 300 ms après la touche)
+    void tickToolReveal();
+    static bool captureToolInFront();
     static bool shotIgnores(HWND h);   // jamais visées en mode fenêtre, jamais comptées comme recouvrantes
     void onBackdrop();
     void watchTrash();
@@ -220,6 +227,12 @@ private:
     UINT shotRevealMsg_ = 0;              // « MacDockScreenshotReveal » : pastilles de la barre visibles aux captures
     bool shotClipboard_ = false;          // viseur ouvert avec ⌃ : l'image ira au presse-papiers
     bool revealDock_ = false, revealLights_ = false, shotPausedCapture_ = false;
+    ToolReveal toolReveal_;              // révélation tenue pour l'Outil Capture de Windows
+    bool toolRevealOn_ = false;          // MacDock visible à ses captures (rien ne le referme avant la fin)
+    bool toolWasInFront_ = false;        // pour la trace : l'outil vient d'apparaître ou de partir
+    ULONGLONG toolBarPingAt_ = 0;        // dernière relance de la barre (sa sécurité coupe après 3 s)
+    ULONGLONG toolRevealAt_ = 0;         // début de la révélation (traces)
+    UINT toolTestMsg_ = 0;               // « MacDockTestToolReveal » (mode diagnostic) : même chemin que la touche
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     HotCornerTracker corners_;
     HotCornerAction pendingCorner_ = HotCornerAction::Off;   // action différée (veille de l'écran, économiseur)

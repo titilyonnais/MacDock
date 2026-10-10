@@ -108,6 +108,8 @@ struct SwitcherWindow::Impl {
     ScreenBackdrop screen;
     WindowBackdrop backdrop;
     GlassTarget glassTarget;
+    bool captureVisible = false;   // visible aux captures : le verre ne se recapture pas (il se verrait)
+    ULONGLONG thawAt = 0;          // reprise du verre, une fois exclu de nouveau
 
     HWND hwnd = nullptr;
     RECT rc{}, monitorRc{};
@@ -169,7 +171,9 @@ LRESULT CALLBACK SwitcherWindow::Impl::proc(HWND h, UINT msg, WPARAM wp, LPARAM 
             return 0;
         }
         case WM_SW_BACKDROP:
-            if (self->shown && self->screen.take(self->env.device) && self->screen.copyTo(self->env.device, self->rc, self->backdrop))
+            // Image prise à chaque avis (sinon les suivants ne viennent plus), montrée hors des révélations.
+            if (self->shown && self->screen.take(self->env.device) && !self->captureVisible && GetTickCount64() >= self->thawAt &&
+                self->screen.copyTo(self->env.device, self->rc, self->backdrop))
                 self->render();
             return 0;
         default: break;
@@ -190,7 +194,7 @@ bool SwitcherWindow::Impl::ensureWindow() {
     if (!hwnd) return false;
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(this));
     // Sinon le verre se verrait lui-même ; en diagnostic, visible aux enregistreurs (le verre peut alors se refléter).
-    if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+    if (!diagnosticCapture()) SetWindowDisplayAffinity(hwnd, captureVisible ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
     return true;
 }
 
@@ -343,6 +347,14 @@ void SwitcherWindow::hide() {
 }
 
 bool SwitcherWindow::visible() const { return impl_->shown; }
+
+void SwitcherWindow::setCaptureVisible(bool on) {
+    Impl& s = *impl_;
+    if (s.captureVisible == on) return;
+    s.captureVisible = on;
+    if (!on) s.thawAt = GetTickCount64() + 150;
+    if (!diagnosticCapture() && s.hwnd) SetWindowDisplayAffinity(s.hwnd, on ? WDA_NONE : WDA_EXCLUDEFROMCAPTURE);
+}
 
 BgraImage switcherSnapshot(const std::vector<std::wstring>& names, std::size_t selected, bool dark, int width, int height) {
     BgraImage out{width, height, std::vector<std::uint8_t>(std::size_t(std::max(width, 0)) * std::max(height, 0) * 4, 0)};

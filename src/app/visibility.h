@@ -49,6 +49,12 @@ private:
 enum class BackdropAction { None, Pause, Resume };
 BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool captureRunning, bool menuOpen, bool glassActive);
 
+// Capture du verre après une capture d'écran (MacDock, Outil Capture de Windows ; plan 63) : reprise tout de suite,
+// plus tard (held : le viseur, Mission Control ou un menu tient le Dock), ou jamais (rien en pause ; Dock masqué, sa
+// règle la reprend à son retour ; révélation de nouveau en cours, sa fin décidera).
+enum class ShotResume { Now, Later, Never };
+ShotResume shotResume(bool paused, bool pausedForHidden, bool held, bool revealing);
+
 // La fenêtre couvre-t-elle tout l'écran (tolérance de 1 px) ?
 bool coversMonitor(const RECT& window, const RECT& monitor);
 // Plein écran : couvre l'écran sans être une fenêtre maximisée à barre de titre (qui couvre tout l'écran

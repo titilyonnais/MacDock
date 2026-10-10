@@ -80,6 +80,7 @@ Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
     - Échap ou un clic droit annule.
   - Le fichier « Capture d’écran AAAA-MM-JJ à HH.MM.SS.png » va sur ton Bureau. Plusieurs captures dans la même seconde, ou plusieurs écrans : « … (2).png », jamais d'écrasement.
   - Le Dock, les feux tricolores et les menus ouverts (barre, Dock, Centre de contrôle, Centre de notifications) apparaissent sur la capture. Spotlight, l'écran Apps et la pastille du volume aussi.
+  - Avec l'**Outil Capture de Windows** (`⊞⇧S` ou Impr. écran), MacDock se montre aussi, le temps que l'outil est ouvert (2 min au plus) : Dock, piles, sélecteur d'apps, menus, feux tricolores. Sauf `⊞Impr. écran` et `Alt+Impr. écran`, qui copient l'écran sans attendre, et sous une app lancée en administrateur (MacDock ne voit pas la touche).
   - **La vignette** glisse en bas à droite et reste 5 secondes ; le survol la retient.
     - Un clic ouvre la capture.
     - Un glisser vers la droite la renvoie.
@@ -197,7 +198,7 @@ Un fichier invalide n'efface rien : une copie `.bak` est faite et les réglages 
 
 Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en verre : ce qui se trouve derrière est flouté, réfracté sur les bords, teinté selon le thème, avec un liseré lumineux. Le Dock ne se redessine que si le contenu sous lui change vraiment.
 
-- Pour lire l'écran sous lui, le Dock s'exclut des captures : **il n'apparaît pas sur les captures d'écran** ni dans les partages d'écran. Mets `"glass": false` si tu en as besoin ; le Dock passe alors en verre dépoli classique.
+- Pour lire l'écran sous lui, le Dock s'exclut des captures : **il n'apparaît pas dans les enregistrements ni les partages d'écran** (il se montre à ses propres captures et à l'Outil Capture de Windows, voir plus haut). Mets `"glass": false` si tu en as besoin ; le Dock passe alors en verre dépoli classique.
 - Écran HDR : pris en charge (le blanc SDR de Windows est respecté).
 - Si la capture est impossible (écran tourné, carte graphique sans accélération, bureau sécurisé), le Dock passe en verre dépoli et reprend tout seul.
 

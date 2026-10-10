@@ -1174,6 +1174,27 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Trouvaille** : sur macOS, SF Pro est resserré selon sa taille (table « trak » de la police, ignorée par Windows) ;
   nos mots sont 1 à 1,6 pt trop larges. Plan à part, pour tout le texte de MacDock.
 
+### Plan 63 — MacDock dans les captures de Windows, nuit du 10 octobre (seul)
+
+- **Ce que tu m'avais signalé** : le Dock, la barre « et tout » n'apparaissaient pas sur les captures de Windows
+  (⊞⇧S, Impr. écran). Cause : MacDock s'exclut des captures pour que son verre ne se voie pas lui-même ; il ne se
+  montrait qu'à ses propres captures (⊞⇧3, ⊞⇧4, ⊞⇧5).
+- **Maintenant** : le Dock voit ⊞⇧S et Impr. écran passer, sans les retenir, et se montre à l'Outil Capture tant qu'il
+  est ouvert (2 min au plus ; 3 s s'il n'apparaît pas) : Dock, piles, sélecteur d'apps, menus, Spotlight, Apps, feux
+  tricolores et pastille du volume ; leur verre se fige le temps de la capture.
+- **Essai sans clavier** (le Gestionnaire des tâches en administrateur bloquait le clavier cette nuit) : une sonde
+  copiait l'écran elle-même ; le Dock y apparaît pendant la révélation et en disparaît après, au pixel près.
+  **À essayer avec toi** : un vrai ⊞⇧S, puis Impr. écran.
+- **Limites** : ⊞Impr. écran et Alt+Impr. écran copient l'écran sans attendre ; une app en administrateur au premier plan
+  cache la touche ; enregistrements et partages d'écran (OBS, Teams) non couverts.
+
+## Mineurs reportés — plan 63
+- Capture « fenêtre » de MacDock (⊞⇧4, Espace) pendant une révélation : le Dock apparaît par-dessus la fenêtre.
+- Enregistrement ⊞⇧5 pendant une révélation : le Dock, les pastilles et les menus apparaissent dans la vidéo, puis
+  disparaissent.
+- Relance de la barre chaque seconde : elle refait toute sa révélation et écrit une ligne de trace par seconde.
+- Réglages relus pendant une révélation : le verre du Dock passe en dépoli dans la capture.
+
 ## Décisions prises sans toi (plan 64)
 - **Dessins à moi** de la loupe et du Centre de contrôle, d'après les mesures : pas les symboles d'Apple.
 - **Texte à 85 % de noir partout** : sur la VM, le nom de l'app et les titres sont d'un noir plein (les icônes et
