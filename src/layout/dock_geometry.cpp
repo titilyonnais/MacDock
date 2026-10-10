@@ -16,7 +16,8 @@ DockGeometry dockGeometry(double tileSize, const Metrics& m) {
     double r = m.dockCornerRadius > 0 ? m.dockCornerRadius : g.iconRadius + m.dockPadding + g.visibleInset;
     g.cornerRadius = std::clamp(r, 0.0, g.thickness / 2);
     g.indicatorCenter = m.indicatorCenterFromBottom;
-    g.separatorLength = tile * m.separatorLengthRatio;
+    g.separatorLength = g.thickness * m.separatorLengthRatio;
+    g.separatorMargin = std::max(0.0, tile * m.separatorMarginRatio + m.separatorMarginOffset);
     return g;
 }
 

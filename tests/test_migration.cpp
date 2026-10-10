@@ -7,9 +7,9 @@ TEST_CASE(metrics_migrate_v1_updates_old_defaults) {
     auto v = md::migrateMetricsJson(*md::json::parse(
         R"({"iconGap":6,"dockCornerRadius":24,"separatorLengthRatio":0.72,"tooltipGap":12,"indicatorInset":3})"));
     auto m = md::metricsFromJson(v);
-    CHECK_NEAR(m.iconGap, 2.3, 1e-9);   // 6 → 4 (v2) → 2,3 (v7, plan 61)
+    CHECK_NEAR(m.iconGap, 4, 1e-9);   // 6 → 4 (v2) → 2,3 (v7, plan 61) → 4 (v9, plan 70)
     CHECK_NEAR(m.dockCornerRadius, 0, 1e-9);
-    CHECK_NEAR(m.separatorLengthRatio, 0.95, 1e-9);   // 0,72 → 0,80 (v2) → 0,95 (v7)
+    CHECK_NEAR(m.separatorLengthRatio, 0.738, 1e-9);   // 0,72 → 0,80 (v2) → 0,95 (v7) → 0,738 de l'épaisseur (v9)
     CHECK_NEAR(m.tooltipGap, 10, 1e-9);
     CHECK(v.find("indicatorInset") == nullptr);
     CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
@@ -78,12 +78,13 @@ TEST_CASE(metrics_migrate_v6_tahoe_dock_geometry) {   // plan 61 : proportions d
         R"({"version":6,"dockPadding":8,"iconGap":4,"separatorMargin":7,"separatorLengthRatio":0.8,)"
         R"("indicatorCenterFromBottom":4,"dockScreenMargin":5,"indicatorDiameter":4})"));
     auto m = md::metricsFromJson(v);
-    CHECK_NEAR(m.dockPadding, 7.1, 1e-9);
-    CHECK_NEAR(m.iconGap, 2.3, 1e-9);
-    CHECK_NEAR(m.separatorMargin, 9.9, 1e-9);
-    CHECK_NEAR(m.separatorLengthRatio, 0.95, 1e-9);
-    CHECK_NEAR(m.indicatorCenterFromBottom, 4.7, 1e-9);
-    CHECK_NEAR(m.dockScreenMargin, 3.9, 1e-9);
+    // Défauts de la v6, passés par la v7 puis par les cotes mesurées de la v9 (plan 70).
+    CHECK_NEAR(m.dockPadding, 10, 1e-9);
+    CHECK_NEAR(m.iconGap, 4, 1e-9);
+    CHECK(v.find("separatorMargin") == nullptr);
+    CHECK_NEAR(m.separatorLengthRatio, 0.738, 1e-9);
+    CHECK_NEAR(m.indicatorCenterFromBottom, 6, 1e-9);
+    CHECK_NEAR(m.dockScreenMargin, 5, 1e-9);
     CHECK_NEAR(m.indicatorDiameter, 4, 1e-9);   // inchangé
     CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     // Des valeurs choisies restent.
@@ -91,9 +92,9 @@ TEST_CASE(metrics_migrate_v6_tahoe_dock_geometry) {   // plan 61 : proportions d
     CHECK_NEAR(kept.dockPadding, 10, 1e-9);
     CHECK_NEAR(kept.iconGap, 6, 1e-9);
     const md::Metrics fresh;
-    CHECK_NEAR(fresh.dockPadding, 7.1, 1e-9);
-    CHECK_NEAR(fresh.iconGap, 2.3, 1e-9);
-    CHECK_NEAR(fresh.separatorLengthRatio, 0.95, 1e-9);
+    CHECK_NEAR(fresh.dockPadding, 10, 1e-9);
+    CHECK_NEAR(fresh.iconGap, 4, 1e-9);
+    CHECK_NEAR(fresh.separatorLengthRatio, 0.738, 1e-9);
 }
 
 TEST_CASE(metrics_migrate_chain_keeps_value_chosen_before) {
@@ -153,11 +154,33 @@ TEST_CASE(metrics_migrate_v8_no_white_rim) {
     CHECK_NEAR(m.borderOpacity, 0, 1e-9);
     CHECK_NEAR(m.glassFresnel, 0.04, 1e-9);
     CHECK_NEAR(m.glassTintDark, 0.3, 1e-9);
-    CHECK_EQ(md::jsonVersion(v), 8);
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     const md::Metrics defaults;
     CHECK_NEAR(defaults.borderOpacity, 0, 1e-9);
     CHECK_NEAR(defaults.glassSpecular, 0, 1e-9);
     // Un fichier déjà en v8 garde ses valeurs (on peut remettre un liseré à la main).
     auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":8,"glassSpecular":0.3})")));
     CHECK_NEAR(kept.glassSpecular, 0.3, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v9_measured_dock) {
+    // Plan 70 : cotes du Dock de macOS 26 mesurées à 48, 64 et 71 sur la VM. Les défauts de la v7 (ramenés à 48 en
+    // proportion) prennent les nouveaux ; une valeur choisie reste ; la marge du séparateur en points disparaît (elle
+    // suit maintenant la taille).
+    auto v = md::migrateMetricsJson(*md::json::parse(
+        R"({"version":8,"dockPadding":7.1,"iconGap":2.3,"dockScreenMargin":3.9,"indicatorCenterFromBottom":4.7,)"
+        R"("separatorLengthRatio":0.95,"separatorMargin":9.9,"glassBlur":12})"));
+    CHECK(v.find("separatorMargin") == nullptr);
+    auto m = md::metricsFromJson(v);
+    CHECK_NEAR(m.dockPadding, 10, 1e-9);
+    CHECK_NEAR(m.iconGap, 4, 1e-9);
+    CHECK_NEAR(m.dockScreenMargin, 5, 1e-9);
+    CHECK_NEAR(m.indicatorCenterFromBottom, 6, 1e-9);
+    CHECK_NEAR(m.separatorLengthRatio, 0.738, 1e-9);
+    CHECK_NEAR(m.separatorMarginRatio, 0.25, 1e-9);
+    CHECK_NEAR(m.separatorMarginOffset, -3, 1e-9);
+    CHECK_NEAR(m.glassBlur, 12, 1e-9);   // valeur hors de ces cotes : inchangée
+    CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
+    auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":8,"dockPadding":9})")));
+    CHECK_NEAR(kept.dockPadding, 9, 1e-9);   // choisie par l'utilisateur
 }

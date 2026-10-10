@@ -20,6 +20,7 @@
 #include "../config/config_store.h"
 #include "../core/diag.h"
 #include "../interact/cursor_relay.h"
+#include "../layout/dock_resize.h"
 #include "../quicklook/quicklook_logic.h"
 #include "../quicklook/quicklook_shell.h"
 #include "../screenshot/screen_grab.h"
@@ -280,7 +281,7 @@ bool DockApp::stepVisibility(double now) {
     in.cursorAtEdge = cursorAtEdge_;
     in.cursorInDock = cursorInDock_;
     in.menuOpen = menuOpen_ && !shotSession_;   // le viseur ne fait pas sortir le Dock masqué
-    in.dragging = controller_.dragging();
+    in.dragging = controller_.dragging() || resize_.has_value();   // glisser d'une icône ou d'un séparateur
     bool animating = visibility_.update(in, now);
     controller_.setShown(visibility_.shown());
     bool hidden = visibility_.hidden();
@@ -392,7 +393,10 @@ void DockApp::reposition() {
     scale_ = float(dpiX) / 96.0f;
 
     const int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
-    const int thick = int(DockController::windowHeightPx(settings_, metrics_, scale_));   // épaisseur de la fenêtre
+    // Épaisseur de la fenêtre ; pendant le glisser d'un séparateur, celle de la plus grande taille (rien n'est coupé).
+    Settings sizing = settings_;
+    if (resize_) sizing.tileSize = sizing.largeSize = 128;
+    const int thick = int(DockController::windowHeightPx(sizing, metrics_, scale_));
     const DockPosition edge = settings_.position;
 
     // Bande du bord occupée par le Dock ; la barre d'application la décale des autres barres (barre Windows…).
@@ -931,6 +935,8 @@ void DockApp::setTransparent(bool transparent) {
 }
 
 void DockApp::onMouse(POINT screen) {
+    // Glisser de la poignée dont le relâchement s'est perdu (pris par une autre fenêtre) : il se termine ici.
+    if (resize_ && !(GetAsyncKeyState(GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON) & 0x8000)) endResize();
     // Pointeur confiné ailleurs par une autre app : le curseur sera ramené dans sa zone au prochain mouvement, même si sa
     // dernière position est restée sur le Dock. Le Dock le croit hors de lui (le contrôleur ignore aussi la réévaluation
     // de chaque tour), ni coin actif ni poussée d'écran.
@@ -1039,6 +1045,60 @@ void DockApp::logItemPositions(const RenderFrame& frame) {
         if (const DockItem* it = controller_.itemAt(i))
             log::info(L"[trace] élément %zu %s : x=%ld y=%ld", i, it->key.c_str(), origin_.x + LONG(frame.icons[i].cx),
                       origin_.y + LONG(frame.icons[i].cy));
+}
+
+bool DockApp::separatorUnderCursor() const {
+    POINT p{};
+    if (!GetCursorPos(&p)) return false;
+    return controller_.separatorHandleAt(POINT{p.x - origin_.x, p.y - origin_.y});
+}
+
+double DockApp::resizeAxis(POINT screen) const {
+    return (settings_.position == DockPosition::Bottom ? screen.y : screen.x) / double(scale_);
+}
+
+void DockApp::beginResize() {
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    // Depuis la taille affichée (Dock rétréci compris), jamais au-delà de ce qui tient (relecture du plan 70).
+    resize_ = Resize{settings_.tileSize, controller_.fittingTileSize(settings_.tileSize), resizeAxis(cursor),
+                     controller_.fittingTileSize(128)};
+    controller_.setResizing(true);
+    reposition();   // fenêtre à la hauteur de la taille 128 le temps du glisser
+    requestFrame();
+    if (trace_) log::info(L"[trace] poignée : glisser depuis la taille %.0f", settings_.tileSize);
+}
+
+void DockApp::updateResize() {
+    if (!resize_) return;
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return;
+    // Points entiers vers la taille de départ : le tremblement d'un simple clic ne change rien.
+    const double moved = snappedTileSize(resize_->startTile, resizedTileSize(resize_->startTile, resize_->startAxis,
+                                                                             resizeAxis(cursor), settings_.position,
+                                                                             resize_->maxTile));
+    const double tile = resizedSetting(resize_->setting, resize_->startTile, moved);   // réglage en points entiers
+    if (tile == settings_.tileSize) return;
+    settings_.tileSize = tile;
+    controller_.setSettings(settings_);
+    requestFrame();
+}
+
+void DockApp::endResize() {
+    if (!resize_) return;
+    updateResize();   // dernière position du pointeur
+    const double from = resize_->setting;
+    resize_.reset();
+    controller_.setResizing(false);
+    if (GetCapture() == hwnd_) ReleaseCapture();
+    settings_.largeSize = std::max(settings_.largeSize, settings_.tileSize);   // l'agrandissement reste au moins aussi grand
+    controller_.setSettings(settings_);
+    reposition();   // hauteur de la fenêtre et zone réservée à la taille finale
+    if (settings_.tileSize != from) saveSettings();
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) onMouse(cursor);
+    requestFrame();
+    if (trace_) log::info(L"[trace] poignée : taille %.0f → %.0f", from, settings_.tileSize);
 }
 
 void DockApp::onPointerUp(POINT client) {
@@ -2945,6 +3005,8 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
+            swallowClick_ = false;   // un relâchement à avaler ne survit pas à l'appui suivant
+            if (resize_) endResize();   // glisser de la poignée resté ouvert (relâchement perdu ailleurs)
             if (hoverWarm_) {   // clic avant la fin du survol : la capture part tout de suite
                 KillTimer(hwnd_, kWarmTimer);
                 if (IsIconic(hoverWarm_)) genie_.warm(instance_, hoverWarm_);
@@ -2952,6 +3014,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (dockClickGate(SpotlightWindow::isOpen(), menuOpen_) == DockClick::CloseSpotlight) {
                 SpotlightWindow::closeOpen();   // le Dock n'active pas : ce clic est le « clic ailleurs »
                 swallowClick_ = true;
+                return 0;
+            }
+            if (controller_.separatorHandleAt(POINT{short(LOWORD(lp)), short(HIWORD(lp))})) {
+                beginResize();   // poignée des séparateurs (plan 70)
+                SetCapture(hwnd_);
                 return 0;
             }
             controller_.pointerDown(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
@@ -2964,6 +3031,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetCapture(hwnd_);
             return 0;
         case WM_MOUSEMOVE:
+            if (GetCapture() == hwnd_ && resize_) {
+                SetCursor(LoadCursorW(nullptr, settings_.position == DockPosition::Bottom ? IDC_SIZENS : IDC_SIZEWE));
+                updateResize();
+                return 0;
+            }
             if (GetCapture() == hwnd_) {
                 if (controller_.dragging() && (GetAsyncKeyState(VK_ESCAPE) & 0x8000)) {
                     controller_.cancelDrag();   // Échap : l'icône revient à sa place
@@ -2976,13 +3048,25 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_LBUTTONUP:
-            if (swallowClick_) {
-                swallowClick_ = false;
-                return 0;
+            switch (leftButtonUpAction(resize_.has_value(), swallowClick_)) {
+                case ButtonUp::EndResize: endResize(); return 0;   // avant tout : sinon le glisser restait bloqué
+                case ButtonUp::Swallow: swallowClick_ = false; return 0;
+                case ButtonUp::Pointer: break;
             }
             onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;
+        case WM_SETCURSOR:
+            // Poignée des séparateurs (plan 70) : flèches de redimensionnement du thème de curseurs, comme sur macOS.
+            if (LOWORD(lp) == HTCLIENT && !controller_.dragging() && (resize_ || separatorUnderCursor())) {
+                SetCursor(LoadCursorW(nullptr, settings_.position == DockPosition::Bottom ? IDC_SIZENS : IDC_SIZEWE));
+                return TRUE;
+            }
+            break;
         case WM_CAPTURECHANGED:
+            if (resize_) {   // capture perdue (Alt+Tab…) : la taille atteinte est gardée
+                endResize();
+                return 0;
+            }
             if (controller_.dragging()) {
                 controller_.cancelDrag();
                 updateDragSprite();

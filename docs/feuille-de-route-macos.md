@@ -57,6 +57,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Dock complet dès ses premières images** : icônes gardées sur disque, relues au démarrage (plan 68).
 - **⊞⇧S propre, Dock fluide, verre sans contour** : Dock et barre sous le voile de l'Outil Capture, relais du curseur
   au rythme de l'écran, plus de liseré blanc (plan 69).
+- **Poignée des séparateurs et cotes du Dock de macOS 26** mesurées à trois tailles dans ta VM (plan 70).
 
 ## À faire, par ordre d'effet
 - **Apparence Clair / Sombre / Automatique** (ta demande du 10 octobre, MacDock et Windows, automatique au lever et au

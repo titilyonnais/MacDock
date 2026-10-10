@@ -166,6 +166,13 @@ private:
     void refreshTrash();        // WM_APP_BACKDROP : nouvelle image d'arrière-plan ou changement d'état
     bool initRenderer();
     void onPointerUp(POINT client);
+    // Poignée des séparateurs (plan 70) : la taille des icônes suit le pointeur ; fenêtre à la hauteur de la taille 128
+    // le temps du glisser, réglage enregistré et zone réservée suivie à la fin.
+    void beginResize();
+    void updateResize();
+    void endResize();
+    double resizeAxis(POINT screen) const;   // pointeur en points, sur l'axe perpendiculaire au bord du Dock
+    bool separatorUnderCursor() const;
     void logItemPositions(const RenderFrame& frame);
     void updateDragSprite();
     bool stepPoof(double now);   // true tant que le nuage s'anime
@@ -299,6 +306,12 @@ private:
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
+    struct Resize {
+        double setting = 48;                   // réglage avant le glisser
+        double startTile = 48, startAxis = 0;  // taille affichée au départ (Dock plein : plus petite que le réglage)
+        double maxTile = 128;                  // la plus grande taille qui tient sur l'axe
+    };
+    std::optional<Resize> resize_;   // glisser d'un séparateur en cours
     bool loggedHidden_ = false;
     DockPosition placedPosition_ = DockPosition::Bottom;   // bord où la fenêtre est placée
     std::wstring placedScreen_;   // réglage d'écran au dernier placement : changé dans l'app Réglages, le Dock y va

@@ -43,8 +43,8 @@ json::Value migrateMetricsJson(const json::Value& v) {
     if (!v.isObject() || jsonVersion(v) >= kMetricsVersion) return v;
     // Défauts changés, version par version (détail en regard de chaque groupe) : plan 1 en v2, verre Golden Gate en v3,
     // verre recalé en v4, retour à Tahoe en v5, icônes de macOS 26 en v6, proportions du Dock de macOS 26 en v7, aucun
-    // contour blanc en v8. Une valeur encore égale à l'ancien défaut suit le nouveau ; une valeur choisie par
-    // l'utilisateur reste.
+    // contour blanc en v8, cotes du Dock mesurées à trois tailles en v9. Une valeur encore égale à l'ancien défaut suit
+    // le nouveau ; une valeur choisie par l'utilisateur reste.
     struct Changed { int before; const char* key; double oldDefault; double newDefault; };
     static const Changed kChanged[] = {
         {2, "iconGap", 6, 4},
@@ -81,6 +81,14 @@ json::Value migrateMetricsJson(const json::Value& v) {
         {7, "separatorLengthRatio", 0.80, 0.95},
         {7, "indicatorCenterFromBottom", 4, 4.7},
         {7, "dockScreenMargin", 5, 3.9},
+        // v9 : cotes du Dock de macOS 26 mesurées à 48, 64 et 71 sur la VM en plein écran (plan 70). Rembourrage, écart,
+        // écart sous le Dock et point sont fixes en points (la v7 les avait ramenés à 48 en proportion) ; la longueur du
+        // séparateur se rapporte à l'épaisseur du Dock, et non plus à la case.
+        {9, "dockPadding", 7.1, 10},
+        {9, "iconGap", 2.3, 4},
+        {9, "dockScreenMargin", 3.9, 5},
+        {9, "indicatorCenterFromBottom", 4.7, 6},
+        {9, "separatorLengthRatio", 0.95, 0.738},
     };
     // v8 : retour de l'utilisateur du 10 octobre, le Liquid Glass de macOS 26 n'a pas de contour blanc : reflet du
     // liseré (verre GPU) et liseré clair (rendu de repli) à 0, quelle que soit la valeur d'avant.
@@ -90,6 +98,7 @@ json::Value migrateMetricsJson(const json::Value& v) {
     json::Value out = json::Object{};
     for (auto& [key, value] : v.asObject()) {
         if (key == "indicatorInset" || key == "version") continue;
+        if (from < 9 && key == "separatorMargin") continue;   // v9 : la marge du séparateur suit la taille
         json::Value copy = value;
         for (auto& c : kChanged) {
             if (from >= c.before || key != c.key || !copy.isNumber()) continue;
