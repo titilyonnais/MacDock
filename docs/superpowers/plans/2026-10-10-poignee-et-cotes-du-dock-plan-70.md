@@ -47,11 +47,13 @@ puis ses séparateurs deviennent une poignée.
   réservée. Pas de Maj+glisser (changer de bord) ni d'Option+glisser (tailles fixes) pour l'instant.
 
 ## Tâches
-- [ ] 1. Cotes mesurées : géométrie (marge et longueur du séparateur selon la taille), mesures v9 et migration. Tests :
+- [x] 1. Cotes mesurées : géométrie (marge et longueur du séparateur selon la taille), mesures v9 et migration. Tests :
   cotes à 48 et 64 contre la VM (épaisseur, pas, séparateur, point, écart sous le Dock), migration v9 ; tests existants
-  recalés sur les nouvelles cotes.
-- [ ] 2. Poignée, règles : `resizedTileSize` (un point pour un point, selon le bord, bornée), `separatorHandleAt` du
-  contrôleur, Dock au repos pendant le redimensionnement. Tests rouges, puis verts.
-- [ ] 3. Poignée, Dock : curseur, glisser, fenêtre, enregistrement. Essai réel (glisser simulé sur le vrai Dock, taille
-  relue dans `settings.json`, zone réservée suivie).
+  recalés sur les nouvelles cotes (77e73f9).
+- [x] 2. Poignée, règles : `resizedTileSize` (un point pour un point, selon le bord, bornée), `separatorHandleAt` du
+  contrôleur, Dock au repos pendant le redimensionnement. Tests rouges, puis verts (8592536).
+- [x] 3. Poignée, Dock : curseur, glisser, fenêtre, enregistrement. Essai réel, avec ton accord (souris laissée
+  30 s) : curseur ↕ (celui du thème de Windows) au-dessus du séparateur ; glisser de 20 pt vers le haut : taille 59 →
+  79, enregistrée ; glisser retour : 79 → 59. Dock à ta taille 59 : épaisseur 79 pt (59 + 2 × 10), pas 63 pt,
+  séparateur à 46 pt du centre de l'icône voisine (règle : 45,75).
 - [ ] 4. Relecture indépendante, corrections, fusion locale.

@@ -680,6 +680,7 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     f.cornerRadius = float(g.cornerRadius * k) * s;
 
     double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
+    if (resizing_) large = 128;   // poignée : une seule taille d'image pour tout le glisser, jamais agrandie
     int imgPx = int(std::ceil(large * s));
 
     std::map<std::wstring, IconProvider::ImagePtr> lastImages;   // celles de cette image, pour la suivante

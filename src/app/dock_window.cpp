@@ -20,6 +20,7 @@
 #include "../config/config_store.h"
 #include "../core/diag.h"
 #include "../interact/cursor_relay.h"
+#include "../layout/dock_resize.h"
 #include "../quicklook/quicklook_logic.h"
 #include "../quicklook/quicklook_shell.h"
 #include "../screenshot/screen_grab.h"
@@ -280,7 +281,7 @@ bool DockApp::stepVisibility(double now) {
     in.cursorAtEdge = cursorAtEdge_;
     in.cursorInDock = cursorInDock_;
     in.menuOpen = menuOpen_ && !shotSession_;   // le viseur ne fait pas sortir le Dock masqué
-    in.dragging = controller_.dragging();
+    in.dragging = controller_.dragging() || resize_.has_value();   // glisser d'une icône ou d'un séparateur
     bool animating = visibility_.update(in, now);
     controller_.setShown(visibility_.shown());
     bool hidden = visibility_.hidden();
@@ -392,7 +393,10 @@ void DockApp::reposition() {
     scale_ = float(dpiX) / 96.0f;
 
     const int reserve = int(DockController::reservePx(settings_, metrics_, scale_));
-    const int thick = int(DockController::windowHeightPx(settings_, metrics_, scale_));   // épaisseur de la fenêtre
+    // Épaisseur de la fenêtre ; pendant le glisser d'un séparateur, celle de la plus grande taille (rien n'est coupé).
+    Settings sizing = settings_;
+    if (resize_) sizing.tileSize = sizing.largeSize = 128;
+    const int thick = int(DockController::windowHeightPx(sizing, metrics_, scale_));
     const DockPosition edge = settings_.position;
 
     // Bande du bord occupée par le Dock ; la barre d'application la décale des autres barres (barre Windows…).
@@ -1039,6 +1043,55 @@ void DockApp::logItemPositions(const RenderFrame& frame) {
         if (const DockItem* it = controller_.itemAt(i))
             log::info(L"[trace] élément %zu %s : x=%ld y=%ld", i, it->key.c_str(), origin_.x + LONG(frame.icons[i].cx),
                       origin_.y + LONG(frame.icons[i].cy));
+}
+
+bool DockApp::separatorUnderCursor() const {
+    POINT p{};
+    if (!GetCursorPos(&p)) return false;
+    return controller_.separatorHandleAt(POINT{p.x - origin_.x, p.y - origin_.y});
+}
+
+double DockApp::resizeAxis(POINT screen) const {
+    return (settings_.position == DockPosition::Bottom ? screen.y : screen.x) / double(scale_);
+}
+
+void DockApp::beginResize() {
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    resize_ = Resize{settings_.tileSize, resizeAxis(cursor)};
+    controller_.setResizing(true);
+    reposition();   // fenêtre à la hauteur de la taille 128 le temps du glisser
+    requestFrame();
+    if (trace_) log::info(L"[trace] poignée : glisser depuis la taille %.0f", settings_.tileSize);
+}
+
+void DockApp::updateResize() {
+    if (!resize_) return;
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return;
+    // Points entiers : icônes nettes à toutes les échelles.
+    const double tile = std::round(resizedTileSize(resize_->startTile, resize_->startAxis, resizeAxis(cursor),
+                                                   settings_.position));
+    if (tile == settings_.tileSize) return;
+    settings_.tileSize = tile;
+    controller_.setSettings(settings_);
+    requestFrame();
+}
+
+void DockApp::endResize() {
+    if (!resize_) return;
+    const double from = resize_->startTile;
+    resize_.reset();
+    controller_.setResizing(false);
+    if (GetCapture() == hwnd_) ReleaseCapture();
+    settings_.largeSize = std::max(settings_.largeSize, settings_.tileSize);   // l'agrandissement reste au moins aussi grand
+    controller_.setSettings(settings_);
+    reposition();   // hauteur de la fenêtre et zone réservée à la taille finale
+    if (settings_.tileSize != from) saveSettings();
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) onMouse(cursor);
+    requestFrame();
+    if (trace_) log::info(L"[trace] poignée : taille %.0f → %.0f", from, settings_.tileSize);
 }
 
 void DockApp::onPointerUp(POINT client) {
@@ -2954,6 +3007,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 swallowClick_ = true;
                 return 0;
             }
+            if (controller_.separatorHandleAt(POINT{short(LOWORD(lp)), short(HIWORD(lp))})) {
+                beginResize();   // poignée des séparateurs (plan 70)
+                SetCapture(hwnd_);
+                return 0;
+            }
             controller_.pointerDown(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             if (trace_) {
                 auto hit = controller_.hitTest(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
@@ -2964,6 +3022,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             SetCapture(hwnd_);
             return 0;
         case WM_MOUSEMOVE:
+            if (GetCapture() == hwnd_ && resize_) {
+                SetCursor(LoadCursorW(nullptr, settings_.position == DockPosition::Bottom ? IDC_SIZENS : IDC_SIZEWE));
+                updateResize();
+                return 0;
+            }
             if (GetCapture() == hwnd_) {
                 if (controller_.dragging() && (GetAsyncKeyState(VK_ESCAPE) & 0x8000)) {
                     controller_.cancelDrag();   // Échap : l'icône revient à sa place
@@ -2980,9 +3043,24 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 swallowClick_ = false;
                 return 0;
             }
+            if (resize_) {
+                endResize();
+                return 0;
+            }
             onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;
+        case WM_SETCURSOR:
+            // Poignée des séparateurs (plan 70) : flèches de redimensionnement du thème de curseurs, comme sur macOS.
+            if (LOWORD(lp) == HTCLIENT && !controller_.dragging() && (resize_ || separatorUnderCursor())) {
+                SetCursor(LoadCursorW(nullptr, settings_.position == DockPosition::Bottom ? IDC_SIZENS : IDC_SIZEWE));
+                return TRUE;
+            }
+            break;
         case WM_CAPTURECHANGED:
+            if (resize_) {   // capture perdue (Alt+Tab…) : la taille atteinte est gardée
+                endResize();
+                return 0;
+            }
             if (controller_.dragging()) {
                 controller_.cancelDrag();
                 updateDragSprite();

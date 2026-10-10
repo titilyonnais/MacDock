@@ -58,8 +58,10 @@ public:
     void setPointerAway(bool away);
     // Poignée des séparateurs (plan 70) : un séparateur sous ce point de la fenêtre, sur toute l'épaisseur du Dock.
     bool separatorHandleAt(POINT clientPx) const;
-    // Glisser d'un séparateur en cours : icônes au repos, ni agrandissement ni infobulle.
+    // Glisser d'un séparateur en cours : icônes au repos, ni agrandissement ni infobulle ; images demandées à la plus
+    // grande taille (une seule préparation pour tout le glisser).
     void setResizing(bool on);
+    bool resizing() const { return resizing_; }
     // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
     // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
     // n'est pas suivi (menu ouvert, rien reçu encore).
