@@ -88,6 +88,10 @@ public:
     // rendent l'ancienne image ou nullptr, et deferred() le signale. adopt() range ensuite le résultat.
     using AsyncSink = std::function<void(IconJob)>;
     void beginAsync(AsyncSink sink);
+    // Dans la dernière image en mode « hors du fil » : une case (app, Corbeille, Apps, dossier) ou un aperçu de pile
+    // attendait (mesure du mode diagnostic).
+    bool deferredTiles() const { return deferredTiles_; }
+    bool deferredStacks() const { return deferredStacks_; }
     void endAsync();
     // Résultat du fil des icônes : rangé s'il est de la génération courante et pas déjà préparé ici entre-temps.
     bool adopt(const std::wstring& cacheKey, std::uint64_t generation, ImagePtr image);
@@ -126,6 +130,7 @@ private:
     bool budget_ = false, deferred_ = false;
     AsyncSink async_;
     std::uint64_t generation_ = 0, deferrals_ = 0;
+    bool deferredTiles_ = false, deferredStacks_ = false;
     ImagePtr requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority);
     std::map<std::wstring, ImagePtr> stale_;   // anciennes images, affichées en attendant les nouvelles
     ImagePtr deferStale(const std::wstring& cacheKey);   // budget dépassé : l'ancienne image s'il y en a une

@@ -15,6 +15,7 @@ struct IconResult {
     std::wstring cacheKey;
     std::uint64_t generation = 0;
     IconProvider::ImagePtr image;   // nullptr : échec gardé (aperçu de pile sans image)
+    double buildMs = 0;             // durée de la préparation (mode diagnostic)
 };
 
 // État des demandes. Sans verrou : le fil des icônes l'enveloppe du sien.
@@ -29,7 +30,8 @@ public:
     // Fil des icônes : le travail le plus prioritaire (0 d'abord), puis le plus ancien ; il passe « en cours ».
     std::optional<IconJob> next();
     // Fil des icônes : fin d'un travail ; le résultat attend d'être repris (jeté s'il est dépassé ou après l'arrêt).
-    void complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image);
+    void complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image,
+                  double buildMs = 0);
     // Fil du Dock : les résultats prêts de la génération `current` ; ceux des autres générations sont jetés.
     std::vector<IconResult> take(std::uint64_t current);
     // Arrêt : file vidée, résultats jetés ; plus rien n'est accepté ni publié.

@@ -25,10 +25,11 @@ std::optional<IconJob> IconJobs::next() {
     return job;
 }
 
-void IconJobs::complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image) {
+void IconJobs::complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image,
+                        double buildMs) {
     running_.erase({cacheKey, generation});
     if (stopped_ || generation < newest_) return;   // arrêt, ou cache vidé depuis la demande : jeté
-    ready_.push_back({cacheKey, generation, std::move(image)});
+    ready_.push_back({cacheKey, generation, std::move(image), buildMs});
 }
 
 std::vector<IconResult> IconJobs::take(std::uint64_t current) {

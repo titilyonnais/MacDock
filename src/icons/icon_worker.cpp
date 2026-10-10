@@ -86,9 +86,14 @@ void IconWorker::run(const std::shared_ptr<Shared>& s) {
                 icons.forget();
                 generation = job->generation;
             }
+            LARGE_INTEGER t0{}, t1{}, f{};
+            QueryPerformanceCounter(&t0);
             IconProvider::ImagePtr image = s->build(icons, job->spec);
+            QueryPerformanceCounter(&t1);
+            QueryPerformanceFrequency(&f);
+            const double ms = double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart);
             std::lock_guard g(s->lock);
-            s->jobs.complete(job->cacheKey, job->generation, std::move(image));
+            s->jobs.complete(job->cacheKey, job->generation, std::move(image), ms);
             // Sous le verrou : après stop(), plus aucune notification ne part.
             if (!s->jobs.stopped() && s->jobs.ready() > 0 && !s->notified && s->notify) s->notified = s->notify();
         }

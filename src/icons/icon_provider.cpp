@@ -334,7 +334,7 @@ void IconProvider::setDark(bool dark) {
 
 void IconProvider::beginAsync(AsyncSink sink) {
     async_ = std::move(sink);
-    deferred_ = false;
+    deferred_ = deferredTiles_ = deferredStacks_ = false;
 }
 
 void IconProvider::endAsync() {
@@ -365,6 +365,7 @@ IconStyle IconProvider::style() const {
 
 IconProvider::ImagePtr IconProvider::requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority) {
     spec.style = style();
+    (priority == 0 ? deferredTiles_ : deferredStacks_) = true;
     async_(IconJob{cacheKey, generation_, priority, std::move(spec)});
     return deferStale(cacheKey);   // l'ancienne image s'il y en a une, sinon une case vide
 }

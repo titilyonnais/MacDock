@@ -124,3 +124,13 @@ TEST_CASE(icon_jobs_stop_with_pending_work) {
     CHECK(q.take(1).empty());            // rien n'est publié après l'arrêt
     CHECK(!q.request(job(L"d|64", 1)));
 }
+
+TEST_CASE(icon_jobs_result_carries_build_time) {   // plan 68 : mesure des travaux les plus lents (mode diagnostic)
+    md::IconJobs q;
+    CHECK(q.request(job(L"a|64", 1)));
+    q.next();
+    q.complete(L"a|64", 1, image(64), 37.5);
+    const auto r = q.take(1);
+    REQUIRE(r.size() == 1);
+    CHECK(r[0].buildMs == 37.5);
+}

@@ -2250,11 +2250,16 @@ void DockApp::renderNow() {
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     if (iconThread) {
         icons_.endAsync();
-        if (icons_.deferred() && iconsWaitSince_ == 0) iconsWaitSince_ = nowSeconds();
-        else if (!icons_.deferred() && iconsWaitSince_ != 0) {
-            if (timing) log::info(L"[diag] icônes du Dock prêtes en %.0f ms", (nowSeconds() - iconsWaitSince_) * 1000);
-            iconsWaitSince_ = 0;
-        }
+        // Mode diagnostic : délai entre la première image qui attendait et l'arrivée des cases, puis des aperçus.
+        const auto track = [&](bool waiting, double& since, const wchar_t* what) {
+            if (waiting && since == 0) since = nowSeconds();
+            else if (!waiting && since != 0) {
+                if (timing) log::info(L"[diag] %s en %.0f ms", what, (nowSeconds() - since) * 1000);
+                since = 0;
+            }
+        };
+        track(icons_.deferredTiles(), tilesWaitSince_, L"cases du Dock prêtes");
+        track(icons_.deferredStacks(), stacksWaitSince_, L"aperçus des piles prêts");
     } else {
         icons_.endBudget();
         if (icons_.deferred()) requestFrame();
@@ -3169,6 +3174,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_APP_ICONS: {   // plan 67 : images prêtes sur le fil des icônes
             std::vector<IconResult> ready = iconWorker_.take(icons_.generation());
+            if (diagnosticCapture())   // plan 68 : les travaux les plus lents, avec leur clé (tronquée)
+                for (const IconResult& r : ready)
+                    log::info(L"[diag] icône préparée en %.1f ms : %.80s", r.buildMs, r.cacheKey.c_str());
             for (IconResult& r : ready) icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
             // Même un résultat refusé (image préparée entre-temps ici) redessine : sa case l'attendait peut-être.
             if (!ready.empty()) requestFrame();
