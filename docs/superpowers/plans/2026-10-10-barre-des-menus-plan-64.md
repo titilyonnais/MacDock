@@ -147,6 +147,8 @@ Verdict « avec corrections », aucun critique. Corrigés, rouge puis vert :
 - `--scale` sans borne, virgule décimale non lue, `--time` invalide ignoré sans avertissement.
 - Écart avant l'horloge : zone morte au clic gauche.
 - Échec de la réécriture du fichier migré non noté dans le journal.
+- ~~Nombres JSON écrits en entier (`8.4000000000000004` dans le `menubar.json` migré)~~ : corrigé après la fusion
+  (`fix/json-nombres` : la forme la plus courte qui se relit à l'identique, `std::to_chars`, pour tous les fichiers).
 
 ## Limites
 - Une seule capture de la VM, à l'échelle 1 et sans accélération graphique (barre grise opaque) : couleurs et

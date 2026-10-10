@@ -1210,6 +1210,8 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   `--time` invalide ignoré sans avertissement.
 - Écart de 1,5 pt avant l'horloge : zone morte au clic gauche (le clic droit ouvre le menu de la barre).
 - Échec de la réécriture de `menubar.json` migré non noté dans le journal (la migration reste appliquée en mémoire).
+- Corrigé ensuite : les nombres des fichiers JSON s'écrivent au plus court (`8.4` et non `8.4000000000000004`),
+  relus à l'identique.
 
 ## Décisions prises sans toi (plan 62)
 - **Rebond d'attention : un seul train par épisode**, comme une demande « informative » sur macOS. Une app qui continue

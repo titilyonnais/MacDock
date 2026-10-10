@@ -240,7 +240,11 @@ void write(std::string& out, const Value& v, bool pretty, int indent) {
         double d = v.asNumber(0);
         if (!std::isfinite(d)) out += "null";
         else if (d == std::floor(d) && std::fabs(d) < 1e15) out += std::to_string((long long)d);
-        else { char buf[32]; std::snprintf(buf, sizeof buf, "%.17g", d); out += buf; }
+        else {   // la forme la plus courte qui se relit à l'identique (8.4, et non 8.4000000000000004)
+            char buf[32];
+            const auto r = std::to_chars(buf, buf + sizeof buf, d);
+            out.append(buf, r.ptr);
+        }
     } else if (v.isString()) escape(out, v.asString(""));
     else if (v.isArray()) {
         auto& a = v.asArray();
