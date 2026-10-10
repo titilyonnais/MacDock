@@ -417,7 +417,8 @@ void DockApp::reposition() {
     placedPosition_ = edge;
     placedScreen_ = settings_.screen;
     if (trace_) log::info(L"[trace] zone réservée : %d px (bord %d)", appBar_ ? reserve : 0, int(edge));
-    SetWindowPos(hwnd_, HWND_TOPMOST, origin_.x, origin_.y, width, height,
+    SetWindowPos(hwnd_, placementDuringToolSession(toolRevealOn_).topmost ? HWND_TOPMOST : HWND_NOTOPMOST, origin_.x,
+                 origin_.y, width, height,
                  SWP_NOACTIVATE | (snapshot_ ? 0 : SWP_SHOWWINDOW));
     renderer_.resize(UINT(width), UINT(height));
     controller_.setViewport(UINT(width), UINT(height), scale_);
@@ -560,11 +561,7 @@ void DockApp::revealForTool() {
     // l'écran plus tard, la composition suivante suffit.
     revealDock_ = excluded_;
     shotPausedCapture_ = false;
-    if (revealDock_) {
-        SetWindowDisplayAffinity(hwnd_, WDA_NONE);
-        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
-        if (shotPausedCapture_) pauseCapture();
-    }
+    if (revealDock_) SetWindowDisplayAffinity(hwnd_, WDA_NONE);
     MenuWindow::setCaptureVisible(true);
     SpotlightWindow::setCaptureVisible(true);
     AppsWindow::setCaptureVisible(true);
@@ -573,6 +570,15 @@ void DockApp::revealForTool() {
     revealLights_ = false;
     if (shotRevealMsg_)
         if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) revealLights_ = PostMessageW(bar, shotRevealMsg_, 1, 0) != FALSE;
+    // Capture du verre arrêtée en dernier : elle attend son fil jusqu'à 100 ms, et tout le reste est déjà visible à
+    // l'outil (relecture de la nuit).
+    if (revealDock_) {
+        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
+        if (shotPausedCapture_) pauseCapture();
+    }
+    // Sous le voile de l'outil, toujours au-dessus des apps : il se pose sans passer devant nos fenêtres.
+    SetWindowPos(hwnd_, placementDuringToolSession(true).topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 void DockApp::onToolShot(DWORD keyTime) {
@@ -585,6 +591,8 @@ void DockApp::onToolShot(DWORD keyTime) {
         toolRevealOn_ = true;
         toolWasInFront_ = false;
         toolBarPingAt_ = toolRevealAt_ = now;
+        POINT cursor{};
+        if (GetCursorPos(&cursor)) onMouse(cursor);   // au repos tout de suite, même si le curseur ne bouge plus
         if (trace_) {
             log::info(L"[trace] Outil Capture de Windows : MacDock visible à ses captures (Dock %s, verre %s, barre %s)",
                       revealDock_ ? L"révélé" : L"déjà visible", shotPausedCapture_ ? L"en pause" : L"sans capture en cours",
@@ -617,6 +625,9 @@ void DockApp::tickToolReveal() {
     }
     KillTimer(hwnd_, kToolRevealTimer);
     toolRevealOn_ = false;
+    SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);   // de nouveau devant tout
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) onMouse(cursor);
     StackWindow::setCaptureVisible(false);
     switcher_.setCaptureVisible(false);
     concealAfterCapture();
@@ -886,8 +897,10 @@ void DockApp::onMouse(POINT screen) {
         confinedLogged_ = confined;
         if (trace_) log::info(L"[trace] pointeur %s", confined ? L"confiné ailleurs par une autre app : hors du Dock" : L"libre");
     }
-    controller_.setPointerAway(confined);
-    if (confined) {
+    // Outil Capture de Windows devant : son voile couvre le Dock, qui ne s'agrandit ni ne prend les clics.
+    const bool away = confined || placementDuringToolSession(toolRevealOn_).pointerIgnored;
+    controller_.setPointerAway(away);
+    if (away) {
         if (cursorInDock_ || cursorAtEdge_) {
             cursorInDock_ = cursorAtEdge_ = false;
             if (settings_.autohide) requestFrame();

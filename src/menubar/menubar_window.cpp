@@ -18,6 +18,7 @@
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../shell/shell_actions.h"
+#include "../screenshot/windows_tool.h"
 #include "../tracker/app_identity.h"
 #include "bar_color.h"
 #include "bar_screens.h"
@@ -32,6 +33,14 @@
 namespace md {
 
 MenuBarApp* MenuBarApp::self_ = nullptr;
+
+namespace {
+
+// Couche de la barre : « toujours au premier plan », sauf pendant une capture (voile de l'Outil Capture de Windows posé
+// au-dessus, retour du 10 octobre).
+HWND barLayer(bool reveal) { return placementDuringToolSession(reveal).topmost ? HWND_TOPMOST : HWND_NOTOPMOST; }
+
+} // namespace
 
 namespace {
 
@@ -367,7 +376,7 @@ void MenuBarApp::reposition(Screen& s) {
     }
     const int width = s.rect.right - s.rect.left;
     if (s.hwnd) {
-        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, width, s.heightPx,
+        SetWindowPos(s.hwnd, barLayer(shotReveal_), s.rect.left, s.rect.top - s.yOffsetPx, width, s.heightPx,
                      SWP_NOACTIVATE | (s.visible ? SWP_SHOWWINDOW : 0));
         s.renderer.resize(UINT(width), UINT(s.heightPx));
     }
@@ -1005,6 +1014,8 @@ void MenuBarApp::onScreenshotReveal(bool on) {
         MenuWindow::setCaptureVisible(false);
         hud_.setCaptureVisible(false);
     }
+    for (auto& s : screens_)   // sous le voile de l'outil pendant la capture, de nouveau devant tout ensuite
+        if (s->hwnd) SetWindowPos(s->hwnd, barLayer(shotReveal_), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     if (trace_ || diagnosticCapture()) log::info(L"[trace] capture d'écran : pastilles %s", on ? L"visibles" : L"exclues de nouveau");
 }
 
@@ -1173,7 +1184,7 @@ void MenuBarApp::stepVisibility(Screen& s) {
     if (offset != s.yOffsetPx || show != s.visible) {
         s.yOffsetPx = offset;
         s.visible = show;
-        SetWindowPos(s.hwnd, HWND_TOPMOST, s.rect.left, s.rect.top - s.yOffsetPx, 0, 0,
+        SetWindowPos(s.hwnd, barLayer(shotReveal_), s.rect.left, s.rect.top - s.yOffsetPx, 0, 0,
                      SWP_NOACTIVATE | SWP_NOSIZE | (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
     }
     // Tant que le curseur peut faire apparaître la barre ou qu'elle s'anime, on la suit de près.

@@ -75,3 +75,14 @@ TEST_CASE(windows_tool_reveal_new_key_extends) {
     CHECK(r.keep(5000, false));
     CHECK(!r.keep(5500, false));
 }
+
+TEST_CASE(windows_tool_session_lowers_and_freezes) {
+    // Retour du 10 octobre : avec ⊞⇧S, le Dock et la barre restaient devant le voile de l'outil, et le Dock suivait
+    // encore la souris. Pendant la capture : sous le voile, et pointeur ignoré ; ensuite, comme avant.
+    const md::ToolSessionPlacement during = md::placementDuringToolSession(true);
+    CHECK(!during.topmost);
+    CHECK(during.pointerIgnored);
+    const md::ToolSessionPlacement normal = md::placementDuringToolSession(false);
+    CHECK(normal.topmost);
+    CHECK(!normal.pointerIgnored);
+}

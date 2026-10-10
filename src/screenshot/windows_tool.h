@@ -15,6 +15,16 @@ bool isCaptureToolProcess(const std::wstring& exeName);
 
 // Révélation tenue pour un outil de Windows, relue toutes les 250 ms : tant que l'outil est devant, puis 500 ms ; s'il
 // n'a jamais été vu devant, 3 s après la dernière touche ; jamais plus de 2 min.
+// Pendant une capture par l'Outil Capture de Windows (retour du 10 octobre) : son voile se pose dans la même couche que
+// les fenêtres « toujours au premier plan » de MacDock, sans passer devant elles. Le Dock et la barre quittent cette
+// couche le temps de la capture (sous le voile, toujours au-dessus des apps), et le Dock ignore le pointeur (au repos,
+// clics traversants), comme sous un pointeur confiné ailleurs.
+struct ToolSessionPlacement {
+    bool topmost = true;            // fenêtres « toujours au premier plan »
+    bool pointerIgnored = false;    // Dock : ni agrandissement ni clic
+};
+inline ToolSessionPlacement placementDuringToolSession(bool toolSession) { return {!toolSession, toolSession}; }
+
 class ToolReveal {
 public:
     static constexpr std::uint64_t kMinMs = 3000, kAfterToolMs = 500, kMaxMs = 120000;
