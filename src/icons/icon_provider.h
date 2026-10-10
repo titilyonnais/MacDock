@@ -20,6 +20,18 @@ struct FileRef {
     bool operator==(const FileRef&) const = default;
 };
 
+// Réglages des icônes du Dock, copiés dans chaque travail du fil des icônes (plan 67).
+struct IconStyle {
+    bool strict = true;
+    bool dark = false;
+    double shapeRatio = kIconShapeRatio;
+    double cornerRatio = kIconCornerRatio;
+    double jailInset = 0.16;
+    double shadowOpacity = 0.5;
+    std::wstring customDir;
+    bool operator==(const IconStyle&) const = default;
+};
+
 class IconProvider {
 public:
     struct Image {
