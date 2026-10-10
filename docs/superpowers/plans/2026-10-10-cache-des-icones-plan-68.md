@@ -45,15 +45,53 @@ Les images déjà mises en forme sont gardées sur disque et montrées tout de s
 
 ## Tâches
 - [x] 1. **Mesure** (7bd7bda) : durée de chaque travail (test rouge, puis vert), cases et aperçus mesurés à part.
-- [ ] 2. **Cache sur disque** (`src/icons/icon_disk_cache.*`) : empreinte et clé, format, lecture d'un fichier abîmé,
+- [x] 2. **Cache sur disque** (`src/icons/icon_disk_cache.*`) : empreinte et clé, format, lecture d'un fichier abîmé,
   écriture atomique, borne. Tests dans un dossier temporaire.
-- [ ] 3. **File, fournisseur, fil** : lecture du disque avant toute préparation (`IconJobs::nextDiskRead`, `offer`),
+- [x] 3. **File, fournisseur, fil** : lecture du disque avant toute préparation (`IconJobs::nextDiskRead`, `offer`),
   anciennes images rangées dans la réserve (`IconProvider::adoptStale`), remplacement seulement si l'image a changé,
   borne quand le fil est au repos. Tests avec un faux constructeur et un dossier temporaire.
-- [ ] 4. **Dock** : dossier du cache, anciennes images du disque, ligne « [diag] icônes depuis le disque » ; pile à froid
+- [x] 4. **Dock** : dossier du cache, anciennes images du disque, ligne « [diag] icônes depuis le disque » ; pile à froid
   avec l'icône de son dossier (test du contrôleur).
-- [ ] 5. **Mesure réelle**, MacDock relancé deux fois en diagnostic (cache vide, puis plein). Puis relecture
+- [x] 5. **Mesure réelle**, MacDock relancé deux fois en diagnostic (cache vide, puis plein). Puis relecture
   indépendante, corrections, fusion locale.
+
+## Fait
+- **Tâche 2** (58a3470) : `IconDiskCache`, 6 tests rouges sur une ébauche, puis verts (dossiers temporaires).
+- **Tâches 3 et 4** (c1ef6d1, a637520) : 5 tests rouges sur des ébauches, puis verts (file, réserve, fil avec disque,
+  pile à froid avec son dossier, qui remplace le test du plan 67). Suite : 899 cas, un échec dû à l'environnement.
+- **Tâche 5, mesure réelle** (MacDock de la branche relancé deux fois en diagnostic, sans entrée simulée) :
+  - cache vide (08:45:45) : « modèle » 0,2 ms ; cases prêtes en 683 ms, aperçus en 816 ms ; 20 travaux, les plus lents
+    l'Explorateur 207 ms, l'aperçu de la pile Téléchargements 133 ms, Chrome 54 ms ; 20 fichiers écrits, 2 051 134
+    octets ;
+  - cache plein (08:46:01) : « icônes depuis le disque : 20 en 28 ms », toutes les cases et la pile dès la deuxième
+    image (22 ms après la première) ; « modèle » 0,1 ms ; images fraîches identiques, rien de remplacé à l'écran
+    (cases 601 ms, aperçus 726 ms) ; rendu 11,8 et 13,0 ms sur les deux premières images (étalement non nécessaire) ;
+  - repos : 22, 11, 10 tours de boucle en 5 s ; la sentinelle ne signale rien.
+
+## Relecture indépendante (opus) : « Avec corrections »
+Aucun critique ; fichiers partagés, format, borne, générations et arrêt jugés sûrs.
+- **Important, la borne gardait des aperçus morts et effaçait les icônes des apps** : la clé disque d'un aperçu de pile
+  contenait ses fichiers ; pendant un téléchargement, chaque renouvellement écrivait un nouveau fichier (~100 Ko),
+  jamais relu, et au bout de quelques minutes la borne effaçait les icônes des apps (Dock de nouveau vide au
+  démarrage). Corrigé (3db8765) : une seule place par pile et par taille (`iconDiskSlot`), réécrite en place ; au
+  démarrage, le dernier aperçu de la pile arrive comme les autres, même si ses fichiers ont changé ; plus aucun chemin
+  de fichier dans les clés sur disque. Tests `icon_disk_slot_one_per_stack` et `icon_worker_stack_has_one_disk_slot`
+  rouges, puis verts.
+- **Corrigés en passant** :
+  - lot partiel d'anciennes images : les demandes d'une même image du Dock partent ensemble, et le Dock n'est prévenu
+    qu'une fois toutes les demandes lues (`icon_worker_disk_images_arrive_in_one_batch`, `diskReadsPending`) ;
+  - préparation ratée après une ancienne image : l'entrée périmée est effacée
+    (`icon_worker_failed_build_drops_stale_disk_entry`) ;
+  - dossiers temporaires des tests uniques (un ancien dossier pouvait resservir) ; tests de l'écriture atomique (fichier
+    tenu ouvert : l'ancienne entrée reste entière) et de la non-réécriture (même fichier sur le volume) renforcés ;
+  - commentaire juste sur la trace de chaque travail.
+- **Mineurs reportés** (journal) : icône du dossier demandée à chaque démarrage ; ni empreinte des pixels ni nouvel
+  essai d'écriture ; pas de version du rendu dans l'empreinte ; écritures et mises à jour de date entre deux
+  préparations ; aperçus de piles en clair dans le cache, et cache gardé après la désinstallation.
+- **Refusé de juger** (par le relecteur) : `MoveFileExW` sur une destination ouverte avec partage de suppression, la
+  fréquence réelle des renouvellements, les mesures, la tenue après une coupure de courant, les antivirus.
+
+Suite complète après les corrections : 907 cas, un échec dû à l'environnement.
 
 ## Points pour la relecture
 - Fichiers partagés et fil des icônes.
