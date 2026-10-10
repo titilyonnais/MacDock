@@ -1231,6 +1231,26 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Relecture du plan** : coin actif qui partait à la fin d'un ⊞⇧S, barre qui repassait devant Apps après ⊞⇧3, réglage
   ignoré s'il était écrit pendant une relecture, verre figé après un incident graphique : corrigés.
 
+### Plan 70 — Poignée des séparateurs et cotes du Dock mesurées, 10 octobre (avec toi)
+
+- **Poignée** : au-dessus d'un séparateur, le curseur prend les flèches de redimensionnement (celles de ton thème de
+  curseurs) ; glisser change la taille des icônes un point pour un point, comme sur macOS, Dock toujours visible et sans
+  agrandissement, jusqu'à la plus grande taille qui tient sur l'écran. La taille est enregistrée à la fin.
+- **Cotes du Dock mesurées dans ta VM en plein écran** (tailles 48, 64 et 96 rétrécie à ~71) : rembourrage 10 pt, écart
+  4, écart sous le Dock 5 et point de 4 centré à 6 sont fixes ; le séparateur prend une demi-case plus 3 pt et sa
+  longueur vaut 0,738 de l'épaisseur. Le plan 61 avait tout ramené en proportion depuis une autre taille : le Dock de
+  MacDock était trop fin (62 pt au lieu de 68 à la taille 48) et ses icônes trop serrées.
+- **Dock trop long pour l'écran** : seules les icônes rétrécissent, comme macOS (avant : marges et point aussi).
+- **Essais réels** (souris laissée par toi) : 59 → 79 → 59, puis, Dock plein, 59 → 39 → 60 (arrêt à la plus grande
+  taille qui tient) ; ta taille 59 remise ensuite.
+
+## Mineurs reportés — plan 70
+- Zone réservée calculée sur la taille réglée : un Dock rétréci laisse une bande vide au-dessus de lui.
+- Clic droit et poussée vers un autre écran pendant le glisser de la poignée ; zone de la poignée sans le rétrécissement
+  (sans effet visible) ; images à 128 demandées même en rétrécissant ; WM_SETCURSOR refait la mise en page.
+- Migration v9 : une marge de séparateur réglée à la main est effacée, une longueur réglée à la main change de sens.
+- Test d'UI Automation instable sur ton PC (premier appel d'un processus jusqu'à 14 s).
+
 ## Mineurs reportés — plan 69
 - Fil des crochets : fréquence de l'écran lue après la pose des crochets (au démarrage, un pilote lent ferait attendre
   la souris), boucle à 100 % d'un cœur si les minuteries échouent, fréquence lue une seule fois (Dock poussé vers un

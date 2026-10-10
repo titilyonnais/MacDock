@@ -489,10 +489,11 @@ TEST_CASE(controller_dock_shrinks_to_fit_axis) {
         CHECK(f.icons.front().size < 48);   // cases réduites
         auto hit = c.hitTest(POINT{LONG(f.icons.back().cx), LONG(f.icons.back().cy)});
         CHECK(hit.has_value());             // la dernière icône (Corbeille) reste atteignable
-        // Tout rétrécit avec le verre, dans les mêmes proportions qu'au repos (relecture du plan 61) : le séparateur
-        // reste dans le verre, les icônes au milieu de son épaisseur, le point et les extrémités à leur place.
-        const md::DockGeometry g = md::dockGeometry(s.tileSize, m);
+        // Seules les cases rétrécissent, comme macOS 26 (mesuré sur la VM, plan 70) : rembourrage, écart et point
+        // gardent leurs points ; séparateur et extrémités suivent l'épaisseur ; icônes au milieu du verre.
         const float thickness = vertical ? f.bgRight - f.bgLeft : f.bgBottom - f.bgTop;
+        const double tile = thickness - 2 * m.dockPadding;
+        const md::DockGeometry g = md::dockGeometry(tile, m);
         const float middle = vertical ? (f.bgLeft + f.bgRight) / 2 : (f.bgTop + f.bgBottom) / 2;
         auto fromEdge = [&](const md::RenderIcon& icon) {   // distance du point au bord de l'écran
             switch (edge) {
@@ -501,21 +502,24 @@ TEST_CASE(controller_dock_shrinks_to_fit_axis) {
                 default: return f.bgBottom - icon.indicatorY;
             }
         };
-        const float k = thickness / float(g.thickness);
-        CHECK(k < 0.8f);   // le Dock a bien rétréci
-        CHECK_NEAR(f.cornerRadius, g.cornerRadius * k, 0.05);
+        CHECK(tile < 0.8 * s.tileSize);   // le Dock a bien rétréci
+        CHECK_NEAR(f.cornerRadius, g.cornerRadius, 0.05);
         bool separator = false;
         for (const auto& icon : f.icons) {
             if (icon.separator) {
                 separator = true;
                 CHECK(icon.sepLength <= thickness);
-                CHECK_NEAR(icon.sepLength, g.separatorLength * k, 0.05);
+                CHECK_NEAR(icon.sepLength, g.separatorLength, 0.05);
                 continue;
             }
             CHECK_NEAR(vertical ? icon.cx : icon.cy, middle, 0.05);
-            CHECK_NEAR(fromEdge(icon), g.indicatorCenter * k, 0.05);
+            CHECK_NEAR(fromEdge(icon), m.indicatorCenterFromBottom, 0.05);   // point à 6 pt, comme au repos
         }
         CHECK(separator);
+        // La poignée ne dépasse jamais la taille qui tient (relecture du plan 70).
+        const double fit = c.fittingTileSize(128);
+        CHECK(fit < s.tileSize);
+        CHECK_NEAR(fit, tile, 0.05);
     }
 }
 
@@ -644,4 +648,32 @@ TEST_CASE(controller_stack_preview_waits_with_folder_then_previous) {
     icons.endAsync();
     REQUIRE(jobs.size() == 1);
     CHECK(jobs[0].spec.kind == md::IconJobKind::Stack);
+}
+
+TEST_CASE(controller_separator_is_a_handle) {
+    // Plan 70 : le séparateur est une poignée sur toute l'épaisseur du Dock, jamais sur une icône.
+    Fixture f;   // a, b, c, séparateur, corbeille
+    bool found = false;
+    for (int x = -150; x <= 150; ++x) {
+        if (!f.c.separatorHandleAt(f.at(x))) continue;
+        found = true;
+        CHECK(!f.c.hitTest(f.at(x)).has_value());
+    }
+    CHECK(found);
+    CHECK(!f.c.separatorHandleAt(POINT{5, 5}));   // au-dessus du Dock
+}
+
+TEST_CASE(controller_resizing_keeps_icons_at_rest) {
+    // Plan 70 : pendant le glisser d'un séparateur, les icônes ne s'agrandissent pas sous le pointeur.
+    Fixture f;
+    const POINT inside = f.at(0);
+    const POINT above{inside.x, inside.y - LONG(f.s.tileSize)};   // au-dessus du fond au repos
+    f.c.setResizing(true);
+    f.c.setCursor(inside);
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 120);
+    CHECK(!f.c.isInsideInteractiveZone(above));
+    f.c.setResizing(false);
+    f.c.setCursor(inside);
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 120);
+    CHECK(f.c.isInsideInteractiveZone(above));   // l'agrandissement revient
 }

@@ -56,6 +56,15 @@ public:
     bool pointerInside() const { return cursorInside_; }
     // Pointeur confiné ailleurs par une autre app : positions ignorées, le Dock le croit hors de lui.
     void setPointerAway(bool away);
+    // Poignée des séparateurs (plan 70) : un séparateur sous ce point de la fenêtre, sur toute l'épaisseur du Dock.
+    bool separatorHandleAt(POINT clientPx) const;
+    // Taille des cases affichée pour ce réglage : la même, ou plus petite si le Dock ne tient pas sur son axe (seules les
+    // cases rétrécissent, comme macOS 26). fittingTileSize(128) : la plus grande taille qui tient.
+    double fittingTileSize(double tile) const;
+    // Glisser d'un séparateur en cours : icônes au repos, ni agrandissement ni infobulle ; images demandées à la plus
+    // grande taille (une seule préparation pour tout le glisser).
+    void setResizing(bool on);
+    bool resizing() const { return resizing_; }
     // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
     // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
     // n'est pas suivi (menu ouvert, rien reçu encore).
@@ -155,7 +164,7 @@ private:
     double hideOffsetPx(const LayoutResult& r) const;       // décalage vers le bas du masquage
     // Dock rétréci pour tenir sur son axe (sizeInput) : rapport de son épaisseur à celle de la taille réglée. Marges,
     // séparateur, point et extrémités le suivent, comme les cases.
-    double shrinkOf(const LayoutResult& r) const;
+    double fitTile(LayoutInput& in, double tile) const;   // cases qui tiennent sur l'axe (voir fittingTileSize)
     // Repère local (« comme en bas ») : les méthodes publiques convertissent les points de la fenêtre.
     bool insideLocal(POINT local) const;
     std::optional<std::size_t> hitLocal(POINT local) const;
@@ -174,6 +183,7 @@ private:
     std::optional<double> cursor_;      // points sur l'axe principal
     bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
     bool pointerAway_ = false;          // pointeur confiné ailleurs par une autre app : positions ignorées
+    bool resizing_ = false;             // glisser d'un séparateur : icônes au repos
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône
