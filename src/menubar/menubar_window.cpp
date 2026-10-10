@@ -770,12 +770,12 @@ void MenuBarApp::layoutScreen(Screen& s) {
     s.layoutIn.rightMargin = m.rightMargin;
     for (const auto& menu : menus_.menus) {
         if (menu.logo) s.layoutIn.leftWidths.push_back(m.logoSize + 2 * pad);
-        else s.layoutIn.leftWidths.push_back(std::ceil(s.renderer.measure(menu.title, menu.bold) / s.scale) + 2 * pad);
+        else s.layoutIn.leftWidths.push_back(textBoxWidth(s.renderer.measure(menu.title, menu.bold), s.scale, pad));
     }
     for (const auto& item : status_)
-        s.layoutIn.rightWidths.push_back(item.kind == StatusKind::Clock
-                                             ? std::ceil(s.renderer.measure(clock_, false) / s.scale) + 2 * pad
-                                             : m.statusWidth);
+        s.layoutIn.rightWidths.push_back(item.kind == StatusKind::Clock ? textBoxWidth(s.renderer.measure(clock_, false), s.scale, pad)
+                                                                        : m.statusWidth);
+    if (!status_.empty() && status_.back().kind == StatusKind::Clock) s.layoutIn.lastGap = m.clockGap;
     // Trop d'icônes d'apps : celles de gauche cèdent la place au logo et au nom de l'app (comme sur macOS).
     const std::size_t fit = trayFit(s.layoutIn, trayLaid_.size(), m.statusWidth);
     s.trayFirst = trayLaid_.size() - fit;

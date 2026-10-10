@@ -128,3 +128,14 @@ TEST_CASE(menubar_tray_fit) {   // trop d'icônes d'apps : les plus à gauche so
     const auto l = md::layoutBar(in);
     CHECK(l.rightX.front() >= in.leftMargin + 34 + 80 + in.minGap - 1e-9);   // rien sous le logo ni le nom de l'app
 }
+
+TEST_CASE(menubar_tray_fit_counts_the_clock_gap) {
+    // Plan 64 : l'écart avant l'horloge prend de la place aux icônes d'apps.
+    md::BarLayoutInput in;
+    in.barWidth = 1000;
+    in.leftWidths = {34, 80};
+    in.rightWidths = {150};
+    CHECK_EQ(md::trayFit(in, 30, 36), std::size_t(19));   // 1000 - 10 - 10 - 114 - 20 - 150 = 696 : 19 cases de 36
+    in.lastGap = 13;                                       // 683 : 18
+    CHECK_EQ(md::trayFit(in, 30, 36), std::size_t(18));
+}

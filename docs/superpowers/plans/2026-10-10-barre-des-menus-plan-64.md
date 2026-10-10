@@ -49,7 +49,7 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 ## Tâches
 - [x] 1. **Horloge** (`clock_format.*`) : majuscule et deux espaces. Tests.
 - [x] 2. **Réglages** (`menubar_settings.*`) : nouveaux défauts, `textBaseline` et `clockGap`, migration v1 → v2. Tests.
-- [ ] 3. **Mise en page** (`bar_layout.*`, `menubar_window.cpp`) : écart avant l'horloge, titres sans arrondi. Tests.
+- [x] 3. **Mise en page** (`bar_layout.*`, `menubar_window.cpp`) : écart avant l'horloge, titres sans arrondi. Tests.
 - [ ] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
 - [ ] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
 - [ ] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).

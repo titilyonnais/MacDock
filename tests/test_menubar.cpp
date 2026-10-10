@@ -63,6 +63,27 @@ TEST_CASE(bar_hit_test_left_right_none) {
     CHECK(md::hitTestBar(narrow, narrowIn, 200).kind == md::BarHit::Kind::None);
 }
 
+TEST_CASE(bar_layout_gap_before_the_clock) {
+    // Plan 64 : sur macOS 26, l'horloge est un peu plus loin de la dernière icône que les icônes entre elles.
+    auto in = wideBar(1000);
+    in.rightMargin = 9;
+    in.rightWidths = {36, 36, 150};   // loupe, Centre de contrôle, horloge
+    in.lastGap = 3;
+    const auto l = md::layoutBar(in);
+    REQUIRE(l.rightX.size() == 3);
+    CHECK_NEAR(l.rightX[2], 841, 1e-9);   // 1000 - 9 - 150
+    CHECK_NEAR(l.rightX[1], 802, 1e-9);   // 841 - 3 - 36
+    CHECK_NEAR(l.rightX[0], 766, 1e-9);
+    CHECK(md::hitTestBar(l, in, 839.5).kind == md::BarHit::Kind::None);   // dans l'écart
+    CHECK_EQ(md::hitTestBar(l, in, 841.5).index, std::size_t(2));
+}
+
+TEST_CASE(bar_text_box_keeps_fractional_width) {
+    // Plan 64 : la largeur du texte n'est plus arrondie au point supérieur (+0,5 pt par titre en moyenne).
+    CHECK_NEAR(md::textBoxWidth(101, 2, 10), 70.5, 1e-9);   // 101 px à l'échelle 2 : 50,5 pt, plus deux marges
+    CHECK_NEAR(md::textBoxWidth(0, 1.5, 10), 20, 1e-9);
+}
+
 TEST_CASE(bar_color_white_black_luminance) {
     std::vector<std::uint8_t> white(4 * 4 * 2, 255), black(4 * 4 * 2, 0);
     CHECK_NEAR(md::stripLuminance(white.data(), 4, 2, 16), 1.0, 1e-6);

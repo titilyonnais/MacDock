@@ -11,12 +11,12 @@ BarLayout layoutBar(const BarLayoutInput& in) {
         l.leftX.push_back(x);
         x += w;
     }
-    const double rightTotal = std::accumulate(in.rightWidths.begin(), in.rightWidths.end(), 0.0);
-    double rx = in.barWidth - in.rightMargin - rightTotal;
+    double rx = in.barWidth - in.rightMargin - rightPartWidth(in);
     const double rightStart = rx;
-    for (double w : in.rightWidths) {
+    for (std::size_t i = 0; i < in.rightWidths.size(); ++i) {
+        if (i + 1 == in.rightWidths.size()) rx += in.lastGap;
         l.rightX.push_back(rx);
-        rx += w;
+        rx += in.rightWidths[i];
     }
     const double limit = rightStart - in.minGap;
     for (std::size_t i = 0; i < in.leftWidths.size(); ++i) {
@@ -42,5 +42,12 @@ BarHit hitTestBar(const BarLayout& l, const BarLayoutInput& in, double x) {
         }
     return h;
 }
+
+double rightPartWidth(const BarLayoutInput& in) {
+    if (in.rightWidths.empty()) return 0;
+    return std::accumulate(in.rightWidths.begin(), in.rightWidths.end(), 0.0) + in.lastGap;
+}
+
+double textBoxWidth(double textPx, double scale, double padding) { return textPx / scale + 2 * padding; }
 
 } // namespace md
