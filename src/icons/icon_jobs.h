@@ -38,6 +38,7 @@ public:
 
     State state(const std::wstring& cacheKey, std::uint64_t generation) const;
     std::size_t queued() const { return queue_.size(); }
+    std::size_t ready() const { return ready_.size(); }
 
 private:
     struct Entry {
