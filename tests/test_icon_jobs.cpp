@@ -124,3 +124,66 @@ TEST_CASE(icon_jobs_stop_with_pending_work) {
     CHECK(q.take(1).empty());            // rien n'est publié après l'arrêt
     CHECK(!q.request(job(L"d|64", 1)));
 }
+
+TEST_CASE(icon_jobs_result_carries_build_time) {   // plan 68 : mesure des travaux les plus lents (mode diagnostic)
+    md::IconJobs q;
+    CHECK(q.request(job(L"a|64", 1)));
+    q.next();
+    q.complete(L"a|64", 1, image(64), 37.5);
+    const auto r = q.take(1);
+    REQUIRE(r.size() == 1);
+    CHECK(r[0].buildMs == 37.5);
+}
+
+TEST_CASE(icon_jobs_disk_reads_come_first_and_keep_the_job) {   // plan 68
+    md::IconJobs q;
+    CHECK(q.request(job(L"pile|64", 1, 1)));
+    CHECK(q.request(job(L"a|64", 1)));
+    const auto d1 = q.nextDiskRead();
+    REQUIRE(d1.has_value());
+    CHECK(d1->cacheKey == L"a|64");   // les cases d'abord
+    const auto d2 = q.nextDiskRead();
+    REQUIRE(d2.has_value());
+    CHECK(d2->cacheKey == L"pile|64");
+    CHECK(!q.nextDiskRead().has_value());   // chaque travail une seule fois
+    CHECK(q.queued() == 2);                 // toujours en file, pour sa préparation
+    const auto old = image(64);
+    q.offer(L"a|64", 1, old);
+    CHECK(q.state(L"a|64", 1) == State::Queued);
+    auto r = q.take(1);
+    REQUIRE(r.size() == 1);
+    CHECK(r[0].provisional && r[0].image == old);
+    CHECK(!q.request(job(L"a|64", 1)));   // toujours en file : pas de doublon
+    const auto j = q.next();
+    REQUIRE(j.has_value());
+    CHECK(j->cacheKey == L"a|64");
+    q.complete(L"a|64", 1, image(64));
+    r = q.take(1);
+    REQUIRE(r.size() == 1);
+    CHECK(!r[0].provisional);
+}
+
+TEST_CASE(icon_jobs_disk_image_dropped_when_outdated_or_stopped) {   // plan 68
+    md::IconJobs q;
+    CHECK(q.request(job(L"a|64", 1)));
+    REQUIRE(q.nextDiskRead().has_value());
+    CHECK(q.request(job(L"b|64", 2)));   // cache du Dock vidé pendant la lecture
+    q.offer(L"a|64", 1, image(64));      // dépassée : jetée
+    CHECK(q.take(2).empty());
+    REQUIRE(q.nextDiskRead().has_value());   // b
+    q.stop();
+    q.offer(L"b|64", 2, image(64));      // après l'arrêt : jetée
+    CHECK(q.take(2).empty());
+}
+
+TEST_CASE(icon_jobs_disk_reads_pending_until_all_checked) {   // relecture du plan 68 : un seul lot d'anciennes images
+    md::IconJobs q;
+    CHECK(!q.diskReadsPending());
+    CHECK(q.request(job(L"a|64", 1)));
+    CHECK(q.request(job(L"b|64", 1)));
+    CHECK(q.diskReadsPending());
+    q.nextDiskRead();
+    CHECK(q.diskReadsPending());   // b n'est pas encore lue
+    q.nextDiskRead();
+    CHECK(!q.diskReadsPending());
+}

@@ -1204,6 +1204,30 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   pendant un téléchargement) garde sa dernière image au lieu de se vider ou de montrer l'icône du dossier ; un message
   perdu ne coupe plus les icônes.
 
+### Plan 68 — Un Dock complet dès ses premières images, matin du 10 octobre (seul)
+
+- **Pourquoi** : depuis le plan 67, le Dock ne saccade plus pendant la préparation de ses icônes, mais au démarrage ses
+  cases restaient vides jusqu'à leur arrivée (jusqu'à 2 s) ; macOS montre son Dock complet dès l'ouverture de session.
+- **Mesuré d'abord** : cases prêtes 1 077 ms après la première image, aperçus des piles 1 212 ms ; les plus lents :
+  Soundpad 354 ms, l'Explorateur 203 ms (initialisation du Shell comprise), l'aperçu de la pile Téléchargements 135 ms.
+- **Maintenant** : les icônes déjà mises en forme sont gardées dans `%LOCALAPPDATA%\MacDock\icon-cache` (cache de
+  ce PC, borné à 300 entrées et 20 Mo). Au démarrage, elles sont relues avant toute préparation : « 20 en 28 ms »,
+  toutes les cases dès la deuxième image. Puis chaque icône est refaite derrière et ne change à l'écran que si elle a
+  vraiment changé (nouvelle icône d'une app, autre aperçu de pile).
+- **Pile** : sans aperçu précédent, elle montre l'icône de son dossier en attendant son aperçu ; sur disque, une seule
+  place par pile, réécrite (la relecture a vu qu'un téléchargement remplissait sinon le cache en quelques minutes).
+
+## Mineurs reportés — plan 68
+- L'icône du dossier d'une pile est demandée à chaque démarrage, même quand son aperçu est sur disque (une extraction de
+  plus).
+- Ni empreinte des pixels dans les fichiers (après une coupure de courant, une entrée peut être transparente jusqu'à sa
+  préparation) ni nouvel essai quand un fichier est tenu ouvert par un antivirus.
+- Pas de version du rendu dans l'empreinte : après une mise à jour qui change la forme des icônes, les anciennes
+  s'affichent ~0,7 s au premier démarrage.
+- Écritures et mises à jour de date faites entre deux préparations (sur un disque lent, elles retardent les suivantes).
+- L'aperçu d'une pile (ses vignettes) reste dans le cache après l'effacement des fichiers, jusqu'au renouvellement ; le
+  cache n'est pas effacé à la désinstallation (`[UninstallDelete]` à ajouter à l'installateur).
+
 ## Mineurs reportés — plan 67
 - Ancrage d'une pile ou d'un menu (`openStack`, menu du Dock) : `buildFrame` y prépare encore en synchrone les icônes
   manquantes, comme avant le plan (peu après un changement de thème, ~700 ms au clic droit).

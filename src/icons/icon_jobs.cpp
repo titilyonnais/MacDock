@@ -25,10 +25,11 @@ std::optional<IconJob> IconJobs::next() {
     return job;
 }
 
-void IconJobs::complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image) {
+void IconJobs::complete(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image,
+                        double buildMs) {
     running_.erase({cacheKey, generation});
     if (stopped_ || generation < newest_) return;   // arrêt, ou cache vidé depuis la demande : jeté
-    ready_.push_back({cacheKey, generation, std::move(image)});
+    ready_.push_back({cacheKey, generation, std::move(image), buildMs});
 }
 
 std::vector<IconResult> IconJobs::take(std::uint64_t current) {
@@ -43,6 +44,29 @@ void IconJobs::stop() {
     stopped_ = true;
     queue_.clear();
     ready_.clear();
+}
+
+std::optional<IconJob> IconJobs::nextDiskRead() {
+    if (stopped_) return std::nullopt;
+    Entry* best = nullptr;
+    for (Entry& e : queue_)
+        if (!e.diskChecked &&
+            (!best || (e.job.priority != best->job.priority ? e.job.priority < best->job.priority : e.seq < best->seq)))
+            best = &e;
+    if (!best) return std::nullopt;
+    best->diskChecked = true;
+    return best->job;   // copie : le travail reste en file pour sa préparation
+}
+
+void IconJobs::offer(const std::wstring& cacheKey, std::uint64_t generation, IconProvider::ImagePtr image) {
+    if (stopped_ || generation < newest_ || !image) return;   // arrêt, ou cache du Dock vidé depuis la demande
+    ready_.push_back({cacheKey, generation, std::move(image), 0, true});
+}
+
+bool IconJobs::diskReadsPending() const {
+    for (const Entry& e : queue_)
+        if (!e.diskChecked) return true;
+    return false;
 }
 
 IconJobs::State IconJobs::state(const std::wstring& cacheKey, std::uint64_t generation) const {

@@ -2245,16 +2245,23 @@ void DockApp::renderNow() {
     // l'ancienne image ou reste vide, et l'arrivée du résultat (WM_APP_ICONS) demande une image. Sans ce fil : 10 ms
     // par image au plus (plan 62), celles qui manquent aux images suivantes.
     const bool iconThread = iconWorker_.running();
-    if (iconThread) icons_.beginAsync([this](IconJob job) { iconWorker_.request(std::move(job)); });
+    std::vector<IconJob> asked;   // les demandes de cette image, envoyées ensemble (plan 68 : un seul lot du disque)
+    if (iconThread) icons_.beginAsync([&asked](IconJob job) { asked.push_back(std::move(job)); });
     else icons_.beginBudget(10);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     if (iconThread) {
         icons_.endAsync();
-        if (icons_.deferred() && iconsWaitSince_ == 0) iconsWaitSince_ = nowSeconds();
-        else if (!icons_.deferred() && iconsWaitSince_ != 0) {
-            if (timing) log::info(L"[diag] icônes du Dock prêtes en %.0f ms", (nowSeconds() - iconsWaitSince_) * 1000);
-            iconsWaitSince_ = 0;
-        }
+        if (!asked.empty()) iconWorker_.request(std::move(asked));
+        // Mode diagnostic : délai entre la première image qui attendait et l'arrivée des cases, puis des aperçus.
+        const auto track = [&](bool waiting, double& since, const wchar_t* what) {
+            if (waiting && since == 0) since = nowSeconds();
+            else if (!waiting && since != 0) {
+                if (timing) log::info(L"[diag] %s en %.0f ms", what, (nowSeconds() - since) * 1000);
+                since = 0;
+            }
+        };
+        track(icons_.deferredTiles(), tilesWaitSince_, L"cases du Dock prêtes");
+        track(icons_.deferredStacks(), stacksWaitSince_, L"aperçus des piles prêts");
     } else {
         icons_.endBudget();
         if (icons_.deferred()) requestFrame();
@@ -3169,7 +3176,19 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_APP_ICONS: {   // plan 67 : images prêtes sur le fil des icônes
             std::vector<IconResult> ready = iconWorker_.take(icons_.generation());
-            for (IconResult& r : ready) icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+            int fromDisk = 0;
+            for (IconResult& r : ready) {
+                if (r.provisional) {   // plan 68 : ancienne image du disque, montrée en attendant la nouvelle
+                    fromDisk += icons_.adoptStale(r.cacheKey, r.generation, std::move(r.image)) ? 1 : 0;
+                    continue;
+                }
+                if (diagnosticCapture())   // chaque travail, sa durée et sa clé (tronquée) : les plus lents se repèrent
+                    log::info(L"[diag] icône préparée en %.1f ms : %.80s", r.buildMs, r.cacheKey.c_str());
+                icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
+            }
+            if (fromDisk > 0 && diagnosticCapture())
+                log::info(L"[diag] icônes depuis le disque : %d en %.0f ms", fromDisk,
+                          tilesWaitSince_ != 0 ? (nowSeconds() - tilesWaitSince_) * 1000 : 0.0);
             // Même un résultat refusé (image préparée entre-temps ici) redessine : sa case l'attendait peut-être.
             if (!ready.empty()) requestFrame();
             return 0;
@@ -3334,7 +3353,14 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!snapshot_) {
         // Icônes du rendu courant préparées hors du fil du Dock (plan 67) ; sans ce fil, budget de 10 ms par image.
         const HWND dock = hwnd_;
-        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }))
+        // Plan 68 : cache des icônes sur disque, propre à la machine (%LOCALAPPDATA%), pour un Dock complet dès le début.
+        std::wstring iconCache;
+        wchar_t* local = nullptr;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)) && local)
+            iconCache = std::wstring(local) + L"\\MacDock\\icon-cache";
+        CoTaskMemFree(local);
+        if (!iconWorker_.start([dock] { return PostMessageW(dock, WM_APP_ICONS, 0, 0) != FALSE; }, buildIconJob,
+                               iconCache))
             log::warn(L"Fil des icônes indisponible : icônes préparées sur le fil du Dock");
         if (!settings_.autohide) registerAppBar();
         dragSprite_.create(instance);

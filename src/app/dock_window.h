@@ -186,7 +186,7 @@ private:
     WindowTracker tracker_;
     IconProvider icons_;
     IconWorker iconWorker_;        // plan 67 : icônes du rendu courant préparées hors du fil du Dock
-    double iconsWaitSince_ = 0;    // [diag] première image qui attendait une icône du fil
+    double tilesWaitSince_ = 0, stacksWaitSince_ = 0;   // [diag] première image qui attendait une case, un aperçu
     DockRenderer renderer_;
     DockController controller_;
     ipc::PipeServer pipe_;
