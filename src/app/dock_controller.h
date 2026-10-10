@@ -56,6 +56,10 @@ public:
     bool pointerInside() const { return cursorInside_; }
     // Pointeur confiné ailleurs par une autre app : positions ignorées, le Dock le croit hors de lui.
     void setPointerAway(bool away);
+    // Poignée des séparateurs (plan 70) : un séparateur sous ce point de la fenêtre, sur toute l'épaisseur du Dock.
+    bool separatorHandleAt(POINT clientPx) const;
+    // Glisser d'un séparateur en cours : icônes au repos, ni agrandissement ni infobulle.
+    void setResizing(bool on);
     // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
     // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
     // n'est pas suivi (menu ouvert, rien reçu encore).
@@ -174,6 +178,7 @@ private:
     std::optional<double> cursor_;      // points sur l'axe principal
     bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
     bool pointerAway_ = false;          // pointeur confiné ailleurs par une autre app : positions ignorées
+    bool resizing_ = false;             // glisser d'un séparateur : icônes au repos
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
     std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône

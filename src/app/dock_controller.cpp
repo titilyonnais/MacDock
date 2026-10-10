@@ -197,9 +197,21 @@ const DockItem* DockController::itemAt(std::size_t index) const {
 }
 
 std::optional<std::size_t> DockController::hoveredIndex() const {
-    if (drag_ || !cursorInside_ || !cursor_) return std::nullopt;
+    if (drag_ || resizing_ || !cursorInside_ || !cursor_) return std::nullopt;
     POINT p{LONG(std::lround(toPx(*cursor_))), LONG(std::lround(bgBottomPx() - 1))};
     return hitLocal(p);
+}
+
+bool DockController::separatorHandleAt(POINT clientPx) const {
+    const std::optional<std::size_t> any = hitTestAny(clientPx);
+    return any && items_[*any].kind == ItemKind::Separator;
+}
+
+void DockController::setResizing(bool on) {
+    if (on == resizing_) return;
+    resizing_ = on;
+    if (on) amount_.setTarget(0.0);
+    dirty_ = true;
 }
 
 void DockController::setPointerAway(bool away) {
@@ -220,7 +232,7 @@ void DockController::setCursor(std::optional<POINT> window) {
         if (!cursorInside_ || !cursor_ || *cursor_ != c) dirty_ = true;
         cursor_ = c;
         cursorInside_ = true;
-        amount_.setTarget(settings_.magnification ? 1.0 : 0.0);
+        amount_.setTarget(settings_.magnification && !resizing_ ? 1.0 : 0.0);
     } else {
         if (cursorInside_) dirty_ = true;
         cursorInside_ = false;   // cursor_ est conservé pendant que la magnification retombe

@@ -645,3 +645,31 @@ TEST_CASE(controller_stack_preview_waits_with_folder_then_previous) {
     REQUIRE(jobs.size() == 1);
     CHECK(jobs[0].spec.kind == md::IconJobKind::Stack);
 }
+
+TEST_CASE(controller_separator_is_a_handle) {
+    // Plan 70 : le séparateur est une poignée sur toute l'épaisseur du Dock, jamais sur une icône.
+    Fixture f;   // a, b, c, séparateur, corbeille
+    bool found = false;
+    for (int x = -150; x <= 150; ++x) {
+        if (!f.c.separatorHandleAt(f.at(x))) continue;
+        found = true;
+        CHECK(!f.c.hitTest(f.at(x)).has_value());
+    }
+    CHECK(found);
+    CHECK(!f.c.separatorHandleAt(POINT{5, 5}));   // au-dessus du Dock
+}
+
+TEST_CASE(controller_resizing_keeps_icons_at_rest) {
+    // Plan 70 : pendant le glisser d'un séparateur, les icônes ne s'agrandissent pas sous le pointeur.
+    Fixture f;
+    const POINT inside = f.at(0);
+    const POINT above{inside.x, inside.y - LONG(f.s.tileSize)};   // au-dessus du fond au repos
+    f.c.setResizing(true);
+    f.c.setCursor(inside);
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 120);
+    CHECK(!f.c.isInsideInteractiveZone(above));
+    f.c.setResizing(false);
+    f.c.setCursor(inside);
+    for (int i = 0; i < 120; ++i) f.c.tick(1.0 / 120);
+    CHECK(f.c.isInsideInteractiveZone(above));   // l'agrandissement revient
+}
