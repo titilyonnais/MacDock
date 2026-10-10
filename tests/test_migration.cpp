@@ -37,7 +37,7 @@ TEST_CASE(metrics_migrate_v2_golden_gate_glass) {
     CHECK_NEAR(m.poofSeconds, 0.35, 1e-9);
     CHECK_NEAR(m.glassTintLight, 0.10, 1e-9);
     CHECK_NEAR(m.glassTintDark, 0.22, 1e-9);
-    CHECK_NEAR(m.glassSpecular, 0.75, 1e-9);
+    CHECK_NEAR(m.glassSpecular, 0, 1e-9);   // v8 : aucun contour blanc (retour du 10 octobre)
     CHECK_NEAR(m.iconGap, 6, 1e-9);
     CHECK_EQ(md::jsonVersion(v), md::kMetricsVersion);
     auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":2,"glassTintLight":0.5})")));
@@ -113,7 +113,7 @@ TEST_CASE(metrics_migrate_v3_glass_from_real_dock) {
     CHECK_NEAR(m.shadowOpacity, 0.07, 1e-9);
     const md::Metrics defaults;
     CHECK_NEAR(defaults.glassTintLight, 0.10, 1e-9);
-    CHECK_NEAR(defaults.glassSpecular, 0.75, 1e-9);
+    CHECK_NEAR(defaults.glassSpecular, 0, 1e-9);   // v8 : aucun contour blanc
 }
 
 TEST_CASE(settings_migrate_v1_large_size) {
@@ -141,4 +141,23 @@ TEST_CASE(metrics_json_complete_detects_missing_keys) {
     CHECK(md::metricsJsonComplete(full));
     CHECK(full.find("glassBlur") != nullptr);
     CHECK_NEAR(md::metricsFromJson(full).shadowOpacity, 0.3, 1e-9);
+}
+
+TEST_CASE(metrics_migrate_v8_no_white_rim) {
+    // Retour du 10 octobre : le Liquid Glass de macOS 26 n'a pas de contour blanc. Le reflet du liseré et le liseré clair
+    // passent à 0, même une valeur choisie avant (0,6 chez l'utilisateur) ; les autres réglages du verre restent.
+    auto v = md::migrateMetricsJson(*md::json::parse(
+        R"({"version":7,"glassSpecular":0.6,"borderOpacity":0.55,"glassFresnel":0.04,"glassTintDark":0.3})"));
+    auto m = md::metricsFromJson(v);
+    CHECK_NEAR(m.glassSpecular, 0, 1e-9);
+    CHECK_NEAR(m.borderOpacity, 0, 1e-9);
+    CHECK_NEAR(m.glassFresnel, 0.04, 1e-9);
+    CHECK_NEAR(m.glassTintDark, 0.3, 1e-9);
+    CHECK_EQ(md::jsonVersion(v), 8);
+    const md::Metrics defaults;
+    CHECK_NEAR(defaults.borderOpacity, 0, 1e-9);
+    CHECK_NEAR(defaults.glassSpecular, 0, 1e-9);
+    // Un fichier déjà en v8 garde ses valeurs (on peut remettre un liseré à la main).
+    auto kept = md::metricsFromJson(md::migrateMetricsJson(*md::json::parse(R"({"version":8,"glassSpecular":0.3})")));
+    CHECK_NEAR(kept.glassSpecular, 0.3, 1e-9);
 }

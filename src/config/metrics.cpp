@@ -42,8 +42,9 @@ int jsonVersion(const json::Value& v) {
 json::Value migrateMetricsJson(const json::Value& v) {
     if (!v.isObject() || jsonVersion(v) >= kMetricsVersion) return v;
     // Défauts changés, version par version (détail en regard de chaque groupe) : plan 1 en v2, verre Golden Gate en v3,
-    // verre recalé en v4, retour à Tahoe en v5, icônes de macOS 26 en v6, proportions du Dock de macOS 26 en v7. Une
-    // valeur encore égale à l'ancien défaut suit le nouveau ; une valeur choisie par l'utilisateur reste.
+    // verre recalé en v4, retour à Tahoe en v5, icônes de macOS 26 en v6, proportions du Dock de macOS 26 en v7, aucun
+    // contour blanc en v8. Une valeur encore égale à l'ancien défaut suit le nouveau ; une valeur choisie par
+    // l'utilisateur reste.
     struct Changed { int before; const char* key; double oldDefault; double newDefault; };
     static const Changed kChanged[] = {
         {2, "iconGap", 6, 4},
@@ -81,6 +82,10 @@ json::Value migrateMetricsJson(const json::Value& v) {
         {7, "indicatorCenterFromBottom", 4, 4.7},
         {7, "dockScreenMargin", 5, 3.9},
     };
+    // v8 : retour de l'utilisateur du 10 octobre, le Liquid Glass de macOS 26 n'a pas de contour blanc : reflet du
+    // liseré (verre GPU) et liseré clair (rendu de repli) à 0, quelle que soit la valeur d'avant.
+    struct Forced { int before; const char* key; double value; };
+    static const Forced kForced[] = {{8, "glassSpecular", 0}, {8, "borderOpacity", 0}};
     const int from = jsonVersion(v);
     json::Value out = json::Object{};
     for (auto& [key, value] : v.asObject()) {
@@ -91,6 +96,8 @@ json::Value migrateMetricsJson(const json::Value& v) {
             if (std::fabs(copy.asNumber(0) - c.oldDefault) >= 1e-9) break;   // choisie par l'utilisateur
             copy = c.newDefault;   // défaut de l'époque : suit les étapes suivantes
         }
+        for (auto& f : kForced)
+            if (from < f.before && key == f.key && copy.isNumber()) copy = f.value;
         out.set(key, std::move(copy));
     }
     out.set("version", kMetricsVersion);
