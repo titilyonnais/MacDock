@@ -49,23 +49,33 @@ Dock « tout le temps fluide ».
 - **Repli** : si le fil ne démarre pas, le budget de 10 ms d'aujourd'hui reste en place.
 
 ## Tâches
-- [ ] 1. **File pure** (`src/icons/icon_jobs.*`) : demande, en cours, prête, reprise ; doublons ; génération dépassée
+- [x] 1. **File pure** (`src/icons/icon_jobs.*`) : demande, en cours, prête, reprise ; doublons ; génération dépassée
   jetée ; priorité ; arrêt avec des travaux en attente. Tests rouges sur une ébauche, puis verts.
-- [ ] 2. **Fournisseur, mode « hors du fil »** :
+- [x] 2. **Fournisseur, mode « hors du fil »** :
   - `IconStyle`, `style()`, `generation()`, `beginAsync` / `endAsync`, `adopt`, `forget()` ;
   - `get`, `composeStack` et `appsButton` demandent au lieu de préparer ;
   - tests sans Shell (faux puits).
-- [ ] 3. **Fil des icônes** (`src/icons/icon_worker.*`) : COM STA, attente qui pompe les messages, notification unique,
+- [x] 3. **Fil des icônes** (`src/icons/icon_worker.*`) : COM STA, attente qui pompe les messages, notification unique,
   arrêt borné. Tests :
   - avec un faux constructeur : ordre, génération, STA, arrêt avec des travaux en attente, rien publié après l'arrêt ;
   - avec le vrai : notepad.
-- [ ] 4. **Dock** :
+- [x] 4. **Dock** :
   - fil démarré hors rendu hors écran ;
   - WM_APP_ICONS ;
   - `renderNow` en mode hors du fil (budget en repli) ;
   - arrêt avant la destruction de la fenêtre.
 - [ ] 5. **Mesure réelle**, MacDock relancé en diagnostic : démarrage, pile Téléchargements, fenêtre d'essai, repos.
   Puis relecture indépendante, corrections, fusion locale.
+
+## Fait
+- **Tâche 1** (5f12e48) : `IconJobs`, 6 tests rouges sur une ébauche, puis verts.
+- **Tâche 2** (7e8d3d1) : mode « hors du fil » du fournisseur, 5 tests rouges sur une ébauche, puis verts ; les 16 tests
+  d'icônes d'avant restent verts (budget compris).
+- **Tâche 3** (08c8fab) : `IconWorker`, 5 tests rouges sur une ébauche, puis verts trois fois de suite (faux
+  constructeur : ordre, STA, une notification, génération, arrêt borné ; vrai constructeur : notepad).
+- **Tâche 4** : branchement dans le Dock (démarrage hors rendu hors écran, WM_APP_ICONS, `renderNow`, arrêt avant la
+  fenêtre). Collage d'une fenêtre et de sa boucle, non testable en unité : vérifié par la mesure réelle (tâche 5).
+  Suite complète : 884 cas, un échec dû à l'environnement (`uia_menus_read_and_invoke_fake_app`).
 
 ## Gardes (comportements d'aujourd'hui, inchangés)
 - Rendu hors écran complet.

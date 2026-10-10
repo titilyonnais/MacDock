@@ -18,6 +18,7 @@
 #include "../glass/backdrop_capture.h"
 #include "../interact/command_key.h"
 #include "../icons/icon_provider.h"
+#include "../icons/icon_worker.h"
 #include "../interact/hot_corners.h"
 #include "../ipc/pipe_server.h"
 #include "../model/app_model.h"
@@ -184,6 +185,8 @@ private:
     AppModel model_;
     WindowTracker tracker_;
     IconProvider icons_;
+    IconWorker iconWorker_;        // plan 67 : icônes du rendu courant préparées hors du fil du Dock
+    double iconsWaitSince_ = 0;    // [diag] première image qui attendait une icône du fil
     DockRenderer renderer_;
     DockController controller_;
     ipc::PipeServer pipe_;
