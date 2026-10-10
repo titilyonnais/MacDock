@@ -1,5 +1,7 @@
 // Classement de la fenêtre au premier plan pour la barre de menus (logique pure).
 #pragma once
+#include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace md {
@@ -21,5 +23,29 @@ struct DesktopFocusContext {
     bool otherWindowVisible = false;   // une autre fenêtre d'app est visible (ni réduite, ni sur un autre bureau)
 };
 DesktopFocus desktopFocus(const DesktopFocusContext& c);
+
+// Premier plan de repli : quand la fenêtre active se ferme ou se cache (app quittée, fenêtre fermée), Windows donne la
+// main à une fenêtre de repli, parfois cachée, puis souvent à une autre peu après (VM fermée le 10 octobre : le Terminal
+// caché derrière VMware, puis Claude 265 ms plus tard). La barre attend que ça se pose avant de changer d'app et de
+// pastilles (sinon titres qui clignotent, pastilles qui sautent) ; un changement ordinaire passe tout de suite.
+class ForegroundSettle {
+public:
+    static constexpr std::uint64_t kSettleMs = 350;
+    // true : appliquer ce premier plan maintenant ; false : attendre, puis appliquer celui du moment quand due().
+    bool arrive(std::uint64_t now, bool previousGone) {
+        if (!previousGone) {
+            since_.reset();
+            return true;
+        }
+        if (!since_) since_ = now;   // une autre fermeture pendant l'attente : même attente
+        return false;
+    }
+    bool due(std::uint64_t now) const { return since_ && now - *since_ >= kSettleMs; }
+    bool waiting() const { return since_.has_value(); }
+    void clear() { since_.reset(); }
+
+private:
+    std::optional<std::uint64_t> since_;
+};
 
 } // namespace md

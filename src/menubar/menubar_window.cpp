@@ -97,6 +97,7 @@ constexpr UINT_PTR kHudTimer = 0x4855;          // "HU" : fondu de la pastille d
 // "FG" : Windows n'annonce pas toujours le premier plan (fenêtre active fermée, activation par un autre processus).
 constexpr UINT_PTR kForegroundTimer = 0x4647;
 constexpr UINT_PTR kDesktopFocusTimer = 0x4446;   // "DF" : bureau au premier plan sans clic, décidé une fois la fermeture finie
+constexpr UINT_PTR kSettleTimer = 0x5346;         // "SF" : premier plan de repli après une fenêtre fermée, posé
 constexpr UINT kDesktopFocusDelayMs = 150;
 // Touches de volume reprises (ctl_) ; Maj+Alt : pas fin, comme Maj+Option sur macOS.
 constexpr int kHotVolUp = 1, kHotVolDown = 2, kHotMute = 3, kHotVolUpFine = 4, kHotVolDownFine = 5;
@@ -480,6 +481,24 @@ void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
     const HWND previous = lastForeground_;
     lastForeground_ = h;
+    // Fenêtre d'app active fermée ou cachée : Windows passe par une ou plusieurs fenêtres de repli ; la barre (titres et
+    // pastilles) attend que ça se pose (plan 71). Les fenêtres de la barre (menus qui se referment) n'en sont jamais ; le
+    // bureau a sa propre règle (decideDesktopFocus).
+    DWORD fgPid = 0;
+    GetWindowThreadProcessId(h, &fgPid);
+    if (fgPid != GetCurrentProcessId()) {
+        const HWND before = settleFrom_;
+        settleFrom_ = h;
+        wchar_t fgClass[64] = {};
+        GetClassNameW(h, fgClass, 64);
+        const bool previousGone = before && before != h && (!IsWindow(before) || !IsWindowVisible(before));
+        if (!isDesktopClass(fgClass) && !settle_.arrive(GetTickCount64(), previousGone)) {
+            if (trace_) log::info(L"[trace] barre : fenêtre active fermée, premier plan de repli %p : attente", h);
+            SetTimer(ctl_, kSettleTimer, UINT(ForegroundSettle::kSettleMs), nullptr);
+            return;
+        }
+        KillTimer(ctl_, kSettleTimer);
+    }
     const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
     lights_.attach(rootWindow, settings_.trafficLights);   // il décide
     if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
@@ -1765,6 +1784,14 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     break;
                 case kDesktopFocusTimer: decideDesktopFocus(); break;
+                case kSettleTimer:   // repli posé : le premier plan du moment s'applique
+                    KillTimer(ctl_, kSettleTimer);
+                    if (settle_.waiting()) {
+                        settle_.clear();
+                        settleFrom_ = nullptr;   // traité comme un changement ordinaire
+                        onForeground(GetForegroundWindow());
+                    }
+                    break;
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:
                     checkFullscreen();

@@ -192,6 +192,8 @@ private:
 
     TrafficWindow lights_;   // feux tricolores de la fenêtre active
     HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
+    ForegroundSettle settle_;         // premier plan de repli après une fenêtre fermée : on attend qu'il se pose
+    HWND settleFrom_ = nullptr;       // dernière fenêtre d'app au premier plan (jamais une fenêtre de la barre)
     HWND desktopPrevious_ = nullptr;  // bureau au premier plan sans clic : la fenêtre active juste avant (décision différée)
     bool desktopDecided_ = false;     // le bureau peut s'afficher comme Explorateur (clic dessus, ou décision prise)
     WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)

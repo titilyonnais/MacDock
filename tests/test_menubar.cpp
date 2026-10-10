@@ -848,3 +848,18 @@ TEST_CASE(bar_menu_session_follows_the_app) {
     CHECK(md::menuSessionStep(true, false) == md::MenuSessionStep::End);        // autre app : menus refermés, comme macOS
     CHECK(md::menuSessionStep(true, true) == md::MenuSessionStep::End);
 }
+
+TEST_CASE(bar_foreground_settles_after_a_closed_window) {
+    // Plan 71 (enregistrement du 10 octobre) : la VM fermée, Windows a donné la main au Terminal caché derrière VMware,
+    // puis à Claude 265 ms plus tard ; la barre affichait les deux (titres qui clignotent, pastilles qui sautent).
+    md::ForegroundSettle s;
+    CHECK(s.arrive(0, false));      // changement ordinaire : tout de suite
+    CHECK(!s.arrive(1000, true));   // fenêtre active fermée : premier plan de repli, on attend
+    CHECK(!s.due(1200));
+    CHECK(s.arrive(1265, false));   // la suivante (Claude) : tout de suite, l'attente s'arrête
+    CHECK(!s.waiting());
+    CHECK(!s.arrive(2000, true));
+    CHECK(!s.arrive(2100, true));   // une autre fermeture pendant l'attente : même attente
+    CHECK(!s.due(2349));
+    CHECK(s.due(2350));             // rien d'autre : le premier plan du moment s'applique
+}
