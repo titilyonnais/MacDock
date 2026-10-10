@@ -1137,6 +1137,26 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   cette mesure. Corrigé : quand le Dock rétrécit pour tenir sur l'écran (Dock vertical sur un portable), le séparateur
   sortait du verre et les icônes n'étaient plus centrées.
 
+### Plan 62 — Dock figé, rebond sans fin, boucle à vide, nuit du 10 octobre (seul)
+
+- **Ce que tu m'avais signalé** : le Dock restait figé (agrandi, ou au repos) jusqu'au clic suivant après un clic sur
+  VMware ou un changement de fenêtre ; l'icône de Claude rebondissait sans fin, même quand tu cliquais dessus.
+- **Rebond** : Claude fait clignoter sa fenêtre un nombre fixe de fois, et des clignotements arrivaient après son
+  activation ; le Dock relançait le rebond, que plus rien n'arrêtait. Maintenant, comme sur macOS : une app active ne
+  rebondit pas, un clic sur l'icône arrête le rebond, et un épisode ne fait qu'un train de rebonds (décision plus bas).
+- **Dock figé** : il ne suivait la souris que par un crochet bas niveau, aveugle sous une app en administrateur
+  (Gestionnaire des tâches, Windhawk : vu dans le journal pendant que tu l'utilisais), ou quand une app déplace le
+  curseur. La vraie position du curseur prend maintenant le relais quand le crochet se tait (30 à 100 ms). **VMware
+  n'est pas couvert** : quand il a le focus, le curseur de Windows reste immobile sur le Dock ; une trace note ce qu'il
+  fait du pointeur, et un pointeur confiné ailleurs (ClipCursor) remet le Dock au repos. À essayer avec toi.
+- **Boucle à vide** : curseur posé sur le Dock, la boucle tournait par rafales jusqu'à 1 800 fois en 5 s sans rien
+  dessiner, réveillée par les événements d'accessibilité des autres apps (le Gestionnaire des tâches en émet plus de
+  1 000 en 5 s). Ils sont triés sur un fil à part : 10 à 20 tours en 5 s.
+- **Aussi** : démarrage plus rapide (première image 306 ms au lieu de ~750, icônes ensuite), capture d'avance du génie
+  arrêtée après 5 s de survol immobile, capture du verre en pause quand le Dock est masqué.
+- **Mode diagnostic** : une sentinelle note quand le crochet se tait ou que la boucle bloque, et pourquoi la boucle
+  tourne.
+
 ## Décisions prises sans toi (plan 62)
 - **Rebond d'attention : un seul train par épisode**, comme une demande « informative » sur macOS. Une app qui continue
   de clignoter (Claude, quand Windows lui a refusé le premier plan, clignote sans fin) ne rebondit plus jusqu'au matin.

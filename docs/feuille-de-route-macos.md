@@ -46,6 +46,8 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Fenêtre suivante de l'app** au clavier (`` ⌥` ``, comme `` ⌘` `` de macOS) (plan 59).
 - **Forme des icônes de macOS 26**, mesurée sur la VM (rayon de 25,9 % du côté) (plan 60).
 - **Proportions du Dock de macOS 26**, mesurées sur la VM : marges, espacement, séparateurs, points (plan 61).
+- **Dock toujours réactif** : relais du crochet souris, rebond d'attention comme sur macOS, boucle qui ne tourne plus
+  à vide, démarrage plus rapide (plan 62).
 
 ## À faire, par ordre d'effet
 1. **Mises à jour, finitions** : mineurs du plan 53 (nouvel essai plus tôt après une recherche ratée, état après une
