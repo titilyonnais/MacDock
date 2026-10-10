@@ -50,6 +50,8 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
   à vide, démarrage plus rapide (plan 62 ; VMware, qui garde le curseur posé sur le Dock, reste à essayer avec toi).
 - **Barre des menus de macOS 26**, mesurée sur la VM : texte sur sa ligne de base, loupe et Centre de contrôle, icônes
   espacées de 36 pt, horloge à chiffres fixes (plan 64).
+- **MacDock visible à l'Outil Capture de Windows** (⊞⇧S, Impr. écran), le temps qu'il est ouvert (plan 63 ; vrai essai
+  au clavier à faire avec toi).
 
 ## À faire, par ordre d'effet
 0. **Approche de SF Pro (« trak »)** : CoreText resserre SF Pro selon sa taille (−0,076 pt par caractère à 13 pt,
@@ -63,7 +65,7 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
    - des stylers XAML (Explorateur → Finder, Paramètres → Réglages, Bloc-notes, Calculatrice, Photos, Horloge) ;
    - la liste de fichiers et le volet de l'Explorateur (DirectUI).
 3. **Centre de notifications, suite** : notifications de Windows listées dans le panneau (UserNotificationListener demande une identité d'app empaquetée), météo.
-4. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option).
+4. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option) ; ⊞Impr. écran et Alt+Impr. écran (capture immédiate, avant que MacDock se montre).
 
 ## Limites connues
 - Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.
