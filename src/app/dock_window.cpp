@@ -1646,7 +1646,14 @@ void DockApp::warmHovered(POINT client) {
         // bouge de nouveau.
         if (want && (client.x != warmPoint_.x || client.y != warmPoint_.y)) {
             warmPoint_ = client;
-            SetTimer(hwnd_, warmLive_ ? kWarmStopTimer : kWarmTimer, warmLive_ ? kWarmStopMs : 120, nullptr);
+            switch (warmOnMove(warmLive_, warmStoppedIdle_)) {
+                case WarmMove::ExtendStop: SetTimer(hwnd_, kWarmStopTimer, kWarmStopMs, nullptr); break;
+                case WarmMove::Rewarm:
+                    warmStoppedIdle_ = false;
+                    SetTimer(hwnd_, kWarmTimer, 120, nullptr);
+                    break;
+                case WarmMove::Nothing: break;   // premier lancement en attente : jamais retardé par les mouvements
+            }
         }
         return;
     }
@@ -1656,13 +1663,29 @@ void DockApp::warmHovered(POINT client) {
     KillTimer(hwnd_, kWarmStopTimer);
     if (want) SetTimer(hwnd_, kWarmTimer, 120, nullptr);   // un passage rapide sur le Dock ne lance rien
     else genie_.cool();
-    warmLive_ = false;
+    warmLive_ = warmStoppedIdle_ = false;
 }
 
 void DockApp::noteForeground() {
     HWND fg = GetForegroundWindow();
     RECT r{};
     if (fg && !IsIconic(fg) && visibleBounds(fg, r)) lastSeen_[toId(fg)] = r;
+}
+
+void DockApp::onFlash(HWND h) {
+    controller_.syncClock(nowSeconds());   // le Dock dormait peut-être : le silence de l'épisode est du temps réel
+    syncActiveApp();
+    const std::wstring app = model_.appOfWindow(toId(h));
+    const bool before = controller_.isBouncing(app), episode = controller_.attentionEpisode(app);
+    controller_.setAttention(app, true);
+    if (trace_)
+        log::info(L"[trace] attention %p (%s) : %s ; app active : %s", h, app.c_str(),
+                  app == controller_.activeApp() ? L"ignorée (app active)"
+                  : !before && !episode           ? L"début du rebond"
+                  : controller_.isBouncing(app)   ? L"rebond en cours"
+                                                  : L"même épisode, train fini",
+                  controller_.activeApp().empty() ? L"(aucune)" : controller_.activeApp().c_str());
+    requestFrame();
 }
 
 void DockApp::syncActiveApp() {
@@ -2443,7 +2466,7 @@ void DockApp::startMouseThread() {
         if (!hook) log::error(L"SetWindowsHookEx(WH_MOUSE_LL) a échoué (%lu)", GetLastError());
         HHOOK keys = SetWindowsHookExW(WH_KEYBOARD_LL, keyboardHookProc, instance_, 0);   // Alt+Tab seulement
         if (!keys) log::error(L"SetWindowsHookEx(WH_KEYBOARD_LL) a échoué (%lu) : Alt+Tab reste à Windows", GetLastError());
-        // Relais du crochet souris (plan 62) : il se tait sous une app en administrateur, quand VMware avale la souris,
+        // Relais du crochet souris (plan 62) : il se tait sous une app en administrateur, quand un autre crochet le prive,
         // ou quand une app déplace le curseur (SetCursorPos). La position lue prend alors le relais, sur ce fil.
         CursorRelay relay;
         HWND foreground = nullptr;
@@ -2465,7 +2488,14 @@ void DockApp::startMouseThread() {
                 pollsSince = now;
             }
             POINT c{};
-            if (!GetCursorPos(&c)) continue;   // bureau sécurisé (invite de l'UAC) : rien à livrer
+            if (!GetCursorPos(&c)) {   // bureau sécurisé (verrouillage, invite de l'UAC) : rien à livrer, lecture lente
+                relay.cursorLost(now);
+                if (const unsigned want = relay.intervalMs(now); want != interval) {
+                    interval = want;
+                    timer = SetTimer(nullptr, timer, interval, nullptr);
+                }
+                continue;
+            }
             if (RECT clip{}; GetClipCursor(&clip) && (!clipKnown || !EqualRect(&clip, &lastClip))) {
                 if (clipKnown) deliverMouse(c);   // confinement changé par une app : le Dock réévalue où est le pointeur
                 lastClip = clip;
@@ -2483,6 +2513,7 @@ void DockApp::startMouseThread() {
             s.elevatedForeground = elevated;
             const bool wasActive = relay.active();
             const RelayStep step = relay.poll(s);
+            if (step.resumed) installedAt = now;   // silence dû au bureau sécurisé : il repart de zéro
             if (step.deliver) deliverMouse(*step.deliver);
             if (step.reinstallHook) {   // repasse en tête de la chaîne des crochets
                 if (hook) UnhookWindowsHookEx(hook);
@@ -2739,12 +2770,9 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             showContextMenu(controller_.hitTestAny(POINT{short(LOWORD(lp)), short(HIWORD(lp))}));
             return 0;
-        case WM_APP_IPC_FLASH: {
-            std::wstring app = model_.appOfWindow(WindowId(lp));
-            controller_.setAttention(app, true);
-            requestFrame();
+        case WM_APP_IPC_FLASH:   // clignotement annoncé par le tube : le même chemin que celui de Windows
+            onFlash(reinterpret_cast<HWND>(lp));
             return 0;
-        }
         case WM_APP_CONFIG:
             SetTimer(hwnd_, kConfigTimer, 200, nullptr);   // anti-rebond : plusieurs écritures d'affilée
             return 0;
@@ -2944,6 +2972,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (warmLive_) {
                     genie_.cool();
                     warmLive_ = false;
+                    warmStoppedIdle_ = true;   // relancée si le curseur bouge de nouveau sur la case
                     if (trace_) log::info(L"[trace] génie : capture d'avance arrêtée (survol immobile depuis %u s)", kWarmStopMs / 1000);
                 }
                 return 0;
@@ -3209,21 +3238,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         noteForeground();
         requestFrame();
     };
-    ev.flashed = [this](HWND h) {
-        controller_.syncClock(nowSeconds());   // le Dock dormait peut-être : le silence de l'épisode est du temps réel
-        syncActiveApp();
-        const std::wstring app = model_.appOfWindow(toId(h));
-        const bool before = controller_.isBouncing(app), episode = controller_.attentionEpisode(app);
-        controller_.setAttention(app, true);
-        if (trace_)
-            log::info(L"[trace] attention %p (%s) : %s ; app active : %s", h, app.c_str(),
-                      app == controller_.activeApp() ? L"ignorée (app active)"
-                      : !before && !episode           ? L"début du rebond"
-                      : controller_.isBouncing(app)   ? L"rebond en cours"
-                                                      : L"même épisode, train fini",
-                      controller_.activeApp().empty() ? L"(aucune)" : controller_.activeApp().c_str());
-        requestFrame();
-    };
+    ev.flashed = [this](HWND h) { onFlash(h); };
     tracker_.setTrace(trace_);
     thumbnails_.setTrace(trace_);
     if (!snapshot_)   // un Dock précédent (planté, tué) a pu laisser des fenêtres sans animations

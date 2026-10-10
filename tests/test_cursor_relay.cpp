@@ -26,7 +26,7 @@ TEST_CASE(cursor_relay_leaves_a_live_hook_alone) {
 }
 
 TEST_CASE(cursor_relay_takes_over_a_silent_hook) {
-    // VMware au premier plan avale la souris, SetCursorPos ne passe pas par les crochets : le curseur bouge sans que
+    // App en administrateur au premier plan, SetCursorPos qui ne passe pas par les crochets : le curseur bouge sans que
     // le crochet le voie, la position lue est livrée au Dock.
     md::CursorRelay r;
     const auto step = r.poll(sample({500, 900}, {500, 2090}, 150, 1000));
@@ -119,4 +119,19 @@ TEST_CASE(pointer_confined_away_from_the_dock) {
     CHECK(!md::pointerConfinedAway(RECT{0, 0, 3840, 2027}, desktop, POINT{2300, 1500}));        // curseur dans la zone
     CHECK(!md::pointerConfinedAway(RECT{0, 0, 3840, 2160}, RECT{-1920, 0, 3840, 2160}, onDock));   // l'écran du Dock
     CHECK(md::pointerConfinedAway(RECT{-1920, 0, 0, 1080}, RECT{-1920, 0, 3840, 2160}, onDock));   // l'autre écran
+}
+
+TEST_CASE(cursor_relay_slows_down_when_cursor_unreadable) {
+    // Relecture du plan 62 : bureau sécurisé (écran verrouillé, invite de l'UAC), GetCursorPos échoue ; la lecture
+    // restait à 16 ms toute la nuit, et le crochet était réinstallé pour rien au retour.
+    md::CursorRelay r;
+    r.poll(sample({500, 900}, {500, 2090}, 150, 1000));
+    CHECK(r.intervalMs(1000) == 16);
+    r.cursorLost(1016);
+    CHECK(r.intervalMs(1016) == 500);
+    CHECK(r.intervalMs(60000) == 500);
+    const auto back = r.poll(sample({800, 700}, {500, 900}, 600000, 600000));   // retour, crochet muet depuis longtemps
+    CHECK(back.resumed);
+    CHECK(!back.reinstallHook);
+    CHECK(r.intervalMs(600000) == 16);
 }

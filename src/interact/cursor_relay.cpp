@@ -1,11 +1,21 @@
 #include "cursor_relay.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace md {
 
+void CursorRelay::cursorLost(unsigned long long) {
+    lost_ = true;
+    lastMoved_.reset();
+    active_ = false;
+}
+
 RelayStep CursorRelay::poll(const CursorSample& s) {
     RelayStep out;
+    // De retour d'un bureau sécurisé : le crochet s'est tu à cause de lui, pas d'une app ; son silence repart de zéro
+    // (l'appelant remet son heure d'installation), sans réinstallation pour ce tour.
+    out.resumed = std::exchange(lost_, false);
     const bool moved = !lastPolled_ || lastPolled_->x != s.cursor.x || lastPolled_->y != s.cursor.y;
     lastPolled_ = s.cursor;
     const bool behind = s.cursor.x != s.known.x || s.cursor.y != s.known.y;
@@ -18,7 +28,7 @@ RelayStep CursorRelay::poll(const CursorSample& s) {
         lastDelivery_ = s.nowMs;
         // Muet si longtemps sans app élevée pour l'expliquer : retiré par Windows, ou un autre crochet ne passe pas la
         // main ; réinstallé, il repasse en tête de la chaîne.
-        if (!s.elevatedForeground && s.hookAgeMs >= kReinstallSilentMs &&
+        if (!out.resumed && !s.elevatedForeground && s.hookAgeMs >= kReinstallSilentMs &&
             (!lastReinstall_ || s.nowMs - *lastReinstall_ >= kReinstallEveryMs)) {
             out.reinstallHook = true;
             lastReinstall_ = s.nowMs;
@@ -31,6 +41,7 @@ RelayStep CursorRelay::poll(const CursorSample& s) {
 }
 
 unsigned CursorRelay::intervalMs(unsigned long long nowMs) const {
+    if (lost_) return kLostMs;
     return lastMoved_ && nowMs - *lastMoved_ < kFastMs ? 16 : 100;
 }
 

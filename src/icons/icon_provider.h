@@ -46,7 +46,10 @@ public:
         budget_ = true;
         deferred_ = false;
     }
-    void endBudget() { budget_ = false; }
+    void endBudget() {
+        budget_ = false;
+        if (!deferred_) stale_.clear();   // tout est refait : la réserve ne sert plus
+    }
     bool deferred() const { return deferred_; }
     ImagePtr appsButton(int px);            // icône « Apps » dessinée par le code
     ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
@@ -60,10 +63,17 @@ public:
     // Pile « comme Pile » : images des éléments (le premier au-dessus) empilées dans la forme d'icône, avec
     // l'ombre des icônes du Dock ; nullptr si aucune image.
     ImagePtr composeStack(const std::wstring& key, const std::vector<FileRef>& files, int px);
-    void clear() { cache_.clear(); }
+    // Images refaites (thème, réglages des icônes) : les anciennes restent en réserve jusqu'à ce que les nouvelles
+    // soient prêtes, pour que les cases ne se vident pas pendant le rechargement progressif.
+    void clear() {
+        for (auto& [k, v] : cache_) stale_[k] = std::move(v);
+        cache_.clear();
+    }
 
 private:
     bool budget_ = false, deferred_ = false;
+    std::map<std::wstring, ImagePtr> stale_;   // anciennes images, affichées en attendant les nouvelles
+    ImagePtr deferStale(const std::wstring& cacheKey);   // budget dépassé : l'ancienne image s'il y en a une
     std::chrono::steady_clock::time_point budgetEnd_{};
     ImagePtr build(const std::wstring& key, const std::wstring& parsingName, int px);
     // Forme visible (shape x shape) posée au centre d'une case px x px, avec l'ombre portée.

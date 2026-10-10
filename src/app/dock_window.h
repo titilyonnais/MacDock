@@ -273,6 +273,7 @@ private:
     // App active (rebond d'attention) : celle du vrai premier plan, lu par GetForegroundWindow et ramené à sa fenêtre
     // propriétaire ; jamais le hwnd d'un événement de premier plan, qu'une demande refusée produit aussi.
     void syncActiveApp();
+    void onFlash(HWND h);   // fenêtre qui clignote (Windows ou tube) : rebond d'attention
     GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
@@ -307,6 +308,7 @@ private:
     std::wstring lastPointerState_;
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
     bool warmLive_ = false;        // sa capture d'avance tourne (arrêtée après un survol immobile)
+    bool warmStoppedIdle_ = false; // arrêtée par l'immobilité : relancée au prochain mouvement sur la case
     POINT warmPoint_{};            // dernier point du survol de cette case
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi

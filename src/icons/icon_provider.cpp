@@ -332,15 +332,19 @@ void IconProvider::setDark(bool dark) {
     clear();
 }
 
+IconProvider::ImagePtr IconProvider::deferStale(const std::wstring& cacheKey) {
+    deferred_ = true;
+    if (auto it = stale_.find(cacheKey); it != stale_.end()) return it->second;
+    return nullptr;
+}
+
 IconProvider::ImagePtr IconProvider::get(const std::wstring& key, const std::wstring& parsingName, int px) {
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = key + L"|" + std::to_wstring(px);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
-    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) {   // image du Dock déjà assez chargée : à la suivante
-        deferred_ = true;
-        return nullptr;
-    }
+    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) return deferStale(cacheKey);   // à l'image suivante
     auto img = build(key, parsingName, px);
+    stale_.erase(cacheKey);
     cache_[cacheKey] = img;
     return img;
 }
@@ -393,11 +397,17 @@ IconProvider::ImagePtr IconProvider::file(const std::wstring& path, int px, std:
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = L"#file|" + path + L"|" + std::to_wstring(px) + L"|" + std::to_wstring(modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
-    if (cache_.size() > 1500) clear();   // les piles changent sans cesse : pas de croissance sans fin
+    if (cache_.size() > 1500) {   // les piles changent sans cesse : pas de croissance sans fin
+        cache_.clear();
+        stale_.clear();
+    }
     int srcSize = 0;
     Pixels src = thumbnailImage(path, srcSize);
     if (src.empty()) src = typeIcon(path, srcSize);
-    if (src.empty() || srcSize <= 0) return nullptr;
+    if (src.empty() || srcSize <= 0) {   // échec gardé, comme une réussite
+        cache_[cacheKey] = nullptr;
+        return nullptr;
+    }
     auto img = std::make_shared<Image>();
     img->size = px;
     img->bgra = srcSize == px ? std::move(src) : resize(src, srcSize, px);
@@ -477,10 +487,7 @@ IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const
     std::wstring cacheKey = L"#stack|" + key + L"|" + std::to_wstring(px);
     for (auto& f : files) cacheKey += L"|" + f.path + L"@" + std::to_wstring(f.modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
-    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) {   // vignettes lentes : à l'image suivante
-        deferred_ = true;
-        return nullptr;
-    }
+    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) return deferStale(cacheKey);   // vignettes lentes
     const int s = iconShapePx(px, shapeRatio_);   // même forme que les icônes d'apps, même ombre
     Pixels shaped(size_t(s) * s * 4, 0);
     const auto layers = stackIconLayers(files.size());
@@ -495,7 +502,11 @@ IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const
         drawLayer(shaped, s, img->bgra, img->size, s / 2.0 + l.dx * s, s / 2.0 + l.dy * s, side, l.angle);
         any = true;
     }
-    if (!any) return nullptr;
+    if (!any) {   // échec gardé : pas recomposé à chaque image (fichiers disparus, partage hors ligne)
+        cache_[cacheKey] = nullptr;
+        stale_.erase(cacheKey);
+        return nullptr;
+    }
     auto img = finish(std::move(shaped), s, px);
     cache_[cacheKey] = img;
     return img;

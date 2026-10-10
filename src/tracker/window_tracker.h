@@ -46,6 +46,8 @@ private:
     std::atomic<DWORD> eventThreadId_{0};
     std::atomic<bool> hooksOk_{false};
     UINT winEventMsg_ = 0;
+    HANDLE ready_ = nullptr;      // signalée par le fil quand ses crochets sont posés
+    DWORD hookedMovePid_ = 0;     // fil des crochets : processus dont les déplacements sont suivis
     static constexpr UINT kWatchMoves = WM_APP + 1;   // message de fil : nouveau processus au premier plan
     void evaluate(HWND hwnd);
     void forget(HWND hwnd);

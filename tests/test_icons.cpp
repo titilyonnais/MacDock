@@ -151,3 +151,19 @@ TEST_CASE(icons_frame_budget_defers_stack_previews) {
     CHECK(icons.deferred());
     icons.endBudget();
 }
+
+TEST_CASE(icons_keep_old_image_while_reloading) {
+    // Relecture du plan 62 : après un vidage du cache (thème, réglages des icônes), les cases se vidaient le temps que les
+    // icônes reviennent une à une. L'ancienne image reste affichée jusqu'à ce que la nouvelle soit prête.
+    md::IconProvider icons;
+    const auto old = icons.get(L"app:essai-reserve", L"", 64);
+    REQUIRE(old != nullptr);
+    icons.setDark(true);
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-reserve", L"", 64) == old);
+    CHECK(icons.deferred());
+    icons.endBudget();
+    const auto fresh = icons.get(L"app:essai-reserve", L"", 64);
+    CHECK(fresh != nullptr);
+    CHECK(fresh != old);
+}

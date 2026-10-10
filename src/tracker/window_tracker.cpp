@@ -29,8 +29,9 @@ bool WindowTracker::start(HWND messageWindow, Events events) {
     shellMsg_ = RegisterWindowMessageW(L"SHELLHOOK");
     winEventMsg_ = RegisterWindowMessageW(L"MacDockWinEvent");
     RegisterShellHookWindow(msgWindow_);
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    eventThread_ = std::thread([this, ready] {
+    // Poignée gardée jusqu'à stop() : si l'attente expire, le fil peut encore la signaler plus tard.
+    ready_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    eventThread_ = std::thread([this, ready = ready_] {
         MSG m;
         PeekMessageW(&m, nullptr, WM_USER, WM_USER, PM_NOREMOVE);   // file de messages du fil, avant tout message reçu
         eventThreadId_ = GetCurrentThreadId();
@@ -42,16 +43,13 @@ bool WindowTracker::start(HWND messageWindow, Events events) {
         hooks_[3] = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nullptr, winEventProc, 0, 0, flags);
         hooks_[4] = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, nullptr, winEventProc, 0, 0, flags);
         hooksOk_ = hooks_[0] && hooks_[1] && hooks_[2] && hooks_[3] && hooks_[4];
-        SetEvent(ready);
+        if (ready) SetEvent(ready);
         while (GetMessageW(&m, nullptr, 0, 0) > 0)
             if (m.message == kWatchMoves) setMoveHook(DWORD(m.wParam));
         for (auto& h : hooks_)
             if (h) { UnhookWinEvent(h); h = nullptr; }
     });
-    if (ready) {
-        WaitForSingleObject(ready, 5000);
-        CloseHandle(ready);
-    }
+    if (ready_) WaitForSingleObject(ready_, 5000);
     rescan();
     watchMoves(GetForegroundWindow());
     return hooksOk_;
@@ -61,6 +59,10 @@ void WindowTracker::stop() {
     if (eventThread_.joinable()) {   // le fil retire ses crochets en sortant
         if (const DWORD id = eventThreadId_) PostThreadMessageW(id, WM_QUIT, 0, 0);
         eventThread_.join();
+    }
+    if (ready_) {
+        CloseHandle(ready_);
+        ready_ = nullptr;
     }
     eventThreadId_ = 0;
     movePid_ = 0;
@@ -161,14 +163,16 @@ void WindowTracker::onEvent(DWORD event, HWND hwnd) {
 // EVENT_OBJECT_LOCATIONCHANGE pour tout le système arriverait à chaque mouvement de souris : on ne l'écoute que
 // pour le processus au premier plan (c'est lui qu'on réduit), et on change de processus avec le premier plan.
 void WindowTracker::watchMoves(HWND foreground) {
+    // À chaque changement de premier plan : le fil des crochets dédoublonne, et retente un crochet qui avait échoué.
     DWORD pid = 0;
     if (foreground) GetWindowThreadProcessId(foreground, &pid);
-    if (pid == movePid_) return;
     movePid_ = pid;
     if (const DWORD id = eventThreadId_) PostThreadMessageW(id, kWatchMoves, WPARAM(pid), 0);
 }
 
 void WindowTracker::setMoveHook(DWORD pid) {
+    if (pid == hookedMovePid_ && (hooks_[5] || !pid)) return;
+    hookedMovePid_ = pid;
     if (hooks_[5]) UnhookWinEvent(hooks_[5]);
     hooks_[5] = nullptr;
     if (pid && pid != GetCurrentProcessId())
