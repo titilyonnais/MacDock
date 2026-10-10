@@ -10,7 +10,8 @@ struct ClockOptions {
     bool weekday = true, date = true, seconds = false, hour24 = true;
 };
 
-// « mer. 7 oct. 14:32 » ; sans jour ni date : « 14:32 » ; 12 h : « 2:32 PM ».
+// « Mer. 7 oct.  14:32 » (deux espaces et une espace ultra-fine avant l'heure, comme macOS 26) ; sans jour ni date :
+// « 14:32 » ; 12 h : « 2:32 PM ».
 std::wstring formatClock(const SYSTEMTIME& t, const ClockOptions& o);
 
 } // namespace md

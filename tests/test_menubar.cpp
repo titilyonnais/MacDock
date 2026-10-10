@@ -106,14 +106,19 @@ TEST_CASE(clock_formats_french_weekday_month) {
     t.wHour = 14;
     t.wMinute = 32;
     t.wSecond = 5;
-    CHECK(md::formatClock(t, {}) == L"mer. 7 oct. 14:32");
+    // Comme la barre de macOS 26 (relevé sur la VM : « Ven. 9 oct.  22:17 ») : jour avec majuscule ; entre la date et
+    // l'heure, deux espaces et une espace ultra-fine (écart d'encre de ~10 pt mesuré sur la VM).
+    CHECK(md::formatClock(t, {}) == L"Mer. 7 oct.  \u200A14:32");
     t.wMonth = 2;
     t.wDayOfWeek = 0;
     t.wHour = 9;
     t.wMinute = 5;
-    CHECK(md::formatClock(t, {}) == L"dim. 7 févr. 9:05");
+    CHECK(md::formatClock(t, {}) == L"Dim. 7 févr.  \u200A9:05");
     t.wMonth = 8;
-    CHECK(md::formatClock(t, {false, true}) == L"7 août 9:05");
+    CHECK(md::formatClock(t, {false, true}) == L"7 août  \u200A9:05");
+    CHECK(md::formatClock(t, {true, false}) == L"Dim.  \u200A9:05");   // extrapolé : la VM n'a montré que le format complet
+    CHECK(md::formatClock(t, {true, true, true, true}) == L"Dim. 7 août  \u200A9:05:05");
+    CHECK(md::formatClock(t, {true, true, false, false}) == L"Dim. 7 août  \u200A9:05 AM");
     CHECK(md::formatClock(t, {false, false}) == L"9:05");
 }
 
