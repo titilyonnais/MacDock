@@ -471,6 +471,7 @@ void DockApp::restartCapture() {
     if (!excluded_) return;
     if (toolRevealOn_) {   // Dock visible aux captures : il se verrait lui-même ; reprise à la fin de la révélation
         capturePaused_ = true;
+        if (trace_) log::info(L"[trace] verre : reprise retenue (MacDock visible aux captures)");
         return;
     }
     RECT rc;
@@ -487,7 +488,11 @@ void DockApp::pauseCapture() {
 }
 
 void DockApp::resumeCapture() {
-    if (!capturePaused_ || toolRevealOn_) return;   // révélation pour l'Outil Capture : reprise à sa fin
+    if (!capturePaused_) return;
+    if (toolRevealOn_) {   // révélation pour l'Outil Capture : reprise à sa fin
+        if (trace_) log::info(L"[trace] verre : reprise retenue (MacDock visible aux captures)");
+        return;
+    }
     if (!excluded_) {   // verre coupé entre-temps : sans exclusion des captures, le Dock se capturerait lui-même
         capturePaused_ = false;
         return;
@@ -557,10 +562,13 @@ void DockApp::onToolShot() {
         revealForCapture(true, true);
         toolRevealOn_ = true;
         toolWasInFront_ = false;
-        toolBarPingAt_ = now;
+        toolBarPingAt_ = toolRevealAt_ = now;
         StackWindow::setCaptureVisible(true);
         switcher_.setCaptureVisible(true);
-        if (trace_) log::info(L"[trace] Outil Capture de Windows : MacDock visible à ses captures");
+        if (trace_)
+            log::info(L"[trace] Outil Capture de Windows : MacDock visible à ses captures (Dock %s, verre %s, barre %s)",
+                      revealDock_ ? L"révélé" : L"déjà visible", shotPausedCapture_ ? L"en pause" : L"sans capture en cours",
+                      revealLights_ ? L"prévenue" : L"absente");
     }
     SetTimer(hwnd_, kToolRevealTimer, 250, nullptr);
 }
@@ -575,6 +583,7 @@ void DockApp::tickToolReveal() {
             if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) {
                 PostMessageW(bar, shotRevealMsg_, 1, 0);
                 toolBarPingAt_ = now;
+                if (trace_) log::info(L"[trace] Outil Capture de Windows : barre relancée");
             }
         return;
     }
@@ -585,7 +594,10 @@ void DockApp::tickToolReveal() {
     concealAfterCapture();
     // Capture du verre retenue pendant la révélation (menu fermé, écran changé…) : reprise, Dock de nouveau exclu.
     if (capturePaused_ && excluded_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
-    if (trace_) log::info(L"[trace] Outil Capture de Windows : MacDock de nouveau exclu des captures");
+    if (trace_)
+        log::info(L"[trace] Outil Capture de Windows : fin après %llu ms, MacDock de nouveau exclu des captures%s",
+                  static_cast<unsigned long long>(now - toolRevealAt_),
+                  capturePaused_ && excluded_ ? L" ; reprise du verre dans 150 ms" : L"");
 }
 
 bool DockApp::captureToolInFront() {
@@ -2960,6 +2972,8 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
                 KillTimer(hwnd_, kShotResumeTimer);
+                if (trace_ && capturePaused_ && !menuOpen_ && !switchPanel_ && !toolRevealOn_)
+                    log::info(L"[trace] verre : capture reprise, Dock exclu des captures");
                 if (!menuOpen_ && !switchPanel_) resumeCapture();   // sinon, la fermeture du menu la reprend
                 return 0;
             }
@@ -3344,7 +3358,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     willMinimizeMsg_ = RegisterWindowMessageW(L"MacDockWillMinimize");
     ChangeWindowMessageFilterEx(hwnd_, willMinimizeMsg_, MSGFLT_ALLOW, nullptr);
     shotRevealMsg_ = RegisterWindowMessageW(L"MacDockScreenshotReveal");
-    toolTestMsg_ = RegisterWindowMessageW(L"MacDockTestToolReveal");
+    if (diagnosticCapture()) toolTestMsg_ = RegisterWindowMessageW(L"MacDockTestToolReveal");   // essais seulement
     ChangeWindowMessageFilterEx(hwnd_, missionMsg_, MSGFLT_ALLOW, nullptr);
     registerMissionHotkey();
     registerAppExposeHotkey();

@@ -229,7 +229,8 @@ private:
     bool toolRevealOn_ = false;          // MacDock visible à ses captures (rien ne le referme avant la fin)
     bool toolWasInFront_ = false;        // pour la trace : l'outil vient d'apparaître ou de partir
     ULONGLONG toolBarPingAt_ = 0;        // dernière relance de la barre (sa sécurité coupe après 3 s)
-    UINT toolTestMsg_ = 0;               // « MacDockTestToolReveal » : même chemin que la touche (essais)
+    ULONGLONG toolRevealAt_ = 0;         // début de la révélation (traces)
+    UINT toolTestMsg_ = 0;               // « MacDockTestToolReveal » (mode diagnostic) : même chemin que la touche
     bool switchPanel_ = false;           // panneau affiché (capture du Dock en pause)
     HotCornerTracker corners_;
     HotCornerAction pendingCorner_ = HotCornerAction::Off;   // action différée (veille de l'écran, économiseur)
