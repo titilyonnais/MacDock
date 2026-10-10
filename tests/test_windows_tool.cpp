@@ -6,17 +6,20 @@
 
 TEST_CASE(windows_tool_keys) {
     // Impr. écran, avec ou sans modificateurs, et ⊞⇧S lancent l'Outil Capture ; ni la répétition ni le relâchement.
-    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, false, false));
-    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, true, false));    // ⊞Impr. écran
-    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, false, true));
-    CHECK(!md::windowsShotKey(VK_SNAPSHOT, false, false, false, false));  // relâchement
-    CHECK(!md::windowsShotKey(VK_SNAPSHOT, true, true, false, false));    // répétition
-    CHECK(md::windowsShotKey('S', true, false, true, true));              // ⊞⇧S
-    CHECK(!md::windowsShotKey('S', true, false, true, false));            // ⊞S : recherche de Windows
-    CHECK(!md::windowsShotKey('S', true, false, false, true));            // ⇧S : une lettre
-    CHECK(!md::windowsShotKey('S', false, false, true, true));
-    CHECK(!md::windowsShotKey('S', true, true, true, true));
-    CHECK(!md::windowsShotKey('A', true, false, true, true));
+    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, false, false, false));
+    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, false, true, false));    // ⊞Impr. écran
+    CHECK(md::windowsShotKey(VK_SNAPSHOT, true, false, false, false, true));
+    CHECK(!md::windowsShotKey(VK_SNAPSHOT, false, false, true, false, false));  // relâchement
+    CHECK(!md::windowsShotKey(VK_SNAPSHOT, true, true, true, false, false));    // répétition
+    CHECK(md::windowsShotKey('S', true, false, false, true, true));              // ⊞⇧S
+    CHECK(!md::windowsShotKey('S', true, false, false, true, false));            // ⊞S : recherche de Windows
+    CHECK(!md::windowsShotKey('S', true, false, false, false, true));            // ⇧S : une lettre
+    CHECK(!md::windowsShotKey('S', false, false, true, true, true));
+    CHECK(!md::windowsShotKey('S', true, true, true, true, true));
+    CHECK(!md::windowsShotKey('A', true, false, false, true, true));
+    // Certains claviers n'envoient d'Impr. écran que le relâchement : il compte alors comme l'appui.
+    CHECK(md::windowsShotKey(VK_SNAPSHOT, false, false, false, false, false));
+    CHECK(!md::windowsShotKey('S', false, false, false, true, true));
 }
 
 TEST_CASE(windows_tool_process_names) {

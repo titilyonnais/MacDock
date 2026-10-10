@@ -6,7 +6,8 @@
 
 namespace md {
 
-bool windowsShotKey(unsigned vk, bool down, bool repeat, bool win, bool shift) {
+bool windowsShotKey(unsigned vk, bool down, bool repeat, bool wasDown, bool win, bool shift) {
+    if (vk == VK_SNAPSHOT && !down && !wasDown) return true;   // clavier qui n'envoie que le relâchement
     if (!down || repeat) return false;
     if (vk == VK_SNAPSHOT) return true;   // avec ⊞ ou Alt, la capture est immédiate (voir les limites du plan 63)
     return vk == 'S' && win && shift;

@@ -2333,7 +2333,8 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         const bool down = wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN;
         static bool held[256] = {};   // fil du crochet seulement : distingue la répétition d'un nouvel appui
         const unsigned vk = k->vkCode & 0xFF;
-        const bool repeat = down && held[vk];
+        const bool wasDown = held[vk];
+        const bool repeat = down && wasDown;
         held[vk] = down;
         // ⌘` (plan 59) : la touche sous Échap, prise par MacDock (réglage, sélecteur ouvert, ou appui déjà pris).
         static CycleKeyGate cycleGate;   // fil du crochet seulement
@@ -2374,7 +2375,7 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         }
         // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock se montre à ses captures, sans retenir la
         // touche.
-        if (windowsShotKey(vk, down, repeat, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
+        if (windowsShotKey(vk, down, repeat, wasDown, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
                            (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0))
             PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT, 0, 0);
         // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.

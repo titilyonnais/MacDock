@@ -6,8 +6,8 @@
 namespace md {
 
 // Touche qui lance l'Outil Capture : Impr. écran, avec ou sans modificateurs, et ⊞⇧S. Jamais à la répétition ni au
-// relâchement.
-bool windowsShotKey(unsigned vk, bool down, bool repeat, bool win, bool shift);
+// relâchement (wasDown : appui vu avant).
+bool windowsShotKey(unsigned vk, bool down, bool repeat, bool wasDown, bool win, bool shift);
 
 // Programme de l'Outil Capture (nom de l'exécutable sans chemin, casse ignorée) : SnippingTool.exe (Windows 11),
 // ScreenClippingHost.exe (Windows 10), ScreenSketch.exe (Capture d'écran et croquis).
