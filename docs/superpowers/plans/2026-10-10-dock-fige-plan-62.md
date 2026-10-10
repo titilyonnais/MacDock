@@ -121,6 +121,33 @@ mode diagnostic.
   - **blocage de 1,1 s sur WM_APP_BACKDROP** : non reproductible sans clic ; la prise d'arrière-plan est chronométrée en
     diagnostic au-delà de 50 ms pour nommer le coupable la prochaine fois.
 
+## Relecture indépendante (agent opus, 1df7728) — verdict « avec corrections »
+Points forts relevés : fil des crochets WinEvent sans course (file créée avant de publier l'identifiant, crochets posés
+et retirés sur le même fil, compteurs sous verrou) ; `deliverMouse` partagé sur un seul fil ; coordonnées toutes en
+pixels physiques (PMv2) ; app active lue dans `GetForegroundWindow`, insensible à l'ordre premier plan / HSHELL_FLASH ;
+génie indépendant des messages SHELLHOOK ; code de diagnostic gratuit hors diagnostic. Aucun critique.
+
+- **Important 1 — règle du pointeur confiné annulée au même tour de boucle** (`syncPointer` relisait la vraie position,
+  coin actif réarmé par le point lointain). Corrigé (cf4a2df) : `DockController::setPointerAway` ignore les positions et
+  la réévaluation ; critère « curseur hors de la zone de confinement » ; ni coin actif ni poussée d'écran. Tests
+  `controller_pointer_away_survives_recheck` et `pointer_confined_away_from_the_dock` rouges, puis verts.
+- **Important 2 — verre repris sans exclusion des captures** s'il était coupé pendant que le Dock était masqué.
+  Corrigé (cf4a2df) : décision avec « verre actif » (`backdrop_never_resumes_without_glass` rouge, puis vert), pauses
+  oubliées quand le verre est coupé, `resumeCapture` ne reprend jamais sans exclusion.
+- **Mineurs corrigés** (2f48ebe) : capture d'avance retardée par les mouvements (régression du plan,
+  `genie_warm_not_delayed_by_moves` rouge, puis vert) ; relais bloqué à 16 ms quand le curseur est illisible et
+  réinstallation au retour (`cursor_relay_slows_down_when_cursor_unreadable` rouge, puis vert) ; cases vides pendant un
+  rechargement des icônes (`icons_keep_old_image_while_reloading` rouge, puis vert) ; échecs d'aperçus de piles mis en
+  cache (défensif : l'icône du type rend presque toujours une image, même pour un chemin vide ou un fichier absent, d'où
+  pas de test) ; clignotement du tube passé par le même chemin ; poignée de démarrage du fil des crochets gardée jusqu'à
+  l'arrêt, crochet des déplacements retenté ; commentaires et feuille de route (VMware non couvert).
+- **Mineur reporté** : la pause du verre « Dock masqué » se perd quand un menu, Spotlight, Apps, une pile ou le panneau
+  ⌥⇥ reprend la capture en se fermant (jamais pire qu'avant le plan) ; `pauseCapture` attend jusqu'à 100 ms la fin du
+  fil de capture. À reprendre avec un seul prédicat « capture voulue ».
+- **Refusé de juger** (par le relecteur) : FullscreenWatch, uiAccess, ce que VMware fait du pointeur, le blocage de 1,1 s
+  non reproduit, le choix « un train par épisode », `watchMoves`/`foreground_`/`mru_` qui gardent le hwnd de
+  l'événement, double démarrage de capture après un menu, réveils par SHELLHOOK, mesures non rejouées.
+
 ## Mineurs reportés
 - `FullscreenWatch` garde sur le fil du Dock des crochets limités au processus de l'app en plein écran (déplacements,
   masquage) : à mesurer pendant une vidéo en plein écran.
