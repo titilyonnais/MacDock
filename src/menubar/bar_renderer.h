@@ -31,6 +31,7 @@ struct BarDrawItem {      // pixels de la barre
     float level = 1;            // volume, force du signal, charge
     bool alt = false;           // sourdine, Wi-Fi coupé, en charge
     bool boxed = false;         // texte dans une boîte arrondie (menu de saisie : « FR »)
+    bool tabular = false;       // chiffres à chasse fixe (horloge)
     std::shared_ptr<const std::vector<std::uint8_t>> image;   // icône d'app : BGRA prémultipliée, en couleurs
     UINT imageW = 0, imageH = 0;
 };
@@ -59,7 +60,7 @@ public:
     ID3D11Device* device() const { return d3d_.Get(); }
     // Police (famille voulue, vide = automatique) et taille en pixels ; renvoie la famille réellement utilisée.
     std::wstring setFont(const std::wstring& wanted, float sizePx);
-    float measure(const std::wstring& text, bool bold);   // largeur en pixels
+    float measure(const std::wstring& text, bool bold, bool tabular = false);   // largeur en pixels
     void setLogo(LogoImage logo) { logo_ = std::move(logo); logoBitmapStale_ = true; }
     bool render(const BarFrame& f);
     HRESULT lastError() const { return lastError_; }   // échec du dernier render (isDeviceLost : recréer)
@@ -70,7 +71,7 @@ public:
 private:
     bool createFactories();
     void draw(ID2D1RenderTarget* rt, const BarFrame& f, float height);
-    Com<IDWriteTextLayout> layoutOf(const std::wstring& text, bool bold);
+    Com<IDWriteTextLayout> layoutOf(const std::wstring& text, bool bold, bool tabular = false);
 
     Com<ID3D11Device> d3d_;
     Com<ID2D1Factory3> d2d_;
@@ -82,6 +83,7 @@ private:
     Com<IDCompositionSurface> surface_;
     Com<IDWriteFactory3> dwrite_;
     Com<IDWriteTextFormat> regular_, bold_;
+    Com<IDWriteTypography> tabular_;   // chiffres à chasse fixe (tnum)
     Com<IWICImagingFactory> wic_;
     std::wstring family_;
     float sizePx_ = 13;

@@ -110,15 +110,20 @@ std::wstring BarRenderer::setFont(const std::wstring& wanted, float sizePx) {
     return family_;
 }
 
-Microsoft::WRL::ComPtr<IDWriteTextLayout> BarRenderer::layoutOf(const std::wstring& text, bool bold) {
+Microsoft::WRL::ComPtr<IDWriteTextLayout> BarRenderer::layoutOf(const std::wstring& text, bool bold, bool tabular) {
     Com<IDWriteTextLayout> l;
     IDWriteTextFormat* fmt = bold ? bold_.Get() : regular_.Get();
     if (fmt) dwrite_->CreateTextLayout(text.c_str(), UINT32(text.size()), fmt, 10000, 1000, &l);
+    if (l && tabular) {
+        if (!tabular_ && SUCCEEDED(dwrite_->CreateTypography(&tabular_)))
+            tabular_->AddFontFeature({DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES, 1});
+        if (tabular_) l->SetTypography(tabular_.Get(), DWRITE_TEXT_RANGE{0, UINT32(text.size())});
+    }
     return l;
 }
 
-float BarRenderer::measure(const std::wstring& text, bool bold) {
-    auto l = layoutOf(text, bold);
+float BarRenderer::measure(const std::wstring& text, bool bold, bool tabular) {
+    auto l = layoutOf(text, bold, tabular);
     if (!l) return 0;
     DWRITE_TEXT_METRICS m{};
     l->GetMetrics(&m);
@@ -227,7 +232,7 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
             }
             continue;
         }
-        auto l = layoutOf(it.text, it.bold);
+        auto l = layoutOf(it.text, it.bold, it.tabular);
         if (!l) continue;
         DWRITE_TEXT_METRICS tm{};
         l->GetMetrics(&tm);

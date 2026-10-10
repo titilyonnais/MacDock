@@ -129,17 +129,17 @@ TEST_CASE(clock_formats_french_weekday_month) {
     t.wSecond = 5;
     // Comme la barre de macOS 26 (relevé sur la VM : « Ven. 9 oct.  22:17 ») : jour avec majuscule ; entre la date et
     // l'heure, deux espaces et une espace ultra-fine (écart d'encre de ~10 pt mesuré sur la VM).
-    CHECK(md::formatClock(t, {}) == L"Mer. 7 oct.  \u200A14:32");
+    CHECK(md::formatClock(t, {}) == L"Mer. 7 oct.  14:32");
     t.wMonth = 2;
     t.wDayOfWeek = 0;
     t.wHour = 9;
     t.wMinute = 5;
-    CHECK(md::formatClock(t, {}) == L"Dim. 7 févr.  \u200A9:05");
+    CHECK(md::formatClock(t, {}) == L"Dim. 7 févr.  9:05");
     t.wMonth = 8;
-    CHECK(md::formatClock(t, {false, true}) == L"7 août  \u200A9:05");
-    CHECK(md::formatClock(t, {true, false}) == L"Dim.  \u200A9:05");   // extrapolé : la VM n'a montré que le format complet
-    CHECK(md::formatClock(t, {true, true, true, true}) == L"Dim. 7 août  \u200A9:05:05");
-    CHECK(md::formatClock(t, {true, true, false, false}) == L"Dim. 7 août  \u200A9:05 AM");
+    CHECK(md::formatClock(t, {false, true}) == L"7 août  9:05");
+    CHECK(md::formatClock(t, {true, false}) == L"Dim.  9:05");   // extrapolé : la VM n'a montré que le format complet
+    CHECK(md::formatClock(t, {true, true, true, true}) == L"Dim. 7 août  9:05:05");
+    CHECK(md::formatClock(t, {true, true, false, false}) == L"Dim. 7 août  9:05 AM");
     CHECK(md::formatClock(t, {false, false}) == L"9:05");
 }
 
@@ -228,6 +228,22 @@ TEST_CASE(foreground_app) {
     CHECK(md::classifyForeground(L"Notepad", L"notepad.exe", false) == md::ForegroundKind::App);
 }
 
+TEST_CASE(clock_parses_snapshot_time) {
+    // Plan 64 : --snapshot --time fixe l'horloge, pour comparer à la capture de la VM (« Ven. 9 oct.  22:17 »).
+    const auto t = md::parseClockTime(L"2026-10-09T22:17");
+    REQUIRE(t.has_value());
+    CHECK_EQ(int(t->wYear), 2026);
+    CHECK_EQ(int(t->wMonth), 10);
+    CHECK_EQ(int(t->wDay), 9);
+    CHECK_EQ(int(t->wHour), 22);
+    CHECK_EQ(int(t->wMinute), 17);
+    CHECK_EQ(int(t->wDayOfWeek), 5);   // vendredi
+    CHECK(md::formatClock(*t, {}) == L"Ven. 9 oct.  22:17");
+    CHECK(!md::parseClockTime(L"2026-13-09T22:17"));   // mois impossible
+    CHECK(!md::parseClockTime(L"2026-10-09T25:17"));
+    CHECK(!md::parseClockTime(L"hier"));
+}
+
 TEST_CASE(menubar_settings_roundtrip) {
     md::MenuBarSettings s;
     s.autohide = true;
@@ -269,9 +285,9 @@ TEST_CASE(menubar_settings_measures_of_macos_26) {
     // nouvelles mesures, lues, bornées et écrites comme les autres.
     const md::MenuBarMetrics m;
     CHECK_NEAR(m.statusWidth, 36, 1e-9);
-    CHECK_NEAR(m.rightMargin, 9, 1e-9);
+    CHECK_NEAR(m.rightMargin, 8.4, 1e-9);
     CHECK_NEAR(m.textBaseline, 16, 1e-9);
-    CHECK_NEAR(m.clockGap, 3, 1e-9);
+    CHECK_NEAR(m.clockGap, 1.5, 1e-9);
     md::MenuBarSettings s;
     s.metrics.textBaseline = 15.5;
     s.metrics.clockGap = 4;
@@ -294,7 +310,7 @@ TEST_CASE(menubar_settings_v1_measures_follow_new_defaults) {
     const md::json::Value* m = v2.find("metrics");
     REQUIRE(m != nullptr);
     CHECK_NEAR(m->find("statusWidth")->asNumber(0), 36, 1e-9);
-    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 9, 1e-9);
+    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 8.4, 1e-9);
     CHECK_NEAR(m->find("leftMargin")->asNumber(0), 12, 1e-9);
     // Choisies par l'utilisateur (fichier sans version : v1) : gardées.
     const auto mine = md::migrateMenuBarSettingsJson(*md::json::parse(R"({"metrics": {"statusWidth": 32, "rightMargin": 14}})"));

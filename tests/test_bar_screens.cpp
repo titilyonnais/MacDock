@@ -119,6 +119,44 @@ TEST_CASE(bar_renderer_text_sits_on_its_baseline) {
     CoUninitialize();
 }
 
+TEST_CASE(bar_renderer_clock_uses_tabular_figures) {
+    // Plan 64 : l'horloge de macOS 26 a des chiffres à chasse fixe (« 22:17 » : 35 pt sur la VM, 32 avec les chiffres
+    // proportionnels de SF Pro) ; elle ne bouge plus d'une minute à l'autre. Segoe UI, comme SF Pro : chiffres
+    // proportionnels par défaut, tabulaires avec tnum.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        REQUIRE(r.setFont(L"Segoe UI", 26) == L"Segoe UI");
+        {
+            CHECK(r.measure(L"1111", false) < r.measure(L"0000", false) - 2);   // proportionnels
+            CHECK_NEAR(r.measure(L"1111", false, true), r.measure(L"0000", false, true), 0.01);
+            // Dessin : « 1111 » tabulaire s'étale comme « 0000 ».
+            auto inkWidth = [&](const wchar_t* text, bool tabular) {
+                md::BarFrame f;
+                f.scale = 2;
+                f.darkText = true;
+                md::BarDrawItem it;
+                it.text = text;
+                it.tabular = tabular;
+                it.x = 0;
+                it.width = 200;
+                f.items.push_back(it);
+                const UINT w = 200, h = 48;
+                std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+                if (!r.renderToImage(f, bg, w, h, out)) return -1;
+                int l = w, rr = -1;
+                for (UINT y = 0; y < h; ++y)
+                    for (UINT x = 0; x < w; ++x)
+                        if (out[(size_t(y) * w + x) * 4 + 3] > 128) l = std::min(l, int(x)), rr = std::max(rr, int(x));
+                return rr - l;
+            };
+            CHECK(inkWidth(L"1111", true) > inkWidth(L"1111", false) + 4);
+        }
+    }
+    CoUninitialize();
+}
+
 TEST_CASE(bar_renderer_boxed_code_caps_centered) {
     // Plan 64 : le texte de la barre se pose sur sa ligne de base, mais « FR » garde sa place : ses majuscules sont au
     // milieu de la boîte (à 0,5 px près avec SF Pro, Segoe UI, Inter Tight, Arial et Georgia).

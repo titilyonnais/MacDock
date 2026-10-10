@@ -111,7 +111,7 @@ json::Value migrateMenuBarSettingsJson(const json::Value& v) {
     static const Changed kChanged[] = {
         // v2 : barre mesurée sur macOS 26 (plan 64).
         {2, "statusWidth", 30, 36},
-        {2, "rightMargin", 10, 9},
+        {2, "rightMargin", 10, 8.4},
     };
     const int from = jsonVersion(v);
     json::Value out = v;

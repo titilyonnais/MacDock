@@ -45,6 +45,8 @@ public:
         std::wstring app;         // app affichée dans --snapshot
         std::optional<bool> dark; // thème forcé (--theme light|dark)
         int open = -1;            // --snapshot : titre dont la capsule est dessinée (menu ouvert)
+        float scale = 0;          // --snapshot : échelle (--scale ; 0 : celle de l'écran)
+        std::optional<SYSTEMTIME> time;   // --snapshot : heure de l'horloge (--time 2026-10-09T22:17)
     };
     int run(HINSTANCE instance, const Options& options);
 
@@ -219,6 +221,7 @@ private:
     BarTarget target_;
     BarMenus menus_;
     std::wstring clock_;
+    std::optional<SYSTEMTIME> fixedTime_;   // --snapshot --time : heure affichée
     Screen* menuScreen_ = nullptr;   // barre du menu ouvert (sa capsule)
     MenuClose lastClose_ = MenuClose::Escape;   // ce qui a fermé le dernier menu (premier plan à rendre ?)
     int highlight_ = -1;

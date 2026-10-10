@@ -52,7 +52,7 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 - [x] 3. **Mise en page** (`bar_layout.*`, `menubar_window.cpp`) : écart avant l'horloge, titres sans arrondi. Tests.
 - [x] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
 - [x] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
-- [ ] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).
+- [x] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).
 - [ ] 7. **Essais réels** : rendu hors écran mesuré contre la VM, Release, barre relancée.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
@@ -79,3 +79,14 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
     contour ; écart de 1,02 ; piste du bas de 5,80, pleine, bouton creux de 5,47 x 3,38 bordé de 1,21.
   Notre rendu, passé par le même chemin et ajusté de même, retombe sur ces cotes à 0,15 pt près (le plus souvent
   moins de 0,09). Dessins à nous (champs de distance et formes Direct2D), aucun symbole d'Apple.
+- **Menu « Aller »** : présent pour l'Explorateur, entre Présentation et Fenêtre, comme sur la VM (rendu
+  `--app Explorateur` comparé à la capture). Rien d'ajouté.
+- **Rendus de mesure reproductibles** : `MacMenuBar --snapshot` prend `--scale` (vrai rendu 1x, comme la VM) et
+  `--time 2026-10-09T22:17` (l'horloge de la capture). Notre rendu 1x, étiré x 1,625 comme VMware, se compare tel quel
+  à la capture.
+- **Horloge à chiffres à chasse fixe** : sur la VM, « 22:17 » fait 35 pt et son « 1 » est centré dans une case large
+  comme un « 0 » : macOS dessine l'horloge en chiffres tabulaires (elle ne bouge pas d'une minute à l'autre). MacDock
+  aussi désormais (fonction OpenType tnum). Du coup l'espace ultra-fine de la tâche 1 était de trop : deux espaces
+  simples donnent 10,34 pt (1x) et 10,70 (2x) entre la date et l'heure, contre 10,35 sur la VM.
+- **`clockGap` 1,5 et `rightMargin` 8,4** (au lieu de 3 et 9) : mesurés sur ces rendus, icône → date 23,88 (1x) et
+  24,10 (2x) contre 23,99 ; marge droite 19,27 et 19,76 contre 19,71.

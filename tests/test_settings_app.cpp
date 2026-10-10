@@ -408,7 +408,7 @@ TEST_CASE(settings_bar_v1_file_is_migrated) {
     const md::json::Value* m = f.find("metrics");
     REQUIRE(m != nullptr);
     CHECK_NEAR(m->find("statusWidth")->asNumber(0), 36.0, 1e-9);
-    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 9.0, 1e-9);
+    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 8.4, 1e-9);
     CHECK_NEAR(m->find("leftMargin")->asNumber(0), 12.0, 1e-9);
 }
 
