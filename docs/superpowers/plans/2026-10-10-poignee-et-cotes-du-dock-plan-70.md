@@ -56,4 +56,27 @@ puis ses séparateurs deviennent une poignée.
   30 s) : curseur ↕ (celui du thème de Windows) au-dessus du séparateur ; glisser de 20 pt vers le haut : taille 59 →
   79, enregistrée ; glisser retour : 79 → 59. Dock à ta taille 59 : épaisseur 79 pt (59 + 2 × 10), pas 63 pt,
   séparateur à 46 pt du centre de l'icône voisine (règle : 45,75).
-- [ ] 4. Relecture indépendante, corrections, fusion locale.
+- [x] 4. Relecture indépendante (opus : à corriger, aucun critique), corrections, nouvel essai réel, fusion locale.
+
+## Relecture indépendante (opus) et corrections
+- **Relâchement avalé** (important) : un relâchement à avaler (appui qui a fermé Spotlight) passait avant la fin du
+  glisser de la poignée, qui restait bloqué. Le glisser se termine en premier, un appui suivant le ferme, et un
+  relâchement pris ailleurs le ferme au mouvement suivant (6485b11).
+- **Glisser au-delà de ce qui tient** (important) : sur un Dock trop long pour l'écran, la taille montait jusqu'à 128
+  pendant que le Dock s'amincissait. Le glisser part de la taille affichée et s'arrête à la plus grande qui tient
+  (6485b11).
+- **Dock rétréci** (important) : rembourrage, écart et point rétrécissaient avec les cases, contrairement à la mesure
+  (à 96 rétréci à ~71, macOS garde 10, 4 et 6). Seules les cases rétrécissent (6485b11).
+- **Tremblement d'un clic** (mineur regradé : il déplaçait les fenêtres agrandies) : points entiers vers la taille de
+  départ (6485b11).
+- **Trouvé à l'essai réel** : Dock plein (réglé 59, affiché 58,26), un glisser de 20 pt vers le bas enregistrait 38,26.
+  Le réglage reste celui d'avant sans mouvement, et devient sinon un point entier (7abb004).
+- **Nouvel essai réel** (souris laissée par toi) : 59 → 39 en descendant de 20 pt ; en montant de 40 pt, arrêt à 60, la
+  plus grande taille qui tient avec tes éléments du moment ; ta taille 59 remise ensuite dans `settings.json`.
+
+## Reportés
+- Mineurs : zone de la poignée sans le rétrécissement (sans effet visible), clic droit et poussée d'écran pendant le
+  glisser, migration v9 de valeurs choisies à la main, coût (WM_SETCURSOR, images à 128 même en rétrécissant),
+  commentaires périmés ; zone réservée calculée sur la taille réglée (Dock rétréci : bande vide au-dessus).
+- Test d'UI Automation instable sur ton PC : le premier appel d'un processus prend parfois 14 s (budget du test 15 s).
+- Maj+glisser (changer de bord) et ⌥+glisser (tailles fixes) de macOS.
