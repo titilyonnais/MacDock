@@ -58,6 +58,15 @@ TEST_CASE(windows_tool_reveal_follows_the_tool) {
     CHECK(!r.keep(120000, true));
 }
 
+TEST_CASE(windows_tool_reveal_tool_gone_early) {
+    // Outil vu puis parti tôt (Échap tout de suite) : fin 500 ms après son départ, sans attendre 3 s.
+    md::ToolReveal r;
+    r.start(0);
+    CHECK(r.keep(200, true));
+    CHECK(r.keep(400, false));
+    CHECK(!r.keep(700, false));
+}
+
 TEST_CASE(windows_tool_reveal_new_key_extends) {
     md::ToolReveal r;
     r.start(0);

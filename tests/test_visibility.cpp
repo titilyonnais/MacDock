@@ -163,6 +163,19 @@ TEST_CASE(backdrop_pauses_while_the_dock_is_hidden) {
     CHECK(md::backdropForVisibility(false, false, true, false, true) == BackdropAction::None);
 }
 
+TEST_CASE(shot_resume_after_a_capture) {
+    // Plan 63, relecture : après une capture d'écran, la capture du verre reprend tout de suite… sauf Dock masqué (plein
+    // écran, masquage automatique : sa propre règle la reprend à son retour ; avant, elle repartait et tournait pendant
+    // tout le plein écran), et plus tard si le viseur, Mission Control ou un menu tient le Dock (avant : abandonnée, verre
+    // figé jusqu'au prochain menu).
+    CHECK(md::shotResume(true, false, false, false) == md::ShotResume::Now);
+    CHECK(md::shotResume(false, false, false, false) == md::ShotResume::Never);   // rien en pause
+    CHECK(md::shotResume(true, true, false, false) == md::ShotResume::Never);     // Dock masqué
+    CHECK(md::shotResume(true, false, true, false) == md::ShotResume::Later);     // viseur, Mission Control, menu
+    CHECK(md::shotResume(true, true, true, false) == md::ShotResume::Never);
+    CHECK(md::shotResume(true, false, false, true) == md::ShotResume::Never);     // révélation de nouveau en cours
+}
+
 TEST_CASE(backdrop_never_resumes_without_glass) {
     // Relecture du plan 62 : verre coupé (réglage) pendant que le Dock était masqué ; à l'apparition, la capture ne doit
     // pas repartir : sans exclusion des captures, le Dock se capturerait lui-même.

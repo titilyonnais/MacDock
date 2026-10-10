@@ -560,7 +560,8 @@ LRESULT Session::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_STACK_BACKDROP:
-            if (!captureVisible && GetTickCount64() >= thawAt && screen.take(env.device) &&
+            // Image prise à chaque avis (sinon les suivants ne viennent plus), montrée hors des révélations.
+            if (screen.take(env.device) && !captureVisible && GetTickCount64() >= thawAt &&
                 screen.copyTo(env.device, rc, backdrop))
                 render();
             return 0;

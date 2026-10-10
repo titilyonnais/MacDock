@@ -171,8 +171,9 @@ LRESULT CALLBACK SwitcherWindow::Impl::proc(HWND h, UINT msg, WPARAM wp, LPARAM 
             return 0;
         }
         case WM_SW_BACKDROP:
-            if (self->shown && !self->captureVisible && GetTickCount64() >= self->thawAt &&
-                self->screen.take(self->env.device) && self->screen.copyTo(self->env.device, self->rc, self->backdrop))
+            // Image prise à chaque avis (sinon les suivants ne viennent plus), montrée hors des révélations.
+            if (self->shown && self->screen.take(self->env.device) && !self->captureVisible && GetTickCount64() >= self->thawAt &&
+                self->screen.copyTo(self->env.device, self->rc, self->backdrop))
                 self->render();
             return 0;
         default: break;

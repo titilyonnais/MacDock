@@ -145,4 +145,9 @@ void CALLBACK FullscreenWatch::onEvent(HWINEVENTHOOK hook, DWORD, HWND hwnd, LON
         }
 }
 
+ShotResume shotResume(bool paused, bool pausedForHidden, bool held, bool revealing) {
+    if (!paused || pausedForHidden || revealing) return ShotResume::Never;
+    return held ? ShotResume::Later : ShotResume::Now;
+}
+
 } // namespace md

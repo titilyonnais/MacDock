@@ -544,7 +544,7 @@ void DockApp::concealAfterCapture() {
     MenuWindow::setCaptureVisible(false);
     SpotlightWindow::setCaptureVisible(false);
     AppsWindow::setCaptureVisible(false);
-    if (revealDock_) {
+    if (revealDock_ && excluded_) {   // verre coupé entre-temps : le Dock reste visible aux captures
         SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
         if (shotPausedCapture_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
     }
@@ -553,27 +553,54 @@ void DockApp::concealAfterCapture() {
     revealDock_ = revealLights_ = false;
 }
 
-void DockApp::onToolShot() {
+void DockApp::revealForTool() {
+    // Dock visible d'abord, capture du verre arrêtée ensuite : ses images ne sont lues que sur ce fil, celle qui verrait
+    // le Dock est jetée par l'arrêt. La barre est prévenue sans attendre sa réponse, et sans DwmFlush : l'outil copie
+    // l'écran plus tard, la composition suivante suffit.
+    revealDock_ = excluded_;
+    shotPausedCapture_ = false;
+    if (revealDock_) {
+        SetWindowDisplayAffinity(hwnd_, WDA_NONE);
+        shotPausedCapture_ = capture_.status() == BackdropCapture::Status::Running;
+        if (shotPausedCapture_) pauseCapture();
+    }
+    MenuWindow::setCaptureVisible(true);
+    SpotlightWindow::setCaptureVisible(true);
+    AppsWindow::setCaptureVisible(true);
+    StackWindow::setCaptureVisible(true);
+    switcher_.setCaptureVisible(true);
+    revealLights_ = false;
+    if (shotRevealMsg_)
+        if (HWND bar = FindWindowW(L"MacMenuBarWindow", nullptr)) revealLights_ = PostMessageW(bar, shotRevealMsg_, 1, 0) != FALSE;
+}
+
+void DockApp::onToolShot(DWORD keyTime) {
     if (snapshot_) return;
     const ULONGLONG now = GetTickCount64();
     const bool already = toolReveal_.active();
     toolReveal_.start(now);   // nouvel appui pendant la révélation : prolongée
     if (!already) {
-        revealForCapture(true, true);
+        revealForTool();
         toolRevealOn_ = true;
         toolWasInFront_ = false;
         toolBarPingAt_ = toolRevealAt_ = now;
-        StackWindow::setCaptureVisible(true);
-        switcher_.setCaptureVisible(true);
-        if (trace_)
+        if (trace_) {
             log::info(L"[trace] Outil Capture de Windows : MacDock visible à ses captures (Dock %s, verre %s, barre %s)",
                       revealDock_ ? L"révélé" : L"déjà visible", shotPausedCapture_ ? L"en pause" : L"sans capture en cours",
                       revealLights_ ? L"prévenue" : L"absente");
+            if (keyTime)
+                log::info(L"[trace] Outil Capture de Windows : Dock visible %lu ms après la touche",
+                          static_cast<unsigned long>(GetTickCount() - keyTime));
+        }
     }
     SetTimer(hwnd_, kToolRevealTimer, 250, nullptr);
 }
 
 void DockApp::tickToolReveal() {
+    if (!toolRevealOn_) {   // minuterie tardive
+        KillTimer(hwnd_, kToolRevealTimer);
+        return;
+    }
     const ULONGLONG now = GetTickCount64();
     const bool tool = captureToolInFront();
     if (trace_ && tool != toolWasInFront_) log::info(L"[trace] Outil Capture de Windows %s", tool ? L"devant" : L"parti");
@@ -592,12 +619,18 @@ void DockApp::tickToolReveal() {
     StackWindow::setCaptureVisible(false);
     switcher_.setCaptureVisible(false);
     concealAfterCapture();
-    // Capture du verre retenue pendant la révélation (menu fermé, écran changé…) : reprise, Dock de nouveau exclu.
-    if (capturePaused_ && excluded_) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
+    // Capture du verre en pause (révélation, ou retenue pendant elle) : reprise une fois le Dock de nouveau exclu, sauf
+    // Dock masqué (sa règle la reprend à son retour) ; plus tard si le viseur, Mission Control ou un menu le tient.
+    const ShotResume next = excluded_ ? shotResume(capturePaused_, backdropHiddenPause_, menuOpen_ || switchPanel_, false)
+                                      : ShotResume::Never;
+    if (next != ShotResume::Never) SetTimer(hwnd_, kShotResumeTimer, 150, nullptr);
     if (trace_)
-        log::info(L"[trace] Outil Capture de Windows : fin après %llu ms, MacDock de nouveau exclu des captures%s",
+        log::info(L"[trace] Outil Capture de Windows : fin après %llu ms, MacDock de nouveau exclu des captures ; verre %s",
                   static_cast<unsigned long long>(now - toolRevealAt_),
-                  capturePaused_ && excluded_ ? L" ; reprise du verre dans 150 ms" : L"");
+                  next == ShotResume::Now     ? L"repris dans 150 ms"
+                  : next == ShotResume::Later ? L"repris quand le viseur ou le menu se ferme"
+                  : capturePaused_            ? L"en pause (Dock masqué)"
+                                              : L"déjà en marche ou coupé");
 }
 
 bool DockApp::captureToolInFront() {
@@ -2387,9 +2420,10 @@ LRESULT CALLBACK DockApp::keyboardHookProc(int code, WPARAM wp, LPARAM lp) {
         }
         // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock se montre à ses captures, sans retenir la
         // touche.
-        if (windowsShotKey(vk, down, repeat, wasDown, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
+        if ((vk == VK_SNAPSHOT || vk == 'S') &&
+            windowsShotKey(vk, down, repeat, wasDown, ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0,
                            (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0))
-            PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT, 0, 0);
+            PostMessageW(self_->hwnd_, WM_APP_TOOL_SHOT, 0, LPARAM(k->time));
         // ⊞↓ sur une fenêtre ni agrandie, ni ancrée, ni réduite : Windows va la réduire, le génie l'animera seul.
         // Annoncée au fil du Dock (modèle, minuterie des animations) et de façon synchrone : coupée avant la réduction.
         if (vk == VK_DOWN && down && !repeat && ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
@@ -2772,7 +2806,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg == toolTestMsg_ && toolTestMsg_) {   // essai : comme ⊞⇧S, sans clavier
-        onToolShot();
+        onToolShot(0);
         return 0;
     }
     if (msg == willMinimizeMsg_ && willMinimizeMsg_) {   // envoyé (synchrone) juste avant la réduction
@@ -2898,7 +2932,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_APP_TOOL_SHOT:
-            onToolShot();
+            onToolShot(DWORD(lp));
             return 0;
         case WM_APP_SHOT:   // touche neutre déjà envoyée par le crochet
             if (wp == 1) takeScreenShot(lp != 0);
@@ -2971,10 +3005,17 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (wp == kShotResumeTimer) {   // le Dock est de nouveau exclu : la capture du verre ne le verra pas
-                KillTimer(hwnd_, kShotResumeTimer);
-                if (trace_ && capturePaused_ && !menuOpen_ && !switchPanel_ && !toolRevealOn_)
-                    log::info(L"[trace] verre : capture reprise, Dock exclu des captures");
-                if (!menuOpen_ && !switchPanel_) resumeCapture();   // sinon, la fermeture du menu la reprend
+                // Dock masqué : sa règle la reprend à son retour. Viseur, Mission Control ou menu : on réessaie (les menus
+                // la reprennent eux-mêmes à leur fermeture, le viseur et Mission Control non).
+                switch (shotResume(capturePaused_, backdropHiddenPause_, menuOpen_ || switchPanel_, toolRevealOn_)) {
+                    case ShotResume::Now:
+                        KillTimer(hwnd_, kShotResumeTimer);
+                        if (trace_) log::info(L"[trace] verre : capture reprise, Dock exclu des captures");
+                        resumeCapture();
+                        break;
+                    case ShotResume::Later: break;
+                    case ShotResume::Never: KillTimer(hwnd_, kShotResumeTimer); break;
+                }
                 return 0;
             }
             if (wp == kQuickLookTimer) {   // l'aperçu suit la sélection (flèches, clics dans l'Explorateur)

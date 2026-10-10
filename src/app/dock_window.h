@@ -143,7 +143,9 @@ private:
     void revealForCapture(bool dock, bool lights);   // Dock et pastilles visibles aux captures, le temps de la copie
     void concealAfterCapture();
     // Outil Capture de Windows (⊞⇧S, Impr. écran ; plan 63) : MacDock visible à ses captures tant qu'il est devant.
-    void onToolShot();
+    // keyTime : instant de la touche (GetTickCount), 0 pour le message d'essai.
+    void onToolShot(DWORD keyTime);
+    void revealForTool();   // comme revealForCapture, au plus vite (l'outil copie l'écran 100 à 300 ms après la touche)
     void tickToolReveal();
     static bool captureToolInFront();
     static bool shotIgnores(HWND h);   // jamais visées en mode fenêtre, jamais comptées comme recouvrantes
