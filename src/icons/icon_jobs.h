@@ -47,6 +47,8 @@ public:
     State state(const std::wstring& cacheKey, std::uint64_t generation) const;
     std::size_t queued() const { return queue_.size(); }
     std::size_t ready() const { return ready_.size(); }
+    // Un travail en file attend encore sa lecture sur disque (plan 68).
+    bool diskReadsPending() const;
 
 private:
     struct Entry {

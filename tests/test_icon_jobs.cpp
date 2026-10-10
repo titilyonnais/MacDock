@@ -175,3 +175,15 @@ TEST_CASE(icon_jobs_disk_image_dropped_when_outdated_or_stopped) {   // plan 68
     q.offer(L"b|64", 2, image(64));      // après l'arrêt : jetée
     CHECK(q.take(2).empty());
 }
+
+TEST_CASE(icon_jobs_disk_reads_pending_until_all_checked) {   // relecture du plan 68 : un seul lot d'anciennes images
+    md::IconJobs q;
+    CHECK(!q.diskReadsPending());
+    CHECK(q.request(job(L"a|64", 1)));
+    CHECK(q.request(job(L"b|64", 1)));
+    CHECK(q.diskReadsPending());
+    q.nextDiskRead();
+    CHECK(q.diskReadsPending());   // b n'est pas encore lue
+    q.nextDiskRead();
+    CHECK(!q.diskReadsPending());
+}

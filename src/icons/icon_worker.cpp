@@ -79,12 +79,14 @@ void IconWorker::run(const std::shared_ptr<Shared>& s) {
                 if (!job) job = s->jobs.next();
             }
             if (diskRead) {   // l'ancienne image de chaque demande d'abord, avant toute préparation
-                IconProvider::ImagePtr old = s->disk->read(iconDiskKey(job->cacheKey, job->spec.style));
-                if (!old) continue;
-                fromDisk[{job->cacheKey, job->generation}] = old;
+                IconProvider::ImagePtr old = s->disk->read(iconDiskKey(iconDiskSlot(*job), job->spec.style));
+                if (old) fromDisk[{job->cacheKey, job->generation}] = old;
                 std::lock_guard g(s->lock);
-                s->jobs.offer(job->cacheKey, job->generation, std::move(old));
-                if (!s->jobs.stopped() && s->jobs.ready() > 0 && !s->notified && s->notify) s->notified = s->notify();
+                if (old) s->jobs.offer(job->cacheKey, job->generation, std::move(old));
+                // En un seul lot, une fois toutes les demandes en file lues : toutes les cases à l'image suivante.
+                if (!s->jobs.diskReadsPending() && !s->jobs.stopped() && s->jobs.ready() > 0 && !s->notified &&
+                    s->notify)
+                    s->notified = s->notify();
                 continue;
             }
             if (!job) {
@@ -116,10 +118,12 @@ void IconWorker::run(const std::shared_ptr<Shared>& s) {
             QueryPerformanceCounter(&t1);
             QueryPerformanceFrequency(&f);
             const double ms = double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart);
-            if (s->disk && image) {
-                const std::wstring key = iconDiskKey(job->cacheKey, job->spec.style);
+            if (s->disk) {
+                const std::wstring key = iconDiskKey(iconDiskSlot(*job), job->spec.style);
                 const auto old = fromDisk.find({job->cacheKey, job->generation});
-                if (old != fromDisk.end() && sameIcon(*old->second, *image)) {
+                if (!image) {
+                    s->disk->remove(key);   // préparation ratée : l'entrée périmée ne repasse pas à chaque démarrage
+                } else if (old != fromDisk.end() && sameIcon(*old->second, *image)) {
                     image = old->second;   // inchangée : la même image reste à l'écran, le disque n'est pas réécrit
                     s->disk->touch(key);
                 } else if (s->disk->write(key, *image)) {
@@ -159,6 +163,16 @@ void IconWorker::request(IconJob job) {
     {
         std::lock_guard g(shared_->lock);
         added = shared_->jobs.request(std::move(job));
+    }
+    if (added) SetEvent(shared_->wake);
+}
+
+void IconWorker::request(std::vector<IconJob> jobs) {
+    if (!shared_ || jobs.empty()) return;
+    bool added = false;
+    {
+        std::lock_guard g(shared_->lock);   // toutes ensemble : le fil les lit sur disque avant d'en préparer une
+        for (IconJob& j : jobs) added |= shared_->jobs.request(std::move(j));
     }
     if (added) SetEvent(shared_->wake);
 }

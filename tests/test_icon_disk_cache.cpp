@@ -163,3 +163,50 @@ TEST_CASE(icon_disk_trim_respects_size_bound) {
     CHECK(cache.read(keys[2]) != nullptr);
     CHECK(cache.read(keys[3]) != nullptr);
 }
+
+TEST_CASE(icon_disk_slot_one_per_stack) {
+    // Relecture du plan 68 : un aperçu de pile a une seule place sur disque, quels que soient ses fichiers ; une icône
+    // d'app garde sa clé de cache.
+    md::IconJob first, second, app;
+    first.cacheKey = L"#stack|stack:C:\\D|160|C:\\D\\a.txt@1";
+    second.cacheKey = L"#stack|stack:C:\\D|160|C:\\D\\b.txt@2|C:\\D\\a.txt@1";
+    first.spec.kind = second.spec.kind = md::IconJobKind::Stack;
+    first.spec.key = second.spec.key = L"stack:C:\\D";
+    first.spec.px = second.spec.px = 160;
+    CHECK(md::iconDiskSlot(first) == md::iconDiskSlot(second));
+    CHECK(md::iconDiskSlot(first).find(L"a.txt") == std::wstring::npos);   // aucun chemin de fichier sur disque
+    second.spec.px = 96;
+    CHECK(md::iconDiskSlot(first) != md::iconDiskSlot(second));   // autre taille, autre place
+    app.cacheKey = L"Chrome|160";
+    app.spec.key = L"Chrome";
+    app.spec.px = 160;
+    CHECK(md::iconDiskSlot(app) == L"Chrome|160");
+}
+
+TEST_CASE(icon_disk_write_keeps_old_entry_when_replace_refused) {
+    // Relecture du plan 68 : l'écriture passe par un fichier temporaire puis un renommage ; si le renommage est refusé
+    // (fichier tenu ouvert), l'ancienne entrée reste entière et aucun temporaire ne traîne.
+    const std::wstring dir = md::testTempDir();
+    md::IconDiskCache cache(dir);
+    const std::wstring key = md::iconDiskKey(L"app:tenue|16", md::IconStyle{});
+    REQUIRE(cache.write(key, picture(16, 1)));
+    HANDLE held = CreateFileW(cache.pathFor(key).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, 0, nullptr);   // sans FILE_SHARE_DELETE : pas de renommage par-dessus
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    CHECK(!cache.write(key, picture(16, 2)));
+    CloseHandle(held);
+    const auto back = cache.read(key);
+    REQUIRE(back != nullptr);
+    CHECK(back->bgra == picture(16, 1).bgra);   // l'ancienne, entière (une écriture directe l'aurait écrasée)
+    CHECK(filesIn(dir, L"*.tmp") == 0);
+}
+
+TEST_CASE(icon_disk_remove_drops_entry) {
+    const std::wstring dir = md::testTempDir();
+    md::IconDiskCache cache(dir);
+    const std::wstring key = md::iconDiskKey(L"app:retiree|16", md::IconStyle{});
+    REQUIRE(cache.write(key, picture(16, 1)));
+    cache.remove(key);
+    CHECK(cache.read(key) == nullptr);
+    CHECK(filesIn(dir, L"*") == 0);
+}

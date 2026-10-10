@@ -2245,11 +2245,13 @@ void DockApp::renderNow() {
     // l'ancienne image ou reste vide, et l'arrivée du résultat (WM_APP_ICONS) demande une image. Sans ce fil : 10 ms
     // par image au plus (plan 62), celles qui manquent aux images suivantes.
     const bool iconThread = iconWorker_.running();
-    if (iconThread) icons_.beginAsync([this](IconJob job) { iconWorker_.request(std::move(job)); });
+    std::vector<IconJob> asked;   // les demandes de cette image, envoyées ensemble (plan 68 : un seul lot du disque)
+    if (iconThread) icons_.beginAsync([&asked](IconJob job) { asked.push_back(std::move(job)); });
     else icons_.beginBudget(10);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
     if (iconThread) {
         icons_.endAsync();
+        if (!asked.empty()) iconWorker_.request(std::move(asked));
         // Mode diagnostic : délai entre la première image qui attendait et l'arrivée des cases, puis des aperçus.
         const auto track = [&](bool waiting, double& since, const wchar_t* what) {
             if (waiting && since == 0) since = nowSeconds();
@@ -3180,7 +3182,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     fromDisk += icons_.adoptStale(r.cacheKey, r.generation, std::move(r.image)) ? 1 : 0;
                     continue;
                 }
-                if (diagnosticCapture())   // les travaux les plus lents, avec leur clé (tronquée)
+                if (diagnosticCapture())   // chaque travail, sa durée et sa clé (tronquée) : les plus lents se repèrent
                     log::info(L"[diag] icône préparée en %.1f ms : %.80s", r.buildMs, r.cacheKey.c_str());
                 icons_.adopt(r.cacheKey, r.generation, std::move(r.image));
             }

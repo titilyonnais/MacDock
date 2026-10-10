@@ -10,9 +10,15 @@ std::wstring testTempDir() {
     GetTempPathW(MAX_PATH, tmp);
     std::wstring base = std::wstring(tmp) + L"macdock-tests";
     CreateDirectoryW(base.c_str(), nullptr);
-    std::wstring dir = base + L"\\" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(++counter);
-    CreateDirectoryW(dir.c_str(), nullptr);
-    return dir;
+    // Un dossier neuf à chaque appel : le numéro de processus revient d'un passage à l'autre, l'heure non ; un dossier
+    // qui existe déjà (avec le contenu d'un ancien passage) n'est jamais repris.
+    const std::wstring stem = base + L"\\" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                              std::to_wstring(GetTickCount64()) + L"-";
+    for (;;) {
+        std::wstring dir = stem + std::to_wstring(++counter);
+        if (CreateDirectoryW(dir.c_str(), nullptr)) return dir;
+        if (GetLastError() != ERROR_ALREADY_EXISTS) return dir;
+    }
 }
 
 void testWriteFile(const std::wstring& path, const std::string& bytes) {

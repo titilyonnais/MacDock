@@ -63,6 +63,11 @@ std::wstring iconDiskKey(const std::wstring& cacheKey, const IconStyle& style) {
     return cacheKey + L"|style:" + hex(iconStyleFingerprint(style));
 }
 
+std::wstring iconDiskSlot(const IconJob& job) {
+    if (job.spec.kind == IconJobKind::Stack) return L"#stack|" + job.spec.key + L"|" + std::to_wstring(job.spec.px);
+    return job.cacheKey;
+}
+
 std::vector<std::uint8_t> encodeIconFile(const std::wstring& diskKey, const IconProvider::Image& image) {
     std::vector<std::uint8_t> out;
     out.reserve(kHeader + diskKey.size() * 2 + image.bgra.size());
@@ -148,6 +153,8 @@ void IconDiskCache::touch(const std::wstring& diskKey) {
     SetFileTime(h, nullptr, nullptr, &now);
     CloseHandle(h);
 }
+
+void IconDiskCache::remove(const std::wstring& diskKey) { DeleteFileW(pathFor(diskKey).c_str()); }
 
 void IconDiskCache::trim() {
     struct Entry {

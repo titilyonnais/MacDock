@@ -63,6 +63,12 @@ void IconJobs::offer(const std::wstring& cacheKey, std::uint64_t generation, Ico
     ready_.push_back({cacheKey, generation, std::move(image), 0, true});
 }
 
+bool IconJobs::diskReadsPending() const {
+    for (const Entry& e : queue_)
+        if (!e.diskChecked) return true;
+    return false;
+}
+
 IconJobs::State IconJobs::state(const std::wstring& cacheKey, std::uint64_t generation) const {
     for (const Entry& e : queue_)
         if (e.job.cacheKey == cacheKey && e.job.generation == generation) return State::Queued;

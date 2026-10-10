@@ -32,6 +32,8 @@ public:
     bool running() const { return shared_ != nullptr; }
     // Fil du Dock : demande (doublons, générations dépassées et demandes après l'arrêt ignorés).
     void request(IconJob job);
+    // Fil du Dock : les demandes d'une même image, en un seul lot (plan 68 : leurs anciennes images partent ensemble).
+    void request(std::vector<IconJob> jobs);
     // Fil du Dock : les résultats de la génération courante ; les autres sont jetés.
     std::vector<IconResult> take(std::uint64_t current);
     // File vidée, plus rien de publié, puis le fil est rejoint ; pris plus de waitMs dans un travail long (vignette sur

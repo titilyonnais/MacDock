@@ -237,6 +237,7 @@ struct Painter {
 md::IconWorker::Builder painter(std::shared_ptr<Painter> p) {
     return [p](md::IconProvider&, const md::IconSpec& spec) {
         WaitForSingleObject(p->gate, 5000);
+        if (p->value < 0) return md::IconProvider::ImagePtr();
         auto im = std::make_shared<md::IconProvider::Image>();
         im->size = spec.px;
         im->bgra.assign(std::size_t(spec.px) * spec.px * 4, std::uint8_t(p->value.load()));
@@ -309,4 +310,173 @@ TEST_CASE(icon_worker_disk_image_first_then_fresh_only_if_changed) {
     const auto updated = md::IconDiskCache(dir).read(key);
     REQUIRE(updated != nullptr);
     CHECK(updated->bgra[0] == 2);
+}
+
+namespace {
+
+// Identité d'un fichier sur le volume : un fichier réécrit par renommage en change, un fichier touché la garde.
+std::uint64_t fileIndex(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    BY_HANDLE_FILE_INFORMATION info{};
+    GetFileInformationByHandle(h, &info);
+    CloseHandle(h);
+    return (std::uint64_t(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
+}
+
+int diskFiles(const std::wstring& dir) {
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW((dir + L"\\*.mdicon").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    int n = 0;
+    do ++n;
+    while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return n;
+}
+
+md::IconJob stackJob(int files) {   // aperçu de la pile « D » avec `files` fichiers : une clé de cache par contenu
+    md::IconJob j;
+    j.cacheKey = L"#stack|stack:D|16";
+    for (int i = 0; i < files; ++i) j.cacheKey += L"|f" + std::to_wstring(i);
+    j.generation = 1;
+    j.priority = 1;
+    j.spec.kind = md::IconJobKind::Stack;
+    j.spec.key = L"stack:D";
+    j.spec.px = 16;
+    return j;
+}
+
+} // namespace
+
+TEST_CASE(icon_worker_unchanged_icon_not_rewritten) {
+    // Relecture du plan 68 : une icône identique à celle du disque n'y est pas réécrite (seulement touchée).
+    const std::wstring dir = md::testTempDir();
+    auto p = std::make_shared<Painter>();
+    auto n = std::make_shared<Notifier>();
+    md::IconJob a = job(L"a|16", 1);
+    a.spec.px = 16;
+    for (int session = 0; session < 2; ++session) {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        w.request(a);
+        REQUIRE(waitFor([&] {
+            for (const auto& r : w.take(1))
+                if (!r.provisional) return true;
+            return false;
+        }));
+    }
+    const std::wstring path = md::IconDiskCache(dir).pathFor(md::iconDiskKey(a.cacheKey, a.spec.style));
+    const std::uint64_t before = fileIndex(path);
+    REQUIRE(before != 0);
+    {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        w.request(a);
+        REQUIRE(waitFor([&] {
+            for (const auto& r : w.take(1))
+                if (!r.provisional) return true;
+            return false;
+        }));
+    }
+    CHECK(fileIndex(path) == before);   // même fichier : pas de réécriture par renommage
+}
+
+TEST_CASE(icon_worker_stack_has_one_disk_slot) {
+    // Relecture du plan 68 : pendant un téléchargement, chaque nouvel aperçu d'une pile a une nouvelle clé de cache ; sur
+    // disque, la pile garde une seule place, réécrite. Au démarrage suivant, son dernier aperçu arrive tout de suite,
+    // même si ses fichiers ont changé entre-temps.
+    const std::wstring dir = md::testTempDir();
+    auto p = std::make_shared<Painter>();
+    auto n = std::make_shared<Notifier>();
+    {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        for (int i = 1; i <= 50; ++i) {
+            p->value = i;
+            w.request(stackJob(i));
+            REQUIRE(waitFor([&] {
+                for (const auto& r : w.take(1))
+                    if (!r.provisional) return true;
+                return false;
+            }));
+        }
+    }
+    CHECK(diskFiles(dir) == 1);
+    {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        ResetEvent(p->gate);
+        w.request(stackJob(51));   // d'autres fichiers depuis
+        REQUIRE(waitFor([&] { return w.ready() == 1; }));
+        const auto r = w.take(1);
+        REQUIRE(r.size() == 1);
+        CHECK(r[0].provisional);
+        REQUIRE(r[0].image != nullptr);
+        CHECK(r[0].image->bgra[0] == 50);   // le dernier aperçu
+        SetEvent(p->gate);
+    }
+}
+
+TEST_CASE(icon_worker_disk_images_arrive_in_one_batch) {
+    // Relecture du plan 68 : les anciennes images des demandes d'une même image du Dock partent en un seul lot, pour que
+    // toutes les cases soient là dès l'image suivante.
+    const std::wstring dir = md::testTempDir();
+    std::vector<md::IconJob> batch;
+    {
+        md::IconDiskCache cache(dir);
+        for (const wchar_t* key : {L"a|16", L"b|16", L"c|16"}) {
+            md::IconJob j = job(key, 1);
+            j.spec.px = 16;
+            md::IconProvider::Image im;
+            im.size = 16;
+            im.bgra.assign(16 * 16 * 4, 7);
+            REQUIRE(cache.write(md::iconDiskKey(j.cacheKey, j.spec.style), im));
+            batch.push_back(j);
+        }
+    }
+    auto p = std::make_shared<Painter>();
+    auto n = std::make_shared<Notifier>();
+    md::IconWorker w;
+    REQUIRE(w.start(notifier(n), painter(p), dir));
+    ResetEvent(p->gate);   // aucune préparation ne finit : seules les anciennes images arrivent
+    w.request(std::move(batch));
+    REQUIRE(WaitForSingleObject(n->event, 5000) == WAIT_OBJECT_0);
+    const auto r = w.take(1);   // reprise dès la première notification, comme le Dock
+    CHECK(r.size() == 3);
+    for (const auto& x : r) CHECK(x.provisional);
+    SetEvent(p->gate);
+}
+
+TEST_CASE(icon_worker_failed_build_drops_stale_disk_entry) {
+    // Relecture du plan 68 : si la préparation échoue après une ancienne image (vignettes illisibles), l'entrée périmée
+    // est effacée du disque : elle ne repasse pas à chaque démarrage.
+    const std::wstring dir = md::testTempDir();
+    auto p = std::make_shared<Painter>();
+    auto n = std::make_shared<Notifier>();
+    md::IconJob a = stackJob(1);
+    {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        w.request(a);
+        REQUIRE(waitFor([&] {
+            for (const auto& r : w.take(1))
+                if (!r.provisional) return true;
+            return false;
+        }));
+    }
+    REQUIRE(diskFiles(dir) == 1);
+    p->value = -1;   // la préparation échoue désormais
+    {
+        md::IconWorker w;
+        REQUIRE(w.start(notifier(n), painter(p), dir));
+        w.request(stackJob(2));
+        REQUIRE(waitFor([&] {
+            for (const auto& r : w.take(1))
+                if (!r.provisional) return true;
+            return false;
+        }));
+    }
+    CHECK(diskFiles(dir) == 0);
 }
