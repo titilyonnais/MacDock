@@ -95,7 +95,7 @@ void DockController::sizeInput(LayoutInput& in) const {
     in.gap = metrics_.iconGap;
     in.padding = metrics_.dockPadding;
     in.separatorWidth = metrics_.separatorWidth;
-    in.separatorMargin = metrics_.separatorMargin;
+    in.separatorMargin = dockGeometry(settings_.tileSize, metrics_).separatorMargin;
     in.rangeTiles = metrics_.magnifyRangeTiles;
     // Trop d'éléments pour l'axe (Dock vertical sur un portable…) : tout le Dock rétrécit, cases, écarts et
     // marges ensemble, comme sur macOS — la longueur au repos est proportionnelle à ces mesures.
@@ -183,8 +183,10 @@ std::optional<std::size_t> DockController::hitTestAny(POINT window) const {
     if (!insideLocal(p)) return std::nullopt;
     Laid l = layout();
     double x = toPoints(p.x);
-    // Le séparateur occupe son trait et ses marges.
-    double half = metrics_.separatorWidth / 2 + metrics_.separatorMargin;
+    // Le séparateur occupe son trait et ses marges (Dock rétréci compris).
+    LayoutInput sized;
+    sizeInput(sized);
+    const double half = sized.separatorWidth / 2 + sized.separatorMargin;
     for (std::size_t i = 0; i < items_.size(); ++i)
         if (items_[i].kind == ItemKind::Separator && std::fabs(x - l.r.items[l.slot[i]].center) <= half) return i;
     return std::nullopt;
@@ -434,7 +436,7 @@ LayoutResult DockController::stableLayout() const {
     in.gap = metrics_.iconGap;
     in.padding = metrics_.dockPadding;
     in.separatorWidth = metrics_.separatorWidth;
-    in.separatorMargin = metrics_.separatorMargin;
+    in.separatorMargin = dockGeometry(settings_.tileSize, metrics_).separatorMargin;
     in.rangeTiles = metrics_.magnifyRangeTiles;
     in.amount = amount_.value();
     in.cursor = cursor_;

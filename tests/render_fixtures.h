@@ -72,7 +72,7 @@ inline md::RenderFrame sampleFrame(bool dark, float scale) {
     in.gap = m.iconGap;
     in.padding = m.dockPadding;
     in.separatorWidth = m.separatorWidth;
-    in.separatorMargin = m.separatorMargin;
+    in.separatorMargin = md::dockGeometry(48, m).separatorMargin;
     auto r = md::computeLayout(in);
     auto g = md::dockGeometry(48, m);
 

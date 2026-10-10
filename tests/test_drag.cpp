@@ -47,7 +47,7 @@ struct DragFixture {
         in.gap = m.iconGap;
         in.padding = m.dockPadding;
         in.separatorWidth = m.separatorWidth;
-        in.separatorMargin = m.separatorMargin;
+        in.separatorMargin = md::dockGeometry(s.tileSize, m).separatorMargin;
         auto r = md::computeLayout(in);
         return POINT{LONG(std::lround(500 + r.items[i].center)), LONG((bgTop() + bgBottom()) / 2)};
     }
