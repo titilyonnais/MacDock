@@ -20,7 +20,7 @@ const std::vector<SettingsPage>& settingsPages();
 // l'ordre de la table. Sans casse ni accents, traits d'union du nom facultatifs (« wifi ») ; requête vide : aucun.
 std::vector<std::size_t> searchSettings(const std::vector<SettingsPage>& pages, const std::wstring& query);
 // Le nom de la page est exactement la requête (sans casse, accents, traits d'union ni espaces autour).
-bool exactSettingTitle(const SettingsPage& page, const std::wstring& query);
+bool exactSettingTitle(const SettingsPage& page, const std::wstring& query, bool plural = false);
 // La page est trouvée par son nom (début du nom ou d'un de ses mots), pas seulement par un mot-clé.
 bool settingTitleMatch(const SettingsPage& page, const std::wstring& query);
 

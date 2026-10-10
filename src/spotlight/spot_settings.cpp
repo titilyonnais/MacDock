@@ -144,12 +144,58 @@ bool atWordStart(const std::wstring& text, const std::wstring& q) {
     return false;
 }
 
-// 0 : début du nom ; 1 : début d'un mot du nom ; 2 : début d'un mot-clé ; -1 : rien. q plié, non vide.
+// Espaces et traits d'union interchangeables : « wi fi », « haut parleurs ».
+std::wstring hyphensAsSpaces(std::wstring s) {
+    std::replace(s.begin(), s.end(), L'-', L' ');
+    return s;
+}
+
+// Sans espaces ni traits d'union : « wifi », « hautparleurs ».
+std::wstring compact(std::wstring s) {
+    s.erase(std::remove_if(s.begin(), s.end(), [](wchar_t c) { return c == L' ' || c == L'-'; }), s.end());
+    return s;
+}
+
+// Pluriels tolérés : « capture d'écran » trouve « Captures d'écran ». Seulement les mots de quatre lettres ou plus
+// (« pas » n'est pas le pluriel de « pa »).
+std::wstring singular(const std::wstring& s) {
+    std::wstring out;
+    std::size_t i = 0;
+    while (i <= s.size()) {
+        std::size_t j = i;
+        while (j < s.size() && s[j] != L' ' && s[j] != L'-' && s[j] != L'\'') ++j;
+        std::wstring w = s.substr(i, j - i);
+        if (w.size() >= 4 && (w.back() == L's' || w.back() == L'x')) w.pop_back();
+        out += w;
+        if (j < s.size()) out += s[j];
+        i = j + 1;
+    }
+    return out;
+}
+
+// Début d'un mot, aux espaces et traits d'union près ; aux pluriels près aussi pour les noms (plural). Une variante
+// vide (« -- » sans ses traits d'union) n'est pas essayée : elle trouverait tout.
+bool atWordStartLoose(const std::wstring& text, const std::wstring& q, bool plural) {
+    if (atWordStart(text, q)) return true;
+    const std::wstring spaced = hyphensAsSpaces(q), cq = compact(q);
+    if (spaced.find_first_not_of(L' ') != std::wstring::npos && atWordStart(hyphensAsSpaces(text), spaced)) return true;
+    if (!cq.empty() && atWordStart(withoutHyphens(text), cq)) return true;
+    if (plural) {
+        const std::wstring sq = singular(q);
+        if (!compact(sq).empty() && atWordStart(singular(text), sq)) return true;
+    }
+    return false;
+}
+
+// 0 : début du nom ; 1 : début d'un mot du nom ; 2 : début d'un mot-clé ; -1 : rien. q plié, non vide. Pluriels
+// tolérés dans les noms seulement (dans les mots-clés, « mises à jour » trouverait aussi « mise à jour de logiciels »).
 int matchGroup(const SettingsPage& page, const std::wstring& q) {
-    const std::wstring title = fold(page.title), bare = withoutHyphens(q);
-    if (title.starts_with(q) || (!bare.empty() && withoutHyphens(title).starts_with(bare))) return 0;
-    if (atWordStart(title, q)) return 1;
-    if (atWordStart(fold(page.keywords), q)) return 2;
+    const std::wstring title = fold(page.title), cq = compact(q), sq = singular(q);
+    if (title.starts_with(q) || (!cq.empty() && compact(title).starts_with(cq)) ||
+        (!compact(sq).empty() && singular(title).starts_with(sq)))
+        return 0;
+    if (atWordStartLoose(title, q, true)) return 1;
+    if (atWordStartLoose(fold(page.keywords), q, false)) return 2;
     return -1;
 }
 
@@ -186,9 +232,12 @@ bool settingTitleMatch(const SettingsPage& page, const std::wstring& query) {
     return g == 0 || g == 1;
 }
 
-bool exactSettingTitle(const SettingsPage& page, const std::wstring& query) {
-    const std::wstring bare = withoutHyphens(fold(query));   // « wifi » : « Wi-Fi »
-    return !bare.empty() && withoutHyphens(fold(page.title)) == bare;
+bool exactSettingTitle(const SettingsPage& page, const std::wstring& query, bool plural) {
+    // Aux espaces et traits d'union près : « wifi », « wi fi » : « Wi-Fi » ; plural : aux pluriels près aussi
+    // (« capture d'écran » : « Captures d'écran »).
+    const std::wstring q = fold(query), t = fold(page.title);
+    const std::wstring bare = compact(plural ? singular(q) : q);
+    return !bare.empty() && compact(plural ? singular(t) : t) == bare;
 }
 
 } // namespace md

@@ -123,6 +123,33 @@ TEST_CASE(spot_convert_short_symbols_need_space) {   // relecture du plan 55 : u
     CONV(L"2 pints en l", 0.946352946, L"pt", L"l");   // le nom anglais reste
 }
 
+TEST_CASE(spot_convert_dashes_spaces_and_case) {   // mineurs du plan 55 : saisies venues d'un traitement de texte
+    // Moins écrit avec un tiret demi-cadratin ou le signe moins.
+    auto c = md::convertUnits(L"–40 °C en °F");
+    REQUIRE(c.has_value());
+    CHECK_NEAR(c->value, -40, 1e-9);
+    c = md::convertUnits(L"−40 °C en °F");
+    REQUIRE(c.has_value());
+    CHECK_NEAR(c->value, -40, 1e-9);
+    // Espace fine, fine insécable et insécable entre les milliers.
+    for (const wchar_t* sep : {L" ", L" ", L" "}) {
+        const auto m = md::convertUnits(std::wstring(L"1") + sep + L"500 m en km");
+        REQUIRE(m.has_value());
+        CHECK_NEAR(m->value, 1.5, 1e-9);
+    }
+    // Mots de liaison en majuscules.
+    const auto en = md::convertUnits(L"10 km EN mi");
+    REQUIRE(en.has_value());
+    CHECK(en->to == L"mi");
+    CHECK(md::convertUnits(L"100 °F TO °C").has_value());
+    const auto inch = md::convertUnits(L"5 in IN cm");
+    REQUIRE(inch.has_value());
+    CHECK_NEAR(inch->value, 12.7, 1e-9);
+    // Gardes : « IN » seul n'est pas un pouce ; un intervalle n'est pas un nombre négatif.
+    CHECK(!md::convertUnits(L"1 IN"));
+    CHECK(!md::convertUnits(L"2–3 km"));
+}
+
 TEST_CASE(spot_convert_data_units) {
     CONV(L"1 Go en Mo", 1000, L"Go", L"Mo");
     CONV(L"1 GiB en MiB", 1024, L"Gio", L"Mio");

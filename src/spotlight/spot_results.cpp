@@ -85,13 +85,15 @@ std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::
         // Une app au nom exact, puis un réglage au nom exact, puis la première app, puis le premier réglage trouvé par
         // son nom (un mot-clé seul ne passe jamais devant les documents).
         bestApp = appNamed(false);
-        if (bestApp == kNone) {
-            for (std::size_t i : pageHits)
-                if (exactSettingTitle(pages[i], q)) {
-                    bestPage = i;
-                    break;
-                }
-        }
+        if (bestApp == kNone)   // un nom exact, puis exact aux pluriels près (« capture d'écran »)
+            for (bool plural : {false, true}) {
+                for (std::size_t i : pageHits)
+                    if (exactSettingTitle(pages[i], q, plural)) {
+                        bestPage = i;
+                        break;
+                    }
+                if (bestPage != kNone) break;
+            }
         if (bestApp == kNone && bestPage == kNone) {
             if (!found.empty()) {
                 bestApp = 0;
