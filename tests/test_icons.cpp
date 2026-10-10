@@ -142,3 +142,12 @@ TEST_CASE(icons_frame_budget_defers_unready_icons) {
     CHECK(!icons.deferred());
     icons.endBudget();
 }
+
+TEST_CASE(icons_frame_budget_defers_stack_previews) {
+    // L'aperçu d'une pile (vignettes de ses derniers fichiers) passe aussi par le budget de l'image du Dock.
+    md::IconProvider icons;
+    icons.beginBudget(0);
+    CHECK(icons.composeStack(L"stack:essai-budget", {md::FileRef(L"C:/nulle-part/essai.txt", 1)}, 64) == nullptr);
+    CHECK(icons.deferred());
+    icons.endBudget();
+}

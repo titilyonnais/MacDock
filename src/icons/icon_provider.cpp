@@ -477,6 +477,10 @@ IconProvider::ImagePtr IconProvider::composeStack(const std::wstring& key, const
     std::wstring cacheKey = L"#stack|" + key + L"|" + std::to_wstring(px);
     for (auto& f : files) cacheKey += L"|" + f.path + L"@" + std::to_wstring(f.modified);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) {   // vignettes lentes : à l'image suivante
+        deferred_ = true;
+        return nullptr;
+    }
     const int s = iconShapePx(px, shapeRatio_);   // même forme que les icônes d'apps, même ombre
     Pixels shaped(size_t(s) * s * 4, 0);
     const auto layers = stackIconLayers(files.size());
