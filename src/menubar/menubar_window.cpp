@@ -741,11 +741,17 @@ BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     }
     c.forceQuitShortcut = forceQuitLabel_;
     c.menuOwner = toId(active_.menuOwner);
+    const double t0 = nowSeconds();
     c.recentApps = withIcons(recent_.apps, false, scale);
+    const double t1 = nowSeconds();
     PWSTR folder = nullptr;
     if (recentDocs && SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
         c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt), true, scale);
     CoTaskMemFree(folder);
+    const double t2 = nowSeconds();
+    if (trace_ && t2 - t0 > 0.02)
+        log::info(L"[trace] barre : récents en %.0f ms (apps %zu en %.0f, documents %zu en %.0f)", (t2 - t0) * 1000,
+                  c.recentApps.size(), (t1 - t0) * 1000, c.recentDocs.size(), (t2 - t1) * 1000);
     return c;
 }
 
@@ -1371,8 +1377,13 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
                 if (menus_.menus[i].title == title) current = int(i);
             if (current < 0) break;
         }
+        const double prepStart = nowSeconds();
         if (current >= 0 && std::size_t(current) < menus_.menus.size()) refreshRealMenu(menus_.menus[std::size_t(current)].real);
-        menus_ = buildBarMenus(context(true, s.scale));   // liste des fenêtres, vrais menus et documents récents à jour
+        const double prepRead = nowSeconds();
+        // Liste des fenêtres et vrais menus à jour ; documents récents et leurs icônes seulement pour le menu du logo, le
+        // seul qui les montre (au premier menu après le démarrage, leurs icônes coûtaient ~90 ms à n'importe quel titre).
+        menus_ = buildBarMenus(context(current == 0, s.scale));
+        const double prepEnd = nowSeconds();
         menuOpen_ = true;
         if (current < 0 || std::size_t(current) >= s.layout.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
         // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.
@@ -1383,7 +1394,10 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
         const MenuWindow::BarLink link = barLink(s, current);
         POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(s.scale))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
-        if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
+        if (trace_)
+            log::info(L"[trace] barre : menu « %s » ouvert (préparé en %.0f ms : vrai menu %.0f, contexte %.0f)",
+                      menus_.menus[std::size_t(current)].title.c_str(), (prepEnd - prepStart) * 1000,
+                      (prepRead - prepStart) * 1000, (prepEnd - prepRead) * 1000);
         const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link, nullptr, &lastClose_, &keep);
         if (auto next = menuSwitchTarget(r)) {
             previous = current;
