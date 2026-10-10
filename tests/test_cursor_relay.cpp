@@ -135,3 +135,20 @@ TEST_CASE(cursor_relay_slows_down_when_cursor_unreadable) {
     CHECK(!back.reinstallHook);
     CHECK(r.intervalMs(600000) == 16);
 }
+
+TEST_CASE(cursor_relay_follows_the_screen_refresh) {
+    // Retour du 10 octobre : sous une app en administrateur (VSCodium, Gestionnaire des tâches), le Dock suivait la souris
+    // par ce relais toutes les 16 ms (30 à 60 lectures par seconde avec la minuterie de Windows) : « impression de
+    // 30 fps » sur un écran à 165 Hz. Après un mouvement, le relais lit au rythme de l'écran.
+    md::CursorRelay r;
+    r.setFrameMs(6);   // 165 Hz
+    r.poll(sample({500, 900}, {500, 900}, 5000, 1000, true));
+    CHECK(r.intervalMs(1000) == 6);
+    r.poll(sample({500, 900}, {500, 900}, 6000, 2100, true));   // souris immobile : lecture lente, comme avant
+    CHECK(r.intervalMs(2100) == 100);
+    r.setFrameMs(0);   // valeur absurde : bornée
+    r.poll(sample({505, 900}, {500, 900}, 7000, 3000, true));
+    CHECK(r.intervalMs(3000) == 2);
+    r.setFrameMs(40);   // écran à 25 Hz : jamais plus lent qu'avant
+    CHECK(r.intervalMs(3000) == 16);
+}

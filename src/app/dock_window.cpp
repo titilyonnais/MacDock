@@ -2621,18 +2621,45 @@ void DockApp::startMouseThread() {
         // Relais du crochet souris (plan 62) : il se tait sous une app en administrateur, quand un autre crochet le prive,
         // ou quand une app déplace le curseur (SetCursorPos). La position lue prend alors le relais, sur ce fil.
         CursorRelay relay;
+        // Au rythme de l'écran du Dock (retour du 10 octobre : à 16 ms, la minuterie de Windows donnait 30 à 60 lectures
+        // par seconde, « impression de 30 fps » sous une app en administrateur sur un écran à 165 Hz).
+        {
+            MONITORINFOEXW mi{};
+            mi.cbSize = sizeof mi;
+            DEVMODEW dm{};
+            dm.dmSize = sizeof dm;
+            if (GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), &mi) &&
+                EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm) && dm.dmDisplayFrequency > 1)
+                relay.setFrameMs(1000 / dm.dmDisplayFrequency);
+        }
         HWND foreground = nullptr;
         bool elevated = false;
         ULONGLONG installedAt = GetTickCount64();   // le silence du crochet se compte depuis son installation
         unsigned interval = relay.intervalMs(installedAt);
-        UINT_PTR timer = SetTimer(nullptr, 0, interval, nullptr);
+        // Minuterie haute résolution (précise à la milliseconde, sans changer la résolution de tout le système) ; l'attente
+        // pompe les messages, ce que demandent les crochets bas niveau de ce fil.
+        HANDLE tick = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (!tick) tick = CreateWaitableTimerW(nullptr, FALSE, nullptr);   // avant Windows 10 1803
+        const auto arm = [&tick](unsigned ms) {
+            LARGE_INTEGER due{};
+            due.QuadPart = -LONGLONG(ms) * 10000;
+            SetWaitableTimer(tick, &due, LONG(ms), nullptr, nullptr, FALSE);
+        };
+        arm(interval);
         int polls = 0;
         ULONGLONG pollsSince = installedAt;
         RECT lastClip{};
         bool clipKnown = false;
-        MSG msg;
-        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-            if (msg.message != WM_TIMER || msg.hwnd) continue;
+        for (bool running = true; running;) {
+            const DWORD woke = MsgWaitForMultipleObjectsEx(1, &tick, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            if (woke == WAIT_OBJECT_0 + 1) {   // messages : crochets, WM_QUIT
+                MSG msg;
+                while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+                    if (msg.message == WM_QUIT) running = false;
+                    else DispatchMessageW(&msg);
+                continue;
+            }
+            if (woke != WAIT_OBJECT_0) continue;
             const ULONGLONG now = GetTickCount64();
             if (trace_ && (++polls, now - pollsSince >= 5000)) {
                 log::info(L"[perf] relais de la souris : %d lectures en 5 s (intervalle %u ms)", polls, interval);
@@ -2644,7 +2671,7 @@ void DockApp::startMouseThread() {
                 relay.cursorLost(now);
                 if (const unsigned want = relay.intervalMs(now); want != interval) {
                     interval = want;
-                    timer = SetTimer(nullptr, timer, interval, nullptr);
+                    arm(interval);
                 }
                 continue;
             }
@@ -2678,10 +2705,10 @@ void DockApp::startMouseThread() {
                           relay.active() && elevated ? L" (app en administrateur au premier plan)" : L"");
             if (const unsigned want = relay.intervalMs(now); want != interval) {
                 interval = want;
-                timer = SetTimer(nullptr, timer, interval, nullptr);
+                arm(interval);
             }
         }
-        KillTimer(nullptr, timer);
+        CloseHandle(tick);
         if (keys) UnhookWindowsHookEx(keys);
         if (hook) UnhookWindowsHookEx(hook);
     });
