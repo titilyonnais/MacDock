@@ -6,7 +6,16 @@
 namespace md {
 
 // startAxis, nowAxis : position du pointeur en points sur l'axe perpendiculaire au bord du Dock (y pour un Dock en bas,
-// x sur un côté). Bornée comme le réglage, de 16 à 128.
-double resizedTileSize(double startTile, double startAxis, double nowAxis, DockPosition edge);
+// x sur un côté). Bornée comme le réglage, de 16 à 128, et à maxTile : la plus grande taille qui tient sur l'axe.
+double resizedTileSize(double startTile, double startAxis, double nowAxis, DockPosition edge, double maxTile = 128);
+
+// Points entiers, arrondis vers la taille de départ : le tremblement d'un simple clic ne change rien.
+double snappedTileSize(double startTile, double tile);
+
+// Relâchement du bouton sur le Dock : le glisser de la poignée se termine avant tout (sinon un relâchement à avaler,
+// celui d'un appui qui a fermé Spotlight, le laissait bloqué) ; puis le relâchement à avaler ; sinon le clic ou le
+// glisser d'une icône.
+enum class ButtonUp { EndResize, Swallow, Pointer };
+ButtonUp leftButtonUpAction(bool resizing, bool swallowPending);
 
 } // namespace md

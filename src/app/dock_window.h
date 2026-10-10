@@ -308,6 +308,7 @@ private:
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     struct Resize {
         double startTile = 48, startAxis = 0;
+        double maxTile = 128;   // la plus grande taille qui tient sur l'axe
     };
     std::optional<Resize> resize_;   // glisser d'un séparateur en cours
     bool loggedHidden_ = false;

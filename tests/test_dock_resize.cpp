@@ -16,3 +16,28 @@ TEST_CASE(dock_resize_follows_the_pointer_one_for_one) {
     CHECK_NEAR(md::resizedTileSize(48, 100, 110, DockPosition::Right), 38, 1e-9);
     CHECK_NEAR(md::resizedTileSize(48, 100, 90, DockPosition::Right), 58, 1e-9);
 }
+
+TEST_CASE(dock_resize_never_beyond_what_fits) {
+    // Relecture du plan 70 : sur un Dock qui ne tient plus, la taille montait jusqu'à 128 pendant qu'il s'amincissait.
+    CHECK_NEAR(md::resizedTileSize(48, 1000, 800, md::DockPosition::Bottom, 65), 65, 1e-9);
+    CHECK_NEAR(md::resizedTileSize(48, 1000, 990, md::DockPosition::Bottom, 65), 58, 1e-9);
+}
+
+TEST_CASE(dock_resize_snaps_toward_the_start) {
+    // Points entiers vers la taille de départ : le tremblement d'un simple clic (un pixel à 200 %) ne change rien.
+    CHECK_NEAR(md::snappedTileSize(48, 48.5), 48, 1e-9);
+    CHECK_NEAR(md::snappedTileSize(48, 49.4), 49, 1e-9);
+    CHECK_NEAR(md::snappedTileSize(48, 47.5), 48, 1e-9);
+    CHECK_NEAR(md::snappedTileSize(48, 46.4), 47, 1e-9);
+    CHECK_NEAR(md::snappedTileSize(59, 60.99), 60, 1e-9);
+}
+
+TEST_CASE(dock_resize_release_ends_the_drag_first) {
+    // Relecture du plan 70 : un relâchement à avaler (appui qui a fermé Spotlight) passait avant la fin du glisser de la
+    // poignée, qui restait alors bloqué.
+    using md::ButtonUp;
+    CHECK(md::leftButtonUpAction(true, true) == ButtonUp::EndResize);
+    CHECK(md::leftButtonUpAction(true, false) == ButtonUp::EndResize);
+    CHECK(md::leftButtonUpAction(false, true) == ButtonUp::Swallow);
+    CHECK(md::leftButtonUpAction(false, false) == ButtonUp::Pointer);
+}

@@ -935,6 +935,8 @@ void DockApp::setTransparent(bool transparent) {
 }
 
 void DockApp::onMouse(POINT screen) {
+    // Glisser de la poignée dont le relâchement s'est perdu (pris par une autre fenêtre) : il se termine ici.
+    if (resize_ && !(GetAsyncKeyState(GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON) & 0x8000)) endResize();
     // Pointeur confiné ailleurs par une autre app : le curseur sera ramené dans sa zone au prochain mouvement, même si sa
     // dernière position est restée sur le Dock. Le Dock le croit hors de lui (le contrôleur ignore aussi la réévaluation
     // de chaque tour), ni coin actif ni poussée d'écran.
@@ -1058,7 +1060,8 @@ double DockApp::resizeAxis(POINT screen) const {
 void DockApp::beginResize() {
     POINT cursor{};
     GetCursorPos(&cursor);
-    resize_ = Resize{settings_.tileSize, resizeAxis(cursor)};
+    // Depuis la taille affichée (Dock rétréci compris), jamais au-delà de ce qui tient (relecture du plan 70).
+    resize_ = Resize{controller_.fittingTileSize(settings_.tileSize), resizeAxis(cursor), controller_.fittingTileSize(128)};
     controller_.setResizing(true);
     reposition();   // fenêtre à la hauteur de la taille 128 le temps du glisser
     requestFrame();
@@ -1069,9 +1072,10 @@ void DockApp::updateResize() {
     if (!resize_) return;
     POINT cursor{};
     if (!GetCursorPos(&cursor)) return;
-    // Points entiers : icônes nettes à toutes les échelles.
-    const double tile = std::round(resizedTileSize(resize_->startTile, resize_->startAxis, resizeAxis(cursor),
-                                                   settings_.position));
+    // Points entiers vers la taille de départ : le tremblement d'un simple clic ne change rien.
+    const double tile = snappedTileSize(resize_->startTile, resizedTileSize(resize_->startTile, resize_->startAxis,
+                                                                            resizeAxis(cursor), settings_.position,
+                                                                            resize_->maxTile));
     if (tile == settings_.tileSize) return;
     settings_.tileSize = tile;
     controller_.setSettings(settings_);
@@ -1080,6 +1084,7 @@ void DockApp::updateResize() {
 
 void DockApp::endResize() {
     if (!resize_) return;
+    updateResize();   // dernière position du pointeur
     const double from = resize_->startTile;
     resize_.reset();
     controller_.setResizing(false);
@@ -2998,6 +3003,8 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
+            swallowClick_ = false;   // un relâchement à avaler ne survit pas à l'appui suivant
+            if (resize_) endResize();   // glisser de la poignée resté ouvert (relâchement perdu ailleurs)
             if (hoverWarm_) {   // clic avant la fin du survol : la capture part tout de suite
                 KillTimer(hwnd_, kWarmTimer);
                 if (IsIconic(hoverWarm_)) genie_.warm(instance_, hoverWarm_);
@@ -3039,13 +3046,10 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_LBUTTONUP:
-            if (swallowClick_) {
-                swallowClick_ = false;
-                return 0;
-            }
-            if (resize_) {
-                endResize();
-                return 0;
+            switch (leftButtonUpAction(resize_.has_value(), swallowClick_)) {
+                case ButtonUp::EndResize: endResize(); return 0;   // avant tout : sinon le glisser restait bloqué
+                case ButtonUp::Swallow: swallowClick_ = false; return 0;
+                case ButtonUp::Pointer: break;
             }
             onPointerUp(POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;

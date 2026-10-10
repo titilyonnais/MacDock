@@ -58,6 +58,9 @@ public:
     void setPointerAway(bool away);
     // Poignée des séparateurs (plan 70) : un séparateur sous ce point de la fenêtre, sur toute l'épaisseur du Dock.
     bool separatorHandleAt(POINT clientPx) const;
+    // Taille des cases affichée pour ce réglage : la même, ou plus petite si le Dock ne tient pas sur son axe (seules les
+    // cases rétrécissent, comme macOS 26). fittingTileSize(128) : la plus grande taille qui tient.
+    double fittingTileSize(double tile) const;
     // Glisser d'un séparateur en cours : icônes au repos, ni agrandissement ni infobulle ; images demandées à la plus
     // grande taille (une seule préparation pour tout le glisser).
     void setResizing(bool on);
@@ -161,7 +164,7 @@ private:
     double hideOffsetPx(const LayoutResult& r) const;       // décalage vers le bas du masquage
     // Dock rétréci pour tenir sur son axe (sizeInput) : rapport de son épaisseur à celle de la taille réglée. Marges,
     // séparateur, point et extrémités le suivent, comme les cases.
-    double shrinkOf(const LayoutResult& r) const;
+    double fitTile(LayoutInput& in, double tile) const;   // cases qui tiennent sur l'axe (voir fittingTileSize)
     // Repère local (« comme en bas ») : les méthodes publiques convertissent les points de la fenêtre.
     bool insideLocal(POINT local) const;
     std::optional<std::size_t> hitLocal(POINT local) const;

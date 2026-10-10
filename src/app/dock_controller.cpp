@@ -90,24 +90,43 @@ DockController::Laid DockController::layout() const {
 }
 
 void DockController::sizeInput(LayoutInput& in) const {
-    in.tileSize = settings_.tileSize;
     in.largeSize = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     in.gap = metrics_.iconGap;
     in.padding = metrics_.dockPadding;
     in.separatorWidth = metrics_.separatorWidth;
-    in.separatorMargin = dockGeometry(settings_.tileSize, metrics_).separatorMargin;
     in.rangeTiles = metrics_.magnifyRangeTiles;
-    // Trop d'éléments pour l'axe (Dock vertical sur un portable…) : tout le Dock rétrécit, cases, écarts et
-    // marges ensemble, comme sur macOS — la longueur au repos est proportionnelle à ces mesures.
+    const double tile = fitTile(in, settings_.tileSize);
+    in.largeSize *= tile / std::max(1.0, settings_.tileSize);   // l'agrandissement garde sa proportion
+}
+
+// Trop d'éléments pour l'axe (Dock vertical sur un portable…) : seules les cases rétrécissent, comme macOS 26 (mesuré sur
+// la VM, plan 70 : rembourrage, écart et point gardent leurs points ; séparateur et extrémités suivent l'épaisseur). in :
+// éléments, écart, rembourrage et trait du séparateur remplis ; en sortie, la case et la marge du séparateur qui tiennent.
+double DockController::fitTile(LayoutInput& in, double tile) const {
+    const auto fill = [&](double t) {
+        in.tileSize = t;
+        in.separatorMargin = dockGeometry(t, metrics_).separatorMargin;
+    };
+    fill(tile);
     const double room = width_ / scale_ - 2 * kFitMarginPt;
-    if (const double rest = computeLayout(in).restLength; room > 0 && rest > room) {
-        const double f = room / rest;
-        in.tileSize *= f;
-        in.largeSize *= f;
-        in.gap *= f;
-        in.padding *= f;
-        in.separatorMargin *= f;
+    if (room <= 0 || computeLayout(in).restLength <= room) return tile;
+    double lo = 1, hi = tile;   // la longueur au repos croît avec la case
+    for (int i = 0; i < 30 && hi - lo > 1e-3; ++i) {
+        const double mid = (lo + hi) / 2;
+        fill(mid);
+        (computeLayout(in).restLength <= room ? lo : hi) = mid;
     }
+    fill(lo);
+    return lo;
+}
+
+double DockController::fittingTileSize(double tile) const {
+    LayoutInput in;
+    for (const auto& it : items_) in.items.push_back({it.kind == ItemKind::Separator});
+    in.gap = metrics_.iconGap;
+    in.padding = metrics_.dockPadding;
+    in.separatorWidth = metrics_.separatorWidth;
+    return fitTile(in, tile);
 }
 
 std::optional<RECT> DockController::restingTile(std::uint64_t window) {
@@ -122,7 +141,7 @@ std::optional<RECT> DockController::restingTile(std::uint64_t window) {
     const LayoutResult r = computeLayout(in);
     const double size = r.items[index].size * scale_;
     const double cx = toPx(r.items[index].center);
-    const double cy = bgBottomPx() - metrics_.dockPadding * shrinkOf(r) * scale_ - size / 2;
+    const double cy = bgBottomPx() - metrics_.dockPadding * scale_ - size / 2;
     double x0 = cx - size / 2, y0 = cy - size / 2, x1 = cx + size / 2, y1 = cy + size / 2;
     if (edge_.vertical()) {
         const auto a = edge_.toWindow(x0, y0), b = edge_.toWindow(x1, y1);
@@ -675,9 +694,9 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     f.bgRight = float(toPx(r.bgEnd));
     f.bgBottom = float(bgBottomPx());
     f.bgTop = f.bgBottom - float(r.thickness) * s;
-    const DockGeometry g = dockGeometry(settings_.tileSize, metrics_);
-    const double k = shrinkOf(r);
-    f.cornerRadius = float(g.cornerRadius * k) * s;
+    // Géométrie de la case affichée (Dock rétréci compris : seules les cases rétrécissent).
+    const DockGeometry g = dockGeometry(r.thickness - 2 * metrics_.dockPadding, metrics_);
+    f.cornerRadius = float(g.cornerRadius) * s;
 
     double large = settings_.magnification ? std::max(settings_.largeSize, settings_.tileSize) : settings_.tileSize;
     if (resizing_) large = 128;   // poignée : une seule taille d'image pour tout le glisser, jamais agrandie
@@ -692,13 +711,13 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
         if (item.kind == ItemKind::Separator) {
             icon.separator = true;
             icon.cy = (f.bgTop + f.bgBottom) / 2;
-            icon.sepLength = float(g.separatorLength * k) * s;
+            icon.sepLength = float(g.separatorLength) * s;
             f.icons.push_back(icon);
             continue;
         }
         icon.size = float(li.size) * s;
-        icon.cy = f.bgBottom - float(metrics_.dockPadding * k) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
-        icon.indicatorY = f.bgBottom - float(g.indicatorCenter * k) * s;
+        icon.cy = f.bgBottom - float(metrics_.dockPadding) * s - icon.size / 2 - float(bounceOffset(item.appId)) * s;
+        icon.indicatorY = f.bgBottom - float(g.indicatorCenter) * s;
         const std::uint64_t asked = icons.deferrals();
         icon.image = imageFor(item, icons, imgPx);
         if (!icon.image && icons.deferrals() != asked) {   // nouvelle image en préparation
@@ -746,11 +765,6 @@ RenderFrame DockController::buildFrame(bool dark, IconProvider& icons) {
     if (edge_.vertical()) toWindow(f);
     dirty_ = false;
     return f;
-}
-
-double DockController::shrinkOf(const LayoutResult& r) const {
-    const double full = dockGeometry(settings_.tileSize, metrics_).thickness;
-    return full > 0 && r.thickness > 0 ? std::min(1.0, r.thickness / full) : 1.0;
 }
 
 // Repère local → fenêtre réelle (Dock à gauche ou à droite).
