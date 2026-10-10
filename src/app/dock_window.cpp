@@ -905,6 +905,9 @@ void DockApp::onMouse(POINT screen) {
     const bool away = confined || placementDuringToolSession(toolRevealOn_).pointerIgnored;
     controller_.setPointerAway(away);
     if (away) {
+        // Un coin atteint pendant ce temps est vu bloqué : il ne part pas quand le Dock reprend le pointeur resté au
+        // coin (relecture du plan 69).
+        checkHotCorner(screen, confined || placementDuringToolSession(toolRevealOn_).hotCornersBlocked);
         if (cursorInDock_ || cursorAtEdge_) {
             cursorInDock_ = cursorAtEdge_ = false;
             if (settings_.autohide) requestFrame();
@@ -951,7 +954,7 @@ void DockApp::syncPointer() {
     setTransparent(!*inside);
 }
 
-void DockApp::checkHotCorner(POINT screen) {
+void DockApp::checkHotCorner(POINT screen, bool forceBlocked) {
     if (cornerScreens_.empty())
         for (const MonitorInfo& m : enumMonitors()) cornerScreens_.push_back(m.rect);
     const std::optional<Corner> at = cornerAt(screen, cornerScreens_);
@@ -960,7 +963,7 @@ void DockApp::checkHotCorner(POINT screen) {
     // son coin le referme.
     const bool button = ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
     const bool modal = menuOpen_ && !(action == HotCornerAction::MissionControl && MissionView::isOpen());
-    const bool blocked = button || switch_.active() || modal || (at && fullscreenAt(screen));
+    const bool blocked = forceBlocked || button || switch_.active() || modal || (at && fullscreenAt(screen));
     if (corners_.update(at, screen, blocked) && action != HotCornerAction::Off)
         PostMessageW(hwnd_, WM_APP_CORNER, WPARAM(action), 0);
 }

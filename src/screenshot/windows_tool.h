@@ -22,8 +22,11 @@ bool isCaptureToolProcess(const std::wstring& exeName);
 struct ToolSessionPlacement {
     bool topmost = true;            // fenêtres « toujours au premier plan »
     bool pointerIgnored = false;    // Dock : ni agrandissement ni clic
+    bool hotCornersBlocked = false;  // coin atteint sous le voile vu bloqué : il ne part pas à la fin de la session
 };
-inline ToolSessionPlacement placementDuringToolSession(bool toolSession) { return {!toolSession, toolSession}; }
+inline ToolSessionPlacement placementDuringToolSession(bool toolSession) {
+    return {!toolSession, toolSession, toolSession};
+}
 
 class ToolReveal {
 public:

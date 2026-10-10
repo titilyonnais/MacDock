@@ -115,7 +115,7 @@ private:
     void switcherKey(int id);                                  // raccourcis du sélecteur et de sa session
     void switcherTick();                                       // minuterie de la session : Alt relâché, panneau
     void endSwitch(bool activate);                             // fin de session ; active l'app choisie
-    void checkHotCorner(POINT screen);                         // coins actifs : pointeur poussé dans un coin
+    void checkHotCorner(POINT screen, bool blocked = false);   // coins actifs : pointeur poussé dans un coin
     void runHotCorner(HotCornerAction action);
     bool fullscreenAt(POINT screen) const;   // plein écran sur l'écran du point (jeu, vidéo, présentation)
     AppsIconStyle appsIconStyle() const;                       // icônes des apps comme celles du Dock

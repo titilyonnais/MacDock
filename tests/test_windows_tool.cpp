@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include "minitest.h"
+#include "../src/interact/hot_corners.h"
 #include "../src/screenshot/windows_tool.h"
 
 TEST_CASE(windows_tool_keys) {
@@ -85,4 +86,14 @@ TEST_CASE(windows_tool_session_lowers_and_freezes) {
     const md::ToolSessionPlacement normal = md::placementDuringToolSession(false);
     CHECK(normal.topmost);
     CHECK(!normal.pointerIgnored);
+}
+
+TEST_CASE(windows_tool_session_disarms_hot_corners) {
+    // Relecture du plan 69 : sous le voile, le Dock ignore le pointeur ; un coin atteint pendant la sélection ne doit pas
+    // partir à la fin de la session, quand le Dock reprend le pointeur resté au coin.
+    md::HotCornerTracker corners;
+    const POINT at{0, 0};
+    CHECK(!corners.update(md::Corner::TopLeft, at, md::placementDuringToolSession(true).hotCornersBlocked).has_value());
+    CHECK(!corners.update(md::Corner::TopLeft, at, md::placementDuringToolSession(false).hotCornersBlocked).has_value());
+    CHECK(!md::placementDuringToolSession(false).hotCornersBlocked);
 }
