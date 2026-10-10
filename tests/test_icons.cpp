@@ -286,3 +286,24 @@ TEST_CASE(icons_disk_image_shown_while_waiting) {
     icons.setDark(true);
     CHECK(!icons.adoptStale(jobs[0].cacheKey, jobs[0].generation, fromDisk));   // génération dépassée : jetée
 }
+
+TEST_CASE(icons_stack_previews_keep_one_entry) {
+    // Relecture de la nuit, important 2 : chaque renouvellement de l'aperçu d'une pile (téléchargement) a une nouvelle
+    // clé ; le Dock les gardait toutes, en mémoire comme sur la carte graphique. Une seule entrée par pile et par taille.
+    md::IconProvider icons;
+    std::vector<std::weak_ptr<const md::IconProvider::Image>> previews;
+    for (int i = 0; i < 100; ++i) {
+        std::vector<md::IconJob> jobs;
+        icons.beginAsync([&](md::IconJob j) { jobs.push_back(std::move(j)); });
+        icons.composeStack(L"stack:essai-fuite", {md::FileRef(L"C:/nulle-part/f" + std::to_wstring(i) + L".txt", 1)}, 64);
+        icons.endAsync();
+        REQUIRE(jobs.size() == 1);
+        auto image = std::make_shared<md::IconProvider::Image>();
+        previews.push_back(image);
+        CHECK(icons.adopt(jobs[0].cacheKey, jobs[0].generation, image));
+    }
+    int alive = 0;
+    for (const auto& w : previews) alive += w.expired() ? 0 : 1;
+    CHECK(alive == 1);   // seul le dernier aperçu reste
+    CHECK(!previews.back().expired());
+}

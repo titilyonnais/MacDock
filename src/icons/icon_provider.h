@@ -135,6 +135,9 @@ private:
     std::uint64_t generation_ = 0, deferrals_ = 0;
     bool deferredTiles_ = false, deferredStacks_ = false;
     ImagePtr requestAsync(IconSpec spec, const std::wstring& cacheKey, int priority);
+    // Une seule entrée par pile et par taille : les aperçus précédents de la même pile sont oubliés (relecture de la
+    // nuit, chaque renouvellement d'un aperçu a une nouvelle clé).
+    void forgetOlderPreviews(const std::wstring& cacheKey);
     std::map<std::wstring, ImagePtr> stale_;   // anciennes images, affichées en attendant les nouvelles
     ImagePtr deferStale(const std::wstring& cacheKey);   // budget dépassé : l'ancienne image s'il y en a une
     std::chrono::steady_clock::time_point budgetEnd_{};
