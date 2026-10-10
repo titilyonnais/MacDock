@@ -54,6 +54,10 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
   au clavier à faire avec toi).
 
 ## À faire, par ordre d'effet
+- **Apparence Clair / Sombre / Automatique** (ta demande du 10 octobre, MacDock et Windows, automatique au lever et au
+  coucher du soleil) : logique pure faite sur la branche `feat/apparence-65`, **non fusionnée** (plan 65, tâche 1) ;
+  le reste avec toi : Réglages > Général > Apparence, MacDock qui suit, écriture côté Windows, et tes réponses aux
+  questions du plan (où prendre ta position, ce que Windows doit suivre).
 0. **Approche de SF Pro (« trak »)** : CoreText resserre SF Pro selon sa taille (−0,076 pt par caractère à 13 pt,
    d'après la table de la police installée), DirectWrite ne le fait pas ; à appliquer à tout le texte de MacDock (barre,
    menus, infobulle du Dock, Spotlight, Réglages), puis recaler la marge des titres de la barre (~10,4 pt).

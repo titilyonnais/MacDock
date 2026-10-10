@@ -1195,6 +1195,17 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - Relance de la barre chaque seconde : elle refait toute sa révélation et écrit une ligne de trace par seconde.
 - Réglages relus pendant une révélation : le verre du Dock passe en dépoli dans la capture.
 
+### Plan 65 — Apparence, tâche 1 seulement (branche `feat/apparence-65`, non fusionnée)
+
+- **Ta demande** : clair, sombre ou automatique, pour MacDock et Windows ; l'automatique au lever et au coucher du
+  soleil.
+- **Fait cette nuit, sans rien brancher** : le calcul du lever et du coucher du soleil (recoupé à 21 s près au plus
+  par une seconde méthode, jours polaires compris), la décision et le prochain changement, le lieu d'après ton fuseau
+  horaire, le réglage `appearance` (suivre Windows par défaut, comme aujourd'hui), et ce qu'il faudrait écrire côté
+  Windows. Aucun accès au registre ni au thème de Windows.
+- **Questions pour toi** (dans le plan, sur la branche) : où prendre ta position (fuseau horaire, ville choisie, ou
+  localisation de Windows) ; ce que Windows doit suivre (apps, système, ou les deux).
+
 ## Décisions prises sans toi (plan 64)
 - **Dessins à moi** de la loupe et du Centre de contrôle, d'après les mesures : pas les symboles d'Apple.
 - **Texte à 85 % de noir partout** : sur la VM, le nom de l'app et les titres sont d'un noir plein (les icônes et
