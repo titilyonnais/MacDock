@@ -236,6 +236,7 @@ private:
     BackdropCapture capture_;
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
     bool glassLive_ = false;
+    bool backdropHiddenPause_ = false;   // capture mise en pause parce que le Dock est entièrement masqué (plan 62)
     bool capturePaused_ = false;   // capture suspendue pendant un menu : la dernière image reste valable   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
 
@@ -269,6 +270,10 @@ private:
     double genieSettleUntil_ = -1;   // fin d'ouverture : dernière image gardée par-dessus la fenêtre restaurée
     std::map<std::uint64_t, RECT> lastSeen_;     // dernier rectangle à l'écran des fenêtres au premier plan
     void noteForeground();                        // relève le rectangle de la fenêtre au premier plan
+    // App active (rebond d'attention) : celle du vrai premier plan, lu par GetForegroundWindow et ramené à sa fenêtre
+    // propriétaire ; jamais le hwnd d'un événement de premier plan, qu'une demande refusée produit aussi.
+    void syncActiveApp();
+    void onFlash(HWND h);   // fenêtre qui clignote (Windows ou tube) : rebond d'attention
     GenieRun genieRun() const;
     bool fullscreen_ = false, cursorAtEdge_ = false, cursorInDock_ = false, menuOpen_ = false;
     FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
@@ -282,7 +287,29 @@ private:
     std::atomic<LONG> mouseX_{0}, mouseY_{0};
     std::atomic<bool> mousePending_{false};
     std::atomic<DWORD> mousePostedAt_{0};
+    // Fil du crochet : position livrée au Dock (crochet ou relais), mouvements fusionnés en un message.
+    void deliverMouse(POINT pt);
+    // Dernier mouvement vu par le crochet lui-même (relais du crochet, plan 62, et sentinelle) ; mouseX_ et mouseY_
+    // suivent aussi le relais.
+    std::atomic<LONG> hookX_{0}, hookY_{0};
+    // Sentinelle du mode diagnostic : souris vue par le crochet, tours de la boucle, message en cours de traitement.
+    std::atomic<ULONGLONG> hookMoveAt_{0}, loopAt_{0};
+    std::atomic<int> loopPhase_{0};       // 0 messages, 1 animation, 2 image, 3 attente de l'horloge, 4 attente d'un message
+    std::atomic<UINT> dispatching_{0};    // message en cours (0 : aucun)
+    std::thread sentinel_;
+    std::map<UINT, int> sentKinds_;   // mode diagnostic : messages envoyés d'un autre fil, par numéro
+    void startSentinel();
+    // Pointeur confiné ailleurs par une autre app (VMware qui prend la souris…) : le Dock fait comme s'il était hors de
+    // lui. Trace du mode diagnostic : confinement, curseur affiché ou caché, fenêtre qui capture la souris.
+    bool pointerConfinedElsewhere(POINT cursor) const;
+    bool confinedLogged_ = false;
+    std::wstring pointerState() const;
+    void tracePointer(const wchar_t* why);
+    std::wstring lastPointerState_;
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
+    bool warmLive_ = false;        // sa capture d'avance tourne (arrêtée après un survol immobile)
+    bool warmStoppedIdle_ = false; // arrêtée par l'immobilité : relancée au prochain mouvement sur la case
+    POINT warmPoint_{};            // dernier point du survol de cette case
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::atomic<bool> cycleKeysOn_{false};     // le crochet clavier prend Alt+` (réglage windowCycleHotkey)

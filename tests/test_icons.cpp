@@ -126,3 +126,44 @@ TEST_CASE(icons_extension_icon_needs_no_file) {
     CHECK(opaquePixels(*img) > 0);
     CHECK(p.extensionIcon(L"rapport.docx", 16) == img);   // en cache
 }
+
+TEST_CASE(icons_frame_budget_defers_unready_icons) {
+    // Plan 62 : la première image du Dock préparait toutes ses icônes d'un coup (~700 ms, boucle bloquée au démarrage).
+    // Budget épuisé : une icône pas encore prête attend l'image suivante (case vide) ; hors budget, elle est préparée.
+    md::IconProvider icons;
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-budget", L"", 64) == nullptr);
+    CHECK(icons.deferred());
+    icons.endBudget();
+    const auto img = icons.get(L"app:essai-budget", L"", 64);
+    CHECK(img != nullptr);
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-budget", L"", 64) == img);   // déjà prête : jamais retenue
+    CHECK(!icons.deferred());
+    icons.endBudget();
+}
+
+TEST_CASE(icons_frame_budget_defers_stack_previews) {
+    // L'aperçu d'une pile (vignettes de ses derniers fichiers) passe aussi par le budget de l'image du Dock.
+    md::IconProvider icons;
+    icons.beginBudget(0);
+    CHECK(icons.composeStack(L"stack:essai-budget", {md::FileRef(L"C:/nulle-part/essai.txt", 1)}, 64) == nullptr);
+    CHECK(icons.deferred());
+    icons.endBudget();
+}
+
+TEST_CASE(icons_keep_old_image_while_reloading) {
+    // Relecture du plan 62 : après un vidage du cache (thème, réglages des icônes), les cases se vidaient le temps que les
+    // icônes reviennent une à une. L'ancienne image reste affichée jusqu'à ce que la nouvelle soit prête.
+    md::IconProvider icons;
+    const auto old = icons.get(L"app:essai-reserve", L"", 64);
+    REQUIRE(old != nullptr);
+    icons.setDark(true);
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-reserve", L"", 64) == old);
+    CHECK(icons.deferred());
+    icons.endBudget();
+    const auto fresh = icons.get(L"app:essai-reserve", L"", 64);
+    CHECK(fresh != nullptr);
+    CHECK(fresh != old);
+}

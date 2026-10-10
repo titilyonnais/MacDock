@@ -54,6 +54,8 @@ public:
 
     void setCursor(std::optional<POINT> clientPx);   // nullopt = souris hors du Dock
     bool pointerInside() const { return cursorInside_; }
+    // Pointeur confiné ailleurs par une autre app : positions ignorées, le Dock le croit hors de lui.
+    void setPointerAway(bool away);
     // Réévalue le curseur après un changement de forme ou de place du Dock (révélation, icône ajoutée, fin
     // d'agrandissement, fenêtre déplacée) : window est sa position actuelle dans la fenêtre. nullopt si le curseur
     // n'est pas suivi (menu ouvert, rien reçu encore).
@@ -90,7 +92,18 @@ public:
 
     void startLaunchBounce(const std::wstring& appId);
     void stopLaunchBounce(const std::wstring& appId);
+    // Rebond d'attention (clignotement de la fenêtre) : comme requestUserAttention sur macOS, sans effet pour l'app
+    // active, et arrêté quand l'app le devient.
     void setAttention(const std::wstring& appId, bool on);
+    void setActiveApp(const std::wstring& appId);   // app au premier plan ; vide : aucune (bureau…)
+    const std::wstring& activeApp() const { return activeApp_; }
+    // Temps réel (secondes) pour les épisodes d'attention : le Dock au repos ne fait pas tourner tick. Sans appel, tick
+    // fait avancer l'horloge (essais).
+    void syncClock(double nowSeconds) {
+        clock_ = nowSeconds;
+        clockSynced_ = true;
+    }
+    bool attentionEpisode(const std::wstring& appId) const { return attentionFlash_.contains(appId); }
     bool isBouncing(const std::wstring& appId) const { return bounces_.contains(appId); }
 
     // Hauteur réservée à l'écran (AppBar) et hauteur totale de la fenêtre, en pixels.
@@ -160,8 +173,16 @@ private:
     Spring amount_;
     std::optional<double> cursor_;      // points sur l'axe principal
     bool pointerKnown_ = false;         // curseur suivi (setCursor reçu, pas d'oubli depuis)
+    bool pointerAway_ = false;          // pointeur confiné ailleurs par une autre app : positions ignorées
     bool cursorInside_ = false;
     std::map<std::wstring, Bounce> bounces_;
+    std::wstring activeApp_;   // ses clignotements ne font pas rebondir son icône
+    // Épisodes d'attention ouverts : dernier clignotement de chaque app (horloge du Dock, en secondes). Un épisode fait
+    // un seul train de rebonds ; il se termine 10 s après le dernier clignotement.
+    std::map<std::wstring, double> attentionFlash_;
+    double clock_ = 0;
+    bool clockSynced_ = false;   // temps réel donné par le Dock (syncClock) ; sinon tick fait avancer l'horloge
+    static constexpr double kAttentionSilence = 10;
     double tooltipOpacity_ = 0;
     std::optional<std::size_t> tooltipIndex_;
     bool dirty_ = true;

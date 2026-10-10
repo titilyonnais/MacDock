@@ -43,6 +43,12 @@ private:
     bool immediate_ = false;    // plein écran : pas de délai
 };
 
+// Capture de l'arrière-plan du verre selon la visibilité (plan 62) : en pause quand le Dock est entièrement masqué,
+// reprise quand il revient, sauf si un menu la tient ou si le verre n'est plus actif (réglage coupé, fenêtre plus exclue
+// des captures : elle se capturerait elle-même). pausedForHidden : mise en pause par cette règle.
+enum class BackdropAction { None, Pause, Resume };
+BackdropAction backdropForVisibility(bool hidden, bool pausedForHidden, bool captureRunning, bool menuOpen, bool glassActive);
+
 // La fenêtre couvre-t-elle tout l'écran (tolérance de 1 px) ?
 bool coversMonitor(const RECT& window, const RECT& monitor);
 // Plein écran : couvre l'écran sans être une fenêtre maximisée à barre de titre (qui couvre tout l'écran

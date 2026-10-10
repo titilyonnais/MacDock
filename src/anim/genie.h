@@ -90,6 +90,14 @@ GenieReact genieOnMinimize(const GenieRun& run, std::uint64_t window, bool minim
 // annoncée) ou si Windows n'anime pas les réductions (choix de l'utilisateur) ; sinon deux animations se
 // superposeraient (barre des tâches, ⊞M, app qui se réduit elle-même) et Windows anime seul.
 bool genieTakesMinimize(bool held, bool windowsAnimates);
+
+// Capture d'avance du génie, case d'une fenêtre réduite survolée (plan 62) : lancée 120 ms après l'arrivée sur la case,
+// arrêtée après 5 s de survol immobile. Curseur qui bouge sur la même case : prolonger une capture en cours, relancer
+// une capture arrêtée par l'immobilité, et sinon ne rien toucher (le premier lancement n'est pas retardé).
+enum class WarmMove { Nothing, ExtendStop, Rewarm };
+inline WarmMove warmOnMove(bool live, bool stoppedIdle) {
+    return live ? WarmMove::ExtendStop : stoppedIdle ? WarmMove::Rewarm : WarmMove::Nothing;
+}
 // Réduction annoncée au Dock (pastille, bouton de Windows, ⊞↓, menus) : `hold` coupe les animations de Windows avant
 // la réduction quand le Dock l'anime lui-même (effet du Dock, case au Dock une fois réduite). `hide` : « Masquer »
 // (macOS) ; l'app est masquée (`hideApp`) et ses fenêtres disparaissent d'un coup, sans génie ni animation de Windows,

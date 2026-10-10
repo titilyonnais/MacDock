@@ -150,3 +150,21 @@ TEST_CASE(visibility_back_at_once_after_fullscreen) {
     w.update(autohide(), 1.0 + 1.0 / 60);
     CHECK(w.hidden());
 }
+
+TEST_CASE(backdrop_pauses_while_the_dock_is_hidden) {
+    // Plan 62 : Dock masqué (plein écran, masquage automatique), une vidéo derrière faisait capturer et redessiner le
+    // Dock ~30 fois par seconde pour rien.
+    using md::BackdropAction;
+    CHECK(md::backdropForVisibility(true, false, true, false, true) == BackdropAction::Pause);
+    CHECK(md::backdropForVisibility(true, true, false, false, true) == BackdropAction::None);    // déjà en pause
+    CHECK(md::backdropForVisibility(true, false, false, false, true) == BackdropAction::None);   // pas de capture
+    CHECK(md::backdropForVisibility(false, true, false, false, true) == BackdropAction::Resume);
+    CHECK(md::backdropForVisibility(false, true, false, true, true) == BackdropAction::None);    // un menu la tient
+    CHECK(md::backdropForVisibility(false, false, true, false, true) == BackdropAction::None);
+}
+
+TEST_CASE(backdrop_never_resumes_without_glass) {
+    // Relecture du plan 62 : verre coupé (réglage) pendant que le Dock était masqué ; à l'apparition, la capture ne doit
+    // pas repartir : sans exclusion des captures, le Dock se capturerait lui-même.
+    CHECK(md::backdropForVisibility(false, true, false, false, false) == md::BackdropAction::None);
+}

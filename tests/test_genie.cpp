@@ -478,3 +478,11 @@ TEST_CASE(tahoe_animation_durations) {
     CHECK_NEAR(md::tahoe::kSpotlightAppearSeconds, 0.12, 1e-9);
     CHECK(std::wstring(md::tahoe::kSpotlightPlaceholder) == L"Recherche Spotlight");   // macOS 27 : « Rechercher ou demander »
 }
+
+TEST_CASE(genie_warm_not_delayed_by_moves) {
+    // Relecture du plan 62 : chaque petit mouvement sur la case réarmait les 120 ms d'avant la première capture ; un clic
+    // sans 120 ms d'immobilité lançait la capture trop tard. Le premier lancement n'est plus retardé.
+    CHECK(md::warmOnMove(false, false) == md::WarmMove::Nothing);
+    CHECK(md::warmOnMove(true, false) == md::WarmMove::ExtendStop);
+    CHECK(md::warmOnMove(false, true) == md::WarmMove::Rewarm);
+}
