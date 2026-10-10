@@ -1,5 +1,6 @@
 // Extraction et mise en forme des icônes du Dock (Shell + WIC).
 #pragma once
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -37,6 +38,16 @@ public:
     // key : identifiant stable (appId, chemin…) utilisé pour l'icône personnalisée et le cache.
     // parsingName : nom Shell (chemin, .lnk, shell:AppsFolder\AUMID, ::{CLSID}).
     ImagePtr get(const std::wstring& key, const std::wstring& parsingName, int px);
+    // Budget d'une image du Dock (plan 62) : une fois dépassé, get() rend nullptr pour une icône pas encore prête (sa
+    // case reste vide) et deferred() le signale ; elle sera préparée à l'image suivante. Hors budget : tout de suite.
+    void beginBudget(double ms) {
+        budgetEnd_ = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                             std::chrono::duration<double, std::milli>(ms));
+        budget_ = true;
+        deferred_ = false;
+    }
+    void endBudget() { budget_ = false; }
+    bool deferred() const { return deferred_; }
     ImagePtr appsButton(int px);            // icône « Apps » dessinée par le code
     ImagePtr trash(bool full, int px);      // icône système de la Corbeille, vide ou pleine
     // Élément de pile : vignette Shell (images…) ou icône du fichier, telle quelle (ni plaque ni forme),
@@ -52,6 +63,8 @@ public:
     void clear() { cache_.clear(); }
 
 private:
+    bool budget_ = false, deferred_ = false;
+    std::chrono::steady_clock::time_point budgetEnd_{};
     ImagePtr build(const std::wstring& key, const std::wstring& parsingName, int px);
     // Forme visible (shape x shape) posée au centre d'une case px x px, avec l'ombre portée.
     ImagePtr finish(std::vector<std::uint8_t> shaped, int shape, int px) const;

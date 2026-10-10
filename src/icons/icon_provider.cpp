@@ -336,6 +336,10 @@ IconProvider::ImagePtr IconProvider::get(const std::wstring& key, const std::wst
     px = std::clamp(px, 16, 512);
     std::wstring cacheKey = key + L"|" + std::to_wstring(px);
     if (auto it = cache_.find(cacheKey); it != cache_.end()) return it->second;
+    if (budget_ && std::chrono::steady_clock::now() >= budgetEnd_) {   // image du Dock déjà assez chargée : à la suivante
+        deferred_ = true;
+        return nullptr;
+    }
     auto img = build(key, parsingName, px);
     cache_[cacheKey] = img;
     return img;

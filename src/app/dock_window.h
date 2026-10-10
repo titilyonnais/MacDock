@@ -236,6 +236,7 @@ private:
     BackdropCapture capture_;
     bool excluded_ = false;    // fenêtre exclue des captures (WDA_EXCLUDEFROMCAPTURE)
     bool glassLive_ = false;
+    bool backdropHiddenPause_ = false;   // capture mise en pause parce que le Dock est entièrement masqué (plan 62)
     bool capturePaused_ = false;   // capture suspendue pendant un menu : la dernière image reste valable   // une image d'arrière-plan a été reçue : verre réel
     int capturesTaken_ = 0;    // compteur [perf]
 
@@ -295,6 +296,7 @@ private:
     std::atomic<int> loopPhase_{0};       // 0 messages, 1 animation, 2 image, 3 attente de l'horloge, 4 attente d'un message
     std::atomic<UINT> dispatching_{0};    // message en cours (0 : aucun)
     std::thread sentinel_;
+    std::map<UINT, int> sentKinds_;   // mode diagnostic : messages envoyés d'un autre fil, par numéro
     void startSentinel();
     // Pointeur confiné ailleurs par une autre app (VMware qui prend la souris…) : le Dock fait comme s'il était hors de
     // lui. Trace du mode diagnostic : confinement, curseur affiché ou caché, fenêtre qui capture la souris.
@@ -304,6 +306,8 @@ private:
     void tracePointer(const wchar_t* why);
     std::wstring lastPointerState_;
     HWND hoverWarm_ = nullptr;     // fenêtre réduite dont la case est survolée
+    bool warmLive_ = false;        // sa capture d'avance tourne (arrêtée après un survol immobile)
+    POINT warmPoint_{};            // dernier point du survol de cette case
     std::atomic<bool> switchKeysOn_{false};    // le crochet clavier prend Alt+Tab (réglage appSwitcherHotkey)
     std::atomic<bool> switchSession_{false};   // session en cours : Échap, flèches, Q et H aussi
     std::atomic<bool> cycleKeysOn_{false};     // le crochet clavier prend Alt+` (réglage windowCycleHotkey)

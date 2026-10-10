@@ -2,9 +2,12 @@
 #pragma once
 #include <windows.h>
 
+#include <atomic>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "../model/app_model.h"
 
@@ -36,12 +39,20 @@ private:
     static void CALLBACK winEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD,
                                       DWORD);
     void onEvent(DWORD event, HWND hwnd);
+    void setMoveHook(DWORD pid);   // fil des crochets
+    // Crochets WinEvent sur leur propre fil (plan 62) : posés pour tout le système, ils reçoivent les événements
+    // d'objets de toutes les apps ; seuls ceux d'une fenêtre sont postés au fil du Dock (winEventMsg_).
+    std::thread eventThread_;
+    std::atomic<DWORD> eventThreadId_{0};
+    std::atomic<bool> hooksOk_{false};
+    UINT winEventMsg_ = 0;
+    static constexpr UINT kWatchMoves = WM_APP + 1;   // message de fil : nouveau processus au premier plan
     void evaluate(HWND hwnd);
     void forget(HWND hwnd);
 
     HWND msgWindow_ = nullptr;
     UINT shellMsg_ = 0;
-    HWINEVENTHOOK hooks_[6] = {};   // [5] : déplacements, pour le seul processus au premier plan
+    HWINEVENTHOOK hooks_[6] = {};   // fil des crochets ; [5] : déplacements, pour le seul processus au premier plan
     DWORD movePid_ = 0;
     void watchMoves(HWND foreground);
     Events events_;
@@ -51,6 +62,8 @@ private:
     HWND foreground_ = nullptr;
     bool trace_ = false;
     std::map<DWORD, int> eventCounts_;
+    std::map<DWORD, int> rawCounts_, rawByProcess_;   // mode diagnostic : avant filtre, par type et par processus
+    std::mutex rawMutex_;                             // rawCounts_ et rawByProcess_ (fil des crochets, fil du Dock)
     ULONGLONG countSince_ = 0;
     static WindowTracker* instance_;
 };

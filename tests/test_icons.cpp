@@ -126,3 +126,19 @@ TEST_CASE(icons_extension_icon_needs_no_file) {
     CHECK(opaquePixels(*img) > 0);
     CHECK(p.extensionIcon(L"rapport.docx", 16) == img);   // en cache
 }
+
+TEST_CASE(icons_frame_budget_defers_unready_icons) {
+    // Plan 62 : la première image du Dock préparait toutes ses icônes d'un coup (~700 ms, boucle bloquée au démarrage).
+    // Budget épuisé : une icône pas encore prête attend l'image suivante (case vide) ; hors budget, elle est préparée.
+    md::IconProvider icons;
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-budget", L"", 64) == nullptr);
+    CHECK(icons.deferred());
+    icons.endBudget();
+    const auto img = icons.get(L"app:essai-budget", L"", 64);
+    CHECK(img != nullptr);
+    icons.beginBudget(0);
+    CHECK(icons.get(L"app:essai-budget", L"", 64) == img);   // déjà prête : jamais retenue
+    CHECK(!icons.deferred());
+    icons.endBudget();
+}

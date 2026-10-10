@@ -150,3 +150,15 @@ TEST_CASE(visibility_back_at_once_after_fullscreen) {
     w.update(autohide(), 1.0 + 1.0 / 60);
     CHECK(w.hidden());
 }
+
+TEST_CASE(backdrop_pauses_while_the_dock_is_hidden) {
+    // Plan 62 : Dock masqué (plein écran, masquage automatique), une vidéo derrière faisait capturer et redessiner le
+    // Dock ~30 fois par seconde pour rien.
+    using md::BackdropAction;
+    CHECK(md::backdropForVisibility(true, false, true, false) == BackdropAction::Pause);
+    CHECK(md::backdropForVisibility(true, true, false, false) == BackdropAction::None);    // déjà en pause
+    CHECK(md::backdropForVisibility(true, false, false, false) == BackdropAction::None);   // pas de capture (verre dépoli)
+    CHECK(md::backdropForVisibility(false, true, false, false) == BackdropAction::Resume);
+    CHECK(md::backdropForVisibility(false, true, false, true) == BackdropAction::None);    // un menu tient la capture
+    CHECK(md::backdropForVisibility(false, false, true, false) == BackdropAction::None);
+}

@@ -77,6 +77,8 @@ constexpr UINT WM_APP_BUTTON = WM_APP + 14;  // wParam : 1 appui, 0 relâchement
 constexpr UINT_PTR kArmTimer = 0x414D;       // "AM" : réduction annoncée qui ne vient pas
 constexpr UINT_PTR kTransitionTimer = 0x5447;   // "TG" : animations de Windows rendues aux fenêtres libérées
 constexpr UINT_PTR kWarmTimer = 0x574D;      // "WM" : case survolée assez longtemps : capture préparée
+constexpr UINT_PTR kWarmStopTimer = 0x5753;  // "WS" : survol immobile depuis kWarmStopMs : capture d'avance arrêtée
+constexpr UINT kWarmStopMs = 5000;
 constexpr UINT_PTR kCornerTimer = 0x4352;    // "CR" : action de coin différée
 constexpr UINT_PTR kStacksTimer = 0x5354;   // "ST" : regroupe les avis d'un dossier de pile (téléchargement…)
 constexpr UINT_PTR kConfigTimer = 0x4346;   // "CF"
@@ -276,6 +278,21 @@ bool DockApp::stepVisibility(double now) {
     if (hidden != loggedHidden_) {
         loggedHidden_ = hidden;
         if (trace_) log::info(L"[trace] Dock %s", hidden ? L"masqué" : L"visible");
+    }
+    // Entièrement masqué : plus de capture de l'arrière-plan (une vidéo derrière le ferait redessiner pour rien).
+    switch (backdropForVisibility(hidden, backdropHiddenPause_, capture_.status() == BackdropCapture::Status::Running,
+                                  menuOpen_)) {
+        case BackdropAction::Pause:
+            pauseCapture();
+            backdropHiddenPause_ = true;
+            if (trace_) log::info(L"[trace] verre : capture en pause (Dock masqué)");
+            break;
+        case BackdropAction::Resume:
+            backdropHiddenPause_ = false;
+            resumeCapture();
+            if (trace_) log::info(L"[trace] verre : capture reprise (Dock visible)");
+            break;
+        case BackdropAction::None: break;
     }
     if (double at = visibility_.wakeAt(); at >= 0)
         SetTimer(hwnd_, kVisibilityTimer, UINT(std::max(1.0, (at - now) * 1000 + 1)), nullptr);
@@ -718,8 +735,12 @@ void DockApp::onBackdrop() {
         dev->GetImmediateContext(&ctx);
         bool scRgb = false;
         float white = 1;
-        if (capture_.takeLatest(dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); },
-                                scRgb, white)) {
+        const double t0 = diagnosticCapture() ? nowSeconds() : 0;
+        const bool taken = capture_.takeLatest(
+            dev, ctx.Get(), [this](UINT w, UINT h, bool hdr) { return renderer_.backdropTexture(w, h, hdr); }, scRgb, white);
+        if (diagnosticCapture() && nowSeconds() - t0 > 0.05)   // blocage de 1,1 s vu le 10 octobre (plan 62)
+            log::info(L"[diag] verre : arrière-plan pris en %.1f ms (%s)", (nowSeconds() - t0) * 1000, taken ? L"reçu" : L"rien");
+        if (taken) {
             renderer_.setBackdropWhite(white);
             capturePaused_ = false;
             if (!glassLive_) log::info(L"Verre : arrière-plan réel reçu (%s)", scRgb ? L"HDR" : L"SDR");
@@ -1606,11 +1627,22 @@ void DockApp::warmHovered(POINT client) {
             }
         }
     }
-    if (want == hoverWarm_) return;
+    if (want == hoverWarm_) {
+        // Même case : la capture d'avance s'arrête après un survol immobile (curseur garé sur le Dock), et repart s'il
+        // bouge de nouveau.
+        if (want && (client.x != warmPoint_.x || client.y != warmPoint_.y)) {
+            warmPoint_ = client;
+            SetTimer(hwnd_, warmLive_ ? kWarmStopTimer : kWarmTimer, warmLive_ ? kWarmStopMs : 120, nullptr);
+        }
+        return;
+    }
     hoverWarm_ = want;
+    warmPoint_ = client;
     KillTimer(hwnd_, kWarmTimer);
+    KillTimer(hwnd_, kWarmStopTimer);
     if (want) SetTimer(hwnd_, kWarmTimer, 120, nullptr);   // un passage rapide sur le Dock ne lance rien
     else genie_.cool();
+    warmLive_ = false;
 }
 
 void DockApp::noteForeground() {
@@ -2063,7 +2095,12 @@ void DockApp::requestFrame() {
 void DockApp::renderNow() {
     const bool timing = diagnosticCapture();
     const double t0 = timing ? nowSeconds() : 0;
+    // Icônes préparées 10 ms par image au plus (plan 62) : au démarrage, toutes d'un coup bloquaient la boucle ~700 ms ;
+    // celles qui manquent arrivent aux images suivantes.
+    icons_.beginBudget(10);
     RenderFrame frame = controller_.buildFrame(dark_, icons_);
+    icons_.endBudget();
+    if (icons_.deferred()) requestFrame();
     const double t1 = timing ? nowSeconds() : 0;
     if (trace_ && model_.revision() != loggedRevision_ && !controller_.dragging()) {
         loggedRevision_ = model_.revision();   // positions à jour pour les essais automatisés
@@ -2594,6 +2631,7 @@ LRESULT CALLBACK DockApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
+    if (trace_ && InSendMessage()) ++sentKinds_[msg];   // mode diagnostic : messages envoyés d'un autre fil
     if (tracker_.handleMessage(msg, wp, lp)) return 0;
     if (msg == missionMsg_ && missionMsg_) {
         openMissionControl();
@@ -2880,7 +2918,20 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kWarmTimer) {
                 KillTimer(hwnd_, kWarmTimer);
-                if (hoverWarm_ && IsWindow(hoverWarm_) && IsIconic(hoverWarm_)) genie_.warm(instance_, hoverWarm_);
+                if (hoverWarm_ && IsWindow(hoverWarm_) && IsIconic(hoverWarm_)) {
+                    genie_.warm(instance_, hoverWarm_);
+                    warmLive_ = true;
+                    SetTimer(hwnd_, kWarmStopTimer, kWarmStopMs, nullptr);
+                }
+                return 0;
+            }
+            if (wp == kWarmStopTimer) {
+                KillTimer(hwnd_, kWarmStopTimer);
+                if (warmLive_) {
+                    genie_.cool();
+                    warmLive_ = false;
+                    if (trace_) log::info(L"[trace] génie : capture d'avance arrêtée (survol immobile depuis %u s)", kWarmStopMs / 1000);
+                }
                 return 0;
             }
             if (wp == kTrashTimer) {
@@ -3217,6 +3268,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     if (!snapshot_) SetTimer(hwnd_, kFullscreenTimer, 1000, nullptr);
 
     double last = nowSeconds();
+    // Mode diagnostic : ce qui a tenu la boucle éveillée (tours par raison, sur 5 s).
+    int awakeAnim = 0, awakeVis = 0, awakePoof = 0, awakeGenie = 0, awakeArmed = 0, awakeHold = 0, awakeWake = 0;
+    int awakeEmpty = 0;   // tours où la file était vide : réveil par un message envoyé ou un rappel d'événement
     while (running_) {
         MSG msg;
         if (trace_) {
@@ -3229,7 +3283,15 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
             if (nowSeconds() - since >= 5) {
                 std::wstring s;
                 for (auto& [k, n] : kinds) s += std::to_wstring(k) + L"=" + std::to_wstring(n) + L" ";
-                log::info(L"[perf] %d tours de boucle en 5 s ; messages : %s", loops, s.c_str());
+                std::wstring sent;
+                for (auto& [k, n] : sentKinds_) sent += std::to_wstring(k) + L"=" + std::to_wstring(n) + L" ";
+                log::info(L"[perf] %d tours de boucle en 5 s ; messages : %s; envoyés : %s; tours sans message %d ; "
+                          L"éveillée par : animation %d, masquage %d, fumée %d, génie %d, génie armé %d, Dock retenu %d, "
+                          L"réveil %d",
+                          loops, s.c_str(), sent.c_str(), awakeEmpty, awakeAnim, awakeVis, awakePoof, awakeGenie,
+                          awakeArmed, awakeHold, awakeWake);
+                awakeAnim = awakeVis = awakePoof = awakeGenie = awakeArmed = awakeHold = awakeWake = awakeEmpty = 0;
+                sentKinds_.clear();
                 loops = 0;
                 kinds.clear();
                 since = nowSeconds();
@@ -3241,7 +3303,9 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
             loopAt_ = GetTickCount64();
             loopPhase_ = 0;
         }
+        int dispatched = 0;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            ++dispatched;
             if (msg.message == WM_QUIT) { running_ = false; break; }
             const double m0 = timing ? nowSeconds() : 0;
             if (trace_) dispatching_ = msg.message;
@@ -3262,14 +3326,28 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         }
         controller_.syncClock(now);   // épisodes d'attention en temps réel, même quand le Dock dort
         bool animating = controller_.tick(dt);
-        if (stepVisibility(now)) animating = true;
+        const bool tickAnim = animating;
+        const bool visAnim = stepVisibility(now);
+        if (visAnim) animating = true;
         // Fumée et génie ont leurs propres fenêtres : ils cadencent la boucle sans redessiner le Dock (verre compris)
         // à chaque image ; leur début et leur fin demandent eux-mêmes une image (requestFrame).
-        bool overlays = stepPoof(now);
-        if (stepGenie(now)) overlays = true;
-        if (genie_.armed()) {   // réduction annoncée : la capture arrive et le rendu GPU chauffe pendant l'appui
+        const bool poofAnim = stepPoof(now);
+        bool overlays = poofAnim;
+        const bool genieAnim = stepGenie(now);
+        if (genieAnim) overlays = true;
+        const bool armed = genie_.armed() != nullptr;
+        if (armed) {   // réduction annoncée : la capture arrive et le rendu GPU chauffe pendant l'appui
             genie_.pumpArmed();
             overlays = true;
+        }
+        if (trace_) {
+            awakeEmpty += dispatched == 0;
+            awakeAnim += tickAnim;
+            awakeVis += visAnim;
+            awakePoof += poofAnim;
+            awakeGenie += genieAnim;
+            awakeArmed += armed;
+            awakeWake += wakeAnimation_;
         }
         syncPointer();
         bool dirty = controller_.consumeDirty();
@@ -3277,6 +3355,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
         // d'après ; elle prendrait le tour où la deuxième image GPU doit partir. Fin d'une restauration (80 ms) : DWM
         // compose la fenêtre rendue, chaque appel de miniature y attend une composition (~6 ms mesurées).
         const bool holdDock = genie_.waiting() || genieSettleUntil_ >= 0;
+        if (trace_) awakeHold += holdDock;
         if ((animating || dirty) && holdDock) {
             wakeAnimation_ = true;
             animating = dirty = false;
