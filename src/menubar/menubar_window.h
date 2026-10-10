@@ -128,7 +128,8 @@ private:
     void onRightClick(Screen& s, POINT client);
     void openMenu(Screen& s, std::size_t index);   // titre (gauche) ou icône d'état (leftVisible + j)
     MenuWindow::BarLink barLink(const Screen& s, int current) const;   // titres puis icônes d'état (sans menu : vides)
-    int trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen);
+    int trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen,
+                    MenuWindow::Keep* keep);
     void runStatus(const StatusCommand& c);
     StatusState statusState();
     void onStatus(LPARAM snapshot);

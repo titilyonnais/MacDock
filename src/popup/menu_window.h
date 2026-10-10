@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ public:
         Metrics metrics;
         bool trace = false;
         AccentColor accent = AccentColor::Blue;   // couleur d'accentuation (plan 57)
+        bool activate = true;             // false : le menu ne prend ni le premier plan ni le clavier (essais)
     };
     // Côté d'ouverture par rapport à l'ancrage : au-dessus (Dock en bas), à droite (Dock à gauche), à gauche,
     // en dessous (barre de menus : bord gauche du panneau sur l'ancrage) ou en dessous vers la gauche (pastille verte :
@@ -46,10 +48,28 @@ public:
         std::function<void(int id, int button)> media;      // 0 précédent, 1 lecture/pause, 2 suivant
         std::function<bool(MenuModel&)> refresh;            // toutes les 500 ms (voir applyRefresh)
     };
+    // Séance de plusieurs menus à la suite (barre de menus, d'un titre à l'autre ; plan 71) : graphismes, verre et
+    // capture de l'écran gardés d'un menu au suivant. Après un menu fermé pour un titre voisin, le suivant s'affiche
+    // aussitôt, sans fondu, et l'ancien reste à l'écran jusqu'à son premier rendu. À garder le temps de la séance, sur
+    // le fil des menus.
+    class Keep {
+    public:
+        Keep();
+        ~Keep();
+        Keep(const Keep&) = delete;
+        Keep& operator=(const Keep&) = delete;
+        struct Impl;
+
+    private:
+        friend class MenuWindow;
+        std::unique_ptr<Impl> impl_;
+    };
     // Ouvre le menu du côté demandé, centré sur le point d'ancrage (écran) ; renvoie l'identifiant choisi, 0 si
     // rien n'est choisi, ou menuSwitchResult(k) (barre de menus). `closed` : ce qui l'a fermé (premier plan à rendre ?).
+    // keep : séance gardée (barre de menus), sinon nullptr.
     static int track(const Env& env, const MenuModel& model, POINT anchorScreen, Side side = Side::Above,
-                     const BarLink* bar = nullptr, const Live* live = nullptr, MenuClose* closed = nullptr);
+                     const BarLink* bar = nullptr, const Live* live = nullptr, MenuClose* closed = nullptr,
+                     Keep* keep = nullptr);
     // Rendu hors écran du menu (verre dépoli, sans fenêtre ni capture) : image BGRA prémultipliée w x h pixels
     // (vérifications, --snapshot de la barre). COM doit être initialisé.
     static bool snapshot(const Env& env, const MenuModel& model, std::vector<std::uint8_t>& bgra, UINT& w, UINT& h);

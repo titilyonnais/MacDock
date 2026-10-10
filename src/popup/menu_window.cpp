@@ -3,6 +3,7 @@
 
 #include <d2d1_3.h>
 #include <dcomp.h>
+#include <dwmapi.h>
 #include <dwrite_3.h>
 #include <dxgi1_2.h>
 #include <wincodec.h>
@@ -117,10 +118,34 @@ struct Session {
     const MenuWindow::BarLink* bar = nullptr;           // barre de menus (titres voisins), sinon nullptr
     const MenuWindow::Live* live = nullptr;             // lignes enrichies, sinon nullptr
     int dragging = 0;                                   // identifiant du curseur glissé
+    bool instantFirst = false;                          // menu suivant d'une séance gardée : sans fondu
     Com<IDWriteTextFormat> headerFormat, boldFormat, smallFormat;
     double hoverSince = 0;
 
     float s() const { return env.scale; }
+
+    // Nouveau menu dans cette séance (la première fois, ou séance gardée d'un titre de la barre à l'autre) : l'état du
+    // menu repart de zéro, graphismes et capture de l'écran restent.
+    void beginTrack(const MenuWindow::Env& e, MenuWindow::Side sd, const MenuWindow::BarLink* b, const MenuWindow::Live* l,
+                    bool instant) {
+        env = e;
+        side = sd;
+        bar = b;
+        live = l;
+        instantFirst = instant;
+        result = 0;
+        done = false;
+        closed = MenuClose::Escape;
+        swallowUp = 0;
+        dragging = 0;
+        hoverSince = 0;
+        panels.clear();
+    }
+    // Même rendu : la séance gardée peut servir telle quelle (sinon elle est recréée).
+    bool sameLook(const MenuWindow::Env& e) const {
+        return e.device == env.device && e.scale == env.scale && e.dark == env.dark && e.glass == env.glass &&
+               e.font == env.font && e.accent == env.accent;
+    }
 
     bool init() {
         if (!initText()) return false;
@@ -305,7 +330,8 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->rc = {left, top, left + w, top + h};
 
     DWORD ex = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP;
-    if (!panels.empty()) ex |= WS_EX_NOACTIVATE;   // les sous-menus ne prennent pas le clavier : il reste au menu principal
+    // Les sous-menus ne prennent pas le clavier : il reste au menu principal (qui ne le prend pas non plus en essai).
+    if (!panels.empty() || !env.activate) ex |= WS_EX_NOACTIVATE;
     p->hwnd = CreateWindowExW(ex, kClass, L"", WS_POPUP, left, top, w, h, nullptr, nullptr, env.instance, nullptr);
     if (!p->hwnd) return nullptr;
     SetWindowLongPtrW(p->hwnd, GWLP_USERDATA, LONG_PTR(this));
@@ -320,8 +346,16 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
     p->target->SetRoot(p->visual.Get());
 
     if (glassReady && panels.empty()) {
-        captureRc = m;
-        capture.start(p->hwnd, WM_MENU_BACKDROP, mon, {m.left, m.top, m.right, m.bottom});
+        if (capture.status() == BackdropCapture::Status::Running && EqualRect(&captureRc, &m)) {
+            // Séance gardée : la capture de l'écran continue, ses avis vont au nouveau menu ; un avis envoyé à l'ancien
+            // serait perdu, la lecture demandée ici remet son attente à zéro.
+            capture.setNotify(p->hwnd);
+            PostMessageW(p->hwnd, WM_MENU_BACKDROP, 0, 0);
+        } else {
+            captureRc = m;
+            screen.Reset();   // image d'un autre écran
+            capture.start(p->hwnd, WM_MENU_BACKDROP, mon, {m.left, m.top, m.right, m.bottom});
+        }
     }
     panels.push_back(std::move(p));
     Panel* raw = panels.back().get();
@@ -336,7 +370,8 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         if (PeekMessageW(&msg, panels.front()->hwnd, WM_MENU_BACKDROP, WM_MENU_BACKDROP, PM_REMOVE)) DispatchMessageW(&msg);
         else MsgWaitForMultipleObjects(0, nullptr, FALSE, 5, QS_POSTMESSAGE);
     }
-    raw->shownAt = now();
+    // Menu suivant d'une séance gardée : aussitôt, sans fondu (comme macOS d'un titre de la barre à l'autre).
+    raw->shownAt = panels.size() == 1 && instantFirst ? now() - kFadeSeconds - 0.05 : now();
     if (env.trace) {
         log::info(L"[trace] menu : panneau %ld,%ld-%ld,%ld, verre %s", raw->rc.left, raw->rc.top, raw->rc.right,
                   raw->rc.bottom, raw->hasBackdrop ? L"réel" : L"dépoli");
@@ -356,8 +391,8 @@ Panel* Session::open(const MenuModel& model, POINT anchor, bool above, const REC
         }
     }
     render(*raw);
-    ShowWindow(raw->hwnd, panels.size() == 1 ? SW_SHOW : SW_SHOWNOACTIVATE);
-    if (panels.size() == 1) {
+    ShowWindow(raw->hwnd, panels.size() == 1 && env.activate ? SW_SHOW : SW_SHOWNOACTIVATE);
+    if (panels.size() == 1 && env.activate) {
         forceForeground(raw->hwnd);   // le clavier (flèches, Entrée, Échap) va au menu
         SetFocus(raw->hwnd);
     }
@@ -1050,8 +1085,17 @@ bool MenuWindow::snapshot(const Env& env, const MenuModel& model, std::vector<st
     return SUCCEEDED(bmp->CopyPixels(&all, w * 4, UINT(bgra.size()), bgra.data()));
 }
 
+struct MenuWindow::Keep::Impl {
+    std::unique_ptr<Session> session;
+    std::vector<std::unique_ptr<Panel>> previous;   // menu fermé pour un titre voisin, à l'écran jusqu'au suivant
+    bool switching = false;                         // le dernier menu s'est fermé pour un titre voisin
+};
+
+MenuWindow::Keep::Keep() : impl_(std::make_unique<Impl>()) {}
+MenuWindow::Keep::~Keep() = default;
+
 int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side side, const BarLink* bar, const Live* live,
-                      MenuClose* closed) {
+                      MenuClose* closed, Keep* keep) {
     if (closed) *closed = MenuClose::Escape;
     if (model.items.empty()) return 0;
     WNDCLASSEXW wc{sizeof wc};
@@ -1061,11 +1105,22 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
     wc.lpszClassName = kClass;
     RegisterClassExW(&wc);
 
-    Session session;
-    session.env = env;
-    session.side = side;
-    session.bar = bar;
-    session.live = live;
+    // Séance gardée (barre de menus) : reprise si le rendu demandé est le même, sinon recréée.
+    std::unique_ptr<Session> local;
+    bool fresh = true;
+    if (keep) {
+        std::unique_ptr<Session>& kept = keep->impl_->session;
+        if (kept && kept->sameLook(env)) {
+            fresh = false;
+        } else {
+            keep->impl_->previous.clear();   // panneaux de l'ancienne séance
+            kept = std::make_unique<Session>();
+        }
+    } else {
+        local = std::make_unique<Session>();
+    }
+    Session& session = keep ? *keep->impl_->session : *local;
+    session.beginTrack(env, side, bar, live, !fresh && keep->impl_->switching);
     g_session = &session;
     HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, outsideClickHook, env.instance, 0);
     struct Unhook {
@@ -1075,8 +1130,10 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
             g_session = nullptr;
         }
     } unhook{hook};
-    if (!session.init()) {
+    if (fresh && !session.init()) {
         log::warn(L"Menu : initialisation graphique impossible");
+        if (keep) keep->impl_->switching = false;   // séance recréée au prochain menu
+        if (keep) keep->impl_->session.reset();
         return 0;
     }
     // Lignes enrichies : le menu principal travaille sur sa copie (valeurs modifiées et rafraîchies en direct).
@@ -1084,6 +1141,10 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
     if (!first) {
         log::warn(L"Menu : création de la fenêtre impossible");
         return 0;
+    }
+    if (keep && !keep->impl_->previous.empty()) {
+        DwmFlush();   // le nouveau menu à l'écran avant de retirer l'ancien : jamais de trou entre les deux
+        keep->impl_->previous.clear();
     }
     if (live && live->refresh) SetTimer(first->hwnd, kRefreshTimer, 500, nullptr);
 
@@ -1131,8 +1192,19 @@ int MenuWindow::track(const Env& env, const MenuModel& model, POINT anchor, Side
     }
     int result = session.result;
     if (closed) *closed = session.closed;
-    session.capture.stop();
-    session.panels.clear();
+    if (keep && session.closed == MenuClose::Switched) {
+        // Titre voisin de la barre : ce menu reste à l'écran jusqu'au premier rendu du suivant, capture comprise.
+        keep->impl_->previous = std::move(session.panels);
+        session.panels.clear();
+        keep->impl_->switching = true;
+    } else {
+        session.capture.stop();
+        session.panels.clear();
+        if (keep) {
+            keep->impl_->previous.clear();
+            keep->impl_->switching = false;
+        }
+    }
     if (env.trace) log::info(L"[trace] menu : choix %d", result);
     return result;
 }

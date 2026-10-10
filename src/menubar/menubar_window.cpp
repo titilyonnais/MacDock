@@ -1308,6 +1308,8 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
     int current = int(index), previous = -1;
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
     const std::wstring openedApp = active_.appId;   // l'app dont les menus sont ouverts
+    // Graphismes, verre et capture gardés d'un titre à l'autre : bascule instantanée, sans trou (plan 71).
+    MenuWindow::Keep keep;
     for (;;) {
         menuOpen_ = false;
         // Avant chaque titre (plan 71) : autre app au premier plan → la séance se ferme ; mise en page demandée pendant le
@@ -1347,7 +1349,7 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
             highlight_ = current;
             render(s);
             StatusCommand chosen;
-            const int r = trackStatus(s, std::size_t(current - left), barLink(s, current), chosen);
+            const int r = trackStatus(s, std::size_t(current - left), barLink(s, current), chosen, &keep);
             if (auto next = menuSwitchTarget(r)) {
                 previous = current;
                 current = *next;
@@ -1382,7 +1384,7 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
         POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(s.scale))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
         if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
-        const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link, nullptr, &lastClose_);
+        const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link, nullptr, &lastClose_, &keep);
         if (auto next = menuSwitchTarget(r)) {
             previous = current;
             current = *next;
@@ -1494,7 +1496,8 @@ MenuWindow::BarLink MenuBarApp::barLink(const Screen& s, int current) const {
     return link;
 }
 
-int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
+int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen,
+                            MenuWindow::Keep* keep) {
     const StatusKind kind = status_[j].kind;
     if (kind == StatusKind::Input) {   // la liste du menu : celle de maintenant
         inputs_ = installedLayouts();
@@ -1545,7 +1548,7 @@ int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink&
     POINT anchor{box.left, box.bottom + LONG(std::lround(s.scale))};
     ReleaseCapture();
     if (trace_) log::info(L"[trace] barre : menu d'état %d ouvert", int(kind));
-    const int r = MenuWindow::track(menuEnv(s), menu.model, anchor, MenuWindow::Side::Below, &link, &live, &lastClose_);
+    const int r = MenuWindow::track(menuEnv(s), menu.model, anchor, MenuWindow::Side::Below, &link, &live, &lastClose_, keep);
     if (r > 0)
         if (auto it = menu.actions.find(r); it != menu.actions.end()) chosen = it->second;
     return r;

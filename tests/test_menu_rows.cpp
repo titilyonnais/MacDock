@@ -12,6 +12,7 @@
 #include "../src/popup/glyphs.h"
 #include "../src/popup/menu_model.h"
 #include "../src/popup/menu_window.h"
+#include <d3d11.h>
 
 namespace {
 
@@ -420,4 +421,67 @@ TEST_CASE(menu_rows_follow_accent) {   // plan 57 : la tuile allumée du Centre 
     CHECK(count(px, 0xDB34F2) == 0);
     CHECK(count(px, 0x0091FF) > 100);   // le bleu de macOS 26, le même que Réglages
     CoUninitialize();
+}
+
+namespace {
+// Fenêtres de menu affichées (classe « MacDockMenu ») et touche envoyée au menu ouvert, depuis une minuterie du fil du
+// menu (sa boucle modale distribue les WM_TIMER).
+std::vector<HWND> menuWindows() {
+    std::vector<HWND> out;
+    EnumWindows([](HWND h, LPARAM l) {
+        wchar_t cls[32] = {};
+        GetClassNameW(h, cls, 32);
+        if (wcscmp(cls, L"MacDockMenu") == 0 && IsWindowVisible(h)) reinterpret_cast<std::vector<HWND>*>(l)->push_back(h);
+        return TRUE;
+    }, LPARAM(&out));
+    return out;
+}
+UINT g_keyToSend = 0;
+std::vector<HWND> g_seenDuringMenu;
+void CALLBACK sendKeyToMenu(HWND, UINT, UINT_PTR id, DWORD) {
+    KillTimer(nullptr, id);
+    g_seenDuringMenu = menuWindows();
+    for (HWND h : g_seenDuringMenu) PostMessageW(h, WM_KEYDOWN, g_keyToSend, 0);
+}
+} // namespace
+
+TEST_CASE(menu_window_keep_hands_off_between_bar_menus) {
+    // Plan 71 : d'un titre de la barre à l'autre, chaque menu recréait tout (graphismes, verre, capture de l'écran),
+    // ~90 ms sans aucun menu, puis un fondu. Avec une séance gardée, l'ancien menu reste affiché jusqu'au premier rendu
+    // du suivant.
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+                                        D3D11_SDK_VERSION, &device, nullptr, nullptr)));
+    md::MenuWindow::Env env;
+    env.instance = GetModuleHandleW(nullptr);
+    env.device = device.Get();
+    env.glass = false;      // verre dépoli : pas de capture de l'écran pendant les tests
+    env.activate = false;   // le menu de test ne prend pas le clavier de l'utilisateur
+    md::MenuModel m;
+    md::MenuItem a, b;
+    a.id = 1;
+    a.text = L"Un";
+    b.id = 2;
+    b.text = L"Deux";
+    m.items = {a, b};
+    md::MenuWindow::BarLink link;
+    link.titles = {RECT{0, 0, 60, 24}, RECT{60, 0, 120, 24}};
+    link.current = 0;
+    md::MenuWindow::Keep keep;
+    md::MenuClose closed = md::MenuClose::Escape;
+    g_keyToSend = VK_RIGHT;   // titre voisin
+    SetTimer(nullptr, 0, 60, sendKeyToMenu);
+    const int first = md::MenuWindow::track(env, m, POINT{10, 30}, md::MenuWindow::Side::Below, &link, nullptr, &closed, &keep);
+    CHECK(md::menuSwitchTarget(first) == std::optional<int>(1));
+    CHECK(closed == md::MenuClose::Switched);
+    const std::vector<HWND> kept = menuWindows();
+    REQUIRE(kept.size() == 1);   // l'ancien menu reste affiché en attendant le suivant
+    link.current = 1;
+    g_keyToSend = VK_ESCAPE;
+    SetTimer(nullptr, 0, 60, sendKeyToMenu);
+    md::MenuWindow::track(env, m, POINT{70, 30}, md::MenuWindow::Side::Below, &link, nullptr, &closed, &keep);
+    CHECK(closed == md::MenuClose::Escape);
+    CHECK(g_seenDuringMenu.size() == 1);   // un seul menu à l'écran : le nouveau
+    CHECK(!IsWindow(kept[0]));             // l'ancien, retiré dès que le nouveau s'est affiché
+    CHECK(menuWindows().empty());          // fin de séance : plus rien
 }
