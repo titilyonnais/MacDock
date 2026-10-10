@@ -17,6 +17,7 @@
 #include "../forcequit/force_quit_window.h"
 #include "../glass/backdrop_capture.h"
 #include "../interact/command_key.h"
+#include "../config/file_stamp.h"
 #include "../icons/icon_provider.h"
 #include "../icons/icon_worker.h"
 #include "../interact/hot_corners.h"
@@ -184,6 +185,7 @@ private:
     Metrics metrics_;
     AppModel model_;
     WindowTracker tracker_;
+    FileStamp settingsStamp_, metricsStamp_;   // fichiers du Dock à la dernière lecture
     IconProvider icons_;
     IconWorker iconWorker_;        // plan 67 : icônes du rendu courant préparées hors du fil du Dock
     double tilesWaitSince_ = 0, stacksWaitSince_ = 0;   // [diag] première image qui attendait une case, un aperçu

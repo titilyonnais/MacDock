@@ -185,6 +185,8 @@ void DockApp::loadConfig(bool initial) {
         return json::serialize(*settingsToJson(t).find("pinned"));
     };
     if (initial || pinsJson(model_.pinnedEntries()) != pinsJson(settings_.pinned)) model_.loadPinned(settings_.pinned);
+    settingsStamp_ = fileStamp(dataDir_ + L"\\settings.json");
+    metricsStamp_ = fileStamp(dataDir_ + L"\\dock-metrics.json");
     applySettings();
 }
 
@@ -463,7 +465,9 @@ void DockApp::updateGlass() {
         requestFrame();
         return;
     }
-    if (capture_.status() == BackdropCapture::Status::Off) restartCapture();
+    // Capture mise en pause exprès (Dock masqué, menu, ⌥⇥, révélation) : sa propre reprise la relance (relecture de la
+    // nuit : un rechargement des réglages la relançait, verre redessiné Dock masqué, dépoli pendant une révélation).
+    if (capture_.status() == BackdropCapture::Status::Off && !capturePaused_) restartCapture();
 }
 
 void DockApp::restartCapture() {
@@ -3152,6 +3156,11 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kConfigTimer) {
                 KillTimer(hwnd_, kConfigTimer);
+                // Le dossier est surveillé en entier, et la barre y réécrit ses récents à chaque changement d'app : rien à
+                // relire si les fichiers du Dock n'ont pas changé (relecture de la nuit).
+                if (fileStamp(dataDir_ + L"\\settings.json") == settingsStamp_ &&
+                    fileStamp(dataDir_ + L"\\dock-metrics.json") == metricsStamp_)
+                    return 0;
                 double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
                 double heightBefore = DockController::windowHeightPx(settings_, metrics_, scale_);
                 loadConfig(false);
