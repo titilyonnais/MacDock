@@ -12,8 +12,12 @@ enum class LightsMode { Standard, All, Off };
 
 struct MenuBarMetrics {   // points
     double height = 24, fontSize = 13, leftMargin = 10, titlePadding = 10, logoSize = 14;
-    double highlightHeight = 22, highlightRadius = 6, statusWidth = 30, rightMargin = 10;
+    double highlightHeight = 22, highlightRadius = 6, statusWidth = 36, rightMargin = 8.4;
     double statusIconSize = 16;   // pictogrammes d'état
+    // Ligne de base du texte, depuis le haut d'une barre de 24 avec un texte de 13 (macOS 26 : 16). Une autre hauteur
+    // garde le texte au même écart de son milieu ; une autre taille de texte met cet écart à sa mesure.
+    double textBaseline = 16;
+    double clockGap = 1.5;   // écart de plus avant l'horloge
 };
 
 struct MenuBarSettings {
@@ -33,9 +37,13 @@ struct MenuBarSettings {
     MenuBarMetrics metrics;
 };
 
-constexpr int kMenuBarSettingsVersion = 1;
+// v2 : mesures de la barre de macOS 26 (plan 64).
+constexpr int kMenuBarSettingsVersion = 2;
 
 MenuBarSettings menuBarSettingsFromJson(const json::Value& v);   // valeurs bornées, défauts si absentes ou invalides
 json::Value menuBarSettingsToJson(const MenuBarSettings& s);
+// Fichier d'une version plus ancienne : une mesure encore à l'ancien défaut prend le nouveau, une valeur choisie reste ;
+// le reste est gardé tel quel. Déjà à jour, ou pas un objet : rendu tel quel.
+json::Value migrateMenuBarSettingsJson(const json::Value& v);
 
 } // namespace md

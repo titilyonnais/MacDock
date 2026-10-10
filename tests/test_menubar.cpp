@@ -63,6 +63,27 @@ TEST_CASE(bar_hit_test_left_right_none) {
     CHECK(md::hitTestBar(narrow, narrowIn, 200).kind == md::BarHit::Kind::None);
 }
 
+TEST_CASE(bar_layout_gap_before_the_clock) {
+    // Plan 64 : sur macOS 26, l'horloge est un peu plus loin de la dernière icône que les icônes entre elles.
+    auto in = wideBar(1000);
+    in.rightMargin = 9;
+    in.rightWidths = {36, 36, 150};   // loupe, Centre de contrôle, horloge
+    in.lastGap = 3;
+    const auto l = md::layoutBar(in);
+    REQUIRE(l.rightX.size() == 3);
+    CHECK_NEAR(l.rightX[2], 841, 1e-9);   // 1000 - 9 - 150
+    CHECK_NEAR(l.rightX[1], 802, 1e-9);   // 841 - 3 - 36
+    CHECK_NEAR(l.rightX[0], 766, 1e-9);
+    CHECK(md::hitTestBar(l, in, 839.5).kind == md::BarHit::Kind::None);   // dans l'écart
+    CHECK_EQ(md::hitTestBar(l, in, 841.5).index, std::size_t(2));
+}
+
+TEST_CASE(bar_text_box_keeps_fractional_width) {
+    // Plan 64 : la largeur du texte n'est plus arrondie au point supérieur (+0,5 pt par titre en moyenne).
+    CHECK_NEAR(md::textBoxWidth(101, 2, 10), 70.5, 1e-9);   // 101 px à l'échelle 2 : 50,5 pt, plus deux marges
+    CHECK_NEAR(md::textBoxWidth(0, 1.5, 10), 20, 1e-9);
+}
+
 TEST_CASE(bar_color_white_black_luminance) {
     std::vector<std::uint8_t> white(4 * 4 * 2, 255), black(4 * 4 * 2, 0);
     CHECK_NEAR(md::stripLuminance(white.data(), 4, 2, 16), 1.0, 1e-6);
@@ -106,14 +127,19 @@ TEST_CASE(clock_formats_french_weekday_month) {
     t.wHour = 14;
     t.wMinute = 32;
     t.wSecond = 5;
-    CHECK(md::formatClock(t, {}) == L"mer. 7 oct. 14:32");
+    // Comme la barre de macOS 26 (relevé sur la VM : « Ven. 9 oct.  22:17 ») : jour avec majuscule ; entre la date et
+    // l'heure, deux espaces (avec les chiffres à chasse fixe de l'horloge, l'écart d'encre de 10,35 pt mesuré sur la VM).
+    CHECK(md::formatClock(t, {}) == L"Mer. 7 oct.  14:32");
     t.wMonth = 2;
     t.wDayOfWeek = 0;
     t.wHour = 9;
     t.wMinute = 5;
-    CHECK(md::formatClock(t, {}) == L"dim. 7 févr. 9:05");
+    CHECK(md::formatClock(t, {}) == L"Dim. 7 févr.  9:05");
     t.wMonth = 8;
-    CHECK(md::formatClock(t, {false, true}) == L"7 août 9:05");
+    CHECK(md::formatClock(t, {false, true}) == L"7 août  9:05");
+    CHECK(md::formatClock(t, {true, false}) == L"Dim.  9:05");   // extrapolé : la VM n'a montré que le format complet
+    CHECK(md::formatClock(t, {true, true, true, true}) == L"Dim. 7 août  9:05:05");
+    CHECK(md::formatClock(t, {true, true, false, false}) == L"Dim. 7 août  9:05 AM");
     CHECK(md::formatClock(t, {false, false}) == L"9:05");
 }
 
@@ -202,6 +228,22 @@ TEST_CASE(foreground_app) {
     CHECK(md::classifyForeground(L"Notepad", L"notepad.exe", false) == md::ForegroundKind::App);
 }
 
+TEST_CASE(clock_parses_snapshot_time) {
+    // Plan 64 : --snapshot --time fixe l'horloge, pour comparer à la capture de la VM (« Ven. 9 oct.  22:17 »).
+    const auto t = md::parseClockTime(L"2026-10-09T22:17");
+    REQUIRE(t.has_value());
+    CHECK_EQ(int(t->wYear), 2026);
+    CHECK_EQ(int(t->wMonth), 10);
+    CHECK_EQ(int(t->wDay), 9);
+    CHECK_EQ(int(t->wHour), 22);
+    CHECK_EQ(int(t->wMinute), 17);
+    CHECK_EQ(int(t->wDayOfWeek), 5);   // vendredi
+    CHECK(md::formatClock(*t, {}) == L"Ven. 9 oct.  22:17");
+    CHECK(!md::parseClockTime(L"2026-13-09T22:17"));   // mois impossible
+    CHECK(!md::parseClockTime(L"2026-10-09T25:17"));
+    CHECK(!md::parseClockTime(L"hier"));
+}
+
 TEST_CASE(menubar_settings_roundtrip) {
     md::MenuBarSettings s;
     s.autohide = true;
@@ -218,7 +260,7 @@ TEST_CASE(menubar_settings_roundtrip) {
     CHECK(back.clock.weekday);
     CHECK(!back.showSound);
     CHECK_NEAR(back.metrics.height, 30, 1e-9);
-    CHECK_NEAR(md::menuBarSettingsToJson(s).find("version")->asNumber(0), 1, 1e-9);
+    CHECK_NEAR(md::menuBarSettingsToJson(s).find("version")->asNumber(0), 2, 1e-9);
 }
 
 TEST_CASE(menubar_settings_clamped) {
@@ -236,6 +278,50 @@ TEST_CASE(menubar_settings_clamped) {
     auto d = md::menuBarSettingsFromJson(md::json::Value(42));
     CHECK_NEAR(d.metrics.height, 24, 1e-9);
     CHECK(d.showSound);
+}
+
+TEST_CASE(menubar_settings_measures_of_macos_26) {
+    // Plan 64 : mesures de la barre de macOS 26 (VM du 9 octobre). Ligne de base du texte et écart avant l'horloge :
+    // nouvelles mesures, lues, bornées et écrites comme les autres.
+    const md::MenuBarMetrics m;
+    CHECK_NEAR(m.statusWidth, 36, 1e-9);
+    CHECK_NEAR(m.rightMargin, 8.4, 1e-9);
+    CHECK_NEAR(m.textBaseline, 16, 1e-9);
+    CHECK_NEAR(m.clockGap, 1.5, 1e-9);
+    md::MenuBarSettings s;
+    s.metrics.textBaseline = 15.5;
+    s.metrics.clockGap = 4;
+    const auto back = md::menuBarSettingsFromJson(md::menuBarSettingsToJson(s));
+    CHECK_NEAR(back.metrics.textBaseline, 15.5, 1e-9);
+    CHECK_NEAR(back.metrics.clockGap, 4, 1e-9);
+    const auto wild = md::menuBarSettingsFromJson(*md::json::parse(R"({"metrics": {"textBaseline": 900, "clockGap": -5}})"));
+    CHECK_NEAR(wild.metrics.textBaseline, 48, 1e-9);
+    CHECK_NEAR(wild.metrics.clockGap, 0, 1e-9);
+}
+
+TEST_CASE(menubar_settings_v1_measures_follow_new_defaults) {
+    // Une mesure encore à l'ancien défaut prend le nouveau ; une valeur choisie reste ; le reste du fichier ne bouge pas.
+    const auto v1 = md::json::parse(
+        R"({"version": 1, "autohide": true, "metrics": {"statusWidth": 30, "rightMargin": 10, "leftMargin": 12}})");
+    REQUIRE(v1.has_value());
+    const md::json::Value v2 = md::migrateMenuBarSettingsJson(*v1);
+    CHECK(v2.find("version") && v2.find("version")->asNumber(0) == 2);
+    CHECK(v2.find("autohide") && v2.find("autohide")->asBool(false));
+    const md::json::Value* m = v2.find("metrics");
+    REQUIRE(m != nullptr);
+    CHECK_NEAR(m->find("statusWidth")->asNumber(0), 36, 1e-9);
+    CHECK_NEAR(m->find("rightMargin")->asNumber(0), 8.4, 1e-9);
+    CHECK_NEAR(m->find("leftMargin")->asNumber(0), 12, 1e-9);
+    // Choisies par l'utilisateur (fichier sans version : v1) : gardées.
+    const auto mine = md::migrateMenuBarSettingsJson(*md::json::parse(R"({"metrics": {"statusWidth": 32, "rightMargin": 14}})"));
+    CHECK_NEAR(mine.find("metrics")->find("statusWidth")->asNumber(0), 32, 1e-9);
+    CHECK_NEAR(mine.find("metrics")->find("rightMargin")->asNumber(0), 14, 1e-9);
+    CHECK(mine.find("version") && mine.find("version")->asNumber(0) == 2);
+    // Déjà en v2 : 30 est un choix, pas un ancien défaut.
+    const auto chosen = md::migrateMenuBarSettingsJson(*md::json::parse(R"({"version": 2, "metrics": {"statusWidth": 30}})"));
+    CHECK_NEAR(chosen.find("metrics")->find("statusWidth")->asNumber(0), 30, 1e-9);
+    // Pas un objet : rendu tel quel.
+    CHECK(md::migrateMenuBarSettingsJson(md::json::Value(42)).isNumber());
 }
 
 // ---- Menus de la barre ----

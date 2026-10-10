@@ -3,7 +3,8 @@
 //   MacMenuBar.exe --quit         ferme la barre en cours d'exécution
 //   MacMenuBar.exe --trace        journalise l'app active, la couleur du texte, les menus (diagnostic)
 //   MacMenuBar.exe --lights-snapshot f.png   planche des feux tricolores (aucune fenêtre, aucun réglage)
-//   MacMenuBar.exe --snapshot f.png [--wallpaper fond.png] [--app Nom] [--theme light|dark] [--open k]
+//   MacMenuBar.exe --snapshot f.png [--wallpaper fond.png] [--app Nom] [--theme light|dark] [--open k] [--scale 1]
+//                  [--time 2026-10-09T22:17]
 //                                 rendu hors écran de la barre (k : titre dont le menu est ouvert)
 //   MacMenuBar.exe --hud-snapshot f.png [--kind volume|brightness] [--level x] [--muted] [--theme light|dark]
 //                                 pastille du volume ou de la luminosité (aucune fenêtre, rien n'est réglé)
@@ -55,6 +56,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         if (wcscmp(argv[i], L"--app") == 0) options.app = argv[i + 1];
         if (wcscmp(argv[i], L"--theme") == 0) options.dark = wcscmp(argv[i + 1], L"dark") == 0;
         if (wcscmp(argv[i], L"--open") == 0) options.open = _wtoi(argv[i + 1]);
+        if (wcscmp(argv[i], L"--scale") == 0) options.scale = float(_wtof(argv[i + 1]));
+        if (wcscmp(argv[i], L"--time") == 0) options.time = md::parseClockTime(argv[i + 1]);
     }
     LocalFree(argv);
     if (!lightsSnapshot.empty()) {   // aucune fenêtre, aucun réglage lu ni écrit

@@ -89,6 +89,18 @@ TEST_CASE(settings_backup_export_import_roundtrip) {
     CHECK(md::importSettings(other, *md::json::parse(R"({"macdockBackup":1,"settings":[1,2]})")) == md::ImportResult::Invalid);
 }
 
+TEST_CASE(settings_backup_import_migrates_the_bar) {
+    // Plan 64 : une sauvegarde d'avant (barre en version 1) s'importe migrée, comme les réglages du Dock.
+    const std::wstring dir = freshDir(L"import-v1");
+    const md::json::Value backup =
+        *md::json::parse(R"({"macdockBackup":1,"menubar":{"version":1,"metrics":{"statusWidth":30,"rightMargin":10}}})");
+    REQUIRE(md::importSettings(dir, backup) == md::ImportResult::Ok);
+    const md::json::Value f = md::loadJsonFile(dir + L"/menubar.json").value;
+    CHECK(f.find("version") && f.find("version")->asNumber(0) == 2);
+    REQUIRE(f.find("metrics") != nullptr);
+    CHECK_NEAR(f.find("metrics")->find("statusWidth")->asNumber(0), 36.0, 1e-9);
+}
+
 TEST_CASE(settings_backup_refuses_broken_files_without_side_effects) {
     // Relecture du plan 42 : un settings.json invalide s'exportait en « settings »: {} (réimporté, il effaçait tout) ;
     // un fichier absent n'est pas exporté du tout.

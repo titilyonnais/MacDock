@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 
 namespace md {
 
@@ -81,7 +80,7 @@ std::size_t trayFit(const BarLayoutInput& in, std::size_t trayCount, double tray
     if (trayWidth <= 0) return trayCount;
     double kept = 0;
     for (std::size_t i = 0; i < in.leftWidths.size() && i < in.keepLeft; ++i) kept += in.leftWidths[i];
-    const double right = std::accumulate(in.rightWidths.begin(), in.rightWidths.end(), 0.0);
+    const double right = rightPartWidth(in);
     const double room = in.barWidth - in.leftMargin - in.rightMargin - kept - in.minGap - right;
     if (room <= 0) return 0;
     return std::min(trayCount, std::size_t(std::floor(room / trayWidth)));

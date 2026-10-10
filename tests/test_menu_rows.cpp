@@ -4,6 +4,9 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <array>
+#include <cmath>
+
 #include "minitest.h"
 #include "../src/calib/png_io.h"
 #include "../src/popup/glyphs.h"
@@ -141,6 +144,114 @@ TEST_CASE(glyphs_draw_every_glyph) {
             if (opaque < 12) fprintf(stderr, "pictogramme %d vide (%d)\n", g, opaque);
             CHECK(opaque >= 12);
         }
+    }
+    CoUninitialize();
+}
+
+namespace {
+// Pictogramme dessiné à l'échelle k dans une case de 16 pt, encre opaque : couverture (0 à 1) de chaque pixel.
+struct GlyphImage {
+    int k = 1, n = 0;
+    std::vector<float> cov;
+    float at(double xPt, double yPt) const {   // couverture du pixel qui contient ce point
+        const int x = int(xPt * k), y = int(yPt * k);
+        return x >= 0 && y >= 0 && x < n && y < n ? cov[size_t(y) * n + x] : 0.0f;
+    }
+    // Encre (pt) le long d'un segment, échantillonnée finement (interpolation bilinéaire).
+    double inkAlong(double x0, double y0, double x1, double y1) const {
+        const double len = std::hypot(x1 - x0, y1 - y0), step = 0.02;
+        double sum = 0;
+        for (double t = step / 2; t < len; t += step) {
+            const double x = (x0 + (x1 - x0) * t / len) * k - 0.5, y = (y0 + (y1 - y0) * t / len) * k - 0.5;
+            const int xi = int(std::floor(x)), yi = int(std::floor(y));
+            const double fx = x - xi, fy = y - yi;
+            auto c = [&](int a, int b) { return a >= 0 && b >= 0 && a < n && b < n ? double(cov[size_t(b) * n + a]) : 0.0; };
+            sum += (c(xi, yi) * (1 - fx) * (1 - fy) + c(xi + 1, yi) * fx * (1 - fy) + c(xi, yi + 1) * (1 - fx) * fy +
+                    c(xi + 1, yi + 1) * fx * fy) * step;
+        }
+        return sum;
+    }
+    // Boîte de l'encre à 50 % (pt) : gauche, haut, droite, bas.
+    std::array<double, 4> box() const {
+        int l = n, t = n, r = -1, b = -1;
+        for (int y = 0; y < n; ++y)
+            for (int x = 0; x < n; ++x)
+                if (cov[size_t(y) * n + x] >= 0.5f) {
+                    l = std::min(l, x), t = std::min(t, y), r = std::max(r, x), b = std::max(b, y);
+                }
+        return {double(l) / k, double(t) / k, double(r + 1) / k, double(b + 1) / k};
+    }
+};
+
+GlyphImage drawAlone(md::Glyph g, int k) {
+    using Microsoft::WRL::ComPtr;
+    GlyphImage out;
+    out.k = k;
+    out.n = 16 * k;
+    const UINT n = UINT(out.n);
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IWICBitmap> bmp;
+    ComPtr<ID2D1RenderTarget> rt;
+    ComPtr<ID2D1SolidColorBrush> ink;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf())) ||
+        FAILED(wic->CreateBitmap(n, n, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bmp)) ||
+        FAILED(d2d->CreateWicBitmapRenderTarget(
+            bmp.Get(), D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), 96, 96), &rt)))
+        return out;
+    rt->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), &ink);
+    rt->BeginDraw();
+    rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+    md::drawGlyph(rt.Get(), g, D2D1::RectF(0, 0, float(n), float(n)), ink.Get());
+    if (FAILED(rt->EndDraw())) return out;
+    std::vector<BYTE> px(size_t(n) * n * 4);
+    WICRect all{0, 0, int(n), int(n)};
+    bmp->CopyPixels(&all, n * 4, UINT(px.size()), px.data());
+    out.cov.resize(size_t(n) * n);
+    for (size_t i = 0; i < out.cov.size(); ++i) out.cov[i] = float(px[i * 4 + 3]) / 255.0f;
+    return out;
+}
+} // namespace
+
+TEST_CASE(glyphs_search_measured_on_macos_26) {
+    // Plan 64 : loupe de la barre de macOS 26, ajustée sur la capture de la VM (en points d'une case de 16, la case
+    // centrée sur la barre de 24) : anneau fin, manche plus épais, un peu plus bas que le milieu de la barre.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const GlyphImage g = drawAlone(md::Glyph::Search, 8);
+        REQUIRE(!g.cov.empty());
+        const auto b = g.box();
+        CHECK_NEAR(b[2] - b[0], 12.52, 0.25);        // largeur
+        CHECK_NEAR(b[3] - b[1], 12.66, 0.25);        // hauteur
+        CHECK_NEAR((b[0] + b[2]) / 2, 8.0, 0.25);    // centrée dans sa case
+        CHECK_NEAR(b[1], 2.36, 0.25);                // haut : 6,36 dans la barre
+        CHECK_NEAR(g.inkAlong(0, 7.525, 6.9, 7.525), 1.32, 0.1);   // trait de l'anneau, à gauche
+        // Manche à 45,6° : encre le long d'une perpendiculaire, à 7,5 pt du centre de l'anneau (6,9 ; 7,525).
+        const double a = 45.64 * 3.14159265358979 / 180, mx = 6.905 + 7.5 * std::cos(a), my = 7.525 + 7.5 * std::sin(a);
+        CHECK_NEAR(g.inkAlong(mx - 2 * std::sin(a), my + 2 * std::cos(a), mx + 2 * std::sin(a), my - 2 * std::cos(a)), 1.90, 0.12);
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(glyphs_control_center_measured_on_macos_26) {
+    // Plan 64 : deux interrupteurs, comme macOS 26 (ajustés sur la VM) : en haut, piste creuse et bouton plein à gauche ;
+    // en bas, piste pleine et bouton creux à droite.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        const GlyphImage g = drawAlone(md::Glyph::ControlCenter, 8);
+        REQUIRE(!g.cov.empty());
+        const auto b = g.box();
+        CHECK_NEAR(b[2] - b[0], 13.19, 0.25);
+        CHECK_NEAR(b[3] - b[1], 13.30, 0.25);
+        CHECK_NEAR((b[0] + b[2]) / 2, 8.0, 0.25);
+        CHECK_NEAR(b[1], 1.69, 0.25);                               // haut : 5,69 dans la barre
+        CHECK_NEAR(g.inkAlong(12, 0, 12, 8.9), 2 * 1.27, 0.15);     // piste du haut, à droite : deux traits de contour
+        CHECK(g.at(5.7, 4.93) > 0.95f);                             // bouton plein
+        CHECK(g.at(5.7, 3.2) < 0.25f);                              // jour entre le contour et le bouton
+        CHECK(g.at(4.0, 12.08) > 0.95f);                            // piste du bas : pleine à gauche
+        CHECK(g.at(10.65, 12.09) < 0.05f);                          // bouton creux : vide
+        CHECK_NEAR(g.inkAlong(12.9, 12.09, 16, 12.09), 1.21, 0.1);  // bord à droite du bouton creux
     }
     CoUninitialize();
 }

@@ -158,12 +158,31 @@ void battery(ID2D1RenderTarget* rt, const Frame& f, ID2D1Brush* ink, float level
     }
 }
 
+// Deux interrupteurs, comme le Centre de contrôle de la barre de macOS 26 (cotes ajustées sur une capture de la VM, en
+// points d'une case de 16 centrée sur la barre de 24) : en haut, piste creuse et bouton plein à gauche ; en bas, piste
+// pleine et bouton creux à droite.
 void controlCenter(ID2D1RenderTarget* rt, const Frame& f, ID2D1Brush* ink) {
-    const float w = f.len(0.07f);
-    rt->DrawRoundedRectangle(rrect(f, 0.08f, 0.16f, 0.92f, 0.44f, 0.14f), ink, w);
-    rt->FillEllipse(D2D1::Ellipse(f.p(0.22f, 0.30f), f.len(0.09f), f.len(0.09f)), ink);
-    rt->DrawRoundedRectangle(rrect(f, 0.08f, 0.56f, 0.92f, 0.84f, 0.14f), ink, w);
-    rt->FillEllipse(D2D1::Ellipse(f.p(0.78f, 0.70f), f.len(0.09f), f.len(0.09f)), ink);
+    auto q = [](float pt) { return pt / 16; };
+    auto pill = [&](float l, float t, float r, float b) { return rrect(f, q(l), q(t), q(r), q(b), q((b - t) / 2)); };
+    const float left = 1.403f, right = 14.597f;
+    // Piste du haut (6,48 de haut) : contour de 1,27 à l'intérieur ; bouton plein, à 0,48 du contour.
+    const float top = 1.688f, mid = 8.165f, stroke = 1.267f, gap = 0.482f;
+    rt->DrawRoundedRectangle(pill(left + stroke / 2, top + stroke / 2, right - stroke / 2, mid - stroke / 2), ink, f.len(q(stroke)));
+    rt->FillRoundedRectangle(pill(left + stroke + gap, top + stroke + gap, left + 6.836f, mid - stroke - gap), ink);
+    // Piste du bas (5,80 de haut), pleine ; bouton creux à 1,21 de son bord.
+    const float low = 9.186f, bottom = 14.985f, edge = 1.212f;
+    ComPtr<ID2D1Factory> fac;
+    rt->GetFactory(&fac);
+    ComPtr<ID2D1RoundedRectangleGeometry> track, knob;
+    fac->CreateRoundedRectangleGeometry(pill(left, low, right, bottom), &track);
+    fac->CreateRoundedRectangleGeometry(pill(left + 6.515f, low + edge, right - edge, bottom - edge), &knob);
+    auto g = path(rt);
+    ComPtr<ID2D1GeometrySink> sink;
+    if (track && knob && g && SUCCEEDED(g->Open(&sink))) {
+        track->CombineWithGeometry(knob.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get());
+        sink->Close();
+        rt->FillGeometry(g.Get(), ink);
+    }
 }
 
 } // namespace
@@ -220,10 +239,15 @@ void drawGlyph(ID2D1RenderTarget* rt, Glyph g, D2D1_RECT_F box, ID2D1Brush* ink,
             polygon(rt, f, {{0.5f, 0.56f}, {0.74f, 0.90f}, {0.26f, 0.90f}}, ink);
             break;
         case Glyph::Battery: battery(rt, f, ink, level, alt); break;
-        case Glyph::Search:
-            rt->DrawEllipse(D2D1::Ellipse(f.p(0.42f, 0.42f), f.len(0.26f), f.len(0.26f)), ink, f.len(0.1f));
-            line(rt, f, 0.62f, 0.62f, 0.86f, 0.86f, ink, f.len(0.12f));
+        case Glyph::Search: {
+            // Loupe de la barre de macOS 26 (cotes ajustées sur une capture de la VM, en points d'une case de 16) :
+            // anneau de 4,50 de rayon au trait de 1,32 ; manche à 45,6°, jusqu'à 9,16 du centre, au trait de 1,90.
+            const float cx = 6.905f / 16, cy = 7.525f / 16, r = 4.503f / 16, end = 9.157f / 16;
+            const float a = 45.64f * kPi / 180, ca = std::cos(a), sa = std::sin(a);
+            rt->DrawEllipse(D2D1::Ellipse(f.p(cx, cy), f.len(r), f.len(r)), ink, f.len(1.322f / 16));
+            line(rt, f, cx + r * ca, cy + r * sa, cx + end * ca, cy + end * sa, ink, f.len(1.898f / 16));
             break;
+        }
         case Glyph::ControlCenter: controlCenter(rt, f, ink); break;
         case Glyph::Play: polygon(rt, f, {{0.28f, 0.16f}, {0.82f, 0.5f}, {0.28f, 0.84f}}, ink); break;
         case Glyph::Pause:

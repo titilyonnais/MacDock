@@ -63,7 +63,7 @@ ImportResult importSettings(const std::wstring& dir, const json::Value& backup) 
     if ((dock && !dock->isObject()) || (bar && !bar->isObject()) || (!dock && !bar)) return ImportResult::Invalid;
     bool ok = true;
     if (dock) ok = saveJsonFileAtomic(dockPath(dir), migrateSettingsJson(*dock)) && ok;
-    if (bar) ok = saveJsonFileAtomic(barPath(dir), *bar) && ok;
+    if (bar) ok = saveJsonFileAtomic(barPath(dir), migrateMenuBarSettingsJson(*bar)) && ok;
     return ok ? ImportResult::Ok : ImportResult::WriteFailed;
 }
 
