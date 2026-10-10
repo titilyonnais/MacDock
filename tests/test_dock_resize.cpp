@@ -41,3 +41,12 @@ TEST_CASE(dock_resize_release_ends_the_drag_first) {
     CHECK(md::leftButtonUpAction(false, true) == ButtonUp::Swallow);
     CHECK(md::leftButtonUpAction(false, false) == ButtonUp::Pointer);
 }
+
+TEST_CASE(dock_resize_setting_from_a_full_dock) {
+    // Essai réel du 10 octobre : Dock plein (réglé à 59, affiché à 58,26), glisser de 20 pt vers le bas → 38,26 enregistré.
+    // Le réglage est toujours un point entier ; sans mouvement, il ne change pas (le Dock affiché à 58,26 reste à 59).
+    CHECK_NEAR(md::resizedSetting(59, 58.26, 58.26), 59, 1e-9);
+    CHECK_NEAR(md::resizedSetting(59, 58.26, 38.26), 38, 1e-9);
+    CHECK_NEAR(md::resizedSetting(48, 48, 58), 58, 1e-9);
+    CHECK_NEAR(md::resizedSetting(48, 48, 48), 48, 1e-9);
+}

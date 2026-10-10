@@ -12,6 +12,10 @@ double resizedTileSize(double startTile, double startAxis, double nowAxis, DockP
 // Points entiers, arrondis vers la taille de départ : le tremblement d'un simple clic ne change rien.
 double snappedTileSize(double startTile, double tile);
 
+// Réglage pendant le glisser : setting (avant le glisser) tant que la taille n'a pas bougé de la taille affichée au départ
+// (Dock plein : affiché plus petit que réglé), sinon la nouvelle taille en points entiers.
+double resizedSetting(double setting, double startTile, double tile);
+
 // Relâchement du bouton sur le Dock : le glisser de la poignée se termine avant tout (sinon un relâchement à avaler,
 // celui d'un appui qui a fermé Spotlight, le laissait bloqué) ; puis le relâchement à avaler ; sinon le clic ou le
 // glisser d'une icône.

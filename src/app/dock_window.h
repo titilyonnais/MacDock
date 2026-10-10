@@ -307,8 +307,9 @@ private:
     FullscreenWatch fullscreenWatch_;   // la fenêtre en plein écran : sa sortie est vue tout de suite
     bool swallowClick_ = false;   // appui qui a fermé Spotlight : son relâchement ne clique pas
     struct Resize {
-        double startTile = 48, startAxis = 0;
-        double maxTile = 128;   // la plus grande taille qui tient sur l'axe
+        double setting = 48;                   // réglage avant le glisser
+        double startTile = 48, startAxis = 0;  // taille affichée au départ (Dock plein : plus petite que le réglage)
+        double maxTile = 128;                  // la plus grande taille qui tient sur l'axe
     };
     std::optional<Resize> resize_;   // glisser d'un séparateur en cours
     bool loggedHidden_ = false;

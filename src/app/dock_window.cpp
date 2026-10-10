@@ -1061,7 +1061,8 @@ void DockApp::beginResize() {
     POINT cursor{};
     GetCursorPos(&cursor);
     // Depuis la taille affichée (Dock rétréci compris), jamais au-delà de ce qui tient (relecture du plan 70).
-    resize_ = Resize{controller_.fittingTileSize(settings_.tileSize), resizeAxis(cursor), controller_.fittingTileSize(128)};
+    resize_ = Resize{settings_.tileSize, controller_.fittingTileSize(settings_.tileSize), resizeAxis(cursor),
+                     controller_.fittingTileSize(128)};
     controller_.setResizing(true);
     reposition();   // fenêtre à la hauteur de la taille 128 le temps du glisser
     requestFrame();
@@ -1073,9 +1074,10 @@ void DockApp::updateResize() {
     POINT cursor{};
     if (!GetCursorPos(&cursor)) return;
     // Points entiers vers la taille de départ : le tremblement d'un simple clic ne change rien.
-    const double tile = snappedTileSize(resize_->startTile, resizedTileSize(resize_->startTile, resize_->startAxis,
-                                                                            resizeAxis(cursor), settings_.position,
-                                                                            resize_->maxTile));
+    const double moved = snappedTileSize(resize_->startTile, resizedTileSize(resize_->startTile, resize_->startAxis,
+                                                                             resizeAxis(cursor), settings_.position,
+                                                                             resize_->maxTile));
+    const double tile = resizedSetting(resize_->setting, resize_->startTile, moved);   // réglage en points entiers
     if (tile == settings_.tileSize) return;
     settings_.tileSize = tile;
     controller_.setSettings(settings_);
@@ -1085,7 +1087,7 @@ void DockApp::updateResize() {
 void DockApp::endResize() {
     if (!resize_) return;
     updateResize();   // dernière position du pointeur
-    const double from = resize_->startTile;
+    const double from = resize_->setting;
     resize_.reset();
     controller_.setResizing(false);
     if (GetCapture() == hwnd_) ReleaseCapture();

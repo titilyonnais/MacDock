@@ -16,6 +16,10 @@ double resizedTileSize(double startTile, double startAxis, double nowAxis, DockP
 
 double snappedTileSize(double startTile, double tile) { return startTile + std::trunc(tile - startTile); }
 
+double resizedSetting(double setting, double startTile, double tile) {
+    return tile == startTile ? setting : std::round(tile);
+}
+
 ButtonUp leftButtonUpAction(bool resizing, bool swallowPending) {
     if (resizing) return ButtonUp::EndResize;
     return swallowPending ? ButtonUp::Swallow : ButtonUp::Pointer;
