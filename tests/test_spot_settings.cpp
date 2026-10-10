@@ -89,6 +89,32 @@ TEST_CASE(spot_settings_word_starts_ranked) {   // « son » ne trouve pas « Pe
     CHECK(!md::exactSettingTitle(pages[3], L"son"));
 }
 
+TEST_CASE(spot_settings_spaces_hyphens_and_plurals) {   // mineurs du plan 55
+    CHECK(firstTitle(L"wi fi") == L"Wi-Fi");
+    CHECK(firstTitle(L"wifi") == L"Wi-Fi");
+    CHECK(firstTitle(L"wi-fi") == L"Wi-Fi");
+    CHECK(firstTitle(L"haut parleurs") == L"Son");   // mot-clé « haut-parleurs »
+    CHECK(firstTitle(L"hautparleurs") == L"Son");
+    CHECK(firstTitle(L"capture d'écran") == L"Captures d'écran");
+    CHECK(firstTitle(L"capture d’écran") == L"Captures d'écran");   // apostrophe courbe
+    // Gardes : un mot court n'est pas pris pour un pluriel ; un mot inconnu ne trouve toujours rien.
+    const auto& pages = md::settingsPages();
+    for (std::size_t i : md::searchSettings(pages, L"pas")) CHECK(pages[i].title != std::wstring(L"Pavé tactile"));
+    // Le dernier mot tapé reste tel quel (relecture) : « tous » n'est pas « tou », « docs » n'est pas « doc(k) ».
+    CHECK(firstTitle(L"tous").empty());
+    CHECK(firstTitle(L"docs").empty());
+    for (std::size_t i : md::searchSettings(pages, L"mods")) CHECK(pages[i].title != std::wstring(L"Mode Avion"));
+    CHECK(md::searchSettings(pages, L"zorglub").empty());
+    // Nom exact aux espaces et pluriels près : la section passe devant une app qui ne fait que contenir ces mots.
+    for (const md::SettingsPage& p : pages) {
+        if (p.title == std::wstring(L"Captures d'écran")) {
+            CHECK(!md::exactSettingTitle(p, L"capture d'écran"));
+            CHECK(md::exactSettingTitle(p, L"capture d'écran", true));   // second recours, aux pluriels près
+        }
+        if (p.title == std::wstring(L"Wi-Fi")) CHECK(md::exactSettingTitle(p, L"wi fi"));
+    }
+}
+
 TEST_CASE(spot_settings_hyphens_optional) {   // « wifi » pour « Wi-Fi », « email » pour « E-mail et comptes »
     const std::vector<md::SettingsPage> pages{
         {false, L"Wi-Fi", L"ms-settings:network-wifi", L""},

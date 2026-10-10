@@ -126,7 +126,8 @@ const std::vector<Unit>& units() {
     return table;
 }
 
-bool isSpace(wchar_t c) { return c == L' ' || c == L'\t' || c == L' ' || c == L' '; }
+// Espaces, y compris insécable (U+00A0), fine insécable (U+202F) et fine (U+2009), entre les milliers.
+bool isSpace(wchar_t c) { return c == L' ' || c == L'\t' || c == L' ' || c == L' ' || c == L'\u2009'; }
 bool isDigit(wchar_t c) { return c >= L'0' && c <= L'9'; }
 
 // Forme comparée aux noms : minuscules, sans accents, « œ » en « oe », apostrophe droite.
@@ -183,7 +184,8 @@ const Unit* ladderTarget(const Unit& from, double amount) {
 std::optional<double> leadingNumber(const std::wstring& s, std::size_t& pos) {
     while (pos < s.size() && isSpace(s[pos])) ++pos;
     bool negative = false;
-    if (pos < s.size() && (s[pos] == L'-' || s[pos] == L'−' || s[pos] == L'+')) {
+    // Moins : trait d'union, signe moins (U+2212) ou tiret demi-cadratin (U+2013) d'un traitement de texte.
+    if (pos < s.size() && (s[pos] == L'-' || s[pos] == L'−' || s[pos] == L'\u2013' || s[pos] == L'+')) {
         negative = s[pos] != L'+';
         ++pos;
     }
@@ -215,8 +217,9 @@ std::wstring joined(const std::vector<std::wstring>& words, std::size_t from, st
     return out;
 }
 
-bool isConnector(const std::wstring& w) {
-    return w == L"en" || w == L"in" || w == L"to" || w == L"vers" || w == L"→" || w == L"=";
+bool isConnector(const std::wstring& w) {   // casse indifférente : « EN », « In », « TO »
+    const std::wstring f = foldName(w);
+    return f == L"en" || f == L"in" || f == L"to" || f == L"vers" || w == L"→" || w == L"=";
 }
 
 std::optional<UnitConversion> result(double amount, const Unit& from, const Unit& to) {

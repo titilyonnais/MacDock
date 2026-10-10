@@ -282,6 +282,28 @@ TEST_CASE(spot_results_real_settings_table) {   // la vraie table, comme dans le
     CHECK(k[1].items[0].kind == md::SpotKind::Setting && k[1].items[0].target == L"ms-settings:keyboard");
 }
 
+TEST_CASE(spot_results_exact_setting_two_passes) {   // finitions du plan 55 : nom exact, puis exact aux pluriels près
+    // « son » : la page Son de Windows (nom exact tel quel) passe devant la section Sons de MacDock.
+    const auto s = md::spotlightResults(L"son", {}, {});
+    REQUIRE(!s.empty());
+    CHECK(s[0].title == L"Meilleur résultat" && s[0].items[0].target == L"ms-settings:sound");
+    // « capture d'écran » : la section Captures d'écran (exacte aux pluriels près) passe devant l'app qui contient ces mots.
+    const std::vector<md::AppEntry> apps{{L"Outil Capture d'écran", L"snip!App"}};
+    const auto c = md::spotlightResults(L"capture d'écran", apps, {});
+    REQUIRE(c.size() >= 2);
+    CHECK(c[0].items[0].kind == md::SpotKind::Pane && c[0].items[0].target == L"screenshots");
+    CHECK(c[1].title == L"Applications" && c[1].items[0].title == L"Outil Capture d'écran");
+    // « wi fi » : Wi-Fi, aux espaces près.
+    const auto w = md::spotlightResults(L"wi fi", {}, {});
+    REQUIRE(!w.empty());
+    CHECK(w[0].items[0].kind == md::SpotKind::Setting && w[0].items[0].title == L"Wi-Fi");
+    // « tous » n'est pas un pluriel : aucun faux nom de réglage devant les documents.
+    const std::vector<md::SpotItem> files{{md::SpotKind::File, L"tous les comptes.pdf", L"C:\\x", L"C:\\x\\tous les comptes.pdf"}};
+    const auto t = md::spotlightResults(L"tous", {}, files);
+    REQUIRE(!t.empty());
+    CHECK(t[0].title == L"Documents");
+}
+
 TEST_CASE(spot_results_exact_app_beats_setting) {   // relecture du plan 55 : l'app Caméra reste en tête
     const std::vector<md::SettingsPage> pages{{false, L"Caméra", L"ms-settings:privacy-webcam", L"webcam"}};
     const std::vector<md::AppEntry> apps{{L"Caméra", L"camera!App"}};
