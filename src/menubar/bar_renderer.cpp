@@ -14,6 +14,14 @@ namespace {
 
 D2D1_COLOR_F rgba(float r, float g, float b, float a) { return D2D1::ColorF(r, g, b, a); }
 
+// Distance du haut de la mise en page à la ligne de base de sa (seule) ligne.
+float firstBaseline(IDWriteTextLayout* l) {
+    DWRITE_LINE_METRICS lm{};
+    UINT32 lines = 0;
+    l->GetLineMetrics(&lm, 1, &lines);
+    return lm.baseline;
+}
+
 } // namespace
 
 bool isDeviceLost(HRESULT hr) {
@@ -129,6 +137,9 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
     rt->CreateSolidColorBrush(f.darkText ? rgba(0, 0, 0, 0.10f * o) : rgba(1, 1, 1, 0.22f * o), &capsule);
     const float shadowDy = std::max(1.0f, std::round(s));
     const bool withShadow = !f.darkText;
+    // Ligne de base des textes : textBaseline (barre de 24) au même écart du milieu de la barre, sur un pixel entier
+    // (Direct2D y cale le texte).
+    const float baseline = std::round(height / 2 + float(m.textBaseline - MenuBarMetrics{}.height / 2) * s);
 
     for (const auto& it : f.items) {
         if (it.highlighted) {
@@ -221,7 +232,7 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
         DWRITE_TEXT_METRICS tm{};
         l->GetMetrics(&tm);
         const float x = std::round(it.x + (it.width - tm.widthIncludingTrailingWhitespace) / 2);
-        const float y = std::round((height - tm.height) / 2);
+        const float y = baseline - firstBaseline(l.Get());
         if (withShadow) rt->DrawTextLayout({x, y + shadowDy}, l.Get(), shadow.Get());
         rt->DrawTextLayout({x, y}, l.Get(), ink.Get());
     }

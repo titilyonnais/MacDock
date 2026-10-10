@@ -50,9 +50,21 @@ les mesures de celle de macOS 26, relevées sur ta VM le 9 octobre.
 - [x] 1. **Horloge** (`clock_format.*`) : majuscule et deux espaces. Tests.
 - [x] 2. **Réglages** (`menubar_settings.*`) : nouveaux défauts, `textBaseline` et `clockGap`, migration v1 → v2. Tests.
 - [x] 3. **Mise en page** (`bar_layout.*`, `menubar_window.cpp`) : écart avant l'horloge, titres sans arrondi. Tests.
-- [ ] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
+- [x] 4. **Rendu** (`bar_renderer.cpp`) : texte posé sur sa ligne de base. Test au pixel.
 - [ ] 5. **Pictogrammes** (`popup/glyphs.cpp`) : loupe plus fine, Centre de contrôle redessiné. Tests au pixel.
 - [ ] 6. **Menu « Aller »** : vérifier sur un rendu `--app Explorateur` (aucun ajout sans le menu de la VM).
 - [ ] 7. **Essais réels** : rendu hors écran mesuré contre la VM, Release, barre relancée.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
+
+## Décisions en cours de route
+- **Mesures refaites, même méthode des deux côtés** (`baseline_measure.py`, `edge_gaps.py` dans le scratchpad) : bords à
+  50 % de l'encre, bruit du fond de la VM retiré ; le flou de l'étirement de VMware ne déplace pas ce point. Ligne de
+  base : VM 16,00 à 16,09 ; MacDock 16,47 avant (et non 16,9 : l'ancienne mesure mélangeait les méthodes). Écart
+  d'encre date → heure : VM 10,12 (10,46 dans les premières mesures, seuil différent) ; MacDock 5,62 avec une espace,
+  donc ≈ 10,19 avec deux espaces et une ultra-fine (tâche 1 gardée).
+- **`textBaseline` suit le milieu de la barre** : une autre hauteur garde le texte au même écart de son milieu, comme
+  le logo et les icônes, centrés eux aussi. Si c'était faux : rien ne change à la hauteur par défaut.
+- **« FR » garde son centrage** : ses majuscules sont déjà au milieu de la boîte à 0,5 px près (SF Pro, Segoe UI,
+  Inter Tight, Arial, Georgia, mesuré). Le poser sur la ligne de base de la barre le mettrait trop bas dans sa boîte.
+  Test gardé comme garde-fou (vert avant comme après).

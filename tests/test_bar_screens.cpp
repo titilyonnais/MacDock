@@ -80,6 +80,79 @@ TEST_CASE(bar_renderer_dims_inactive) {   // barre d'un écran inactif : 60 %
     CoUninitialize();
 }
 
+TEST_CASE(bar_renderer_text_sits_on_its_baseline) {
+    // Plan 64 : le texte est posé sur sa ligne de base, à 16 pt du haut d'une barre de 24 comme sur macOS 26, quelle que
+    // soit la police (avant : boîte de ligne centrée, base à 16,5 pt avec SF Pro et 17,5 avec Segoe UI).
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        // Première ligne sans encre sous « HIT » (pieds plats : l'encre s'arrête net sur la ligne de base), en pixels.
+        auto inkBottom = [&](float scale, double barPt, double baselinePt, bool bold) {
+            r.setFont(L"Segoe UI", 13 * scale);
+            md::BarFrame f;
+            f.scale = scale;
+            f.darkText = true;
+            f.metrics.height = barPt;
+            f.metrics.textBaseline = baselinePt;
+            md::BarDrawItem it;
+            it.text = L"HIT";
+            it.bold = bold;
+            it.x = 0;
+            it.width = 100 * scale;
+            f.items.push_back(it);
+            const UINT w = UINT(100 * scale), h = UINT(std::lround(barPt * scale));
+            std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+            if (!r.renderToImage(f, bg, w, h, out)) return -1;
+            int bottom = -1;
+            for (UINT y = 0; y < h; ++y)
+                for (UINT x = 0; x < w; ++x)
+                    if (out[(size_t(y) * w + x) * 4 + 3] > 128) bottom = int(y) + 1;
+            return bottom;
+        };
+        CHECK_EQ(inkBottom(2, 24, 16, false), 32);
+        CHECK_EQ(inkBottom(2, 24, 16, true), 32);   // nom de l'app en gras : même ligne de base
+        CHECK_EQ(inkBottom(1, 24, 16, false), 16);
+        CHECK_EQ(inkBottom(2, 24, 15.5, false), 31);
+        CHECK_EQ(inkBottom(2, 30, 16, false), 38);   // barre plus haute : même écart à son milieu (30 + 8)
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(bar_renderer_boxed_code_caps_centered) {
+    // Plan 64 : le texte de la barre se pose sur sa ligne de base, mais « FR » garde sa place : ses majuscules sont au
+    // milieu de la boîte (à 0,5 px près avec SF Pro, Segoe UI, Inter Tight, Arial et Georgia).
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        r.setFont(L"Segoe UI", 26);
+        md::BarFrame f;
+        f.scale = 2;
+        f.darkText = true;
+        md::BarDrawItem it;
+        it.text = L"FR";
+        it.boxed = true;
+        it.x = 0;
+        it.width = 72;
+        f.items.push_back(it);
+        const UINT w = 72, h = 48;
+        std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+        REQUIRE(r.renderToImage(f, bg, w, h, out));
+        // Boîte de 30 px de haut, centrée (9 → 39), traits de 2,4 px ; lettres : colonnes du milieu, entre les traits.
+        int top = -1, bottom = -1;
+        for (UINT y = 13; y < 36; ++y)
+            for (UINT x = 24; x < 48; ++x)
+                if (out[(size_t(y) * w + x) * 4 + 3] > 128) {
+                    if (top < 0) top = int(y);
+                    bottom = int(y) + 1;
+                }
+        REQUIRE(top >= 0);
+        CHECK_NEAR((top + bottom) / 2.0, 24.0, 0.75);   // milieu des majuscules au milieu de la boîte
+    }
+    CoUninitialize();
+}
+
 TEST_CASE(menubar_screens_plan_keeps_and_replaces) {   // écrans branchés ou débranchés : rien de nul en cours de route
     const std::vector<RECT> existing{{0, 0, 1920, 1080}, {1920, 0, 3840, 1080}};
     const std::vector<md::ScreenInfo> wanted{screen(0, 0, 1920, 1080, 96, true), screen(-1280, 0, 0, 1024)};
