@@ -37,13 +37,13 @@ qui clignotent, titres décalés, pastilles qui sautent.
 - Récents et leurs icônes : seulement pour le menu du logo.
 
 ## Tâches
-- [ ] 1. « Système » : la recherche ne descend pas dans une barre de titre. Tests : arbre factice façon VMware (barre de
-  titre seule : aucun titre), barre de titre et vraie barre (titres de la vraie). Essai réel : VMware devant, barre en
-  trace.
-- [ ] 2. Séance de menus : app changée → fin ; mise en page attendue → refaite, titre retrouvé. Test de la règle ; essai
-  réel.
-- [ ] 3. Bascule instantanée : graphismes gardés, sans fondu entre titres, relais sans trou. Mesure avant / après
-  (rafales), tests de la fenêtre de menu.
+- [x] 1. « Système » : la recherche ne descend pas dans une barre de titre. Tests : arbre factice façon VMware (barre de
+  titre seule : aucun titre), barre de titre et vraie barre (titres de la vraie) (a091c33).
+- [x] 2. Séance de menus : app changée → fin ; mise en page attendue → refaite, titre retrouvé. Test de la règle
+  (8be249b).
+- [x] 3. Bascule instantanée : graphismes gardés, sans fondu entre titres, relais sans trou (b3edb2a). Mesure réelle
+  (fenêtre d'essai, rafales, souris laissée par toi) : nouveau menu complet 30 à 45 ms après le survol (avant : premiers
+  pixels ~140 ms, complet ~300 ms, ~90 ms sans menu) ; « choix » → panneau en verre réel en ~2 ms (avant ~75 ms).
 - [ ] 4. Première ouverture : mesure (traces de durée), récents seulement pour le logo, puis mesure.
 - [ ] 5. Quitter une app : reproduction (vraies apps, rafales, traces), causes, corrections testées.
 - [ ] 6. Relecture indépendante, corrections, fusion locale.
