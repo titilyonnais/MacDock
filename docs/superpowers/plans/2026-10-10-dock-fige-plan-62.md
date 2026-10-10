@@ -54,7 +54,8 @@ mode diagnostic.
   controller_attention_again_once_app_inactive ; rouges sans la garde, verts avec).
 - [x] 2. **Dock figé** : logique pure du relais (tests), fil de lecture, réinstallation du crochet, sentinelle (relais
   actif ou arrêté, crochet réinstallé).
-- [ ] 3. **Lenteurs** : WM_APP_BACKDROP après le génie, premier rendu, capture du verre quand le Dock est masqué.
+- [x] 3. **Lenteurs** : WM_APP_BACKDROP après le génie, premier rendu, capture du verre quand le Dock est masqué ; et la
+  boucle qui tournait à vide, curseur garé sur le Dock.
 - [ ] 4. **Essais réels** : Gestionnaire des tâches, VMware, fenêtre d'essai qui clignote ; journal avant et après.
 
   Puis documentation, relecture indépendante, corrections, fusion locale.
@@ -101,3 +102,26 @@ mode diagnostic.
     01:32:26 : plus aucune image ensuite ;
   - trouvé à la première relance et corrigé : le silence d'un épisode se comptait avec l'horloge de l'animation, qui
     n'avance pas quand le Dock dort ; le second train ne partait pas.
+- **Tâche 3** (8d1817a fins de ligne, 5e10c7f, e96de02) :
+  - **boucle à vide, cause trouvée** : curseur garé sur l'icône du Gestionnaire des tâches (réduit), la boucle faisait
+    des rafales de 400 à 1 828 tours en 5 s sans une image. Le décompte du mode diagnostic a montré des tours à file
+    vide, sans message envoyé ni animation ; le compte des événements avant filtre a nommé la source : le Gestionnaire
+    des tâches (pid 4244) émettait ~500 à 1 300 événements en 5 s (DESTROY et NAMECHANGE sur les lignes de sa liste),
+    reçus par les crochets WinEvent posés pour tout le système, sur le fil du Dock, qui se réveillait à chacun. Les
+    crochets vivent maintenant sur leur propre fil, qui ne poste au Dock que les événements d'une fenêtre
+    (`win_event_filter_keeps_only_windows`, rouge puis vert). Essai réel, 10 minutes, curseur toujours garé : 10 à 20
+    tours en 5 s (pointe à 61 pour 48 vrais événements de fenêtres), contre des rafales de 400 à 1 828 avant ;
+  - **capture d'avance du génie** arrêtée après 5 s de survol immobile (« capture d'avance arrêtée » à 02:03:21.992,
+    5 s après son lancement), relancée si le curseur bouge sur la case ;
+  - **Dock masqué** : capture de l'arrière-plan du verre en pause, reprise à l'apparition
+    (`backdrop_pauses_while_the_dock_is_hidden`, rouge puis vert) ; essai réel à faire avec toi (plein écran) ;
+  - **démarrage** : icônes préparées 10 ms par image au plus, aperçus des piles compris
+    (`icons_frame_budget_defers_unready_icons`, `icons_frame_budget_defers_stack_previews`, rouges puis verts) : première
+    image du Dock à 306 ms au lieu de 687 à 803, sans « boucle bloquée » de la sentinelle ; les icônes arrivent en ~0,5 s ;
+  - **blocage de 1,1 s sur WM_APP_BACKDROP** : non reproductible sans clic ; la prise d'arrière-plan est chronométrée en
+    diagnostic au-delà de 50 ms pour nommer le coupable la prochaine fois.
+
+## Mineurs reportés
+- `FullscreenWatch` garde sur le fil du Dock des crochets limités au processus de l'app en plein écran (déplacements,
+  masquage) : à mesurer pendant une vidéo en plein écran.
+- La sentinelle et les compteurs du mode diagnostic restent en place (ils ne coûtent rien hors diagnostic).
