@@ -31,7 +31,7 @@ struct SpotSection {
 
 // Meilleur résultat, Applications (6 au plus), Réglages (4 au plus), Documents (8 au plus) ; sections vides omises ;
 // requête vide : aucune. Meilleur résultat : le calcul, sinon la conversion (« 10 km »), sinon le réglage qui porte
-// exactement ce nom, sinon la première app, sinon le premier réglage.
+// exactement ce nom (tel quel, puis aux pluriels près), sinon la première app, sinon le premier réglage.
 std::vector<SpotSection> spotlightResults(const std::wstring& query, const std::vector<AppEntry>& apps,
                                           const std::vector<SpotItem>& files,
                                           const std::vector<SettingsPage>& pages = settingsPages());

@@ -138,9 +138,9 @@ TEST_CASE(spot_convert_dashes_spaces_and_case) {   // mineurs du plan 55 : saisi
         CHECK_NEAR(m->value, 1.5, 1e-9);
     }
     // Mots de liaison en majuscules.
-    const auto en = md::convertUnits(L"10 km EN mi");
+    const auto en = md::convertUnits(L"10 km EN m");
     REQUIRE(en.has_value());
-    CHECK(en->to == L"mi");
+    CHECK_NEAR(en->value, 10000, 1e-9);
     CHECK(md::convertUnits(L"100 °F TO °C").has_value());
     const auto inch = md::convertUnits(L"5 in IN cm");
     REQUIRE(inch.has_value());

@@ -157,15 +157,16 @@ std::wstring compact(std::wstring s) {
 }
 
 // Pluriels tolérés : « capture d'écran » trouve « Captures d'écran ». Seulement les mots de quatre lettres ou plus
-// (« pas » n'est pas le pluriel de « pa »).
-std::wstring singular(const std::wstring& s) {
+// (« pas » n'est pas le pluriel de « pa ») ; sans lastToo, pas le dernier mot, en cours de frappe ou pas un pluriel
+// (« tous », « docs » trouveraient « toucher », « Dock »).
+std::wstring singular(const std::wstring& s, bool lastToo = true) {
     std::wstring out;
     std::size_t i = 0;
     while (i <= s.size()) {
         std::size_t j = i;
         while (j < s.size() && s[j] != L' ' && s[j] != L'-' && s[j] != L'\'') ++j;
         std::wstring w = s.substr(i, j - i);
-        if (w.size() >= 4 && (w.back() == L's' || w.back() == L'x')) w.pop_back();
+        if ((lastToo || j < s.size()) && w.size() >= 4 && (w.back() == L's' || w.back() == L'x')) w.pop_back();
         out += w;
         if (j < s.size()) out += s[j];
         i = j + 1;
@@ -181,7 +182,7 @@ bool atWordStartLoose(const std::wstring& text, const std::wstring& q, bool plur
     if (spaced.find_first_not_of(L' ') != std::wstring::npos && atWordStart(hyphensAsSpaces(text), spaced)) return true;
     if (!cq.empty() && atWordStart(withoutHyphens(text), cq)) return true;
     if (plural) {
-        const std::wstring sq = singular(q);
+        const std::wstring sq = singular(q, false);
         if (!compact(sq).empty() && atWordStart(singular(text), sq)) return true;
     }
     return false;
@@ -190,7 +191,7 @@ bool atWordStartLoose(const std::wstring& text, const std::wstring& q, bool plur
 // 0 : début du nom ; 1 : début d'un mot du nom ; 2 : début d'un mot-clé ; -1 : rien. q plié, non vide. Pluriels
 // tolérés dans les noms seulement (dans les mots-clés, « mises à jour » trouverait aussi « mise à jour de logiciels »).
 int matchGroup(const SettingsPage& page, const std::wstring& q) {
-    const std::wstring title = fold(page.title), cq = compact(q), sq = singular(q);
+    const std::wstring title = fold(page.title), cq = compact(q), sq = singular(q, false);
     if (title.starts_with(q) || (!cq.empty() && compact(title).starts_with(cq)) ||
         (!compact(sq).empty() && singular(title).starts_with(sq)))
         return 0;

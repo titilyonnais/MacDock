@@ -100,6 +100,10 @@ TEST_CASE(spot_settings_spaces_hyphens_and_plurals) {   // mineurs du plan 55
     // Gardes : un mot court n'est pas pris pour un pluriel ; un mot inconnu ne trouve toujours rien.
     const auto& pages = md::settingsPages();
     for (std::size_t i : md::searchSettings(pages, L"pas")) CHECK(pages[i].title != std::wstring(L"Pavé tactile"));
+    // Le dernier mot tapé reste tel quel (relecture) : « tous » n'est pas « tou », « docs » n'est pas « doc(k) ».
+    CHECK(firstTitle(L"tous").empty());
+    CHECK(firstTitle(L"docs").empty());
+    for (std::size_t i : md::searchSettings(pages, L"mods")) CHECK(pages[i].title != std::wstring(L"Mode Avion"));
     CHECK(md::searchSettings(pages, L"zorglub").empty());
     // Nom exact aux espaces et pluriels près : la section passe devant une app qui ne fait que contenir ces mots.
     for (const md::SettingsPage& p : pages) {
