@@ -51,7 +51,25 @@ arrêt dans le bon ordre et borné.
 - [x] 4. Aperçus de piles (54f1f44) : 100 renouvellements, un seul aperçu en vie ; rouge, puis vert.
 - [x] 5. Relais du curseur (2a52548) : test rouge, puis vert ; mesure réelle, crochet aveugle (curseur déplacé par
   SetCursorPos) : 803 lectures et 805 images en 5 s (avant : 165 lectures, ~33 images par seconde).
-- [ ] 6. Relecture indépendante, corrections, fusion locale.
+- [x] 6. Relecture indépendante (opus : avec corrections, aucun critique), corrections, fusion locale.
+
+## Relecture indépendante du plan (opus) et corrections
+- **Coin actif déclenché à la fin d'un ⊞⇧S** (important) : un coin atteint sous le voile partait quand le Dock reprenait
+  le pointeur. Les coins sont suivis en mode bloqué pendant ce temps (33d2a89).
+- **Barre abaissée pour toutes les captures** (important) : ⊞⇧3 la faisait passer sous les fenêtres « toujours au premier
+  plan », puis devant Apps et Mission Control ouverts. Le message du Dock a maintenant un mode « sous le voile » ; la
+  barre ne s'abaisse que pour lui et ne remonte que si elle l'était (7a1d698).
+- **Dock insensible pendant l'éditeur de l'outil** (mineur regradé important : jusqu'à 2 min tant que l'éditeur est
+  devant, 3 s après ⊞Impr. écran) : abaissés seulement quand le voile est attendu (⊞⇧S, Impr. écran seul) et tant qu'il
+  est devant (fenêtre de l'outil qui couvre son écran), en l'attendant au plus 1,5 s ; le Dock passe sous le voile
+  avant d'arrêter la capture du verre (7a1d698).
+- **Empreinte des réglages prise après leur lecture** (important) : une écriture de l'app Réglages entre les deux était
+  ignorée ; empreintes prises avant (6c00f51).
+- **Verre figé dépoli** après une perte du périphérique graphique ou un changement de carte pendant une pause
+  (important) : la pause ne tient que si sa raison tient encore (58abd7f).
+- **Essai réel** (⊞⇧S simulé au clavier, MacDock compilé depuis la branche) : Dock et barre sous le voile 15 ms après
+  la touche ; le voile (fenêtre XamlWindow de SnippingTool, 3840×2160, non agrandie) est reconnu, ils y restent ; Échap :
+  de nouveau devant tout en 106 ms.
 
 ## Mesures
 - **Balayage du Dock, crochet actif** : 946 images en 5 s (~190 par seconde), aucune image au-dessus de 4 ms.
@@ -61,3 +79,7 @@ arrêt dans le bon ordre et borné.
 - Poignée des séparateurs (curseur ↕, redimensionner le Dock en glissant) : plan à part, mesuré sur ta VM (zone de
   ±4 points environ autour du trait).
 - Mineurs de la relecture d'ensemble non traités ici (journal).
+- Mineurs de la relecture de ce plan : fil des crochets (lecture de la fréquence après la pose des crochets, boucle à
+  100 % si les minuteries échouent, fréquence lue une seule fois, arrêt sans événement) ; reflet des panneaux retiré
+  aussi en mode clair par la v8 (à confirmer avec toi) ; dates grossières sur un partage réseau ; préfixe des aperçus de
+  piles trouvé en comptant les « | ».

@@ -1217,6 +1217,31 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Pile** : sans aperçu précédent, elle montre l'icône de son dossier en attendant son aperçu ; sur disque, une seule
   place par pile, réécrite (la relecture a vu qu'un téléchargement remplissait sinon le cache en quelques minutes).
 
+### Plan 69 — Relecture de la nuit et tes premiers retours, 10 octobre (au réveil)
+
+- **⊞⇧S** : le Dock et la barre restaient devant le voile de l'Outil Capture, et le Dock réagissait à la souris. Ils
+  passent maintenant sous le voile (toujours au-dessus des apps), le Dock ignore le pointeur, et tout revient dès que le
+  voile part, même si l'éditeur de l'outil s'ouvre ensuite. Essai réel : sous le voile 15 ms après la touche, de
+  nouveau devant tout 106 ms après Échap.
+- **Dock « à 30 images par seconde »** : sous une app en administrateur, le relais du curseur lisait la souris toutes
+  les 16 ms (~33 images/s). Il suit maintenant le rythme de l'écran (805 images en 5 s mesurées, au lieu de ~165).
+- **Contour blanc du Dock** : retiré (le Liquid Glass de macOS 26 n'en a pas) ; `dock-metrics.json` passe en v8.
+- **Relecture de la nuit** : le Dock ne recharge plus toute sa config quand la barre écrit ses récents, et chaque
+  renouvellement de l'aperçu d'une pile ne reste plus à vie dans son cache.
+- **Relecture du plan** : coin actif qui partait à la fin d'un ⊞⇧S, barre qui repassait devant Apps après ⊞⇧3, réglage
+  ignoré s'il était écrit pendant une relecture, verre figé après un incident graphique : corrigés.
+
+## Mineurs reportés — plan 69
+- Fil des crochets : fréquence de l'écran lue après la pose des crochets (au démarrage, un pilote lent ferait attendre
+  la souris), boucle à 100 % d'un cœur si les minuteries échouent, fréquence lue une seule fois (Dock poussé vers un
+  écran plus rapide), arrêt sans événement dédié.
+- La v8 retire aussi le reflet des panneaux (volume, piles, Spotlight, ⌥⇥) en mode clair ; en sombre ils le gardent.
+  À confirmer avec toi.
+- Empreinte des réglages : un partage réseau aux dates grossières pourrait masquer une écriture aller-retour dans la
+  même seconde.
+- Aperçus des piles : préfixe retrouvé en comptant les « | » ; un ancien aperçu arrivé tard évince le récent (une
+  reconstruction de plus).
+
 ## Mineurs reportés — plan 68
 - L'icône du dossier d'une pile est demandée à chaque démarrage, même quand son aperçu est sur disque (une extraction de
   plus).
