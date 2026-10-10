@@ -14,8 +14,8 @@ struct MenuBarMetrics {   // points
     double height = 24, fontSize = 13, leftMargin = 10, titlePadding = 10, logoSize = 14;
     double highlightHeight = 22, highlightRadius = 6, statusWidth = 36, rightMargin = 8.4;
     double statusIconSize = 16;   // pictogrammes d'état
-    // Ligne de base du texte, depuis le haut d'une barre de 24 (macOS 26 : 16) ; une barre plus haute ou plus basse garde
-    // le texte au même écart de son milieu.
+    // Ligne de base du texte, depuis le haut d'une barre de 24 avec un texte de 13 (macOS 26 : 16). Une autre hauteur
+    // garde le texte au même écart de son milieu ; une autre taille de texte met cet écart à sa mesure.
     double textBaseline = 16;
     double clockGap = 1.5;   // écart de plus avant l'horloge
 };

@@ -88,12 +88,13 @@ TEST_CASE(bar_renderer_text_sits_on_its_baseline) {
         md::BarRenderer r;
         REQUIRE(r.initOffscreen());
         // Première ligne sans encre sous « HIT » (pieds plats : l'encre s'arrête net sur la ligne de base), en pixels.
-        auto inkBottom = [&](float scale, double barPt, double baselinePt, bool bold) {
-            r.setFont(L"Segoe UI", 13 * scale);
+        auto inkBottom = [&](float scale, double barPt, double baselinePt, bool bold, double fontPt = 13) {
+            r.setFont(L"Segoe UI", float(fontPt) * scale);
             md::BarFrame f;
             f.scale = scale;
             f.darkText = true;
             f.metrics.height = barPt;
+            f.metrics.fontSize = fontPt;
             f.metrics.textBaseline = baselinePt;
             md::BarDrawItem it;
             it.text = L"HIT";
@@ -115,6 +116,40 @@ TEST_CASE(bar_renderer_text_sits_on_its_baseline) {
         CHECK_EQ(inkBottom(1, 24, 16, false), 16);
         CHECK_EQ(inkBottom(2, 24, 15.5, false), 31);
         CHECK_EQ(inkBottom(2, 30, 16, false), 38);   // barre plus haute : même écart à son milieu (30 + 8)
+        // Relecture : texte plus grand, écart au milieu à sa mesure (20/13 de 4 pt) ; sinon il remonte vers le haut.
+        CHECK_EQ(inkBottom(2, 34, 16, false, 20), 46);   // 34 + 4 x 20/13 x 2 = 46,3
+        CHECK_EQ(inkBottom(1, 24, 16, false, 9), 15);    // 12 + 4 x 9/13 = 14,8
+    }
+    CoUninitialize();
+}
+
+TEST_CASE(bar_renderer_multiline_title_keeps_first_line) {
+    // Relecture du plan 64 : un titre à saut de ligne (description d'exécutable, menu) se dessinait sous la barre ; sa
+    // première ligne se pose sur la ligne de base, comme un titre d'une ligne.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    {
+        md::BarRenderer r;
+        REQUIRE(r.initOffscreen());
+        r.setFont(L"Segoe UI", 26);
+        md::BarFrame f;
+        f.scale = 2;
+        f.darkText = true;
+        md::BarDrawItem it;
+        it.text = L"HIT\nHIT";
+        it.x = 0;
+        it.width = 200;
+        f.items.push_back(it);
+        const UINT w = 200, h = 48;
+        std::vector<std::uint8_t> bg(size_t(w) * h * 4, 0), out;
+        REQUIRE(r.renderToImage(f, bg, w, h, out));
+        auto rowInk = [&](UINT y) {
+            int n = 0;
+            for (UINT x = 0; x < w; ++x) n += out[(size_t(y) * w + x) * 4 + 3] > 128;
+            return n;
+        };
+        CHECK(rowInk(31) > 0);    // pieds de la première ligne sur la ligne de base (32 px)
+        CHECK(rowInk(20) > 0);    // corps des lettres dans la barre
+        CHECK_EQ(rowInk(5), 0);   // rien au-dessus des majuscules
     }
     CoUninitialize();
 }

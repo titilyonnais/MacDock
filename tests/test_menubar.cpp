@@ -128,7 +128,7 @@ TEST_CASE(clock_formats_french_weekday_month) {
     t.wMinute = 32;
     t.wSecond = 5;
     // Comme la barre de macOS 26 (relevé sur la VM : « Ven. 9 oct.  22:17 ») : jour avec majuscule ; entre la date et
-    // l'heure, deux espaces et une espace ultra-fine (écart d'encre de ~10 pt mesuré sur la VM).
+    // l'heure, deux espaces (avec les chiffres à chasse fixe de l'horloge, l'écart d'encre de 10,35 pt mesuré sur la VM).
     CHECK(md::formatClock(t, {}) == L"Mer. 7 oct.  14:32");
     t.wMonth = 2;
     t.wDayOfWeek = 0;
