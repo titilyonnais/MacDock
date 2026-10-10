@@ -148,6 +148,13 @@ bool DockApp::systemDarkMode() {
 }
 
 void DockApp::loadConfig(bool initial) {
+    // Empreintes prises avant la lecture : une écriture de l'app Réglages pendant celle-ci sera relue (relecture du
+    // plan 69).
+    configWatch_.read([&] { readConfig(initial); });
+    applySettings();
+}
+
+void DockApp::readConfig(bool initial) {
     auto s = loadJsonFile(dataDir_ + L"\\settings.json");
     // Au rechargement à chaud, un fichier invalide ou illisible ne change rien : on garde l'état courant.
     if (!initial && (s.wasInvalid || s.unreadable)) {
@@ -185,9 +192,6 @@ void DockApp::loadConfig(bool initial) {
         return json::serialize(*settingsToJson(t).find("pinned"));
     };
     if (initial || pinsJson(model_.pinnedEntries()) != pinsJson(settings_.pinned)) model_.loadPinned(settings_.pinned);
-    settingsStamp_ = fileStamp(dataDir_ + L"\\settings.json");
-    metricsStamp_ = fileStamp(dataDir_ + L"\\dock-metrics.json");
-    applySettings();
 }
 
 void DockApp::applySettings() {
@@ -3221,9 +3225,7 @@ LRESULT DockApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 KillTimer(hwnd_, kConfigTimer);
                 // Le dossier est surveillé en entier, et la barre y réécrit ses récents à chaque changement d'app : rien à
                 // relire si les fichiers du Dock n'ont pas changé (relecture de la nuit).
-                if (fileStamp(dataDir_ + L"\\settings.json") == settingsStamp_ &&
-                    fileStamp(dataDir_ + L"\\dock-metrics.json") == metricsStamp_)
-                    return 0;
+                if (!configWatch_.changed()) return 0;
                 double reserveBefore = DockController::reservePx(settings_, metrics_, scale_);
                 double heightBefore = DockController::windowHeightPx(settings_, metrics_, scale_);
                 loadConfig(false);
@@ -3408,6 +3410,7 @@ int DockApp::run(HINSTANCE instance, const Options& options) {
     trace_ = options.trace;
     snapshot_ = !options.snapshot.empty();
     dataDir_ = appDataDir();
+    configWatch_ = ConfigWatch({dataDir_ + L"\\settings.json", dataDir_ + L"\\dock-metrics.json"});
     log::init(dataDir_ + L"\\logs");
     log::info(L"MacDock démarre");
     std::wstring iconDir = dataDir_ + L"\\icons";

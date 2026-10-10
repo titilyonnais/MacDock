@@ -3,6 +3,8 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace md {
 
@@ -14,5 +16,27 @@ struct FileStamp {
 };
 
 FileStamp fileStamp(const std::wstring& path);
+
+// Fichiers de réglages surveillés : leurs empreintes sont prises AVANT de les lire, si bien qu'une écriture tombée pendant
+// la lecture rend l'empreinte différente et que la relecture suivante la prend (relecture du plan 69 : prises après, une
+// écriture de l'app Réglages entre les deux restait ignorée).
+class ConfigWatch {
+public:
+    ConfigWatch() = default;
+    explicit ConfigWatch(std::vector<std::wstring> files) : files_(std::move(files)) {}
+    template <class Read> void read(Read&& body) {
+        std::vector<FileStamp> before = stamps();
+        body();
+        last_ = std::move(before);
+        read_ = true;
+    }
+    bool changed() const { return !read_ || stamps() != last_; }   // jamais lu, ou un fichier a changé depuis
+
+private:
+    std::vector<FileStamp> stamps() const;
+    std::vector<std::wstring> files_;
+    std::vector<FileStamp> last_;
+    bool read_ = false;
+};
 
 } // namespace md

@@ -71,6 +71,7 @@ private:
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
 
     void loadConfig(bool initial);
+    void readConfig(bool initial);   // lecture des fichiers seule (loadConfig : empreintes avant, application après)
     void applySettings();
     void savePinned();
     void saveSettings();
@@ -186,7 +187,7 @@ private:
     Metrics metrics_;
     AppModel model_;
     WindowTracker tracker_;
-    FileStamp settingsStamp_, metricsStamp_;   // fichiers du Dock à la dernière lecture
+    ConfigWatch configWatch_;   // settings.json et dock-metrics.json, empreintes prises avant chaque lecture
     IconProvider icons_;
     IconWorker iconWorker_;        // plan 67 : icônes du rendu courant préparées hors du fil du Dock
     double tilesWaitSince_ = 0, stacksWaitSince_ = 0;   // [diag] première image qui attendait une case, un aperçu

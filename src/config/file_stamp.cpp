@@ -14,4 +14,11 @@ FileStamp fileStamp(const std::wstring& path) {
     return s;
 }
 
+std::vector<FileStamp> ConfigWatch::stamps() const {
+    std::vector<FileStamp> out;
+    out.reserve(files_.size());
+    for (const auto& f : files_) out.push_back(fileStamp(f));
+    return out;
+}
+
 } // namespace md
