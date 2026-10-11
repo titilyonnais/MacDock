@@ -156,16 +156,16 @@ TEST_CASE(bar_renderer_multiline_title_keeps_first_line) {
 
 TEST_CASE(bar_renderer_clock_uses_tabular_figures) {
     // Plan 64 : l'horloge de macOS 26 a des chiffres à chasse fixe (« 22:17 » : 35 pt sur la VM, 32 avec les chiffres
-    // proportionnels de SF Pro) ; elle ne bouge plus d'une minute à l'autre. Segoe UI, comme SF Pro : chiffres
-    // proportionnels par défaut, tabulaires avec tnum.
+    // proportionnels de SF Pro) ; elle ne bouge plus d'une minute à l'autre. Les chiffres de Segoe UI étaient
+    // proportionnels par défaut, ils sont tabulaires depuis sa version 5.72 (mise à jour de Windows) : la comparaison
+    // avec les chiffres par défaut ne vaut que pour une police à chiffres proportionnels.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     {
         md::BarRenderer r;
         REQUIRE(r.initOffscreen());
         REQUIRE(r.setFont(L"Segoe UI", 26) == L"Segoe UI");
-        {
-            CHECK(r.measure(L"1111", false) < r.measure(L"0000", false) - 2);   // proportionnels
-            CHECK_NEAR(r.measure(L"1111", false, true), r.measure(L"0000", false, true), 0.01);
+        CHECK_NEAR(r.measure(L"1111", false, true), r.measure(L"0000", false, true), 0.01);
+        if (r.measure(L"1111", false) < r.measure(L"0000", false) - 2) {   // chiffres proportionnels par défaut
             // Dessin : « 1111 » tabulaire s'étale comme « 0000 ».
             auto inkWidth = [&](const wchar_t* text, bool tabular) {
                 md::BarFrame f;
