@@ -1,5 +1,6 @@
 ﻿# Coins de macOS 26 sur toutes les fenêtres (plan 72) : active le mod « Custom Window Corner Radius » de Windhawk (m417z,
-# à installer depuis le catalogue de Windhawk) avec les valeurs de macOS : rayon de 12 pt au lieu de 8, fenêtres
+# à installer depuis le catalogue de Windhawk) avec les valeurs de macOS 26 : rayon de 26 pt au lieu de 8 (celui des
+# fenêtres à barre d'outils de Tahoe : Safari, Finder, Xcode ; presque toutes les apps de Windows en ont une), fenêtres
 # ancrées (moitiés, quarts) arrondies elles aussi. Ce mod accroche le calcul du rayon dans dwm.exe et se retire tout
 # seul si DWM plante à répétition ; rien n'est modifié dans les fichiers de Windows.
 #   Double-clic sur coins-macos.cmd (ou coins-windows.cmd pour revenir aux coins de Windows).
@@ -32,9 +33,13 @@ $list = @($include -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $
 if (-not $Off -and -not ($list | Where-Object { $_ -ieq 'dwm.exe' })) {
     $writes.Add(@("$engine\Settings", 'Include', (($list + 'dwm.exe') -join '|'), 'String'))
 }
+# Windhawk ne se charge dans dwm.exe (déjà lancé) qu'en redémarrant : seulement si dwm.exe vient d'être ajouté ou si le
+# mod était coupé ; un simple changement de rayon est pris à chaud par le mod.
+$wasDisabled = [int](Get-ItemProperty $key -ErrorAction SilentlyContinue).Disabled -ne 0
+$restart = -not $Off -and ($writes.Count -gt 0 -or $wasDisabled)
 $writes.Add(@($key, 'Disabled', $(if ($Off) { 1 } else { 0 }), 'DWord'))
 if (-not $Off) {
-    $writes.Add(@("$key\Settings", 'radius', 12, 'DWord'))
+    $writes.Add(@("$key\Settings", 'radius', 26, 'DWord'))
     $writes.Add(@("$key\Settings", 'smallRadius', 6, 'DWord'))
     $writes.Add(@("$key\Settings", 'roundMaximizedAndSnapped', 'snapped', 'String'))
 }
@@ -50,16 +55,18 @@ foreach ($w in $writes) {
     New-ItemProperty -Path $w[0] -Name $w[1] -Value $w[2] -PropertyType $w[3] -Force | Out-Null
 }
 if ($DryRun) {
-    Write-Host 'Puis : redémarrage du service Windhawk (le mod est chargé dans dwm.exe, déjà lancé).'
+    if ($restart) { Write-Host 'Puis : redémarrage du service Windhawk (le mod est chargé dans dwm.exe, déjà lancé).' }
     exit 0
 }
 # dwm.exe tourne depuis l'ouverture de la session : Windhawk ne s'y charge qu'en (re)démarrant. Les autres mods sont
 # rechargés au passage (la barre des tâches peut réapparaître un instant).
-try { Restart-Service -Name Windhawk -ErrorAction Stop }
-catch { Write-Host "Le service Windhawk n'a pas redémarré ($($_.Exception.Message)) : redémarre Windhawk (ou la session)." }
+if ($restart) {
+    try { Restart-Service -Name Windhawk -ErrorAction Stop }
+    catch { Write-Host "Le service Windhawk n'a pas redémarré ($($_.Exception.Message)) : redémarre Windhawk (ou la session)." }
+}
 
 Write-Host ''
 if ($Off) { Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).' }
-else { Write-Host 'Coins de macOS activés : rayon de 12 pt sur toutes les fenêtres, ancrées comprises.' }
+else { Write-Host 'Coins de macOS activés : rayon de 26 pt sur toutes les fenêtres, ancrées comprises.' }
 Write-Host 'Les fenêtres déjà ouvertes changent au prochain redessin (survol, déplacement, activation).'
 Read-Host 'Entrée pour fermer'

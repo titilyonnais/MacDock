@@ -12,6 +12,9 @@ namespace md {
 bool fillCandidate(LONG style, LONG exStyle, bool ownProcess);
 
 enum class MaximizeReply { Ignore, Fill, Previous };
+// Remplir depuis l'agrandissement : toute la zone entre la barre des menus et le Dock, sans marges (comme une fenêtre
+// glissée contre le haut sur macOS ; remarque du 12 octobre).
+constexpr int kMaximizeFillMarginPt = 0;
 // Fenêtre passée à l'état agrandi : rien (réglage coupé, fenêtre exclue ou app qui insiste), Remplir, ou retour à la
 // taille d'avant quand elle était déjà remplie par MacDock (bascule du double-clic de macOS).
 MaximizeReply replyToMaximize(bool enabled, bool candidate, bool givenUp, bool wasFilled);
