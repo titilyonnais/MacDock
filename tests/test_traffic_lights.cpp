@@ -58,17 +58,73 @@ TEST_CASE(lights_refuse_special_windows) {
 }
 
 TEST_CASE(lights_layout_points) {
-    // Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre, centrées sur les trois boutons de
-    // Windows qu'elles remplacent.
+    // Golden Gate (comme Tahoe) : pastilles de 14 pt, 23 pt de centre à centre, dans le coin de la fenêtre : même marge
+    // au-dessus et à droite (centrées dans la hauteur de la barre de titre), comme le coin des pastilles de macOS
+    // (remarque du 12 octobre : plus au milieu des trois boutons de Windows).
     const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
     CHECK_NEAR(l.radius, 7.0, 1e-9);
-    CHECK_EQ((l.circles[0].left + l.circles[0].right) / 2, 908L);
-    CHECK_EQ((l.circles[1].left + l.circles[1].right) / 2, 931L);
-    CHECK_EQ((l.circles[2].left + l.circles[2].right) / 2, 954L);
+    CHECK_EQ((l.circles[0].left + l.circles[0].right) / 2, 939L);
+    CHECK_EQ((l.circles[1].left + l.circles[1].right) / 2, 962L);
+    CHECK_EQ((l.circles[2].left + l.circles[2].right) / 2, 985L);
     CHECK_EQ((l.circles[0].top + l.circles[0].bottom) / 2, 15L);
+    CHECK_EQ(1000 - l.circles[2].right, l.circles[2].top - 0);   // marge à droite = marge au-dessus
     const auto big = md::lightsOverButtons(RECT{1724, 0, 2000, 60}, 192);
     CHECK_NEAR(big.radius, 14.0, 1e-9);
     CHECK_EQ((big.circles[2].left + big.circles[2].right) / 2 - (big.circles[0].left + big.circles[0].right) / 2, 92L);
+    CHECK_EQ(2000 - big.circles[2].right, big.circles[2].top);
+    CHECK_EQ(big.circles[2].top, 16L);
+}
+
+TEST_CASE(lights_patch_follows_window_corner) {   // remarque du 12 octobre : la pièce ne déborde pas du coin arrondi
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96, false, 8.0);
+    CHECK_EQ(l.cornerRadius, 8L);
+    CHECK_EQ(md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96, true, 8.0).cornerRadius, 0L);   // agrandie : coins carrés
+    CHECK_EQ(md::lightsOverButtons(RECT{1724, 0, 2000, 60}, 192, false, 26.0).cornerRadius, 52L);
+    md::LightsState st;
+    st.patchColor = 0x202020;
+    const auto px = md::renderLights(l, st, 1.0);
+    const auto alpha = [&](int x, int y) { return int(px[(std::size_t(y) * 138 + x) * 4 + 3]); };
+    CHECK_EQ(alpha(137, 3), 0);     // dans l'arrondi du coin : transparent (le fond d'écran)
+    CHECK_EQ(alpha(137, 20), 255);  // plus bas : pièce
+    CHECK_EQ(alpha(100, 3), 255);
+}
+
+TEST_CASE(lights_patch_copies_caption_rows) {   // remarque du 12 octobre : la pièce se fond dans la barre de titre
+    const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
+    md::LightsState st;
+    st.patchColor = 0x202020;
+    st.patchRows.assign(30, 0x2B2B2B);
+    st.patchRows[10] = 0x112233;   // dégradé du Mica : chaque ligne a sa teinte
+    const auto px = md::renderLights(l, st, 1.0);
+    const std::uint8_t* p = &px[(std::size_t(10) * 138 + 2) * 4];
+    CHECK_EQ(int(p[0]), 0x33);
+    CHECK_EQ(int(p[1]), 0x22);
+    CHECK_EQ(int(p[2]), 0x11);
+    const std::uint8_t* q = &px[(std::size_t(20) * 138 + 2) * 4];
+    CHECK_EQ(int(q[2]), 0x2B);
+}
+
+TEST_CASE(lights_caption_rows_from_samples) {
+    // Par ligne, la teinte dominante des colonnes relevées : un « + » des onglets sous une colonne ne compte pas.
+    const std::vector<std::uint32_t> grid{0x202020, 0x202020, 0xFFFFFF,    // ligne 0 : une colonne sur un symbole
+                                          0x2A2A2A, 0x2A2A2A, 0x2A2A2A};   // ligne 1
+    const auto rows = md::captionRows(grid, 3, 2);
+    REQUIRE(rows.size() == 2);
+    CHECK_EQ(rows[0], 0x202020u);
+    CHECK_EQ(rows[1], 0x2A2A2Au);
+    CHECK(md::captionRows(grid, 4, 2).empty());   // tailles incohérentes
+}
+
+TEST_CASE(lights_window_corner_radius) {
+    md::CornerMod off;
+    CHECK_NEAR(md::windowCornerPt(0, false, off), 8.0, 1e-9);    // Windows 11 : 8 pt
+    CHECK_NEAR(md::windowCornerPt(3, false, off), 4.0, 1e-9);    // DWMWCP_ROUNDSMALL
+    CHECK_NEAR(md::windowCornerPt(1, false, off), 0.0, 1e-9);    // DWMWCP_DONOTROUND
+    CHECK_NEAR(md::windowCornerPt(0, true, off), 0.0, 1e-9);     // agrandie
+    md::CornerMod mod{true, 26, 6};                              // mod « Custom Window Corner Radius » actif
+    CHECK_NEAR(md::windowCornerPt(2, false, mod), 26.0, 1e-9);
+    CHECK_NEAR(md::windowCornerPt(3, false, mod), 6.0, 1e-9);
+    CHECK_NEAR(md::windowCornerPt(1, false, mod), 0.0, 1e-9);
 }
 
 TEST_CASE(lights_layout_on_a_lone_close_button) {
@@ -82,11 +138,11 @@ TEST_CASE(lights_layout_on_a_lone_close_button) {
 
 TEST_CASE(lights_hit_and_command) {
     const auto l = md::lightsOverButtons(RECT{862, 0, 1000, 30}, 96);
-    CHECK_EQ(md::hitLight(l, POINT{908, 15}), 0);
-    CHECK_EQ(md::hitLight(l, POINT{939, 15}), 1);   // cercle élargi de 2 px
-    CHECK_EQ(md::hitLight(l, POINT{954, 15}), 2);
-    CHECK_EQ(md::hitLight(l, POINT{919, 15}), -1);  // entre deux pastilles
-    CHECK_EQ(md::hitLight(l, POINT{990, 28}), -1);
+    CHECK_EQ(md::hitLight(l, POINT{939, 15}), 0);   // pastilles dans le coin (plan 73)
+    CHECK_EQ(md::hitLight(l, POINT{970, 15}), 1);   // cercle élargi de 2 px
+    CHECK_EQ(md::hitLight(l, POINT{985, 15}), 2);
+    CHECK_EQ(md::hitLight(l, POINT{950, 15}), -1);  // entre deux pastilles
+    CHECK_EQ(md::hitLight(l, POINT{998, 28}), -1);
     CHECK(md::lightCommand(0, false) == SC_CLOSE);
     CHECK(md::lightCommand(1, false) == SC_MINIMIZE);
     CHECK(md::lightCommand(2, false) == SC_MAXIMIZE);
@@ -179,17 +235,17 @@ TEST_CASE(lights_render_colors) {
         return std::abs(int(p[2]) - int((rgb >> 16) & 0xFF)) <= 8 && std::abs(int(p[1]) - int((rgb >> 8) & 0xFF)) <= 8 &&
                std::abs(int(p[0]) - int(rgb & 0xFF)) <= 8;
     };
-    const std::uint8_t* red = at(908, 16);
+    const std::uint8_t* red = at(939, 16);   // pastilles dans le coin (plan 73)
     CHECK(closeTo(red, 0xFF5F57) && red[3] == 255);
-    CHECK(closeTo(at(931, 16), 0xFEBC2E));
-    CHECK(closeTo(at(954, 16), 0x28C840));
-    CHECK(closeTo(at(908, 11), 0xFF5F57));   // plate : le haut comme le centre
+    CHECK(closeTo(at(962, 16), 0xFEBC2E));
+    CHECK(closeTo(at(985, 16), 0x28C840));
+    CHECK(closeTo(at(939, 11), 0xFF5F57));   // plate : le haut comme le centre
     const std::uint8_t* patch = at(866, 20);   // fond : couleur de la barre de titre, opaque, qui cache les boutons
     CHECK(patch[3] == 255 && patch[0] == 0xF3);
     CHECK_EQ(int(at(866, 1)[3]), 0);   // bord du haut transparent : la fenêtre se redimensionne par là
     st.enabled[1] = false;
     auto gray = md::renderLights(l, st, 1.0);
-    const std::uint8_t* g = &gray[(std::size_t(16 - l.window.top) * w + (931 - l.window.left)) * 4];
+    const std::uint8_t* g = &gray[(std::size_t(16 - l.window.top) * w + (962 - l.window.left)) * 4];
     CHECK(std::abs(int(g[0]) - int(g[2])) < 8);   // gris
 }
 
@@ -342,7 +398,7 @@ TEST_CASE(lights_pressed_is_darker) {
     auto normal = md::renderLights(l, st, 1.0);
     st.pressed = 0;
     auto pressed = md::renderLights(l, st, 1.0);
-    const std::size_t i = (std::size_t(16 - l.window.top) * w + (908 - l.window.left)) * 4;
+    const std::size_t i = (std::size_t(16 - l.window.top) * w + (939 - l.window.left)) * 4;
     CHECK(pressed[i + 2] + 20 < normal[i + 2]);   // rouge plus sombre sous le doigt
 }
 
