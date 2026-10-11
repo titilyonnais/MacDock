@@ -51,6 +51,32 @@ TEST_CASE(window_fill_guard) {
     CHECK(!h.givenUp(a));
 }
 
+TEST_CASE(window_fill_guard_slow_app_without_input) {   // relecture I3 : app qui se réagrandit après 0,7 s
+    md::FillGuard g;
+    const HWND a = fake(0x10);
+    g.filled(a, 10000);
+    CHECK(g.maximized(a, 11200, 9990));    // aucune entrée depuis notre remplissage : l'app
+    g.filled(a, 11210);
+    CHECK(g.maximized(a, 12400, 9990));
+    CHECK(g.givenUp(a));
+    md::FillGuard h;
+    h.filled(a, 10000);
+    CHECK(!h.maximized(a, 11200, 11100));  // double-clic de la personne après le remplissage
+    h.filled(a, 20000);
+    CHECK(!h.maximized(a, 23000, 9990));   // plus de 2 s : la personne (Win+Haut sans souris…)
+}
+
+TEST_CASE(window_fill_guard_own_maximize) {   // relecture I2 : sortie du plein écran, agrandie par MacDock
+    md::FillGuard g;
+    const HWND a = fake(0x10);
+    g.ownMaximize(a, 1000);
+    CHECK(g.ours(a, 1300));
+    CHECK(!g.ours(a, 1400));   // consommé
+    g.ownMaximize(a, 1000);
+    CHECK(!g.ours(a, 3000));   // trop tard : c'est la personne
+    CHECK(!g.ours(fake(0x20), 1100));
+}
+
 TEST_CASE(window_fill_fullscreen_step) {
     using S = md::FullscreenStep;
     const RECT screen{0, 0, 1920, 1080};
@@ -83,6 +109,14 @@ TEST_CASE(zoom_tracker_reports_transitions_only) {
     CHECK(t.changed(a, true));
     t.forget(a);
     CHECK(!t.changed(a, true));
+    // Relecture I1 : réduite (IsZoomed faux) puis rouverte agrandie : pas un passage à l'état agrandi.
+    md::ZoomTracker r;
+    r.seed(a, true);
+    CHECK(!r.changed(a, false, true));
+    CHECK(!r.changed(a, true));
+    r.seed(a, false);
+    CHECK(!r.changed(a, false, true));
+    CHECK(r.changed(a, true));
 }
 
 TEST_CASE(menubar_settings_fill_on_maximize) {

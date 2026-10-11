@@ -25,16 +25,34 @@ void FillGuard::filled(HWND h, unsigned long long now) {
     s.filledOnce = true;
 }
 
-bool FillGuard::maximized(HWND h, unsigned long long now) {
+bool FillGuard::maximized(HWND h, unsigned long long now, unsigned long long lastInput) {
     const auto it = states_.find(h);
     if (it == states_.end() || !it->second.filledOnce) return false;
     State& s = it->second;
-    const bool quick = now - s.filledAt < kRefillMs;
+    const unsigned long long elapsed = now - s.filledAt;
+    const bool quick = elapsed < kRefillMs || (lastInput < s.filledAt && elapsed < kAppRefillMs);
     s.quick = quick ? s.quick + 1 : 0;
     return quick;
 }
 
+void FillGuard::ownMaximize(HWND h, unsigned long long now) {
+    State& s = states_[h];
+    s.own = true;
+    s.ownAt = now;
+}
+
+bool FillGuard::ours(HWND h, unsigned long long now) {
+    const auto it = states_.find(h);
+    if (it == states_.end() || !it->second.own) return false;
+    it->second.own = false;
+    return now - it->second.ownAt < kOwnMs;
+}
+
 void FillGuard::forget(HWND h) { states_.erase(h); }
+
+void FillGuard::purge() {
+    for (auto it = states_.begin(); it != states_.end();) it = IsWindow(it->first) ? std::next(it) : states_.erase(it);
+}
 
 FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor) {
     const bool covers = std::abs(frame.left - monitor.left) <= 1 && std::abs(frame.top - monitor.top) <= 1 &&
@@ -47,7 +65,8 @@ bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor) {
            std::abs((frame.bottom - frame.top) - (monitor.bottom - monitor.top)) <= 1;
 }
 
-bool ZoomTracker::changed(HWND h, bool zoomed) {
+bool ZoomTracker::changed(HWND h, bool zoomed, bool iconic) {
+    if (iconic) return false;
     const auto it = zoomed_.find(h);
     if (it == zoomed_.end()) {
         zoomed_[h] = zoomed;

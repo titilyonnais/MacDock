@@ -75,6 +75,22 @@ TEST_CASE(window_look_leaves_fullscreen_windows_square) {
     CHECK(md::macWindowLook(windowed, false, 96).has_value());
 }
 
+TEST_CASE(window_look_square_in_fullscreen) {   // relecture du plan 72 : plein écran de macOS sans coins arrondis
+    auto full = notepad();
+    full.monitor = RECT{0, 0, 1920, 1080};
+    full.frame = full.monitor;
+    CHECK(md::squareInFullscreen(full));
+    full.zoomed = true;   // agrandie : Windows la carre déjà
+    CHECK(!md::squareInFullscreen(full));
+    auto windowed = notepad();
+    windowed.monitor = RECT{0, 0, 1920, 1080};
+    CHECK(!md::squareInFullscreen(windowed));
+    auto video = full;   // sans barre de titre (vidéo, jeu) : jamais touchée
+    video.zoomed = false;
+    video.style = WS_POPUP | WS_VISIBLE;
+    CHECK(!md::squareInFullscreen(video));
+}
+
 TEST_CASE(window_look_setting_defaults_on_and_roundtrips) {
     md::MenuBarSettings s = md::menuBarSettingsFromJson(md::json::Value(md::json::Object{}));
     CHECK(s.macWindows);

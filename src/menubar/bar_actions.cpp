@@ -10,7 +10,6 @@
 #include <algorithm>
 
 #include "../core/log.h"
-#include "../shell/window_tile.h"
 #include "../shell/shell_actions.h"
 #include "../shell/window_tile.h"
 #include "../tracker/app_identity.h"

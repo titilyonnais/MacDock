@@ -45,6 +45,10 @@ std::map<HWND, Kept>& fullscreens() {   // plein écran de la pastille verte : c
     static std::map<HWND, Kept> m;
     return m;
 }
+HWND& lastExitMaximized() {   // dernière fenêtre agrandie de nouveau par la sortie du plein écran
+    static HWND h = nullptr;
+    return h;
+}
 DWORD processOf(HWND h) {
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
@@ -275,9 +279,14 @@ bool fullscreenByMacDock(HWND h) {
     return fullscreens().count(h) && fullscreenStep(true, windowFrame(h), monitorOf(h)) == FullscreenStep::Exit;
 }
 
+bool fullscreenExitMaximized(HWND h) { return h && lastExitMaximized() == h; }
+
 bool toggleFullscreen(HWND h) {
     purge();
+    lastExitMaximized() = nullptr;
     if (!IsWindow(h) || IsIconic(h) || IsHungAppWindow(h)) return false;
+    const LONG_PTR style = GetWindowLongPtrW(h, GWL_STYLE);   // taille fixe ou sans barre de titre : rien (relecture M2)
+    if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME)) return false;
     const RECT monitor = monitorOf(h);
     if (IsRectEmpty(&monitor)) return false;
     const auto it = fullscreens().find(h);
@@ -286,7 +295,10 @@ bool toggleFullscreen(HWND h) {
         const Kept k = it->second;
         if (!placeFrame(h, k.frame)) return false;   // refus (UIPI) : toujours en plein écran
         fullscreens().erase(h);
-        if (k.zoomed) ShowWindow(h, SW_MAXIMIZE);   // agrandie de nouveau, son cadre d'avant comme taille rendue
+        if (k.zoomed) {   // agrandie de nouveau, son cadre d'avant comme taille rendue
+            lastExitMaximized() = h;
+            ShowWindow(h, SW_MAXIMIZE);
+        }
         return true;
     }
     const bool keep = keepSavedFrame(saved, windowFrame(h), monitor);
@@ -297,7 +309,12 @@ bool toggleFullscreen(HWND h) {
     }
     if (!restoreWithoutAnimation(h)) return false;
     if (!keep) k.frame = windowFrame(h);
-    if (!placeFrame(h, monitor)) return false;
+    // Refus, ou taille maximale de l'app plus petite que l'écran (relecture M3) : rendue telle qu'avant.
+    if (!placeFrame(h, monitor) || fullscreenStep(true, windowFrame(h), monitor) != FullscreenStep::Exit) {
+        placeFrame(h, k.frame);
+        if (k.zoomed) ShowWindow(h, SW_MAXIMIZE);
+        return false;
+    }
     fullscreens()[h] = k;
     return true;
 }

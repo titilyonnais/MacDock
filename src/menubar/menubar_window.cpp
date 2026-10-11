@@ -196,7 +196,21 @@ void MenuBarApp::applySettings() {
     lights_.attach(lights_.target(), settings_.trafficLights);
     if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
     lights_.setGreenFullscreen(settings_.fillOnMaximize);
-    if (!settings_.fillOnMaximize) maximizeWatch_.stop();   // repris au prochain premier plan sinon
+    if (!settings_.fillOnMaximize) {   // coupé : plus de suivi, et les pleins écrans en cours sont quittés (relecture M4)
+        maximizeWatch_.stop();
+        std::vector<HWND> all;
+        EnumWindows([](HWND h, LPARAM lp) { reinterpret_cast<std::vector<HWND>*>(lp)->push_back(h); return TRUE; },
+                    reinterpret_cast<LPARAM>(&all));
+        for (HWND h : all)
+            if (fullscreenByMacDock(h)) toggleFullscreen(h);
+        if (ctl_) checkFullscreen();
+    } else if (ctl_) {   // rallumé : l'app au premier plan est suivie tout de suite
+        if (HWND fg = GetForegroundWindow()) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(GetAncestor(fg, GA_ROOT) ? GetAncestor(fg, GA_ROOT) : fg, &pid);
+            maximizeWatch_.follow(pid);
+        }
+    }
     for (auto& s : screens_) syncAppBar(*s);
     repositionAll();
 }
@@ -1472,7 +1486,12 @@ void MenuBarApp::onMaximized(HWND window) {
     GetWindowThreadProcessId(window, &pid);
     const bool candidate = fillCandidate(LONG(GetWindowLongPtrW(window, GWL_STYLE)), LONG(GetWindowLongPtrW(window, GWL_EXSTYLE)),
                                          pid == GetCurrentProcessId());
-    const bool quick = fillGuard_.maximized(window, GetTickCount64());   // aussitôt après nous : l'app, pas un double-clic
+    const ULONGLONG now = GetTickCount64();
+    fillGuard_.purge();
+    if (fillGuard_.ours(window, now)) return;   // agrandie par nous (sortie du plein écran) : elle le reste
+    LASTINPUTINFO li{sizeof li};   // dernière entrée de la personne, dans la base de GetTickCount64
+    const ULONGLONG lastInput = GetLastInputInfo(&li) ? now - DWORD(GetTickCount() - li.dwTime) : now;
+    const bool quick = fillGuard_.maximized(window, now, lastInput);   // aussitôt après nous : l'app, pas un double-clic
     if (replyToMaximize(true, candidate, fillGuard_.givenUp(window), false) == MaximizeReply::Ignore) {
         if (trace_) log::info(L"[trace] barre : fenêtre %p agrandie, laissée telle quelle", static_cast<void*>(window));
         return;
@@ -1493,7 +1512,8 @@ void MenuBarApp::onMaximized(HWND window) {
 void MenuBarApp::onGreenFullscreen(HWND window) {
     if (!IsWindow(window)) return;
     const bool done = toggleFullscreen(window);
-    if (done && !IsIconic(window)) SetForegroundWindow(window);
+    if (fullscreenExitMaximized(window)) fillGuard_.ownMaximize(window, GetTickCount64());
+    if (done && !IsIconic(window)) forceForeground(window);
     checkFullscreen();
     if (trace_)
         log::info(L"[trace] barre : pastille verte, plein écran %s (%s)", fullscreenByMacDock(window) ? L"oui" : L"non",
@@ -1542,6 +1562,7 @@ void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     ctx.target.window = window;
     ctx.macFullscreen = settings_.fillOnMaximize;
     const bool done = runAction(it->second, ctx, sys_);
+    if (fullscreenExitMaximized(window)) fillGuard_.ownMaximize(window, GetTickCount64());
     if (it->second.kind == ActionKind::Zoom) checkFullscreen();   // la barre se cache ou revient tout de suite
     if (done && IsWindow(window) && !IsIconic(window)) SetForegroundWindow(window);   // la fenêtre rangée passe devant
     if (trace_)

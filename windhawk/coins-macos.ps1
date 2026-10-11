@@ -49,10 +49,17 @@ foreach ($w in $writes) {
     if (-not (Test-Path $w[0])) { New-Item -Path $w[0] | Out-Null }
     New-ItemProperty -Path $w[0] -Name $w[1] -Value $w[2] -PropertyType $w[3] -Force | Out-Null
 }
-if ($DryRun) { exit 0 }
+if ($DryRun) {
+    Write-Host 'Puis : redémarrage du service Windhawk (le mod est chargé dans dwm.exe, déjà lancé).'
+    exit 0
+}
+# dwm.exe tourne depuis l'ouverture de la session : Windhawk ne s'y charge qu'en (re)démarrant. Les autres mods sont
+# rechargés au passage (la barre des tâches peut réapparaître un instant).
+try { Restart-Service -Name Windhawk -ErrorAction Stop }
+catch { Write-Host "Le service Windhawk n'a pas redémarré ($($_.Exception.Message)) : redémarre Windhawk (ou la session)." }
 
 Write-Host ''
 if ($Off) { Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).' }
 else { Write-Host 'Coins de macOS activés : rayon de 12 pt sur toutes les fenêtres, ancrées comprises.' }
-Write-Host 'Les fenêtres déjà ouvertes changent au prochain redessin (survol, déplacement).'
+Write-Host 'Les fenêtres déjà ouvertes changent au prochain redessin (survol, déplacement, activation).'
 Read-Host 'Entrée pour fermer'

@@ -4,11 +4,23 @@ namespace md {
 
 MaximizeWatch* MaximizeWatch::self_ = nullptr;
 
+namespace {
+bool candidate(HWND h) {
+    return fillCandidate(LONG(GetWindowLongPtrW(h, GWL_STYLE)), LONG(GetWindowLongPtrW(h, GWL_EXSTYLE)), false);
+}
+} // namespace
+
 BOOL CALLBACK MaximizeWatch::seedOne(HWND h, LPARAM self) {
     auto* w = reinterpret_cast<MaximizeWatch*>(self);
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
-    if (pid == w->pid_) w->zoom_.seed(h, IsZoomed(h) != FALSE);
+    if (pid != w->pid_ || !candidate(h)) return TRUE;
+    bool zoomed = IsZoomed(h) != FALSE;
+    if (IsIconic(h)) {   // réduite : agrandie si elle reviendra agrandie (relecture I1)
+        WINDOWPLACEMENT wp{sizeof wp};
+        zoomed = GetWindowPlacement(h, &wp) && (wp.flags & WPF_RESTORETOMAXIMIZED);
+    }
+    w->zoom_.seed(h, zoomed);
     return TRUE;
 }
 
@@ -35,7 +47,8 @@ void CALLBACK MaximizeWatch::onEvent(HWINEVENTHOOK hook, DWORD, HWND hwnd, LONG 
     MaximizeWatch* w = self_;
     if (!w || hook != w->hook_ || !hwnd || idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
     if (GetAncestor(hwnd, GA_ROOT) != hwnd) return;   // contrôles et fenêtres enfants : pas d'état agrandi
-    if (w->zoom_.changed(hwnd, IsZoomed(hwnd) != FALSE) && w->sink_)
+    if (!candidate(hwnd)) return;   // bulles, listes et menus volants : jamais notés
+    if (w->zoom_.changed(hwnd, IsZoomed(hwnd) != FALSE, IsIconic(hwnd) != FALSE) && w->sink_)
         PostMessageW(w->sink_, w->message_, reinterpret_cast<WPARAM>(hwnd), 0);
 }
 
