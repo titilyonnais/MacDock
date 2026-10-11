@@ -481,27 +481,6 @@ void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
     const HWND previous = lastForeground_;
     lastForeground_ = h;
-    // Fenêtre d'app active fermée ou cachée : Windows passe par une ou plusieurs fenêtres de repli ; la barre (titres et
-    // pastilles) attend que ça se pose (plan 71). Les fenêtres de la barre (menus qui se referment) n'en sont jamais ; le
-    // bureau a sa propre règle (decideDesktopFocus).
-    DWORD fgPid = 0;
-    GetWindowThreadProcessId(h, &fgPid);
-    if (fgPid != GetCurrentProcessId()) {
-        const HWND before = settleFrom_;
-        settleFrom_ = h;
-        wchar_t fgClass[64] = {};
-        GetClassNameW(h, fgClass, 64);
-        const bool previousGone = before && before != h && (!IsWindow(before) || !IsWindowVisible(before));
-        if (!isDesktopClass(fgClass) && !settle_.arrive(GetTickCount64(), previousGone)) {
-            if (trace_) log::info(L"[trace] barre : fenêtre active fermée, premier plan de repli %p : attente", h);
-            SetTimer(ctl_, kSettleTimer, UINT(ForegroundSettle::kSettleMs), nullptr);
-            return;
-        }
-        KillTimer(ctl_, kSettleTimer);
-    }
-    const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
-    lights_.attach(rootWindow, settings_.trafficLights);   // il décide
-    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
     // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
     // premier plan (un dialogue « Enregistrer sous » reçoit Ctrl+V, pas sa fenêtre principale désactivée).
     HWND root = GetAncestor(h, GA_ROOTOWNER);
@@ -514,6 +493,29 @@ void MenuBarApp::onForeground(HWND h) {
     GetWindowThreadProcessId(root, &pid);
     const std::wstring exe = processExe(pid);
     const ForegroundKind kind = classifyForeground(cls, fileName(exe), pid == GetCurrentProcessId());
+    // Fenêtre d'app active fermée ou cachée : Windows passe par une ou plusieurs fenêtres de repli ; la barre (titres et
+    // pastilles) attend que ça se pose, au plus 350 ms (plan 71). Seules les fenêtres adoptées comptent, et un dialogue
+    // qui rend la main à sa fenêtre principale passe tout de suite (relecture du plan 71) ; le bureau a sa propre règle.
+    if (settleAdopts(kind, isDesktopClass(cls))) {
+        const HWND before = settleFrom_;
+        const DWORD beforePid = settlePid_;
+        settleFrom_ = h;
+        settlePid_ = pid;
+        const bool beforeGone = before && (!IsWindow(before) || !IsWindowVisible(before));
+        const bool waiting = settle_.waiting();
+        if (!settle_.arrive(GetTickCount64(), foregroundFromClosedWindow(before != nullptr, before == h, beforePid == pid,
+                                                                         beforeGone))) {
+            if (trace_) log::info(L"[trace] barre : fenêtre active fermée, premier plan de repli %p : attente", h);
+            settlePending_ = h;
+            if (!waiting) SetTimer(ctl_, kSettleTimer, UINT(ForegroundSettle::kSettleMs), nullptr);   // au plus 350 ms
+            return;
+        }
+        KillTimer(ctl_, kSettleTimer);
+        settlePending_ = nullptr;
+    }
+    const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
+    lights_.attach(rootWindow, settings_.trafficLights);   // il décide
+    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
     if (trace_) log::info(L"[trace] barre : premier plan %p (%s, %s) → %s", h, cls, fileName(exe).c_str(),
                           kind == ForegroundKind::Ignore ? L"ignoré" : kind == ForegroundKind::Explorer ? L"Explorateur" : L"app");
     if (kind == ForegroundKind::Ignore) return;
@@ -1326,7 +1328,23 @@ void MenuBarApp::onRightClick(Screen& s, POINT client) {
     }
 }
 
+// Attente du premier plan de repli finie, ou interrompue par un menu de la barre (qui doit viser la bonne app) : la fenêtre
+// du moment s'applique comme un changement ordinaire ; si c'est un menu de la barre, la fenêtre de repli en attente.
+void MenuBarApp::flushSettle() {
+    KillTimer(ctl_, kSettleTimer);
+    if (!settle_.waiting()) return;
+    settle_.clear();
+    settleFrom_ = nullptr;
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &pid);
+    if (!fg || pid == GetCurrentProcessId()) fg = settlePending_;
+    settlePending_ = nullptr;
+    if (fg && IsWindow(fg)) onForeground(fg);
+}
+
 void MenuBarApp::openMenu(Screen& s, std::size_t index) {
+    flushSettle();   // jamais les menus d'une fenêtre qui vient de se fermer (relecture du plan 71)
     stopSamples();
     menuSession_ = true;   // jusqu'à afterMenu : les écrans ne sont pas refaits sous le menu
     menuScreen_ = &s;
@@ -1437,6 +1455,7 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
 
 void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     if (menuOpen_ || menuSession_ || !window || !IsWindow(window) || IsIconic(window) || IsHungAppWindow(window)) return;
+    flushSettle();
     const HMONITOR mon = MonitorFromPoint(anchor, MONITOR_DEFAULTTONEAREST);
     Screen* s = nullptr;
     for (auto& x : screens_)
@@ -1784,14 +1803,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     break;
                 case kDesktopFocusTimer: decideDesktopFocus(); break;
-                case kSettleTimer:   // repli posé : le premier plan du moment s'applique
-                    KillTimer(ctl_, kSettleTimer);
-                    if (settle_.waiting()) {
-                        settle_.clear();
-                        settleFrom_ = nullptr;   // traité comme un changement ordinaire
-                        onForeground(GetForegroundWindow());
-                    }
-                    break;
+                case kSettleTimer: flushSettle(); break;   // repli posé : le premier plan du moment s'applique
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:
                     checkFullscreen();

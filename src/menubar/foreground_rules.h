@@ -28,6 +28,15 @@ DesktopFocus desktopFocus(const DesktopFocusContext& c);
 // main à une fenêtre de repli, parfois cachée, puis souvent à une autre peu après (VM fermée le 10 octobre : le Terminal
 // caché derrière VMware, puis Claude 265 ms plus tard). La barre attend que ça se pose avant de changer d'app et de
 // pastilles (sinon titres qui clignotent, pastilles qui sautent) ; un changement ordinaire passe tout de suite.
+// Fenêtre que l'attente retient comme « fenêtre d'avant » : seulement celles que la barre adopte (apps et Explorateur),
+// jamais une fenêtre ignorée (Spotlight, Mission Control, Alt+Tab, menus) ni le bureau (relecture du plan 71).
+inline bool settleAdopts(ForegroundKind kind, bool desktop) { return kind != ForegroundKind::Ignore && !desktop; }
+// Premier plan de repli : la fenêtre d'avant (adoptée) est fermée ou cachée, et la nouvelle est d'un autre processus
+// (un dialogue qui se ferme rend la main à sa propre fenêtre principale : rien à attendre).
+inline bool foregroundFromClosedWindow(bool hasBefore, bool sameWindow, bool sameProcess, bool beforeGone) {
+    return hasBefore && !sameWindow && !sameProcess && beforeGone;
+}
+
 class ForegroundSettle {
 public:
     static constexpr std::uint64_t kSettleMs = 350;

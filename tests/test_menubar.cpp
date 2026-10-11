@@ -863,3 +863,19 @@ TEST_CASE(bar_foreground_settles_after_a_closed_window) {
     CHECK(!s.due(2349));
     CHECK(s.due(2350));             // rien d'autre : le premier plan du moment s'applique
 }
+
+TEST_CASE(bar_foreground_settle_only_after_an_app_window) {
+    // Relecture du plan 71 : l'attente partait aussi à la fermeture d'un dialogue, de Spotlight ou d'Alt+Tab.
+    using md::ForegroundKind;
+    // Seules les fenêtres adoptées par la barre comptent (ni Spotlight, ni Alt+Tab, ni le bureau).
+    CHECK(md::settleAdopts(ForegroundKind::App, false));
+    CHECK(md::settleAdopts(ForegroundKind::Explorer, false));
+    CHECK(!md::settleAdopts(ForegroundKind::Ignore, false));
+    CHECK(!md::settleAdopts(ForegroundKind::Explorer, true));
+    // Repli après fermeture : autre fenêtre, autre processus, l'ancienne fermée ou cachée.
+    CHECK(md::foregroundFromClosedWindow(true, false, false, true));    // VM fermée → Terminal d'un autre processus
+    CHECK(!md::foregroundFromClosedWindow(true, false, true, true));    // « Enregistrer sous » fermé → sa fenêtre principale
+    CHECK(!md::foregroundFromClosedWindow(true, true, false, false));   // Spotlight fermé → la même app qu'avant
+    CHECK(!md::foregroundFromClosedWindow(true, false, false, false));  // simple changement d'app
+    CHECK(!md::foregroundFromClosedWindow(false, false, false, true));  // rien de connu avant
+}

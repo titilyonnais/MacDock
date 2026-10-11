@@ -431,7 +431,11 @@ std::vector<HWND> menuWindows() {
     EnumWindows([](HWND h, LPARAM l) {
         wchar_t cls[32] = {};
         GetClassNameW(h, cls, 32);
-        if (wcscmp(cls, L"MacDockMenu") == 0 && IsWindowVisible(h)) reinterpret_cast<std::vector<HWND>*>(l)->push_back(h);
+        DWORD pid = 0;
+        GetWindowThreadProcessId(h, &pid);
+        // Seulement ceux de ce processus : jamais le menu ouvert de la barre ou du Dock de l'utilisateur.
+        if (wcscmp(cls, L"MacDockMenu") == 0 && IsWindowVisible(h) && pid == GetCurrentProcessId())
+            reinterpret_cast<std::vector<HWND>*>(l)->push_back(h);
         return TRUE;
     }, LPARAM(&out));
     return out;
