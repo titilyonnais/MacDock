@@ -53,4 +53,25 @@ qui clignotent, titres décalés, pastilles qui sautent.
   caché derrière VMware, puis à Claude 265 ms plus tard ; la barre affichait les deux. Quand la fenêtre d'app active
   vient de se fermer ou de se cacher, la barre (titres et pastilles) attend que le premier plan se pose, au plus
   350 ms ; un changement ordinaire passe tout de suite.
-- [ ] 6. Relecture indépendante, corrections, fusion locale.
+- [x] 6. Relecture indépendante (opus : prêt avec corrections, aucun critique), corrections, fusion locale.
+
+## Relecture indépendante (opus) et corrections
+- **Attente du premier plan sur des changements ordinaires** (important) : elle partait aussi à la fermeture d'un
+  dialogue, de Spotlight, d'Alt+Tab ou d'une fenêtre de la zone de notification (pastilles grises un instant de trop).
+  Seules les fenêtres adoptées par la barre comptent, et un dialogue qui rend la main à sa fenêtre principale passe
+  tout de suite ; l'attente ne dépasse plus 350 ms (1dac1e2).
+- **Menu ouvert pendant l'attente** (important) : il visait la fenêtre fermée ; l'attente est appliquée avant d'ouvrir
+  un menu (1dac1e2).
+- **Test de la séance gardée** (mineur regradé : il pouvait fermer un menu ouvert de ta barre pendant les tests) :
+  limité à ses propres menus (1dac1e2).
+
+## Reportés
+- Après une remise en page pendant une séance de menus : icône d'état retrouvée par sa place (pas par sa sorte), titre
+  introuvable qui ferme la séance, surbrillance redessinée sur l'ancienne case.
+- Séance gardée détruite après la fin du menu (ancien panneau figé un instant) ; état « visible aux captures » non remis
+  à zéro entre deux titres (⊞⇧3 entre deux titres : verre figé jusqu'à la fin de la séance).
+- Une vraie barre de menus placée dans une barre de titre (WinUI 3 ?) n'est plus lue ; coût d'un appel d'UI Automation
+  de plus par élément visité.
+- Les vrais menus de VMware (dans une barre d'outils) : VMware prend les menus génériques.
+- Deux tests de rendu du texte (chiffres de l'horloge, majuscules centrées) échouent aussi sur `main` depuis le
+  redémarrage du PC du 11 octobre : à étudier.
