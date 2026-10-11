@@ -27,8 +27,9 @@ RECT anchorTile(TileAction a, const RECT& target, const RECT& got);
 // Range la fenêtre : son cadre visible, sans les bordures invisibles, est calé sur tileRect dans la zone de travail de
 // son écran (agrandie : restaurée d'abord ; taille minimale de l'app : recalée par anchorTile). Le cadre d'avant le
 // premier rangement est gardé pour Previous. false, sans rien changer : fenêtre disparue, réduite ou figée, taille fixe
-// (seul Centrer la déplace), refus de Windows, ou rien à quoi revenir.
-bool tileWindow(HWND window, TileAction a);
+// (seul Centrer la déplace), refus de Windows, ou rien à quoi revenir. `marginPt` : marge au bord et entre deux fenêtres
+// (8 pt, celle des menus de macOS ; 0 pour Remplir depuis l'agrandissement, plan 72).
+bool tileWindow(HWND window, TileAction a, int marginPt = 8);
 // Fenêtre rangée en dernier par `a` et restée à ce cadre visible (plan 72 : une fenêtre remplie qu'on agrandit de
 // nouveau revient à sa taille d'avant, comme le double-clic de macOS).
 bool tiledBy(HWND window, TileAction a, const RECT& frame);

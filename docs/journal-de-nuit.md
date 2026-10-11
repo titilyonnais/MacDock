@@ -1271,6 +1271,11 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Segoe UI 5.72** (mise à jour de Windows, active depuis le redémarrage du 11 octobre) : chiffres à chasse fixe et
   autres marges ; « FR » du menu de saisie centré sur ses majuscules, les deux tests de texte repassent.
 - Essai réel sur une fenêtre d'essai : chaque cadre exact au pixel.
+- **Tes remarques du 12 octobre** : Remplir depuis l'agrandissement prenait les marges de 8 pt du menu Remplir ; il
+  occupe maintenant toute la zone entre la barre et le Dock. Les coins à 12 pt (mesurés dans ta VM, qui dessine les
+  fenêtres en mode simplifié sans accélération graphique) restaient trop proches de Windows : 26 pt, le rayon des
+  fenêtres à barre d'outils de Tahoe (16 pt pour celles à simple barre de titre ; 10 pt avant Tahoe). Rayon mesuré à
+  l'écran avec le mod : ~13 pt à 12, donc bien appliqué.
 
 ## Mineurs reportés — plan 72
 - Barre figée le temps d'un WM_SIZE lent pendant le remplissage ; Dock caché au plein écran après une seconde.

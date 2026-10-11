@@ -170,6 +170,11 @@ Demande les droits d'administrateur (HKLM) comme `install-macdock-look.ps1`.
   couvre pas l'écran, réglage coupé (pleins écrans quittés) ou rallumé (suivi repris), tables purgées, seules les
   fenêtres candidates suivies, inclusion en double.
 
+## Après essai (12 octobre, avec toi)
+- Remplir depuis l'agrandissement : sans marges (`kMaximizeFillMarginPt = 0`), sonde réelle exacte.
+- Rayon des coins : 26 pt (fenêtres à barre d'outils de Tahoe) au lieu de 12 (mesure de la VM, rendu simplifié).
+  Le script ne redémarre Windhawk que si dwm.exe vient d'être ajouté ou si le mod était coupé.
+
 ## Reportés
 - Barre figée le temps d'un WM_SIZE lent pendant le remplissage (SendMessageTimeout, fenêtres élevées).
 - Dock caché au plein écran à son minuteur d'une seconde ; pastilles cachées 300 ms même sans animation.

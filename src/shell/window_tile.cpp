@@ -193,7 +193,7 @@ RECT anchorTile(TileAction a, const RECT& target, const RECT& got) {
     return {x, y, x + w, y + h};
 }
 
-bool tileWindow(HWND h, TileAction a) {
+bool tileWindow(HWND h, TileAction a, int marginPt) {
     purge();
     if (!IsWindow(h) || IsIconic(h) || IsHungAppWindow(h)) return false;   // réduite : macOS grise ces entrées
     if (resizes(a) && !(GetWindowLongPtrW(h, GWL_STYLE) & WS_THICKFRAME)) return false;   // taille fixe : Centrer seul
@@ -216,7 +216,7 @@ bool tileWindow(HWND h, TileAction a) {
     } else {
         UINT dpi = 96, dpiY = 96;   // celui de l'écran : les coordonnées sont physiques
         if (FAILED(GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpi, &dpiY))) dpi = 96;
-        target = tileRect(a, mi.rcWork, vis, MulDiv(8, int(dpi), 96));
+        target = tileRect(a, mi.rcWork, vis, MulDiv(marginPt, int(dpi), 96));
     }
     // Rectangle de Windows = cadre visible + bordures invisibles (celles de maintenant).
     const auto place = [&](const RECT& t, UINT flags) {

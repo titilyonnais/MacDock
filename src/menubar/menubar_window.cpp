@@ -1500,7 +1500,7 @@ void MenuBarApp::onMaximized(HWND window) {
     const bool wasFilled = !quick && tiledBy(window, TileAction::Fill, windowFrame(window));
     const MaximizeReply reply = replyToMaximize(true, candidate, false, wasFilled);
     bool done = reply == MaximizeReply::Previous && tileWindow(window, TileAction::Previous);
-    const bool filled = !done && tileWindow(window, TileAction::Fill);
+    const bool filled = !done && tileWindow(window, TileAction::Fill, kMaximizeFillMarginPt);
     if (filled) fillGuard_.filled(window, GetTickCount64());
     if (trace_)
         log::info(L"[trace] barre : fenêtre %p agrandie → %s", static_cast<void*>(window),

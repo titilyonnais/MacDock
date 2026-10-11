@@ -52,6 +52,12 @@ static void scenario() {
     check(md::tileWindow(g_win, md::TileAction::Previous), "taille d'avant");
     same(original, "  cadre d'avant");
     check(!md::tiledBy(g_win, md::TileAction::Fill, md::windowFrame(g_win)), "  plus remplie");
+    // Remplir depuis l'agrandissement : toute la zone entre la barre et le Dock, sans marges (ta remarque du 12 octobre).
+    check(md::tileWindow(g_win, md::TileAction::Fill, 0), "Remplir sans marges");
+    same(mi.rcWork, "  zone de travail entière");
+    check(md::tiledBy(g_win, md::TileAction::Fill, md::windowFrame(g_win)), "  reconnue remplie");
+    check(md::tileWindow(g_win, md::TileAction::Previous), "taille d'avant");
+    same(original, "  cadre d'avant");
     // Plein écran et retour.
     check(md::toggleFullscreen(g_win), "plein écran");
     same(mi.rcMonitor, "  écran entier");
