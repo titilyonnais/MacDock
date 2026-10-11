@@ -32,6 +32,7 @@ struct ActionContext {
     std::vector<HWND> appWindows;        // fenêtres de l'app affichée
     std::vector<HWND>* hidden = nullptr; // fenêtres masquées par « Masquer… », rétablies par « Tout afficher »
     std::wstring exePath;                // À propos
+    bool macFullscreen = false;          // réglage Remplir (plan 72) : « Plein écran » met la fenêtre en plein écran
 };
 
 // Le Dock répond-il (WM_NULL rendu dans le délai) ? Forcer à quitter ne lui est demandé qu'alors ; sinon le

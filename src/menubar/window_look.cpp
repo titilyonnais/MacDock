@@ -6,6 +6,12 @@ namespace md {
 
 bool shouldRoundCorners(DWORD original) { return original != 1 && original != 3; }
 
+bool squareInFullscreen(const LightsWindowInfo& w) {
+    const RECT& m = w.monitor;
+    return !w.zoomed && (w.style & WS_CAPTION) == WS_CAPTION && m.right > m.left && w.frame.left <= m.left &&
+           w.frame.top <= m.top && w.frame.right >= m.right && w.frame.bottom >= m.bottom;
+}
+
 bool appsDarkMode() {
     DWORD value = 1, size = sizeof value;
     RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",

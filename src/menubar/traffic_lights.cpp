@@ -145,6 +145,8 @@ int hitLight(const LightsLayout& l, POINT p) {
     return -1;
 }
 
+bool greenGoesFullscreen(bool fillMode, bool maximizable) { return fillMode && maximizable; }
+
 UINT lightCommand(int light, bool zoomed) {
     switch (light) {
         case 0: return SC_CLOSE;

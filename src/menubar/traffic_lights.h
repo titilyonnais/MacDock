@@ -75,6 +75,9 @@ POINT zoomMenuAnchor(const LightsLayout& l, double scale);
 // pastille), sans bouton enfoncé (clic en cours sur elle) et si la demande a moins de 400 ms (barre occupée).
 bool zoomMenuStillWanted(POINT cursor, POINT anchor, double scale, bool buttonDown, unsigned ageMs);
 UINT lightCommand(int light, bool zoomed);            // SC_CLOSE, SC_MINIMIZE, SC_MAXIMIZE ou SC_RESTORE
+// Pastille verte (plan 72) : plein écran de macOS (la barre s'en charge) avec le réglage Remplir, si l'app s'agrandit ;
+// sinon la commande de Windows (lightCommand).
+bool greenGoesFullscreen(bool fillMode, bool maximizable);
 // Couleur la plus fréquente (à 8 niveaux près par canal), 0xRRGGBB ; 0 sans échantillon.
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples);
 // Points de la barre de titre lus pour cette couleur (sur une même ligne) : de `right` vers la gauche par pas de

@@ -1257,6 +1257,25 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **En quittant une app** (ton enregistrement : la VM fermée, Windows passait par le Terminal caché puis par Claude) :
   la barre attend que le premier plan se pose, au plus 350 ms, avant de changer de titres et de pastilles.
 
+### Plan 72 — Fenêtres de macOS 26, 11 et 12 octobre
+
+- **Agrandir remplit l'écran** (ta précision : « deux modes différents ») : glisser une fenêtre contre le haut, double-
+  cliquer sur sa barre de titre ou ⊞↑ la range entre la barre des menus et le Dock, marges de 8 pt, coins arrondis ; le
+  refaire la rend à sa taille d'avant. Réglage : Réglages > Fenêtres > « Remplir l'écran au lieu d'agrandir ».
+- **Pastille verte = vrai plein écran** : la fenêtre couvre tout l'écran, coins carrés, la barre et le Dock se cachent ;
+  un nouveau clic (ou « Quitter le plein écran » dans le menu de la pastille) la rend comme avant, agrandie si elle
+  l'était.
+- **Coins de macOS** : plutôt qu'un crochet maison dans dwm.exe, le mod public « Custom Window Corner Radius » de
+  Windhawk (déjà installé chez toi, désactivé) ; `windhawk\coins-macos.cmd` l'active (rayon 12, fenêtres ancrées
+  arrondies) et redémarre Windhawk. Il demande l'autorisation administrateur : à lancer toi-même.
+- **Segoe UI 5.72** (mise à jour de Windows, active depuis le redémarrage du 11 octobre) : chiffres à chasse fixe et
+  autres marges ; « FR » du menu de saisie centré sur ses majuscules, les deux tests de texte repassent.
+- Essai réel sur une fenêtre d'essai : chaque cadre exact au pixel.
+
+## Mineurs reportés — plan 72
+- Barre figée le temps d'un WM_SIZE lent pendant le remplissage ; Dock caché au plein écran après une seconde.
+- Plusieurs écrans (⊞⇧→ en plein écran, DPI différents) ; fenêtre agrandie quand son app est en arrière-plan.
+
 ## Mineurs reportés — plan 71
 - Remise en page pendant une séance de menus (icône d'état retrouvée par sa place, titre introuvable qui ferme la
   séance) ; séance gardée détruite après la fin du menu ; ⊞⇧3 entre deux titres : verre figé jusqu'à la fin.

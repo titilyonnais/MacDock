@@ -1,0 +1,71 @@
+// Fenêtres de macOS 26 (plan 72), logique pure : une fenêtre qu'on agrandit se remplit entre la barre des menus et le
+// Dock (comme une fenêtre glissée contre le haut de l'écran sur macOS), la pastille verte passe en vrai plein écran.
+#pragma once
+#include <windows.h>
+
+#include <map>
+
+namespace md {
+
+// Fenêtre que MacDock remplit ou met en plein écran : de premier niveau, à barre de titre, bord redimensionnable et
+// bouton agrandir, ni outil ni enfant, d'un autre processus.
+bool fillCandidate(LONG style, LONG exStyle, bool ownProcess);
+
+enum class MaximizeReply { Ignore, Fill, Previous };
+// Fenêtre passée à l'état agrandi : rien (réglage coupé, fenêtre exclue ou app qui insiste), Remplir, ou retour à la
+// taille d'avant quand elle était déjà remplie par MacDock (bascule du double-clic de macOS).
+MaximizeReply replyToMaximize(bool enabled, bool candidate, bool givenUp, bool wasFilled);
+
+// App qui se réagrandit d'elle-même : agrandie de nouveau moins de kRefillMs après notre remplissage (trop tôt pour un
+// double-clic de la personne : ce n'est pas la bascule vers la taille d'avant), ou moins de kAppRefillMs après sans la
+// moindre entrée de la personne depuis (`lastInput`, même base de temps que `now` ; relecture I3) ; deux fois de suite →
+// laissée agrandie (jusqu'à ce que la fenêtre soit oubliée).
+class FillGuard {
+public:
+    static constexpr unsigned long long kRefillMs = 700, kAppRefillMs = 2000, kOwnMs = 1500;
+    bool givenUp(HWND h) const;
+    void filled(HWND h, unsigned long long now);      // nous venons de la remplir
+    // Elle vient de passer à l'état agrandi ; true : par l'app, aussitôt après nous.
+    bool maximized(HWND h, unsigned long long now, unsigned long long lastInput = ~0ull);
+    // Agrandie par MacDock lui-même (sortie du plein écran d'une fenêtre qui l'était, relecture I2) : le passage à l'état
+    // agrandi qui suit, dans les kOwnMs, n'est pas à remplir. ours : consommé.
+    void ownMaximize(HWND h, unsigned long long now);
+    bool ours(HWND h, unsigned long long now);
+    void forget(HWND h);
+    void purge();   // fenêtres fermées
+
+private:
+    struct State {
+        unsigned long long filledAt = 0;
+        bool filledOnce = false;
+        int quick = 0;   // réagrandissements rapides de suite
+        unsigned long long ownAt = 0;
+        bool own = false;
+    };
+    std::map<HWND, State> states_;
+};
+
+enum class FullscreenStep { Enter, Exit };
+// Pastille verte : sortie si MacDock l'a mise en plein écran et qu'elle couvre toujours son écran (à 1 px près),
+// entrée sinon (déplacée depuis : l'ancien état est oublié).
+FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor);
+// Entrée en plein écran alors qu'un cadre d'avant est gardé : gardé si la fenêtre a encore la taille de l'écran (à 1 px
+// près : seulement déplacée depuis), remplacé par son cadre du moment sinon.
+bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor);
+
+// État agrandi des fenêtres suivies : seul le passage de « non agrandie » à « agrandie » compte. Une fenêtre inconnue
+// (agrandie avant MacDock, ou à l'ouverture de son app) est seulement notée.
+class ZoomTracker {
+public:
+    // true : elle vient de passer à l'état agrandi. Réduite (`iconic`, IsZoomed faux) : rien ne change, une fenêtre
+    // agrandie qu'on réduit puis qu'on rouvre reste agrandie (relecture I1).
+    bool changed(HWND h, bool zoomed, bool iconic = false);
+    void seed(HWND h, bool zoomed);
+    void forget(HWND h);
+    void clear() { zoomed_.clear(); }
+
+private:
+    std::map<HWND, bool> zoomed_;
+};
+
+} // namespace md

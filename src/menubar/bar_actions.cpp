@@ -119,6 +119,11 @@ bool runAction(const MenuAction& a, ActionContext& c, const SystemActions& sys) 
             return true;
         case ActionKind::Zoom:   // comme un clic sur la pastille verte : l'app reçoit la commande (animation, refus)
             if (!liveWindow(target)) return false;
+            if (a.arg == L"fullscreen" && c.macFullscreen) {   // plan 72 : vrai plein écran de macOS
+                const bool done = toggleFullscreen(target);
+                if (done) forceForeground(target);
+                return done;
+            }
             PostMessageW(target, WM_SYSCOMMAND, IsZoomed(target) ? SC_RESTORE : SC_MAXIMIZE, 0);
             forceForeground(target);
             return true;

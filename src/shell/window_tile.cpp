@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <map>
 
+#include "window_fill.h"
+
 #pragma comment(lib, "shcore.lib")
 
 namespace md {
@@ -28,6 +30,8 @@ constexpr Named kNames[] = {{TileAction::Left, L"left"},          {TileAction::R
 struct Kept {
     RECT frame{};
     DWORD pid = 0;
+    TileAction action = TileAction::Previous;   // placed() : rangement qui a donné ce cadre
+    bool zoomed = false;                        // fullscreens() : agrandie avant le plein écran
 };
 std::map<HWND, Kept>& before() {
     static std::map<HWND, Kept> m;
@@ -37,6 +41,14 @@ std::map<HWND, Kept>& placed() {
     static std::map<HWND, Kept> m;
     return m;
 }
+std::map<HWND, Kept>& fullscreens() {   // plein écran de la pastille verte : cadre d'avant
+    static std::map<HWND, Kept> m;
+    return m;
+}
+HWND& lastExitMaximized() {   // dernière fenêtre agrandie de nouveau par la sortie du plein écran
+    static HWND h = nullptr;
+    return h;
+}
 DWORD processOf(HWND h) {
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
@@ -44,7 +56,7 @@ DWORD processOf(HWND h) {
 }
 // Fenêtres fermées, ou HWND repris par un autre processus : oubliées.
 void purge() {
-    for (auto* m : {&before(), &placed()})
+    for (auto* m : {&before(), &placed(), &fullscreens()})
         for (auto it = m->begin(); it != m->end();) it = !IsWindow(it->first) || processOf(it->first) != it->second.pid ? m->erase(it) : std::next(it);
 }
 RECT visibleFrame(HWND h, const RECT& window) {
@@ -53,6 +65,20 @@ RECT visibleFrame(HWND h, const RECT& window) {
     return v;
 }
 bool resizes(TileAction a) { return a != TileAction::Center && a != TileAction::Previous; }
+// Cadre visible `t` : rectangle de Windows = cadre visible + bordures invisibles (celles de maintenant).
+bool placeFrame(HWND h, const RECT& t) {
+    RECT win{};
+    if (!GetWindowRect(h, &win)) return false;
+    const RECT vis = visibleFrame(h, win);
+    const RECT r{t.left - (vis.left - win.left), t.top - (vis.top - win.top), t.right + (win.right - vis.right),
+                 t.bottom + (win.bottom - vis.bottom)};
+    return SetWindowPos(h, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE) != FALSE;
+}
+RECT monitorOf(HWND h) {
+    MONITORINFO mi{sizeof mi};
+    if (!GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) return RECT{};
+    return mi.rcMonitor;
+}
 
 struct NamedArrangement {
     Arrangement arrangement;
@@ -216,8 +242,80 @@ bool tileWindow(HWND h, TileAction a) {
     } else {
         const auto last = placed().find(h);
         if (before().count(h) == 0 || last == placed().end() || !EqualRect(&last->second.frame, &vis)) before()[h] = {vis, pid};
-        placed()[h] = {got, pid};
+        placed()[h] = {got, pid, a};
     }
+    return true;
+}
+
+bool tiledBy(HWND h, TileAction a, const RECT& frame) {
+    purge();
+    const auto it = placed().find(h);
+    return it != placed().end() && it->second.action == a && EqualRect(&it->second.frame, &frame);
+}
+
+RECT windowFrame(HWND h) {
+    RECT win{};
+    if (!GetWindowRect(h, &win)) return RECT{};
+    return visibleFrame(h, win);
+}
+
+bool restoreWithoutAnimation(HWND h) {
+    if (!IsWindow(h)) return false;
+    if (!IsZoomed(h)) return !IsIconic(h);
+    // Le Dock coupe déjà les animations de cette fenêtre (génie) : il les rendra lui-même.
+    const bool held = GetPropW(h, L"MacDockTransitionsHeld") != nullptr;
+    BOOL off = TRUE;
+    if (!held) DwmSetWindowAttribute(h, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+    ShowWindow(h, SW_RESTORE);   // synchrone : la fenêtre a son cadre d'avant au retour
+    if (!held) {
+        off = FALSE;
+        DwmSetWindowAttribute(h, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+    }
+    return !IsZoomed(h) && !IsIconic(h);
+}
+
+bool fullscreenByMacDock(HWND h) {
+    purge();
+    return fullscreens().count(h) && fullscreenStep(true, windowFrame(h), monitorOf(h)) == FullscreenStep::Exit;
+}
+
+bool fullscreenExitMaximized(HWND h) { return h && lastExitMaximized() == h; }
+
+bool toggleFullscreen(HWND h) {
+    purge();
+    lastExitMaximized() = nullptr;
+    if (!IsWindow(h) || IsIconic(h) || IsHungAppWindow(h)) return false;
+    const LONG_PTR style = GetWindowLongPtrW(h, GWL_STYLE);   // taille fixe ou sans barre de titre : rien (relecture M2)
+    if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME)) return false;
+    const RECT monitor = monitorOf(h);
+    if (IsRectEmpty(&monitor)) return false;
+    const auto it = fullscreens().find(h);
+    const bool saved = it != fullscreens().end();
+    if (fullscreenStep(saved, windowFrame(h), monitor) == FullscreenStep::Exit) {
+        const Kept k = it->second;
+        if (!placeFrame(h, k.frame)) return false;   // refus (UIPI) : toujours en plein écran
+        fullscreens().erase(h);
+        if (k.zoomed) {   // agrandie de nouveau, son cadre d'avant comme taille rendue
+            lastExitMaximized() = h;
+            ShowWindow(h, SW_MAXIMIZE);
+        }
+        return true;
+    }
+    const bool keep = keepSavedFrame(saved, windowFrame(h), monitor);
+    Kept k = keep ? it->second : Kept{};
+    if (!keep) {
+        k.zoomed = IsZoomed(h) != FALSE;
+        k.pid = processOf(h);
+    }
+    if (!restoreWithoutAnimation(h)) return false;
+    if (!keep) k.frame = windowFrame(h);
+    // Refus, ou taille maximale de l'app plus petite que l'écran (relecture M3) : rendue telle qu'avant.
+    if (!placeFrame(h, monitor) || fullscreenStep(true, windowFrame(h), monitor) != FullscreenStep::Exit) {
+        placeFrame(h, k.frame);
+        if (k.zoomed) ShowWindow(h, SW_MAXIMIZE);
+        return false;
+    }
+    fullscreens()[h] = k;
     return true;
 }
 

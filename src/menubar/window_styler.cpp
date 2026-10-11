@@ -30,7 +30,7 @@ BOOL CALLBACK collect(HWND h, LPARAM lp) {
 
 void WindowStyler::restore(const Touched& t) {
     if (!IsWindow(t.h) || processOf(t.h) != t.pid) return;   // fenêtre disparue, ou HWND repris par une autre
-    if (t.rounded) set(t.h, kCorner, t.corner);
+    if (t.rounded || t.squared) set(t.h, kCorner, t.corner);
     set(t.h, kBorderColor, kColorDefault);
     if (t.captioned) {
         set(t.h, kCaptionColor, kColorDefault);
@@ -54,22 +54,37 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
     if (FAILED(DwmGetWindowAttribute(h, kBackdrop, &backdrop, sizeof backdrop))) backdrop = 0;
     const auto look = macWindowLook(info, dark, dpi, int(backdrop));
     if (!look) {   // plus éligible (passée en plein écran sans bordure…) : rendue à Windows
+        const bool square = squareInFullscreen(info);
+        if (it != touched_.end() && it->squared && square) return;
+        DWORD corner = 0;   // préférence de l'app, rendue au retour
         if (it != touched_.end()) {
+            corner = it->corner;
             restore(*it);
             touched_.erase(it);
+        } else if (FAILED(DwmGetWindowAttribute(h, kCorner, &corner, sizeof corner))) {
+            corner = 0;
+        }
+        if (square) {   // plein écran de macOS : coins carrés (plan 72)
+            Touched s = key;
+            s.pid = pid;
+            s.corner = corner;
+            s.squared = set(h, kCorner, 1 /* DWMWCP_DONOTROUND */);
+            if (s.squared) touched_.insert(s);
         }
         return;
     }
-    if (it != touched_.end() && it->dark == dark && it->backdrop == backdrop) return;
+    if (it != touched_.end() && it->dark == dark && it->backdrop == backdrop && !it->squared) return;
     Touched t = it != touched_.end() ? *it : key;
     t.dark = dark;
     t.pid = pid;
     t.backdrop = backdrop;
-    if (it == touched_.end()) {   // première fois : on lit le choix de l'app avant de toucher aux coins
-        DWORD corner = 0;
-        if (FAILED(DwmGetWindowAttribute(h, kCorner, &corner, sizeof corner))) corner = 0;
+    if (it == touched_.end() || it->squared) {   // première fois : on lit le choix de l'app avant de toucher aux coins
+        DWORD corner = it != touched_.end() ? it->corner : 0;   // sortie du plein écran : celui d'avant
+        if (it == touched_.end() && FAILED(DwmGetWindowAttribute(h, kCorner, &corner, sizeof corner))) corner = 0;
         t.corner = corner;
         t.rounded = look->round && shouldRoundCorners(corner);
+        if (it != touched_.end() && !t.rounded) set(h, kCorner, corner);   // carrée par nous : rendue à son choix
+        t.squared = false;
     }
     bool ok = true;
     if (t.rounded) ok &= set(h, kCorner, kRound);

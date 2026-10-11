@@ -862,8 +862,14 @@ LRESULT TrafficWindow::handle(Layer& l, UINT msg, WPARAM wp, LPARAM lp) {
                 l.state.pressed = -1;
                 paint(l);
             }
-            if (hitLight(l.layout, screenPoint()) == pressed && IsWindow(l.target))
-                PostMessageW(l.target, WM_SYSCOMMAND, lightCommand(pressed, IsZoomed(l.target) != FALSE), 0);
+            if (hitLight(l.layout, screenPoint()) == pressed && IsWindow(l.target)) {
+                const HWND sink = fullscreenSink_.load();
+                if (pressed == 2 && sink &&
+                    greenGoesFullscreen(greenFullscreen_.load(), (GetWindowLongPtrW(l.target, GWL_STYLE) & WS_MAXIMIZEBOX) != 0))
+                    PostMessageW(sink, fullscreenMessage_.load(), reinterpret_cast<WPARAM>(l.target), 0);   // plan 72
+                else
+                    PostMessageW(l.target, WM_SYSCOMMAND, lightCommand(pressed, IsZoomed(l.target) != FALSE), 0);
+            }
             return 0;
         }
         case WM_TIMER:

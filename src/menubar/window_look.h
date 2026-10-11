@@ -24,6 +24,9 @@ std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UI
 // Préférence de coins lue avant notre passage (DWMWA_WINDOW_CORNER_PREFERENCE) : carrés ou petits demandés par l'app
 // sont gardés.
 bool shouldRoundCorners(DWORD original);
+// Fenêtre à barre de titre, non agrandie, qui couvre son écran (plein écran de la pastille verte, plan 72) : coins
+// carrés comme sur macOS ; Windows 11 et le mod de coins arrondissent une fenêtre non agrandie.
+bool squareInFullscreen(const LightsWindowInfo& w);
 // Mode des applications (AppsUseLightTheme), et non celui de la barre des tâches.
 bool appsDarkMode();
 
@@ -43,6 +46,7 @@ private:
         DWORD pid = 0;          // un HWND réutilisé par une autre fenêtre n'est pas la même
         DWORD corner = 0;       // préférence d'origine, rendue à la fermeture
         bool rounded = false;   // nous avons changé les coins
+        bool squared = false;   // coins carrés le temps du plein écran (squareInFullscreen)
         bool captioned = false; // nous avons coloré la barre de titre
         DWORD backdrop = 0;     // fond de la fenêtre lors de notre passage (Mica arrivé depuis : barre rendue)
         bool operator<(const Touched& o) const { return h < o.h; }

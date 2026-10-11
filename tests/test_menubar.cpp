@@ -810,6 +810,7 @@ TEST_CASE(menus_zoom_button_menu) {
     CHECK_EQ(ids.size(), std::size_t(8));
     CHECK(items[5].text == L"Plein écran");
     CHECK(actionOf(b, &items[5]).kind == md::ActionKind::Zoom);
+    CHECK(actionOf(b, &items[5]).arg == L"fullscreen");   // plan 72 : vrai plein écran, pas Agrandir
 
     // ⌥ : 7 icônes sur 8 changent (quarts, Centrer, dispositions inversées) ; Quarts reste.
     md::ZoomMenuContext alt;

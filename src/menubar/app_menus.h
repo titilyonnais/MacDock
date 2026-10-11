@@ -85,7 +85,7 @@ std::wstring forceQuitShortcutLabel(std::string_view settingsJson);
 // organiser » (Remplir, la fenêtre et les suivantes ; ⌥ : Centrer, dispositions inversées), puis Plein écran.
 struct ZoomMenuContext {
     bool resizable = true;   // taille fixe : rien ne s'étire (⌥ : Centrer seul)
-    bool zoomed = false;     // agrandie : « Quitter le plein écran »
+    bool zoomed = false;     // en plein écran (réglage Remplir coupé : agrandie) : « Quitter le plein écran »
     bool option = false;     // ⌥ (Alt) maintenue à l'ouverture
 };
 BarMenus buildZoomMenu(const ZoomMenuContext& c);
