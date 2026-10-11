@@ -82,6 +82,10 @@ Source: "..\windhawk\macdock-look.wh.cpp"; DestDir: "{app}\windhawk"; Flags: ign
 Source: "..\windhawk\install-macdock-look.ps1"; DestDir: "{app}\windhawk"; Flags: ignoreversion
 Source: "..\windhawk\installer-macdock-look.cmd"; DestDir: "{app}\windhawk"; Flags: ignoreversion
 Source: "..\windhawk\retirer-macdock-look.cmd"; DestDir: "{app}\windhawk"; Flags: ignoreversion
+; Coins de macOS (plan 72) : active le mod public « Custom Window Corner Radius » de Windhawk.
+Source: "..\windhawk\coins-macos.ps1"; DestDir: "{app}\windhawk"; Flags: ignoreversion
+Source: "..\windhawk\coins-macos.cmd"; DestDir: "{app}\windhawk"; Flags: ignoreversion
+Source: "..\windhawk\coins-windows.cmd"; DestDir: "{app}\windhawk"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 

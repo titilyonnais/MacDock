@@ -80,11 +80,11 @@ Réglage : `MenuBarSettings::fillOnMaximize = true`, clé JSON `fillOnMaximize`.
 « Remplir l'écran au lieu d'agrandir », détail « Comme macOS : la barre des menus et le Dock restent visibles ; la
 pastille verte passe en plein écran ».
 
-- [ ] Tests (rouges) : `window_fill_candidates` (fenêtre ordinaire oui ; sans WS_THICKFRAME, sans WS_MAXIMIZEBOX, outil,
+- [x] Tests (rouges) : `window_fill_candidates` (fenêtre ordinaire oui ; sans WS_THICKFRAME, sans WS_MAXIMIZEBOX, outil,
   enfant, sans barre de titre, de MacDock : non), `window_fill_replies` (les quatre cas), `window_fill_guard` (une
   réagrandie à 1 s : pas encore ; deux : abandon ; à 2 s : rien ; forget), `window_fill_fullscreen_step`,
   `menubar_settings_fill_on_maximize` (défaut oui, aller-retour JSON).
-- [ ] Implémentation, tests verts, commit.
+- [x] Implémentation, tests verts, commit.
 
 ### Tâche 2 : Remplir au lieu d'agrandir
 
@@ -112,11 +112,11 @@ MenuBarApp : `maximizeWatch_.follow(pid)` à chaque premier plan adopté (régla
 cadre noté après notre dernier remplissage → `replyToMaximize` → `tileWindow(Fill | Previous)` → cadre noté,
 `guard.filled`. Réglage changé : suivi arrêté ou repris.
 
-- [ ] Test (rouge) de la logique de suivi, pure (le crochet saute notre propre processus, une fenêtre d'essai ne
+- [x] Test (rouge) de la logique de suivi, pure (le crochet saute notre propre processus, une fenêtre d'essai ne
   l'atteindrait pas) : `ZoomTracker { bool changed(HWND, bool zoomed); void seed(HWND, bool); void forget(HWND); }`,
   `zoom_tracker_reports_transitions_only` (fenêtre inconnue → notée sans rapport ; non agrandie puis agrandie →
   rapport ; agrandie puis agrandie → rien ; oubliée → inconnue).
-- [ ] Implémentation, branchement, tests verts, essai réel avec une fenêtre d'essai (agrandir → remplie ; agrandir de
+- [x] Implémentation, branchement, tests verts, essai réel avec une fenêtre d'essai (agrandir → remplie ; agrandir de
   nouveau → taille d'avant), commit.
 
 ### Tâche 3 : pastille verte = plein écran
@@ -135,9 +135,9 @@ bool greenGoesFullscreen(bool fillMode, bool maximizable);
 // traffic_window : `message` posté à `sink` (wParam la fenêtre) au lieu de SC_MAXIMIZE.
 void TrafficWindow::setFullscreenSink(HWND sink, UINT message, bool on);
 ```
-- [ ] Tests (rouges) : `lights_green_goes_fullscreen` ; `fullscreen_toggle_real_window` (fenêtre d'essai de ce
+- [x] Tests (rouges) : `lights_green_goes_fullscreen` ; `fullscreen_toggle_real_window` (fenêtre d'essai de ce
   processus : entre → cadre = écran, sort → cadre d'avant ; agrandie avant → agrandie après).
-- [ ] Implémentation, branchement (pastille, entrée « Plein écran » / « Quitter le plein écran » du menu de la pastille,
+- [x] Implémentation, branchement (pastille, entrée « Plein écran » / « Quitter le plein écran » du menu de la pastille,
   ActionKind::Zoom), tests verts, essai réel, commit.
 
 ### Tâche 4 : coins de macOS (mod public de Windhawk)
@@ -149,8 +149,30 @@ Le script vérifie que Windhawk et le mod « Custom Window Corner Radius » (`cu
 fenêtres ancrées arrondies (`snapped`) et horodate le changement. `-Off` le désactive. `-DryRun` : affiche seulement.
 Demande les droits d'administrateur (HKLM) comme `install-macdock-look.ps1`.
 
-- [ ] Essai `-DryRun` sur ce PC (aucune écriture), commit.
+- [x] Essai `-DryRun` sur ce PC (aucune écriture), commit.
 
 ### Tâche 5 : relecture, corrections, documents, fusion
-- [ ] Relecture indépendante (opus), corrections (rouge → vert), suite complète, Release, MacDock relancé.
-- [ ] Journal, feuille de route, ce plan ; fusion locale dans `main`.
+- [x] Relecture indépendante (opus), corrections (rouge → vert), suite complète, Release, MacDock relancé.
+- [x] Journal, feuille de route, ce plan ; fusion locale dans `main`.
+
+## Relecture indépendante (opus : prêt avec corrections, aucun critique) et corrections
+- **Fenêtre agrandie réduite puis rouverte** (important) : IsZoomed est faux pour une fenêtre réduite ; elle était
+  remplie à son retour. L'état est gardé pendant la réduction, les réduites amorcées d'après WPF_RESTORETOMAXIMIZED.
+- **Sortie du plein écran d'une fenêtre agrandie** (important) : notre propre agrandissement était rempli. Il est
+  reconnu (FillGuard::ownMaximize).
+- **App qui se réagrandit après 0,7 s** (important) : va-et-vient possible. Sans aucune entrée de la personne depuis
+  notre remplissage, une réagrandie dans les 2 s compte comme l'app.
+- **Coins en plein écran** (important) : la fenêtre était rendue à Windows, qui l'arrondit. Coins carrés le temps du
+  plein écran, préférence de l'app rendue à la sortie.
+- **Script des coins** (important, à vérifier) : clé d'inclusion de Windhawk lue sur ce PC (`Engine\Settings\Include`) ;
+  dwm.exe tourne déjà, le script redémarre le service Windhawk.
+- Mineurs corrigés au passage : plein écran limité aux fenêtres redimensionnables, entrée annulée si la fenêtre ne
+  couvre pas l'écran, réglage coupé (pleins écrans quittés) ou rallumé (suivi repris), tables purgées, seules les
+  fenêtres candidates suivies, inclusion en double.
+
+## Reportés
+- Barre figée le temps d'un WM_SIZE lent pendant le remplissage (SendMessageTimeout, fenêtres élevées).
+- Dock caché au plein écran à son minuteur d'une seconde ; pastilles cachées 300 ms même sans animation.
+- Plusieurs écrans : plein écran déplacé par ⊞⇧→ vers un écran de même taille ; bordures d'un écran de DPI différent.
+- À vérifier en réel : animation de restauration encore jouée par DWM ; glisser contre le haut une fenêtre déjà remplie.
+- Une fenêtre agrandie pendant que son app est en arrière-plan n'est pas suivie (seule l'app au premier plan l'est).

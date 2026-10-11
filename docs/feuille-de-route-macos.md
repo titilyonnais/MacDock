@@ -60,6 +60,8 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Poignée des séparateurs et cotes du Dock de macOS 26** mesurées à trois tailles dans ta VM (plan 70).
 - **Barre de menus fiable et vive** : plus de « Système » dans VMware ni de titres décalés, bascule instantanée d'un
   menu à l'autre, plus de clignotement en quittant une app (plan 71).
+- **Fenêtres de macOS 26** : agrandir remplit l'écran entre la barre et le Dock, pastille verte en vrai plein écran,
+  coins de 12 pt par le mod « Custom Window Corner Radius » de Windhawk (plan 72).
 
 ## À faire, par ordre d'effet
 - **Apparence Clair / Sombre / Automatique** (ta demande du 10 octobre, MacDock et Windows, automatique au lever et au
