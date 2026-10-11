@@ -160,6 +160,10 @@ std::vector<GroupSpec> windowsPane() {
                           L"À la place des boutons de Windows"));
     g.rows.push_back(toggle(L"Apparence macOS des fenêtres", [](auto& m) -> auto& { return m.bar.macWindows; },
                             L"Coins arrondis, sans liseré coloré, barre de titre grise", L"coins bordure"));
+    g.rows.push_back(toggle(L"Remplir l'écran au lieu d'agrandir", [](auto& m) -> auto& { return m.bar.fillOnMaximize; },
+                            L"Comme macOS : la barre des menus et le Dock restent visibles ; la pastille verte passe en "
+                            L"plein écran",
+                            L"agrandir plein écran remplir"));
     out.push_back(g);
     return out;
 }

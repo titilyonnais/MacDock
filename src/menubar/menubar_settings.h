@@ -34,6 +34,7 @@ struct MenuBarSettings {
     bool showAppIcons = true;   // icônes des autres apps (relayées par le mod Windhawk)
     LightsMode trafficLights = LightsMode::Standard;   // pastilles fermer, réduire, zoom, à la place des boutons de Windows
     bool macWindows = true;     // coins arrondis, sans liseré coloré, barre de titre grise pour les autres apps
+    bool fillOnMaximize = true;   // agrandir remplit l'écran entre la barre et le Dock ; pastille verte : plein écran
     MenuBarMetrics metrics;
 };
 
