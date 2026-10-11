@@ -73,7 +73,7 @@ unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated) {
 
 unsigned lightsRestoreWaitMs(bool animated, bool heldByDock) { return animated && !heldByDock ? 250u : 0u; }
 
-LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
+LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed, double cornerPt) {
     const double k = (dpi ? dpi : 96) / 96.0;
     LightsLayout l;
     l.window = buttons;
@@ -81,11 +81,15 @@ LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed) {
     if (l.window.right - l.window.left < need) l.window.left = l.window.right - need;   // un seul bouton (dialogue)
     const LONG r = std::lround(kDiameter / 2 * k);
     l.radius = double(r);
-    const LONG cy = (buttons.top + buttons.bottom) / 2, mid = (l.window.left + l.window.right) / 2;
+    // Dans le coin : la marge au-dessus de la pastille (bande des boutons centrée) vaut aussi à droite.
+    const LONG band = buttons.bottom - buttons.top;
+    const LONG pad = std::max(0L, (band - 2 * r) / 2);
+    const LONG cy = buttons.top + pad + r, last = buttons.right - pad - r;
     for (int i = 0; i < 3; ++i) {
-        const LONG cx = mid + std::lround((i - 1) * kSpacing * k);
+        const LONG cx = last - std::lround((2 - i) * kSpacing * k);
         l.circles[i] = RECT{cx - r, cy - r, cx + r, cy + r};
     }
+    l.cornerRadius = zoomed ? 0 : std::lround(std::max(0.0, cornerPt) * k);
     l.topGap = zoomed ? 0 : std::min(LONG(std::lround(kTopGap * k)), (buttons.bottom - buttons.top) / 4);
     l.patch = l.window;
     l.patch.top += l.topGap;
@@ -155,6 +159,42 @@ UINT lightCommand(int light, bool zoomed) {
     }
 }
 
+double windowCornerPt(DWORD preference, bool zoomed, const CornerMod& mod) {
+    if (zoomed || preference == 1) return 0;   // agrandie, ou DWMWCP_DONOTROUND
+    if (preference == 3) return mod.active ? mod.smallRadius : 4;   // DWMWCP_ROUNDSMALL
+    return mod.active ? mod.radius : 8;
+}
+
+CornerMod readCornerMod() {
+    CornerMod m;
+    const wchar_t* key = L"SOFTWARE\\Windhawk\\Engine\\Mods\\custom-corner-radius";
+    DWORD disabled = 1, size = sizeof disabled;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"Disabled", RRF_RT_REG_DWORD, nullptr, &disabled, &size) != ERROR_SUCCESS ||
+        disabled)
+        return m;
+    const std::wstring settings = std::wstring(key) + L"\\Settings";
+    DWORD v = 0;
+    size = sizeof v;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, settings.c_str(), L"radius", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS &&
+        int(v) >= 0)
+        m.radius = double(v);
+    size = sizeof v;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, settings.c_str(), L"smallRadius", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS &&
+        int(v) >= 0)
+        m.smallRadius = double(v);
+    m.active = true;
+    return m;
+}
+
+std::vector<std::uint32_t> captionRows(const std::vector<std::uint32_t>& grid, int columns, int rows) {
+    if (columns <= 0 || rows <= 0 || grid.size() != std::size_t(columns) * std::size_t(rows)) return {};
+    std::vector<std::uint32_t> out(std::size_t(rows), 0);
+    for (int y = 0; y < rows; ++y)
+        out[std::size_t(y)] = dominantColor(std::vector<std::uint32_t>(grid.begin() + std::ptrdiff_t(y) * columns,
+                                                                       grid.begin() + std::ptrdiff_t(y + 1) * columns));
+    return out;
+}
+
 std::uint32_t dominantColor(const std::vector<std::uint32_t>& samples) {
     if (samples.empty()) return 0;
     struct Bucket { int n = 0; std::uint64_t r = 0, g = 0, b = 0; std::size_t first = 0; };
@@ -199,12 +239,18 @@ std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState&
     static constexpr std::uint32_t kFill[3] = {0xFF5F57, 0xFEBC2E, 0x28C840}, kEdge[3] = {0xE0443E, 0xDEA123, 0x1AAB29};
     const std::uint32_t grayFill = s.dark ? 0x4E4F52 : 0xDDDDDD, grayEdge = s.dark ? 0x3E3F42 : 0xC4C3C6;
     const double border = std::max(0.5 * scale, 0.75), stroke = 1.1 * scale / 2, arm = 2.9 * scale;
-    const Rgb patch = rgb(s.patchColor);
+    const bool rows = int(s.patchRows.size()) == h;
+    const double cr = double(l.cornerRadius);
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
-            // Fond : couleur de la barre de titre, qui cache les boutons ; le bord du haut reste transparent quand il
-            // faut pouvoir y redimensionner la fenêtre.
-            const double pa = y < l.topGap ? 0.0 : 1.0;
+            // Fond : teinte de la barre de titre à cette hauteur, qui cache les boutons ; le bord du haut reste
+            // transparent quand il faut pouvoir y redimensionner la fenêtre, et le coin arrondi de la fenêtre aussi.
+            const Rgb patch = rgb(rows ? s.patchRows[std::size_t(y)] : s.patchColor);
+            double pa = y < l.topGap ? 0.0 : 1.0;
+            if (cr > 0 && x + 0.5 > w - cr && y + 0.5 < cr) {   // arrondi du coin haut droit, bord adouci
+                const double d = std::hypot(x + 0.5 - (w - cr), y + 0.5 - cr);
+                pa *= std::clamp(cr - d + 0.5, 0.0, 1.0);
+            }
             double a = pa, r = patch.r * pa, g = patch.g * pa, b = patch.b * pa;   // prémultiplié
             for (int i = 0; i < 3; ++i) {
                 const double cx = (l.circles[i].left + l.circles[i].right) / 2.0 - l.window.left;

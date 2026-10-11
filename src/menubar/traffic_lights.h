@@ -37,7 +37,20 @@ struct LightsLayout {
     double radius = 0;   // pixels
     RECT patch{};        // fond de la couleur de la barre de titre, qui cache les boutons
     LONG topGap = 0;     // rangées du haut laissées transparentes : le bord de la fenêtre reste redimensionnable
+    LONG cornerRadius = 0;   // coin haut droit arrondi de la fenêtre (pixels) : la pièce n'en déborde pas
 };
+
+// Rayon du coin des fenêtres, en points : 8 pt de Windows 11 (4 pt pour DWMWCP_ROUNDSMALL), ou ceux du mod « Custom
+// Window Corner Radius » de Windhawk quand il est actif (plan 72) ; 0 si l'app les veut carrés ou si elle est agrandie.
+struct CornerMod {
+    bool active = false;
+    double radius = 8, smallRadius = 4;
+};
+double windowCornerPt(DWORD preference, bool zoomed, const CornerMod& mod);
+CornerMod readCornerMod();   // réglages du mod dans le registre de Windhawk (lecture seule)
+// Teinte de chaque ligne de la barre de titre : `grid` relevé ligne par ligne (`columns` points par ligne, `rows`
+// lignes), la teinte dominante de chaque ligne (un symbole sous une colonne ne compte pas). Vide si incohérent.
+std::vector<std::uint32_t> captionRows(const std::vector<std::uint32_t>& grid, int columns, int rows);
 
 // Code WM_NCHITTEST de la fenêtre en un point écran (HTNOWHERE si elle ne répond pas).
 using HitProbe = std::function<LRESULT(POINT)>;
@@ -48,9 +61,11 @@ RECT captionButtons(const RECT& window, const RECT& frame, const RECT& dwmBounds
 // Partie visible du cadre : une fenêtre agrandie peut déclarer un cadre qui déborde sous la barre de menus.
 RECT visibleFrame(const RECT& frame, const RECT& work, bool zoomed);
 // Pastilles posées à la place des boutons de la fenêtre, qu'elles recouvrent : rien du contenu de l'app n'est caché,
-// dans toutes les apps (elles ont toutes ces boutons en haut à droite). Le haut reste transparent pour redimensionner
-// par le bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables).
-LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false);
+// dans toutes les apps (elles ont toutes ces boutons en haut à droite). Dans le coin, comme sur macOS : même marge
+// au-dessus et à droite, centrées dans la hauteur des boutons. Le haut reste transparent pour redimensionner par le
+// bord, sauf fenêtre agrandie (les vrais boutons y seraient atteignables). `cornerPt` : rayon du coin de la fenêtre
+// (windowCornerPt), que la pièce épouse.
+LightsLayout lightsOverButtons(const RECT& buttons, UINT dpi, bool zoomed = false, double cornerPt = 0);
 // Attente avant de remontrer les pastilles quand la fenêtre est agrandie ou rendue à sa taille (`animated` : animation
 // de Windows active), en millisecondes.
 unsigned lightsZoomWaitMs(bool wasZoomed, bool zoomed, bool animated);
@@ -99,6 +114,7 @@ struct LightsState {
     bool dark = false;                           // thème de la barre de titre (gris des pastilles indisponibles)
     bool inactive = false;                       // fenêtre inactive : grises, en couleur au survol (macOS)
     std::uint32_t patchColor = 0xF3F3F3;         // 0xRRGGBB, couleur de la barre de titre
+    std::vector<std::uint32_t> patchRows;        // 0xRRGGBB par ligne du calque (dégradé du Mica) ; vide : patchColor
 };
 // Image BGRA prémultipliée du calque (taille de l.window) ; scale = dpi / 96.
 std::vector<std::uint8_t> renderLights(const LightsLayout& l, const LightsState& s, double scale);

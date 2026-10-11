@@ -133,6 +133,7 @@ private:
     std::atomic<HWND> fullscreenSink_{nullptr};
     std::atomic<UINT> fullscreenMessage_{0};
     std::atomic<bool> greenFullscreen_{false};
+    CornerMod cornerMod_;   // rayon des coins du mod de Windhawk, relu aux remesures (fil des pastilles)
     static TrafficWindow* self_;
 };
 

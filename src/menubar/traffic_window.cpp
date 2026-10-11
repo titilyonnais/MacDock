@@ -529,19 +529,24 @@ void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
     }
     const LONG right = xs.front(), left = xs.back();
     const int w = int(right - left + 1);
-    std::vector<std::uint32_t> samples;
+    // Toute la hauteur du calque : chaque ligne garde sa teinte (dégradé du Mica, remarque du 12 octobre).
+    const LONG top = l.layout.window.top;
+    const int h = int(l.layout.window.bottom - top);
+    std::vector<std::uint32_t> samples, grid;
     HDC screen = GetDC(nullptr);
     HDC mem = CreateCompatibleDC(screen);
     BITMAPINFO bi{};
-    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -1, 1, 32, BI_RGB};
+    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -std::max(h, 1), 1, 32, BI_RGB};
     void* bits = nullptr;
     HBITMAP bmp = CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (bmp && bits) {
+    if (bmp && bits && h > 0) {
         HGDIOBJ old = SelectObject(mem, bmp);
-        if (BitBlt(mem, 0, 0, w, 1, screen, left, y, SRCCOPY)) {
+        if (BitBlt(mem, 0, 0, w, h, screen, left, top, SRCCOPY)) {
             GdiFlush();
             const auto* px = static_cast<const std::uint32_t*>(bits);
-            for (LONG x : xs) samples.push_back(px[x - left] & 0xFFFFFF);   // 0xRRGGBB
+            for (LONG x : xs) samples.push_back(px[std::size_t(y - top) * w + (x - left)] & 0xFFFFFF);   // 0xRRGGBB
+            for (int row = 0; row < h; ++row)
+                for (LONG x : xs) grid.push_back(px[std::size_t(row) * w + (x - left)] & 0xFFFFFF);
         }
         SelectObject(mem, old);
     }
@@ -554,8 +559,10 @@ void TrafficWindow::sample(Layer& l, const RECT& frame, UINT dpi) {
     }
     l.sampled = true;
     const std::uint32_t color = dominantColor(samples);
-    if (color == l.state.patchColor && l.painted) return;
+    std::vector<std::uint32_t> rows = captionRows(grid, int(xs.size()), h);
+    if (color == l.state.patchColor && rows == l.state.patchRows && l.painted) return;
     l.state.patchColor = color;
+    l.state.patchRows = std::move(rows);
     const double lum = 0.299 * ((color >> 16) & 0xFF) + 0.587 * ((color >> 8) & 0xFF) + 0.114 * (color & 0xFF);
     l.state.dark = lum < 128;
     l.painted = false;
@@ -668,10 +675,14 @@ void TrafficWindow::place(Layer& l, bool resample, bool probe) {
         SetTimer(l.hwnd, kRevealTimer, zoomWait, nullptr);
     }
     if (GetTickCount64() < l.revealAt) return;   // montrées par kRevealTimer
-    const LightsLayout layout = lightsOverButtons(buttons, dpi, info.zoomed);
+    DWORD corner = 0;   // coins de la fenêtre : la pièce n'en déborde pas (rayon du mod de Windhawk s'il est actif)
+    if (FAILED(DwmGetWindowAttribute(l.target, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof corner))) corner = 0;
+    if (resample || !l.placement.valid) cornerMod_ = readCornerMod();
+    const LightsLayout layout = lightsOverButtons(buttons, dpi, info.zoomed, windowCornerPt(corner, info.zoomed, cornerMod_));
     const bool resized = layout.window.right - layout.window.left != l.layout.window.right - l.layout.window.left ||
                          layout.window.bottom - layout.window.top != l.layout.window.bottom - l.layout.window.top ||
-                         layout.topGap != l.layout.topGap;
+                         layout.topGap != l.layout.topGap || layout.cornerRadius != l.layout.cornerRadius;
+    if (layout.window.bottom - layout.window.top != l.layout.window.bottom - l.layout.window.top) resample = true;
     l.layout = layout;
     l.scale = dpi / 96.0;
     // Fermer : menu système, ou bouton fermer trouvé par la sonde (Electron sans menu système).
