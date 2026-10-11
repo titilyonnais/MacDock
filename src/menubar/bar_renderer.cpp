@@ -25,6 +25,26 @@ float firstBaseline(IDWriteTextLayout* l) {
     return SUCCEEDED(l->GetLineMetrics(all.data(), lines, &lines)) && lines > 0 ? all[0].baseline : 0;
 }
 
+// Hauteur des majuscules de la police du début de la mise en page, en DIP (0 si introuvable).
+float capHeightOf(IDWriteTextLayout* l, float fontSize) {
+    Microsoft::WRL::ComPtr<IDWriteFontCollection> fonts;
+    if (FAILED(l->GetFontCollection(0, &fonts, nullptr)) || !fonts) return 0;
+    wchar_t family[128] = {};
+    if (FAILED(l->GetFontFamilyName(0, family, 128, nullptr))) return 0;
+    DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL;
+    l->GetFontWeight(0, &weight, nullptr);
+    UINT32 index = 0;
+    BOOL exists = FALSE;
+    Microsoft::WRL::ComPtr<IDWriteFontFamily> fam;
+    Microsoft::WRL::ComPtr<IDWriteFont> font;
+    if (FAILED(fonts->FindFamilyName(family, &index, &exists)) || !exists || FAILED(fonts->GetFontFamily(index, &fam)) ||
+        FAILED(fam->GetFirstMatchingFont(weight, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &font)))
+        return 0;
+    DWRITE_FONT_METRICS m{};
+    font->GetMetrics(&m);
+    return m.designUnitsPerEm ? fontSize * m.capHeight / m.designUnitsPerEm : 0;
+}
+
 } // namespace
 
 bool isDeviceLost(HRESULT hr) {
@@ -225,7 +245,11 @@ void BarRenderer::draw(ID2D1RenderTarget* rt, const BarFrame& f, float height) {
             const float bh = std::round(15 * s), bw = std::max(std::round(tm.widthIncludingTrailingWhitespace + 8 * s), std::round(20 * s));
             const float bx = std::round(it.x + (it.width - bw) / 2), by = std::round((height - bh) / 2);
             const float stroke = std::max(1.0f, 1.2f * s), r = 3.5f * s;
-            const float tx = std::round(bx + (bw - tm.widthIncludingTrailingWhitespace) / 2), ty = std::round(by + (bh - tm.height) / 2);
+            // Majuscules au milieu de la boîte (la boîte de ligne dépend des marges verticales de chaque police : Segoe UI
+            // 5.72, arrivée avec une mise à jour de Windows, les posait 1,5 px trop bas).
+            const float cap = capHeightOf(l.Get(), fs);
+            const float tx = std::round(bx + (bw - tm.widthIncludingTrailingWhitespace) / 2);
+            const float ty = cap > 0 ? std::round(by + bh / 2 - firstBaseline(l.Get()) + cap / 2) : std::round(by + (bh - tm.height) / 2);
             for (int pass = withShadow ? 0 : 1; pass < 2; ++pass) {
                 const float dy = pass == 0 ? shadowDy : 0;
                 ID2D1SolidColorBrush* b = pass == 0 ? shadow.Get() : ink.Get();
