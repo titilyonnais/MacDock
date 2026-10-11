@@ -26,6 +26,7 @@
 #include "bar_layout.h"
 #include "bar_renderer.h"
 #include "bar_screens.h"
+#include "maximize_watch.h"
 #include "menubar_settings.h"
 #include "status_audio.h"
 #include "status_hub.h"
@@ -139,6 +140,8 @@ private:
     // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
     // choisie vise cette fenêtre, même inactive.
     void onZoomMenu(HWND window, POINT anchor);
+    void onMaximized(HWND window);    // plan 72 : agrandie → remplie (ou rendue à sa taille d'avant si elle l'était)
+    void onGreenFullscreen(HWND window);   // plan 72 : pastille verte → plein écran, ou sortie
     void trayClickAt(Screen& s, std::size_t k, int button);
     void openSettingsFile();
     void execute(const MenuAction& a);
@@ -200,6 +203,8 @@ private:
     HWND desktopPrevious_ = nullptr;  // bureau au premier plan sans clic : la fenêtre active juste avant (décision différée)
     bool desktopDecided_ = false;     // le bureau peut s'afficher comme Explorateur (clic dessus, ou décision prise)
     WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)
+    MaximizeWatch maximizeWatch_;   // fenêtres de l'app au premier plan qui passent à l'état agrandi (plan 72)
+    FillGuard fillGuard_;           // apps qui se réagrandissent d'elles-mêmes : laissées agrandies
     WindowTracker tracker_;
     AppModel model_;
     SystemActions sys_;

@@ -29,6 +29,21 @@ RECT anchorTile(TileAction a, const RECT& target, const RECT& got);
 // premier rangement est gardé pour Previous. false, sans rien changer : fenêtre disparue, réduite ou figée, taille fixe
 // (seul Centrer la déplace), refus de Windows, ou rien à quoi revenir.
 bool tileWindow(HWND window, TileAction a);
+// Fenêtre rangée en dernier par `a` et restée à ce cadre visible (plan 72 : une fenêtre remplie qu'on agrandit de
+// nouveau revient à sa taille d'avant, comme le double-clic de macOS).
+bool tiledBy(HWND window, TileAction a, const RECT& frame);
+// Cadre visible de la fenêtre (DWMWA_EXTENDED_FRAME_BOUNDS, sinon GetWindowRect), pixels écran.
+RECT windowFrame(HWND window);
+// Fenêtre agrandie rendue à sa taille d'avant sans l'animation de Windows (celle d'agrandir vient de jouer) ; true si
+// elle n'est plus agrandie (déjà rendue : rien à faire).
+bool restoreWithoutAnimation(HWND window);
+
+// Plein écran de macOS (pastille verte, plan 72) : cadre visible calé sur l'écran entier de la fenêtre (la barre des
+// menus et le Dock se cachent d'eux-mêmes devant une fenêtre qui le couvre), cadre et état agrandi d'avant gardés ; de
+// nouveau : rendus. false, sans rien changer : fenêtre disparue, réduite, figée ou refus de Windows.
+bool toggleFullscreen(HWND window);
+// Mise en plein écran par MacDock et couvre toujours son écran.
+bool fullscreenByMacDock(HWND window);
 
 // « Organiser » de macOS 26 (plan 51) : la fenêtre choisie et les suivantes rangées ensemble.
 enum class Arrangement { LeftRight, RightLeft, TopBottom, BottomTop, Quarters };

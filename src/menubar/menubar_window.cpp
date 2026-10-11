@@ -18,6 +18,7 @@
 #include "../core/log.h"
 #include "../core/strings.h"
 #include "../shell/shell_actions.h"
+#include "../shell/window_tile.h"
 #include "../screenshot/windows_tool.h"
 #include "../tracker/app_identity.h"
 #include "bar_color.h"
@@ -55,6 +56,8 @@ constexpr UINT WM_APP_SCREENS = WM_APP + 7;      // DPI d'un écran changé : ba
 constexpr UINT WM_APP_TRAY = WM_APP + 6;         // lParam : ipc::Message* (à libérer) ; wParam 1 : connexion
 constexpr UINT WM_APP_VOLUME = WM_APP + 5;       // Core Audio : wParam 1 = sortie par défaut changée
 constexpr UINT WM_APP_ZOOM_MENU = WM_APP + 8;    // pastille verte survolée : wParam la fenêtre, lParam l'ancrage
+constexpr UINT WM_APP_MAXIMIZED = WM_APP + 9;    // plan 72 : fenêtre (wParam) passée à l'état agrandi
+constexpr UINT WM_APP_GREEN = WM_APP + 10;       // plan 72 : pastille verte cliquée (wParam la fenêtre) : plein écran
 constexpr int kBrightnessJob = 1;                // curseur de luminosité glissé : seule la dernière valeur part
 constexpr DWORD kUiaItemsWaitMs = 2500;           // lecture d'un menu à son ouverture
 
@@ -192,6 +195,8 @@ void MenuBarApp::applySettings() {
     if (ctl_) registerVolumeKeys();   // après le démarrage seulement (fenêtre de contrôle prête)
     lights_.attach(lights_.target(), settings_.trafficLights);
     if (ctl_) styler_.setEnabled(settings_.macWindows, appsDarkMode());
+    lights_.setGreenFullscreen(settings_.fillOnMaximize);
+    if (!settings_.fillOnMaximize) maximizeWatch_.stop();   // repris au prochain premier plan sinon
     for (auto& s : screens_) syncAppBar(*s);
     repositionAll();
 }
@@ -519,6 +524,11 @@ void MenuBarApp::onForeground(HWND h) {
     if (trace_) log::info(L"[trace] barre : premier plan %p (%s, %s) → %s", h, cls, fileName(exe).c_str(),
                           kind == ForegroundKind::Ignore ? L"ignoré" : kind == ForegroundKind::Explorer ? L"Explorateur" : L"app");
     if (kind == ForegroundKind::Ignore) return;
+    if (settings_.fillOnMaximize) {   // Remplir au lieu d'agrandir (plan 72) : les fenêtres de cette app sont suivies
+        DWORD topPid = 0;
+        GetWindowThreadProcessId(rootWindow, &topPid);
+        maximizeWatch_.follow(topPid);
+    }
     if (!(kind == ForegroundKind::Explorer && isDesktopClass(cls))) {
         KillTimer(ctl_, kDesktopFocusTimer);
         desktopPrevious_ = nullptr;
@@ -1453,6 +1463,43 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
     afterMenu();
 }
 
+// Remplir au lieu d'agrandir (plan 72) : la fenêtre agrandie (glissée contre le haut, double-clic sur sa barre de titre,
+// ⊞↑) est rendue à sa taille sans animation puis rangée entre la barre et le Dock ; agrandie de nouveau alors qu'elle
+// était remplie, elle revient à sa taille d'avant, comme le double-clic de macOS.
+void MenuBarApp::onMaximized(HWND window) {
+    if (!settings_.fillOnMaximize || !IsWindow(window) || !IsZoomed(window) || IsHungAppWindow(window)) return;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    const bool candidate = fillCandidate(LONG(GetWindowLongPtrW(window, GWL_STYLE)), LONG(GetWindowLongPtrW(window, GWL_EXSTYLE)),
+                                         pid == GetCurrentProcessId());
+    const bool quick = fillGuard_.maximized(window, GetTickCount64());   // aussitôt après nous : l'app, pas un double-clic
+    if (replyToMaximize(true, candidate, fillGuard_.givenUp(window), false) == MaximizeReply::Ignore) {
+        if (trace_) log::info(L"[trace] barre : fenêtre %p agrandie, laissée telle quelle", static_cast<void*>(window));
+        return;
+    }
+    if (!restoreWithoutAnimation(window)) return;
+    const bool wasFilled = !quick && tiledBy(window, TileAction::Fill, windowFrame(window));
+    const MaximizeReply reply = replyToMaximize(true, candidate, false, wasFilled);
+    bool done = reply == MaximizeReply::Previous && tileWindow(window, TileAction::Previous);
+    const bool filled = !done && tileWindow(window, TileAction::Fill);
+    if (filled) fillGuard_.filled(window, GetTickCount64());
+    if (trace_)
+        log::info(L"[trace] barre : fenêtre %p agrandie → %s", static_cast<void*>(window),
+                  done ? L"taille d'avant" : filled ? L"remplie" : L"refus");
+}
+
+// Pastille verte (plan 72) : vrai plein écran de macOS ; la barre et le Dock se cachent devant une fenêtre qui couvre
+// l'écran, et reviennent à la sortie.
+void MenuBarApp::onGreenFullscreen(HWND window) {
+    if (!IsWindow(window)) return;
+    const bool done = toggleFullscreen(window);
+    if (done && !IsIconic(window)) SetForegroundWindow(window);
+    checkFullscreen();
+    if (trace_)
+        log::info(L"[trace] barre : pastille verte, plein écran %s (%s)", fullscreenByMacDock(window) ? L"oui" : L"non",
+                  done ? L"fait" : L"refus");
+}
+
 void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     if (menuOpen_ || menuSession_ || !window || !IsWindow(window) || IsIconic(window) || IsHungAppWindow(window)) return;
     flushSettle();
@@ -1473,7 +1520,7 @@ void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     if (!zoomMenuStillWanted(cursor, anchor, env.scale, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0, age)) return;
     ZoomMenuContext c;
     c.resizable = (GetWindowLongPtrW(window, GWL_STYLE) & WS_THICKFRAME) != 0;
-    c.zoomed = IsZoomed(window) != FALSE;
+    c.zoomed = settings_.fillOnMaximize ? fullscreenByMacDock(window) : IsZoomed(window) != FALSE;
     c.option = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
     const BarMenus menu = buildZoomMenu(c);   // copie gardée : MenuWindow le lit pendant toute sa boucle
     const HWND before = GetForegroundWindow();
@@ -1493,7 +1540,9 @@ void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     }
     ActionContext ctx;
     ctx.target.window = window;
+    ctx.macFullscreen = settings_.fillOnMaximize;
     const bool done = runAction(it->second, ctx, sys_);
+    if (it->second.kind == ActionKind::Zoom) checkFullscreen();   // la barre se cache ou revient tout de suite
     if (done && IsWindow(window) && !IsIconic(window)) SetForegroundWindow(window);   // la fenêtre rangée passe devant
     if (trace_)
         log::info(L"[trace] barre : pastille verte, action %d (%s) %s", int(it->second.kind), it->second.arg.c_str(),
@@ -1665,6 +1714,7 @@ void MenuBarApp::execute(const MenuAction& a) {
     ctx.appWindows = appWindows();
     ctx.hidden = &hidden_;
     ctx.exePath = active_.exePath;
+    ctx.macFullscreen = settings_.fillOnMaximize;
     const bool done = runAction(a, ctx, sys_);
     if (trace_) log::info(L"[trace] barre : action %d (%s) %s", int(a.kind), a.arg.c_str(), done ? L"exécutée" : L"sans effet");
 }
@@ -1731,6 +1781,8 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_ZOOM_MENU:
             onZoomMenu(reinterpret_cast<HWND>(wp), POINT{short(LOWORD(lp)), short(HIWORD(lp))});
             return 0;
+        case WM_APP_MAXIMIZED: onMaximized(reinterpret_cast<HWND>(wp)); return 0;
+        case WM_APP_GREEN: onGreenFullscreen(reinterpret_cast<HWND>(wp)); return 0;
         case WM_APP_STATUS: onStatus(lp); return 0;
         case WM_APP_TRAY: onTray(wp, lp); return 0;
         case WM_APP_VOLUME:
@@ -1949,6 +2001,9 @@ int MenuBarApp::run(HINSTANCE instance, const Options& options) {
     ChangeWindowMessageFilterEx(ctl_, taskbarCreated_, MSGFLT_ALLOW, nullptr);
     lights_.create(instance);
     lights_.setZoomMenuSink(ctl_, WM_APP_ZOOM_MENU);
+    lights_.setFullscreenSink(ctl_, WM_APP_GREEN);
+    lights_.setGreenFullscreen(settings_.fillOnMaximize);
+    maximizeWatch_.setSink(ctl_, WM_APP_MAXIMIZED);
     // Menu de saisie (plan 58) : lu avant la première mise en page, l'icône est là dès la première image.
     inputs_ = installedLayouts();
     input_ = windowLayout(GetForegroundWindow());

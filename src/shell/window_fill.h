@@ -40,6 +40,9 @@ enum class FullscreenStep { Enter, Exit };
 // Pastille verte : sortie si MacDock l'a mise en plein écran et qu'elle couvre toujours son écran (à 1 px près),
 // entrée sinon (déplacée depuis : l'ancien état est oublié).
 FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor);
+// Entrée en plein écran alors qu'un cadre d'avant est gardé : gardé si la fenêtre a encore la taille de l'écran (à 1 px
+// près : seulement déplacée depuis), remplacé par son cadre du moment sinon.
+bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor);
 
 // État agrandi des fenêtres suivies : seul le passage de « non agrandie » à « agrandie » compte. Une fenêtre inconnue
 // (agrandie avant MacDock, ou à l'ouverture de son app) est seulement notée.

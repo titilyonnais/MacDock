@@ -383,7 +383,8 @@ BarMenus buildZoomMenu(const ZoomMenuContext& c) {
                {L"Haut et bas", ActionKind::Arrange, L"top-bottom", {top, bottom}},
                {L"Quarts", ActionKind::Arrange, L"quarters", {topLeft, topRight, bottomLeft, bottomRight}}});
     Builder::separator(m);
-    b.add(m, c.zoomed ? L"Quitter le plein écran" : L"Plein écran", {ActionKind::Zoom});   // comme un clic sur la pastille
+    // Comme un clic sur la pastille verte : vrai plein écran de macOS (plan 72 ; réglage Remplir coupé : agrandir).
+    b.add(m, c.zoomed ? L"Quitter le plein écran" : L"Plein écran", {ActionKind::Zoom, L"fullscreen"});
     return out;
 }
 

@@ -40,6 +40,13 @@ public:
         zoomMessage_ = message;
         zoomSink_ = sink;
     }
+    // Pastille verte cliquée avec le réglage Remplir (plan 72) : `message` posté à `sink` (wParam la fenêtre), qui la met
+    // en plein écran ou l'en sort, au lieu de SC_MAXIMIZE. Coupé : la commande de Windows, comme avant.
+    void setFullscreenSink(HWND sink, UINT message) {
+        fullscreenMessage_ = message;
+        fullscreenSink_ = sink;
+    }
+    void setGreenFullscreen(bool on) { greenFullscreen_ = on; }
     // Menu de la pastille verte de `target` refermé. Sa fenêtre (marge d'ombre comprise) recouvrait la pastille : le
     // calque a vu le pointeur partir, puis revenir à la fermeture. Resté sur la pastille, il ne rouvre pas le menu.
     void zoomMenuClosed(HWND target);
@@ -123,6 +130,9 @@ private:
     std::atomic<HWND> publicTarget_{nullptr};
     std::atomic<HWND> zoomSink_{nullptr};
     std::atomic<UINT> zoomMessage_{0};
+    std::atomic<HWND> fullscreenSink_{nullptr};
+    std::atomic<UINT> fullscreenMessage_{0};
+    std::atomic<bool> greenFullscreen_{false};
     static TrafficWindow* self_;
 };
 

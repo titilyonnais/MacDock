@@ -61,6 +61,16 @@ TEST_CASE(window_fill_fullscreen_step) {
     CHECK(md::fullscreenStep(false, screen, screen) == S::Enter);   // couvre l'écran sans nous (vidéo) : on y entre
 }
 
+TEST_CASE(window_fill_fullscreen_keeps_first_frame) {
+    // Plein écran déplacé (glissé par sa barre de titre) puis remis en plein écran : la sortie rend le cadre d'avant le
+    // premier passage ; redimensionnée entre-temps, c'est son nouveau cadre qui compte.
+    const RECT screen{0, 0, 1920, 1080};
+    CHECK(md::keepSavedFrame(true, RECT{100, 100, 2020, 1180}, screen));
+    CHECK(md::keepSavedFrame(true, RECT{0, 0, 1921, 1080}, screen));   // à 1 px près
+    CHECK(!md::keepSavedFrame(true, RECT{100, 100, 900, 700}, screen));
+    CHECK(!md::keepSavedFrame(false, RECT{100, 100, 2020, 1180}, screen));
+}
+
 TEST_CASE(zoom_tracker_reports_transitions_only) {
     md::ZoomTracker t;
     const HWND a = fake(0x10);

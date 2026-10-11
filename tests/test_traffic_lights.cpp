@@ -93,6 +93,12 @@ TEST_CASE(lights_hit_and_command) {
     CHECK(md::lightCommand(2, true) == SC_RESTORE);
 }
 
+TEST_CASE(lights_green_goes_fullscreen) {   // plan 72 : pastille verte = plein écran de macOS (réglage Remplir)
+    CHECK(md::greenGoesFullscreen(true, true));
+    CHECK(!md::greenGoesFullscreen(false, true));   // réglage coupé : agrandir, comme Windows
+    CHECK(!md::greenGoesFullscreen(true, false));   // l'app ne s'agrandit pas : rien de plus
+}
+
 TEST_CASE(lights_dominant_color) {
     std::vector<std::uint32_t> s{0xF3F3F3, 0xF2F3F4, 0x202020, 0xF3F3F3, 0x0078D4, 0xF4F3F3};
     const std::uint32_t c = md::dominantColor(s);

@@ -42,6 +42,11 @@ FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor
     return saved && covers ? FullscreenStep::Exit : FullscreenStep::Enter;
 }
 
+bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor) {
+    return saved && std::abs((frame.right - frame.left) - (monitor.right - monitor.left)) <= 1 &&
+           std::abs((frame.bottom - frame.top) - (monitor.bottom - monitor.top)) <= 1;
+}
+
 bool ZoomTracker::changed(HWND h, bool zoomed) {
     const auto it = zoomed_.find(h);
     if (it == zoomed_.end()) {
