@@ -30,6 +30,8 @@ public:
     // et quand la capture devient indisponible ou reprend (status() a changé).
     bool start(HWND notify, UINT notifyMsg, HMONITOR monitor, IRect regionScreen);
     void setRegion(IRect regionScreen);   // provoque une copie complète
+    // Avis envoyés désormais à cette fenêtre (menu suivant d'une séance gardée) ; capture inchangée.
+    void setNotify(HWND notify) { notify_ = notify; }
     void stop();
     Status status() const { return status_.load(); }
     // Thread d'interface : copie la dernière image dans la texture fournie par dst. false si rien de neuf.
@@ -44,7 +46,7 @@ private:
     void releaseShared();
     void setStatus(Status s);
 
-    HWND notify_ = nullptr;
+    std::atomic<HWND> notify_{nullptr};   // lue par le fil de capture
     UINT notifyMsg_ = 0;
     HMONITOR monitor_ = nullptr;
     HANDLE stopEvent_ = nullptr;

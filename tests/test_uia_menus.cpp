@@ -155,3 +155,49 @@ TEST_CASE(uia_menus_read_and_invoke_fake_app) {
     CHECK(quit);
     CHECK_EQ(f.quit->invoked.load(), 1);
 }
+
+namespace {
+// Barre de titre façon VMware (10 octobre) : son menu système porte l'AutomationId « MenuBar », pas « SystemMenuBar ».
+test::UiaNode* vmwareTitleBar(test::UiaNode* root) {
+    test::UiaNode* title = root->add(test::uiaNode(L"", UIA_TitleBarControlTypeId));
+    title->automationId = L"TitleBar";
+    test::UiaNode* system = title->add(test::uiaNode(L"Système", UIA_MenuBarControlTypeId));
+    system->automationId = L"MenuBar";
+    system->add(test::uiaNode(L"Système"))->add(test::uiaNode(L"Restaurer"));
+    return title;
+}
+
+std::vector<md::RawMenuItem> titlesOf(test::UiaNode* root) {
+    test::UiaApp app(root);
+    std::vector<md::RawMenuItem> titles{md::RawMenuItem{}};
+    if (!app.hwnd) return titles;
+    md::UiaWorker worker;
+    if (!worker.start()) return titles;
+    if (!worker.call([&](md::UiaMenus& uia) { titles = uia.titles(app.hwnd); }, 5000)) titles = {md::RawMenuItem{}};
+    worker.stop();
+    return titles;
+}
+} // namespace
+
+TEST_CASE(uia_menus_skip_the_title_bar_menu) {
+    // La barre prenait le menu système de la barre de titre de VMware pour les menus de l'app : « Système » ouvrait le
+    // vrai menu système de Windows et figeait tout. Une barre de titre n'a jamais les menus de l'app.
+    test::UiaNode* root = test::uiaNode(L"VMware", UIA_WindowControlTypeId);
+    vmwareTitleBar(root);
+    CHECK(titlesOf(root).empty());
+}
+
+TEST_CASE(uia_menus_real_bar_after_the_title_bar) {
+    // Une vraie barre de menus plus profonde que celle de la barre de titre est bien celle de l'app.
+    test::UiaNode* root = test::uiaNode(L"App", UIA_WindowControlTypeId);
+    vmwareTitleBar(root);
+    test::UiaNode* pane = root->add(test::uiaNode(L"", UIA_PaneControlTypeId));
+    test::UiaNode* bar = pane->add(test::uiaNode(L"Barre", UIA_MenuBarControlTypeId));
+    bar->automationId = L"MenuBar";
+    bar->add(test::uiaNode(L"Fichier"))->add(test::uiaNode(L"Ouvrir"));
+    bar->add(test::uiaNode(L"Aide"))->add(test::uiaNode(L"À propos"));
+    const std::vector<md::RawMenuItem> titles = titlesOf(root);
+    REQUIRE(titles.size() == 2);
+    CHECK(titles[0].text == L"Fichier");
+    CHECK(titles[1].text == L"Aide");
+}

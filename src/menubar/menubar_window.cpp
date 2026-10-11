@@ -24,6 +24,7 @@
 #include "bar_screens.h"
 #include "clock_format.h"
 #include "foreground_rules.h"
+#include "menu_session.h"
 #include "shortcut.h"
 #include "status_brightness.h"
 #include "status_network.h"
@@ -96,6 +97,7 @@ constexpr UINT_PTR kHudTimer = 0x4855;          // "HU" : fondu de la pastille d
 // "FG" : Windows n'annonce pas toujours le premier plan (fenêtre active fermée, activation par un autre processus).
 constexpr UINT_PTR kForegroundTimer = 0x4647;
 constexpr UINT_PTR kDesktopFocusTimer = 0x4446;   // "DF" : bureau au premier plan sans clic, décidé une fois la fermeture finie
+constexpr UINT_PTR kSettleTimer = 0x5346;         // "SF" : premier plan de repli après une fenêtre fermée, posé
 constexpr UINT kDesktopFocusDelayMs = 150;
 // Touches de volume reprises (ctl_) ; Maj+Alt : pas fin, comme Maj+Option sur macOS.
 constexpr int kHotVolUp = 1, kHotVolDown = 2, kHotMute = 3, kHotVolUpFine = 4, kHotVolDownFine = 5;
@@ -479,9 +481,6 @@ void MenuBarApp::onForeground(HWND h) {
     if (!h) return;
     const HWND previous = lastForeground_;
     lastForeground_ = h;
-    const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
-    lights_.attach(rootWindow, settings_.trafficLights);   // il décide
-    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
     // L'app est celle de la fenêtre propriétaire racine ; la cible des commandes est la fenêtre réellement au
     // premier plan (un dialogue « Enregistrer sous » reçoit Ctrl+V, pas sa fenêtre principale désactivée).
     HWND root = GetAncestor(h, GA_ROOTOWNER);
@@ -494,6 +493,29 @@ void MenuBarApp::onForeground(HWND h) {
     GetWindowThreadProcessId(root, &pid);
     const std::wstring exe = processExe(pid);
     const ForegroundKind kind = classifyForeground(cls, fileName(exe), pid == GetCurrentProcessId());
+    // Fenêtre d'app active fermée ou cachée : Windows passe par une ou plusieurs fenêtres de repli ; la barre (titres et
+    // pastilles) attend que ça se pose, au plus 350 ms (plan 71). Seules les fenêtres adoptées comptent, et un dialogue
+    // qui rend la main à sa fenêtre principale passe tout de suite (relecture du plan 71) ; le bureau a sa propre règle.
+    if (settleAdopts(kind, isDesktopClass(cls))) {
+        const HWND before = settleFrom_;
+        const DWORD beforePid = settlePid_;
+        settleFrom_ = h;
+        settlePid_ = pid;
+        const bool beforeGone = before && (!IsWindow(before) || !IsWindowVisible(before));
+        const bool waiting = settle_.waiting();
+        if (!settle_.arrive(GetTickCount64(), foregroundFromClosedWindow(before != nullptr, before == h, beforePid == pid,
+                                                                         beforeGone))) {
+            if (trace_) log::info(L"[trace] barre : fenêtre active fermée, premier plan de repli %p : attente", h);
+            settlePending_ = h;
+            if (!waiting) SetTimer(ctl_, kSettleTimer, UINT(ForegroundSettle::kSettleMs), nullptr);   // au plus 350 ms
+            return;
+        }
+        KillTimer(ctl_, kSettleTimer);
+        settlePending_ = nullptr;
+    }
+    const HWND rootWindow = GetAncestor(h, GA_ROOT) ? GetAncestor(h, GA_ROOT) : h;
+    lights_.attach(rootWindow, settings_.trafficLights);   // il décide
+    if (settings_.macWindows) styler_.apply(rootWindow, readInfo(rootWindow), appsDarkMode(), effectiveDpi(rootWindow));
     if (trace_) log::info(L"[trace] barre : premier plan %p (%s, %s) → %s", h, cls, fileName(exe).c_str(),
                           kind == ForegroundKind::Ignore ? L"ignoré" : kind == ForegroundKind::Explorer ? L"Explorateur" : L"app");
     if (kind == ForegroundKind::Ignore) return;
@@ -740,11 +762,17 @@ BarContext MenuBarApp::context(bool recentDocs, float scale) const {
     }
     c.forceQuitShortcut = forceQuitLabel_;
     c.menuOwner = toId(active_.menuOwner);
+    const double t0 = nowSeconds();
     c.recentApps = withIcons(recent_.apps, false, scale);
+    const double t1 = nowSeconds();
     PWSTR folder = nullptr;
     if (recentDocs && SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
         c.recentDocs = withIcons(recentDocuments(folder, kRecentMax, recent_.clearedAt), true, scale);
     CoTaskMemFree(folder);
+    const double t2 = nowSeconds();
+    if (trace_ && t2 - t0 > 0.02)
+        log::info(L"[trace] barre : récents en %.0f ms (apps %zu en %.0f, documents %zu en %.0f)", (t2 - t0) * 1000,
+                  c.recentApps.size(), (t1 - t0) * 1000, c.recentDocs.size(), (t2 - t1) * 1000);
     return c;
 }
 
@@ -1300,14 +1328,57 @@ void MenuBarApp::onRightClick(Screen& s, POINT client) {
     }
 }
 
+// Attente du premier plan de repli finie, ou interrompue par un menu de la barre (qui doit viser la bonne app) : la fenêtre
+// du moment s'applique comme un changement ordinaire ; si c'est un menu de la barre, la fenêtre de repli en attente.
+void MenuBarApp::flushSettle() {
+    KillTimer(ctl_, kSettleTimer);
+    if (!settle_.waiting()) return;
+    settle_.clear();
+    settleFrom_ = nullptr;
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &pid);
+    if (!fg || pid == GetCurrentProcessId()) fg = settlePending_;
+    settlePending_ = nullptr;
+    if (fg && IsWindow(fg)) onForeground(fg);
+}
+
 void MenuBarApp::openMenu(Screen& s, std::size_t index) {
+    flushSettle();   // jamais les menus d'une fenêtre qui vient de se fermer (relecture du plan 71)
     stopSamples();
     menuSession_ = true;   // jusqu'à afterMenu : les écrans ne sont pas refaits sous le menu
     menuScreen_ = &s;
     int current = int(index), previous = -1;
     const BarTarget target = target_;   // la cible au moment de l'ouverture, quoi qu'il arrive pendant le menu
+    const std::wstring openedApp = active_.appId;   // l'app dont les menus sont ouverts
+    // Graphismes, verre et capture gardés d'un titre à l'autre : bascule instantanée, sans trou (plan 71).
+    MenuWindow::Keep keep;
     for (;;) {
         menuOpen_ = false;
+        // Avant chaque titre (plan 71) : autre app au premier plan → la séance se ferme ; mise en page demandée pendant le
+        // menu → refaite, le même titre retrouvé (sinon les menus se dessinaient dans des cases périmées).
+        const MenuSessionStep step = menuSessionStep(active_.appId != openedApp, layoutPending_);
+        if (step == MenuSessionStep::End) {
+            if (trace_) log::info(L"[trace] barre : app changée pendant le menu, menus refermés");
+            break;
+        }
+        if (step == MenuSessionStep::Relayout) {
+            const int oldLeft = int(s.layout.leftVisible);
+            const bool isTitle = current >= 0 && current < oldLeft && std::size_t(current) < menus_.menus.size();
+            const std::wstring title = isTitle ? menus_.menus[std::size_t(current)].title : std::wstring();
+            const int statusIndex = current >= oldLeft ? current - oldLeft : -1;
+            relayout();
+            render();
+            const int newLeft = int(s.layout.leftVisible);
+            if (statusIndex >= 0) {
+                current = newLeft + statusIndex;
+            } else {
+                current = -1;
+                for (int i = 0; i < newLeft && std::size_t(i) < menus_.menus.size(); ++i)
+                    if (menus_.menus[std::size_t(i)].title == title) current = i;
+                if (current < 0) break;
+            }
+        }
         const int left = int(s.layout.leftVisible), n = left + int(status_.size());
         const auto hasMenu = [&](int i) { return i < left || opensMenu(status_[std::size_t(i - left)].kind); };
         if (previous >= 0 && current >= 0 && current < n && !hasMenu(current)) {
@@ -1321,7 +1392,7 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
             highlight_ = current;
             render(s);
             StatusCommand chosen;
-            const int r = trackStatus(s, std::size_t(current - left), barLink(s, current), chosen);
+            const int r = trackStatus(s, std::size_t(current - left), barLink(s, current), chosen, &keep);
             if (auto next = menuSwitchTarget(r)) {
                 previous = current;
                 current = *next;
@@ -1343,8 +1414,13 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
                 if (menus_.menus[i].title == title) current = int(i);
             if (current < 0) break;
         }
+        const double prepStart = nowSeconds();
         if (current >= 0 && std::size_t(current) < menus_.menus.size()) refreshRealMenu(menus_.menus[std::size_t(current)].real);
-        menus_ = buildBarMenus(context(true, s.scale));   // liste des fenêtres, vrais menus et documents récents à jour
+        const double prepRead = nowSeconds();
+        // Liste des fenêtres et vrais menus à jour ; documents récents et leurs icônes seulement pour le menu du logo, le
+        // seul qui les montre (au premier menu après le démarrage, leurs icônes coûtaient ~90 ms à n'importe quel titre).
+        menus_ = buildBarMenus(context(current == 0, s.scale));
+        const double prepEnd = nowSeconds();
         menuOpen_ = true;
         if (current < 0 || std::size_t(current) >= s.layout.leftVisible || std::size_t(current) >= menus_.menus.size()) break;
         // Copies : MenuWindow lit le modèle pendant toute sa boucle modale.
@@ -1355,8 +1431,11 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
         const MenuWindow::BarLink link = barLink(s, current);
         POINT anchor{link.titles[std::size_t(current)].left, link.titles[std::size_t(current)].bottom + LONG(std::lround(s.scale))};
         ReleaseCapture();   // sinon l'appui sur le titre garde la souris : glisser-relâcher dans le menu ne marcherait pas
-        if (trace_) log::info(L"[trace] barre : menu « %s » ouvert", menus_.menus[std::size_t(current)].title.c_str());
-        const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link, nullptr, &lastClose_);
+        if (trace_)
+            log::info(L"[trace] barre : menu « %s » ouvert (préparé en %.0f ms : vrai menu %.0f, contexte %.0f)",
+                      menus_.menus[std::size_t(current)].title.c_str(), (prepEnd - prepStart) * 1000,
+                      (prepRead - prepStart) * 1000, (prepEnd - prepRead) * 1000);
+        const int r = MenuWindow::track(menuEnv(s), model, anchor, MenuWindow::Side::Below, &link, nullptr, &lastClose_, &keep);
         if (auto next = menuSwitchTarget(r)) {
             previous = current;
             current = *next;
@@ -1376,6 +1455,7 @@ void MenuBarApp::openMenu(Screen& s, std::size_t index) {
 
 void MenuBarApp::onZoomMenu(HWND window, POINT anchor) {
     if (menuOpen_ || menuSession_ || !window || !IsWindow(window) || IsIconic(window) || IsHungAppWindow(window)) return;
+    flushSettle();
     const HMONITOR mon = MonitorFromPoint(anchor, MONITOR_DEFAULTTONEAREST);
     Screen* s = nullptr;
     for (auto& x : screens_)
@@ -1468,7 +1548,8 @@ MenuWindow::BarLink MenuBarApp::barLink(const Screen& s, int current) const {
     return link;
 }
 
-int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen) {
+int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen,
+                            MenuWindow::Keep* keep) {
     const StatusKind kind = status_[j].kind;
     if (kind == StatusKind::Input) {   // la liste du menu : celle de maintenant
         inputs_ = installedLayouts();
@@ -1519,7 +1600,7 @@ int MenuBarApp::trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink&
     POINT anchor{box.left, box.bottom + LONG(std::lround(s.scale))};
     ReleaseCapture();
     if (trace_) log::info(L"[trace] barre : menu d'état %d ouvert", int(kind));
-    const int r = MenuWindow::track(menuEnv(s), menu.model, anchor, MenuWindow::Side::Below, &link, &live, &lastClose_);
+    const int r = MenuWindow::track(menuEnv(s), menu.model, anchor, MenuWindow::Side::Below, &link, &live, &lastClose_, keep);
     if (r > 0)
         if (auto it = menu.actions.find(r); it != menu.actions.end()) chosen = it->second;
     return r;
@@ -1722,6 +1803,7 @@ LRESULT MenuBarApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     break;
                 case kDesktopFocusTimer: decideDesktopFocus(); break;
+                case kSettleTimer: flushSettle(); break;   // repli posé : le premier plan du moment s'applique
                 case kRecentTimer: saveRecent(); break;
                 case kFullscreenTimer:
                     checkFullscreen();

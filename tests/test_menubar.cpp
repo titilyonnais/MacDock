@@ -5,6 +5,7 @@
 #include "../src/core/json.h"
 #include "../src/menubar/bar_color.h"
 #include "../src/menubar/bar_layout.h"
+#include "../src/menubar/menu_session.h"
 #include "../src/menubar/clock_format.h"
 #include "../src/menubar/foreground_rules.h"
 #include "../src/menubar/menubar_settings.h"
@@ -837,4 +838,44 @@ TEST_CASE(menus_zoom_button_menu) {
     CHECK(bfo.menus[0].model.items[3].tiles[0].enabled);   // Centrer
     CHECK(!bfo.menus[0].model.items[3].tiles[1].enabled);
     CHECK(!bfo.menus[0].model.items[1].tiles[0].enabled);
+}
+
+TEST_CASE(bar_menu_session_follows_the_app) {
+    // Plan 71 (ta photo 1) : l'app active changeait pendant une séance de menus, et les menus de la nouvelle app se
+    // dessinaient dans les cases de l'ancienne (« Claude » centré dans la case de « VMware Workstation »).
+    CHECK(md::menuSessionStep(false, false) == md::MenuSessionStep::Continue);
+    CHECK(md::menuSessionStep(false, true) == md::MenuSessionStep::Relayout);   // horloge, icônes : refaite, même titre
+    CHECK(md::menuSessionStep(true, false) == md::MenuSessionStep::End);        // autre app : menus refermés, comme macOS
+    CHECK(md::menuSessionStep(true, true) == md::MenuSessionStep::End);
+}
+
+TEST_CASE(bar_foreground_settles_after_a_closed_window) {
+    // Plan 71 (enregistrement du 10 octobre) : la VM fermée, Windows a donné la main au Terminal caché derrière VMware,
+    // puis à Claude 265 ms plus tard ; la barre affichait les deux (titres qui clignotent, pastilles qui sautent).
+    md::ForegroundSettle s;
+    CHECK(s.arrive(0, false));      // changement ordinaire : tout de suite
+    CHECK(!s.arrive(1000, true));   // fenêtre active fermée : premier plan de repli, on attend
+    CHECK(!s.due(1200));
+    CHECK(s.arrive(1265, false));   // la suivante (Claude) : tout de suite, l'attente s'arrête
+    CHECK(!s.waiting());
+    CHECK(!s.arrive(2000, true));
+    CHECK(!s.arrive(2100, true));   // une autre fermeture pendant l'attente : même attente
+    CHECK(!s.due(2349));
+    CHECK(s.due(2350));             // rien d'autre : le premier plan du moment s'applique
+}
+
+TEST_CASE(bar_foreground_settle_only_after_an_app_window) {
+    // Relecture du plan 71 : l'attente partait aussi à la fermeture d'un dialogue, de Spotlight ou d'Alt+Tab.
+    using md::ForegroundKind;
+    // Seules les fenêtres adoptées par la barre comptent (ni Spotlight, ni Alt+Tab, ni le bureau).
+    CHECK(md::settleAdopts(ForegroundKind::App, false));
+    CHECK(md::settleAdopts(ForegroundKind::Explorer, false));
+    CHECK(!md::settleAdopts(ForegroundKind::Ignore, false));
+    CHECK(!md::settleAdopts(ForegroundKind::Explorer, true));
+    // Repli après fermeture : autre fenêtre, autre processus, l'ancienne fermée ou cachée.
+    CHECK(md::foregroundFromClosedWindow(true, false, false, true));    // VM fermée → Terminal d'un autre processus
+    CHECK(!md::foregroundFromClosedWindow(true, false, true, true));    // « Enregistrer sous » fermé → sa fenêtre principale
+    CHECK(!md::foregroundFromClosedWindow(true, true, false, false));   // Spotlight fermé → la même app qu'avant
+    CHECK(!md::foregroundFromClosedWindow(true, false, false, false));  // simple changement d'app
+    CHECK(!md::foregroundFromClosedWindow(false, false, false, true));  // rien de connu avant
 }

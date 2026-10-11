@@ -108,7 +108,9 @@ Com<IUIAutomationElement> findNear(IUIAutomation* u, IUIAutomationElement* scope
                 Com<IUIAutomationElement> cached;
                 // FindFirst(TreeScope_Element) : la condition sur cet élément seul.
                 if (SUCCEEDED(child->FindFirst(TreeScope_Element, cond, &cached)) && cached) return cached;
-                next.push_back(child);
+                // Jamais dans une barre de titre : son menu système n'est pas celui de l'app, même sans l'AutomationId
+                // « SystemMenuBar » (VMware : « MenuBar », relevé le 10 octobre).
+                if (typeOf(child.Get()) != UIA_TitleBarControlTypeId) next.push_back(child);
                 Com<IUIAutomationElement> sibling;
                 walker->GetNextSiblingElement(child.Get(), &sibling);
                 child = sibling;

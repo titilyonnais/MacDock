@@ -128,7 +128,8 @@ private:
     void onRightClick(Screen& s, POINT client);
     void openMenu(Screen& s, std::size_t index);   // titre (gauche) ou icône d'état (leftVisible + j)
     MenuWindow::BarLink barLink(const Screen& s, int current) const;   // titres puis icônes d'état (sans menu : vides)
-    int trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen);
+    int trackStatus(Screen& s, std::size_t j, const MenuWindow::BarLink& link, StatusCommand& chosen,
+                    MenuWindow::Keep* keep);
     void runStatus(const StatusCommand& c);
     StatusState statusState();
     void onStatus(LPARAM snapshot);
@@ -191,6 +192,11 @@ private:
 
     TrafficWindow lights_;   // feux tricolores de la fenêtre active
     HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
+    ForegroundSettle settle_;         // premier plan de repli après une fenêtre fermée : on attend qu'il se pose
+    HWND settleFrom_ = nullptr;       // dernière fenêtre adoptée au premier plan (settleAdopts)
+    DWORD settlePid_ = 0;             // son processus
+    HWND settlePending_ = nullptr;    // fenêtre de repli en attente
+    void flushSettle();               // attente finie ou interrompue (menu ouvert) : la fenêtre du moment s'applique
     HWND desktopPrevious_ = nullptr;  // bureau au premier plan sans clic : la fenêtre active juste avant (décision différée)
     bool desktopDecided_ = false;     // le bureau peut s'afficher comme Explorateur (clic dessus, ou décision prise)
     WindowStyler styler_;    // apparence macOS des fenêtres des autres apps (attributs DWM)

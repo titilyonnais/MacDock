@@ -1244,6 +1244,25 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
 - **Essais réels** (souris laissée par toi) : 59 → 79 → 59, puis, Dock plein, 59 → 39 → 60 (arrêt à la plus grande
   taille qui tient) ; ta taille 59 remise ensuite.
 
+### Plan 71 — Barre de menus fiable et vive, 10 et 11 octobre (avec toi)
+
+- **« Système » dans VMware** (ta photo 2) : la barre prenait le menu système de la barre de titre de VMware pour ses
+  menus ; un clic ouvrait le vrai menu système de Windows et figeait tout. VMware prend maintenant les menus génériques
+  (vérifié avec le vrai code de la barre : aucun menu lu dans ses deux fenêtres).
+- **Titres décalés, Fenêtre et Aide absents** (ta photo 1) : les menus d'une nouvelle app se dessinaient dans les cases
+  de l'ancienne pendant une séance de menus. La séance se ferme quand l'app change, comme sur macOS.
+- **Bascule d'un titre à l'autre** : 30 à 45 ms au lieu d'environ 300, sans fondu ni trou (graphismes, verre et capture
+  gardés d'un menu au suivant).
+- **Première ouverture** : ~70 ms plus le fondu, au lieu de 0,9 s.
+- **En quittant une app** (ton enregistrement : la VM fermée, Windows passait par le Terminal caché puis par Claude) :
+  la barre attend que le premier plan se pose, au plus 350 ms, avant de changer de titres et de pastilles.
+
+## Mineurs reportés — plan 71
+- Remise en page pendant une séance de menus (icône d'état retrouvée par sa place, titre introuvable qui ferme la
+  séance) ; séance gardée détruite après la fin du menu ; ⊞⇧3 entre deux titres : verre figé jusqu'à la fin.
+- Barre de menus placée dans une barre de titre (WinUI 3 ?) non lue ; vrais menus de VMware non lus.
+- Deux tests de rendu du texte échouent depuis le redémarrage du PC du 11 octobre (aussi sur `main`).
+
 ## Mineurs reportés — plan 70
 - Zone réservée calculée sur la taille réglée : un Dock rétréci laisse une bande vide au-dessus de lui.
 - Clic droit et poussée vers un autre écran pendant le glisser de la poignée ; zone de la poignée sans le rétrécissement
