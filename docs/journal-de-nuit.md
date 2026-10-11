@@ -1277,6 +1277,16 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   fenêtres à barre d'outils de Tahoe (16 pt pour celles à simple barre de titre ; 10 pt avant Tahoe). Rayon mesuré à
   l'écran avec le mod : ~13 pt à 12, donc bien appliqué.
 
+### Plan 73 — Pastilles dans le coin, fondues dans la barre de titre, 12 octobre (avec toi)
+
+- **Ta photo de l’Explorateur sombre** : pastilles au milieu des trois boutons de Windows, sur un bandeau d’une
+  couleur unie qui tranchait. Elles sont maintenant dans le coin, même marge au-dessus et à droite ; la pièce qui cache
+  les boutons reprend la teinte de la barre de titre ligne par ligne (dégradé du Mica, symboles écartés) et épouse le
+  coin arrondi de la fenêtre (26 pt avec le mod de Windhawk).
+- **Supprimer les boutons de Windows** (essayé sur une fenêtre à moi) : sans menu système (WS_SYSMENU), ils
+  disparaissent, mais Windows refuse alors d’agrandir (double-clic, glisser en haut) et ignore « fermer » ; abandonné.
+- Vérifié sur ta fenêtre Claude : pastilles dans le coin, aucun bandeau visible.
+
 ## Mineurs reportés — plan 72
 - Barre figée le temps d'un WM_SIZE lent pendant le remplissage ; Dock caché au plein écran après une seconde.
 - Plusieurs écrans (⊞⇧→ en plein écran, DPI différents) ; fenêtre agrandie quand son app est en arrière-plan.
