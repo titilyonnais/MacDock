@@ -30,6 +30,14 @@ bool shouldRoundCorners(DWORD original);
 // Fenêtre à barre de titre, non agrandie, qui couvre son écran (plein écran de la pastille verte, plan 72) : coins
 // carrés comme sur macOS ; Windows 11 et le mod de coins arrondissent une fenêtre non agrandie.
 bool squareInFullscreen(const WindowInfo& w);
+// Petits coins (DWMWCP_ROUNDSMALL) pour une petite fenêtre : taille fixe (Exécuter, alertes) ou plus petit côté sous
+// 300 pt. Un grand rayon y rend mal ; macOS arrondit lui aussi moins les fenêtres sans barre d'outils (plan 74).
+// Seulement si le mod de coins de Windhawk leur donne au moins 8 pt (`modSmallPt`) : sans lui, les petits coins de
+// Windows (4 pt) seraient moins arrondis que les 8 pt ordinaires.
+bool useSmallCorners(const WindowInfo& w, UINT dpi, double modSmallPt);
+// Petit rayon du mod « Custom Window Corner Radius » de Windhawk (registre, lecture seule), en points ; 0 s'il est
+// absent ou coupé.
+double cornerModSmallRadius();
 // Mode des applications (AppsUseLightTheme), et non celui de la barre des tâches.
 bool appsDarkMode();
 
@@ -50,6 +58,7 @@ private:
         DWORD corner = 0;       // préférence d'origine, rendue à la fermeture
         bool rounded = false;   // nous avons changé les coins
         bool squared = false;   // coins carrés le temps du plein écran (squareInFullscreen)
+        bool smallCorners = false;   // petits coins (useSmallCorners)
         bool captioned = false; // nous avons coloré la barre de titre
         DWORD backdrop = 0;     // fond de la fenêtre lors de notre passage (Mica arrivé depuis : barre rendue)
         bool operator<(const Touched& o) const { return h < o.h; }

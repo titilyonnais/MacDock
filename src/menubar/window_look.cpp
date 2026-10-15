@@ -1,6 +1,8 @@
 #include "window_look.h"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace md {
 
@@ -32,6 +34,29 @@ bool appsDarkMode() {
     RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                  L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
     return value == 0;
+}
+
+bool useSmallCorners(const WindowInfo& w, UINT dpi, double modSmallPt) {
+    if (modSmallPt < 8) return false;
+    if (!(w.style & WS_THICKFRAME)) return true;   // taille fixe : boîte de dialogue
+    const double k = (dpi ? dpi : 96) / 96.0;
+    const double side = std::min(w.frame.right - w.frame.left, w.frame.bottom - w.frame.top) / k;
+    return side < 300;
+}
+
+double cornerModSmallRadius() {
+    const wchar_t* key = L"SOFTWARE\\Windhawk\\Engine\\Mods\\custom-corner-radius";
+    DWORD disabled = 1, size = sizeof disabled;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"Disabled", RRF_RT_REG_DWORD, nullptr, &disabled, &size) != ERROR_SUCCESS ||
+        disabled)
+        return 0;
+    DWORD v = 0;
+    size = sizeof v;
+    const std::wstring settings = std::wstring(key) + L"\\Settings";
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, settings.c_str(), L"smallRadius", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS ||
+        int(v) < 0)
+        return 0;
+    return double(v);
 }
 
 std::optional<WindowLook> macWindowLook(const WindowInfo& w, bool dark, UINT dpi, int backdrop) {

@@ -178,3 +178,22 @@ TEST_CASE(window_look_own_frame_round_without_border) {   // relecture du plan 5
     CHECK(corner == 2);   // DWMWCP_ROUND
     DestroyWindow(h);
 }
+
+TEST_CASE(window_look_small_corners_for_small_windows) {
+    // Plan 74 : un grand rayon (26 pt) sur une petite fenêtre (Exécuter, alertes) rend mal ; comme macOS, qui arrondit
+    // moins les fenêtres sans barre d'outils : petits coins (petit rayon du mod de Windhawk, 12 pt).
+    auto run = notepad();   // « Exécuter » : boîte de dialogue de taille fixe
+    run.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+    run.frame = RECT{100, 100, 520, 310};
+    CHECK(md::useSmallCorners(run, 96, 12));
+    CHECK(!md::useSmallCorners(notepad(), 96, 12));   // fenêtre ordinaire, grande : grand rayon
+    auto tiny = notepad();   // redimensionnable mais petite
+    tiny.frame = RECT{100, 100, 380, 300};
+    CHECK(md::useSmallCorners(tiny, 96, 12));
+    CHECK(md::useSmallCorners(tiny, 192, 12));   // 280 × 200 px à 200 % : 140 × 100 pt, petite aussi
+    auto big = notepad();   // 800 × 600 px à 200 % : 400 × 300 pt, ordinaire
+    big.frame = RECT{0, 0, 800, 650};
+    CHECK(!md::useSmallCorners(big, 192, 12));
+    CHECK(!md::useSmallCorners(run, 96, 0));   // sans le mod : petits coins de Windows (4 pt), pires que les 8 pt
+    CHECK(!md::useSmallCorners(run, 96, 6));   // petit rayon du mod trop petit pour une fenêtre
+}
