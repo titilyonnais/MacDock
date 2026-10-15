@@ -153,17 +153,11 @@ std::vector<GroupSpec> menuBarPane() {
 std::vector<GroupSpec> windowsPane() {
     std::vector<GroupSpec> out;
     GroupSpec g;
-    g.rows.push_back(pick(RowKind::Choice, L"Pastilles fermer, réduire et agrandir",
-                          {L"Fenêtres à barre de titre", L"Toutes les fenêtres", L"Aucune"},
-                          std::vector<LightsMode>{LightsMode::Standard, LightsMode::All, LightsMode::Off},
-                          [](auto& m) -> auto& { return m.bar.trafficLights; },
-                          L"À la place des boutons de Windows"));
     g.rows.push_back(toggle(L"Apparence macOS des fenêtres", [](auto& m) -> auto& { return m.bar.macWindows; },
                             L"Coins arrondis, sans liseré coloré, barre de titre grise", L"coins bordure"));
     g.rows.push_back(toggle(L"Remplir l'écran au lieu d'agrandir", [](auto& m) -> auto& { return m.bar.fillOnMaximize; },
-                            L"Comme macOS : la barre des menus et le Dock restent visibles ; la pastille verte passe en "
-                            L"plein écran",
-                            L"agrandir plein écran remplir"));
+                            L"Comme macOS : la fenêtre va de la barre des menus au Dock ; le refaire rend sa taille d'avant",
+                            L"agrandir remplir"));
     out.push_back(g);
     return out;
 }

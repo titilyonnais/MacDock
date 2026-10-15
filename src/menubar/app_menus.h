@@ -81,13 +81,5 @@ BarMenus buildBarMenus(const BarContext& c);
 // l'app Réglages (« ⌥⊞⎋ »), vide s'il est désactivé ; fichier illisible : le raccourci par défaut.
 std::wstring forceQuitShortcutLabel(std::string_view settingsJson);
 
-// Menu de la pastille verte (macOS 26, plan 51) : « Déplacer et redimensionner » (moitiés ; ⌥ : quarts), « Remplir et
-// organiser » (Remplir, la fenêtre et les suivantes ; ⌥ : Centrer, dispositions inversées), puis Plein écran.
-struct ZoomMenuContext {
-    bool resizable = true;   // taille fixe : rien ne s'étire (⌥ : Centrer seul)
-    bool zoomed = false;     // en plein écran (réglage Remplir coupé : agrandie) : « Quitter le plein écran »
-    bool option = false;     // ⌥ (Alt) maintenue à l'ouverture
-};
-BarMenus buildZoomMenu(const ZoomMenuContext& c);
 
 } // namespace md

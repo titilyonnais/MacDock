@@ -15,7 +15,7 @@ Un Dock et une barre de menus façon **macOS 26 Tahoe** pour Windows 11.
   - Le bouton à deux flèches passe en plein écran.
   - Espace ou Échap ferme, Entrée ouvre, et l'aperçu suit la sélection.
 - **Captures d'écran** : `⊞⇧3` pour tout l'écran, `⊞⇧4` pour une zone ou une fenêtre, comme `⌘⇧3` et `⌘⇧4`. Le fichier va sur le Bureau et une vignette flottante apparaît en bas à droite.
-- **Fenêtres des autres apps** : feux tricolores à la place des boutons de Windows, sur toutes les fenêtres ; coins arrondis, barre de titre grise ; agrandir remplit l'écran entre la barre et le Dock, sans marges (le refaire rend la taille d'avant) et la pastille verte passe en vrai plein écran, comme sur macOS 26 ; avec le mod `macdock-look`, police SF Pro partout, boîtes de dialogue comprises.
+- **Fenêtres des autres apps** : coins arrondis, barre de titre grise, boutons de Windows gardés ; agrandir remplit l'écran entre la barre et le Dock, sans marges (le refaire rend la taille d'avant), comme sur macOS 26 ; avec le mod `macdock-look`, police SF Pro partout, boîtes de dialogue comprises.
 
 > État : le Dock est complet (plans 1 à 5), la barre de menus aussi : menus du système, de l'app et génériques, horloge (plan 6), vrais menus des apps et Éléments récents (plan 7), icônes d'état et Centre de contrôle (plan 8), icônes des autres apps et une barre par écran (plan 9). Les fenêtres se réduisent dans le Dock avec l'effet génie (plan 10) et ont des feux tricolores (plan 11). Voir `docs/superpowers/` et `docs/journal-de-nuit.md`.
 
@@ -225,8 +225,6 @@ Avec `"glass": true` (par défaut), le fond du Dock et les infobulles sont en ve
 - `Ctrl+Alt+Maj+O` : superpose `%APPDATA%\MacDock\reference\overlay.png` au Dock ; `Ctrl+Alt+Maj+Haut/Bas` règle son opacité.
 - `MacMenuBar.exe --trace` : journalise l'app active, la couleur du texte et les menus ouverts.
 - `MacMenuBar.exe --snapshot barre.png [--wallpaper fond.png] [--app "Nom"] [--theme light|dark] [--open 1] [--scale 1] [--time 2026-10-09T22:17]` : rendu de la barre dans une image, sans l'afficher (`--scale` : autre échelle que celle de l'écran ; `--time` : heure de l'horloge, pour comparer à une capture de macOS).
-- `MacMenuBar.exe --lights-snapshot planche.png` : les feux tricolores (clair, sombre ; normal, survol, indisponible) dans une image, sans rien afficher.
-- `MacMenuBar.exe --zoom-snapshot menu.png [--theme light|dark] [--option] [--zoomed]` : le menu de la pastille verte dans une image, sans rien afficher.
 - `MacMenuBar.exe --hud-snapshot hud.png [--kind volume|brightness] [--level 0.5] [--muted] [--theme light|dark]` : la pastille du volume ou de la luminosité dans une image, sans rien afficher ni régler.
 - `MacMenuBar.exe --quit` : ferme la barre seule.
 - `MacDockLauncher.exe --check-update` : cherche une mise à jour, la télécharge et la vérifie (code de sortie 0 : à jour, 10 : prête, 1 : erreur, détaillée dans `update.json`) ; `--install-update` installe celle qui est prête. Seulement depuis la copie posée par l'installateur ; un ordre d'arrêt (`--quit`, installateur) interrompt la recherche. Pour les essais : `MACDOCK_UPDATE_DIR` (dossier de l'état et des téléchargements), `MACDOCK_UPDATE_PRERELEASE=1` (préversions comprises), `MACDOCK_UPDATE_DELAY` (secondes avant la première recherche).

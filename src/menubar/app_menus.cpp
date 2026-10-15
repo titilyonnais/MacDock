@@ -332,62 +332,6 @@ void realMenus(Builder& b, const BarContext& c) {
 
 } // namespace
 
-BarMenus buildZoomMenu(const ZoomMenuContext& c) {
-    BarMenus out;
-    Builder b(out);
-    BarMenu& m = b.menu(L"");
-    const auto header = [&](const wchar_t* text) {
-        MenuItem h;
-        h.row = MenuRow::Header;
-        h.text = text;
-        m.model.items.push_back(std::move(h));
-    };
-    struct Icon {
-        const wchar_t* title;
-        ActionKind kind;
-        const wchar_t* arg;
-        std::vector<LayoutBox> boxes;   // la fenêtre d'abord, puis les suivantes
-    };
-    const auto icons = [&](std::initializer_list<Icon> list) {
-        MenuItem row;
-        row.row = MenuRow::Layouts;
-        for (const Icon& i : list) {
-            const bool center = i.kind == ActionKind::Tile && std::wstring_view(i.arg) == L"center";
-            row.tiles.push_back(b.tile(i.title, {i.kind, i.arg}, i.boxes, c.resizable || center));
-        }
-        m.model.items.push_back(std::move(row));
-    };
-    constexpr LayoutBox left{0, 0, 0.5f, 1}, right{0.5f, 0, 1, 1}, top{0, 0, 1, 0.5f}, bottom{0, 0.5f, 1, 1};
-    constexpr LayoutBox topLeft{0, 0, 0.5f, 0.5f}, topRight{0.5f, 0, 1, 0.5f}, bottomLeft{0, 0.5f, 0.5f, 1},
-                        bottomRight{0.5f, 0.5f, 1, 1};
-    header(L"Déplacer et redimensionner");
-    if (c.option)
-        icons({{L"En haut à gauche", ActionKind::Tile, L"top-left", {topLeft}},
-               {L"En haut à droite", ActionKind::Tile, L"top-right", {topRight}},
-               {L"En bas à gauche", ActionKind::Tile, L"bottom-left", {bottomLeft}},
-               {L"En bas à droite", ActionKind::Tile, L"bottom-right", {bottomRight}}});
-    else
-        icons({{L"Gauche", ActionKind::Tile, L"left", {left}},
-               {L"Droite", ActionKind::Tile, L"right", {right}},
-               {L"Haut", ActionKind::Tile, L"top", {top}},
-               {L"Bas", ActionKind::Tile, L"bottom", {bottom}}});
-    header(L"Remplir et organiser");
-    if (c.option)
-        icons({{L"Centrer", ActionKind::Tile, L"center", {{0.2f, 0.18f, 0.8f, 0.82f}}},
-               {L"Droite et gauche", ActionKind::Arrange, L"right-left", {right, left}},
-               {L"Bas et haut", ActionKind::Arrange, L"bottom-top", {bottom, top}},
-               {L"Quarts", ActionKind::Arrange, L"quarters", {topLeft, topRight, bottomLeft, bottomRight}}});
-    else
-        icons({{L"Remplir", ActionKind::Tile, L"fill", {{0, 0, 1, 1}}},
-               {L"Gauche et droite", ActionKind::Arrange, L"left-right", {left, right}},
-               {L"Haut et bas", ActionKind::Arrange, L"top-bottom", {top, bottom}},
-               {L"Quarts", ActionKind::Arrange, L"quarters", {topLeft, topRight, bottomLeft, bottomRight}}});
-    Builder::separator(m);
-    // Comme un clic sur la pastille verte : vrai plein écran de macOS (plan 72 ; réglage Remplir coupé : agrandir).
-    b.add(m, c.zoomed ? L"Quitter le plein écran" : L"Plein écran", {ActionKind::Zoom, L"fullscreen"});
-    return out;
-}
-
 std::wstring forceQuitShortcutLabel(std::string_view settingsJson) {
     if (settingsJson.starts_with("\xEF\xBB\xBF")) settingsJson.remove_prefix(3);   // BOM d'un fichier édité à la main
     const auto doc = json::parse(settingsJson);

@@ -2,13 +2,11 @@
 //   MacMenuBar.exe                lance la barre
 //   MacMenuBar.exe --quit         ferme la barre en cours d'exécution
 //   MacMenuBar.exe --trace        journalise l'app active, la couleur du texte, les menus (diagnostic)
-//   MacMenuBar.exe --lights-snapshot f.png   planche des feux tricolores (aucune fenêtre, aucun réglage)
 //   MacMenuBar.exe --snapshot f.png [--wallpaper fond.png] [--app Nom] [--theme light|dark] [--open k] [--scale 1]
 //                  [--time 2026-10-09T22:17]
 //                                 rendu hors écran de la barre (k : titre dont le menu est ouvert)
 //   MacMenuBar.exe --hud-snapshot f.png [--kind volume|brightness] [--level x] [--muted] [--theme light|dark]
 //                                 pastille du volume ou de la luminosité (aucune fenêtre, rien n'est réglé)
-//   MacMenuBar.exe --zoom-snapshot f.png [--theme light|dark] [--option] [--zoomed]
 //                                 menu de la pastille verte, hors écran (aucune fenêtre, aucun réglage)
 #include <windows.h>
 #include <objbase.h>
@@ -25,7 +23,6 @@
 #include "app_menus.h"
 #include "bar_renderer.h"
 #include "menubar_window.h"
-#include "traffic_lights.h"
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     std::wstring args(cmdLine ? cmdLine : L"");
@@ -40,15 +37,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     options.trace = args.find(L"--trace") != std::wstring::npos;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::wstring lightsSnapshot, hudSnapshotPath, zoomSnapshot;
+    std::wstring hudSnapshotPath;
     md::HudContent hud;
     hud.level = 0.5f;
     hud.detail = L"Haut-parleurs";
     hud.muted = args.find(L"--muted") != std::wstring::npos;
     for (int i = 1; i + 1 < argc; ++i) {
-        if (wcscmp(argv[i], L"--lights-snapshot") == 0) lightsSnapshot = argv[i + 1];
         if (wcscmp(argv[i], L"--hud-snapshot") == 0) hudSnapshotPath = argv[i + 1];
-        if (wcscmp(argv[i], L"--zoom-snapshot") == 0) zoomSnapshot = argv[i + 1];
         if (wcscmp(argv[i], L"--kind") == 0 && wcscmp(argv[i + 1], L"brightness") == 0) hud.kind = md::HudKind::Brightness;
         if (wcscmp(argv[i], L"--level") == 0) hud.level = float(_wtof(argv[i + 1]));
         if (wcscmp(argv[i], L"--snapshot") == 0) options.snapshot = argv[i + 1];
@@ -60,35 +55,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         if (wcscmp(argv[i], L"--time") == 0) options.time = md::parseClockTime(argv[i + 1]);
     }
     LocalFree(argv);
-    if (!lightsSnapshot.empty()) {   // aucune fenêtre, aucun réglage lu ni écrit
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // WIC
-        UINT w = 0, h = 0;
-        const auto sheet = md::lightsSheet(w, h);
-        const bool ok = md::writePng(lightsSnapshot, sheet.data(), w, h);
-        CoUninitialize();
-        return ok ? 0 : 1;
-    }
-    if (!zoomSnapshot.empty()) {   // aucune fenêtre, aucun réglage lu ni écrit
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // WIC
-        md::ZoomMenuContext c;
-        c.option = args.find(L"--option") != std::wstring::npos;
-        c.zoomed = args.find(L"--zoomed") != std::wstring::npos;
-        md::MenuWindow::Env env;
-        env.scale = 2;
-        env.dark = options.dark.value_or(false);
-        env.glass = false;
-        bool ok = false;
-        {   // objets COM (WIC, DirectWrite) libérés avant CoUninitialize
-            md::BarRenderer fonts;   // même police que la barre (SF Pro si installée)
-            if (fonts.initOffscreen()) env.font = fonts.setFont(L"", 26);
-            std::vector<std::uint8_t> px;
-            UINT w = 0, h = 0;
-            ok = md::MenuWindow::snapshot(env, md::buildZoomMenu(c).menus.front().model, px, w, h) &&
-                 md::writePng(zoomSnapshot, px.data(), w, h);
-        }
-        CoUninitialize();
-        return ok ? 0 : 1;
-    }
     if (!hudSnapshotPath.empty()) {   // aucune fenêtre, aucun réglage lu ni écrit, volume et luminosité intacts
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // WIC
         const md::BgraImage img = md::hudSnapshot(hud, options.dark.value_or(false), 900, 300);

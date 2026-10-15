@@ -1,4 +1,4 @@
-// Fenêtres de macOS 26 (plan 72) : Remplir au lieu d'agrandir, pastille verte en plein écran.
+// Fenêtres de macOS 26 (plan 72) : Remplir au lieu d'agrandir.
 #include "minitest.h"
 #include "../src/menubar/menubar_settings.h"
 #include "../src/shell/window_fill.h"
@@ -64,37 +64,6 @@ TEST_CASE(window_fill_guard_slow_app_without_input) {   // relecture I3 : app qu
     CHECK(!h.maximized(a, 11200, 11100));  // double-clic de la personne après le remplissage
     h.filled(a, 20000);
     CHECK(!h.maximized(a, 23000, 9990));   // plus de 2 s : la personne (Win+Haut sans souris…)
-}
-
-TEST_CASE(window_fill_guard_own_maximize) {   // relecture I2 : sortie du plein écran, agrandie par MacDock
-    md::FillGuard g;
-    const HWND a = fake(0x10);
-    g.ownMaximize(a, 1000);
-    CHECK(g.ours(a, 1300));
-    CHECK(!g.ours(a, 1400));   // consommé
-    g.ownMaximize(a, 1000);
-    CHECK(!g.ours(a, 3000));   // trop tard : c'est la personne
-    CHECK(!g.ours(fake(0x20), 1100));
-}
-
-TEST_CASE(window_fill_fullscreen_step) {
-    using S = md::FullscreenStep;
-    const RECT screen{0, 0, 1920, 1080};
-    CHECK(md::fullscreenStep(false, RECT{100, 100, 900, 700}, screen) == S::Enter);
-    CHECK(md::fullscreenStep(true, screen, screen) == S::Exit);
-    CHECK(md::fullscreenStep(true, RECT{1, 0, 1920, 1081}, screen) == S::Exit);   // à 1 px près
-    CHECK(md::fullscreenStep(true, RECT{100, 100, 900, 700}, screen) == S::Enter); // déplacée depuis
-    CHECK(md::fullscreenStep(false, screen, screen) == S::Enter);   // couvre l'écran sans nous (vidéo) : on y entre
-}
-
-TEST_CASE(window_fill_fullscreen_keeps_first_frame) {
-    // Plein écran déplacé (glissé par sa barre de titre) puis remis en plein écran : la sortie rend le cadre d'avant le
-    // premier passage ; redimensionnée entre-temps, c'est son nouveau cadre qui compte.
-    const RECT screen{0, 0, 1920, 1080};
-    CHECK(md::keepSavedFrame(true, RECT{100, 100, 2020, 1180}, screen));
-    CHECK(md::keepSavedFrame(true, RECT{0, 0, 1921, 1080}, screen));   // à 1 px près
-    CHECK(!md::keepSavedFrame(true, RECT{100, 100, 900, 700}, screen));
-    CHECK(!md::keepSavedFrame(false, RECT{100, 100, 2020, 1180}, screen));
 }
 
 TEST_CASE(zoom_tracker_reports_transitions_only) {

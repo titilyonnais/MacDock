@@ -39,14 +39,6 @@ RECT windowFrame(HWND window);
 // elle n'est plus agrandie (déjà rendue : rien à faire).
 bool restoreWithoutAnimation(HWND window);
 
-// Plein écran de macOS (pastille verte, plan 72) : cadre visible calé sur l'écran entier de la fenêtre (la barre des
-// menus et le Dock se cachent d'eux-mêmes devant une fenêtre qui le couvre), cadre et état agrandi d'avant gardés ; de
-// nouveau : rendus. false, sans rien changer : fenêtre disparue, réduite, figée ou refus de Windows.
-bool toggleFullscreen(HWND window);
-// Après toggleFullscreen : la fenêtre a été agrandie de nouveau par la sortie (elle l'était avant le plein écran).
-bool fullscreenExitMaximized(HWND window);
-// Mise en plein écran par MacDock et couvre toujours son écran.
-bool fullscreenByMacDock(HWND window);
 
 // « Organiser » de macOS 26 (plan 51) : la fenêtre choisie et les suivantes rangées ensemble.
 enum class Arrangement { LeftRight, RightLeft, TopBottom, BottomTop, Quarters };

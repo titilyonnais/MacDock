@@ -1,5 +1,5 @@
 // Fenêtres de macOS 26 (plan 72), logique pure : une fenêtre qu'on agrandit se remplit entre la barre des menus et le
-// Dock (comme une fenêtre glissée contre le haut de l'écran sur macOS), la pastille verte passe en vrai plein écran.
+// Dock, comme une fenêtre glissée contre le haut de l'écran sur macOS.
 #pragma once
 #include <windows.h>
 
@@ -25,15 +25,11 @@ MaximizeReply replyToMaximize(bool enabled, bool candidate, bool givenUp, bool w
 // laissée agrandie (jusqu'à ce que la fenêtre soit oubliée).
 class FillGuard {
 public:
-    static constexpr unsigned long long kRefillMs = 700, kAppRefillMs = 2000, kOwnMs = 1500;
+    static constexpr unsigned long long kRefillMs = 700, kAppRefillMs = 2000;
     bool givenUp(HWND h) const;
     void filled(HWND h, unsigned long long now);      // nous venons de la remplir
     // Elle vient de passer à l'état agrandi ; true : par l'app, aussitôt après nous.
     bool maximized(HWND h, unsigned long long now, unsigned long long lastInput = ~0ull);
-    // Agrandie par MacDock lui-même (sortie du plein écran d'une fenêtre qui l'était, relecture I2) : le passage à l'état
-    // agrandi qui suit, dans les kOwnMs, n'est pas à remplir. ours : consommé.
-    void ownMaximize(HWND h, unsigned long long now);
-    bool ours(HWND h, unsigned long long now);
     void forget(HWND h);
     void purge();   // fenêtres fermées
 
@@ -42,19 +38,9 @@ private:
         unsigned long long filledAt = 0;
         bool filledOnce = false;
         int quick = 0;   // réagrandissements rapides de suite
-        unsigned long long ownAt = 0;
-        bool own = false;
     };
     std::map<HWND, State> states_;
 };
-
-enum class FullscreenStep { Enter, Exit };
-// Pastille verte : sortie si MacDock l'a mise en plein écran et qu'elle couvre toujours son écran (à 1 px près),
-// entrée sinon (déplacée depuis : l'ancien état est oublié).
-FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor);
-// Entrée en plein écran alors qu'un cadre d'avant est gardé : gardé si la fenêtre a encore la taille de l'écran (à 1 px
-// près : seulement déplacée depuis), remplacé par son cadre du moment sinon.
-bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor);
 
 // État agrandi des fenêtres suivies : seul le passage de « non agrandie » à « agrandie » compte. Une fenêtre inconnue
 // (agrandie avant MacDock, ou à l'ouverture de son app) est seulement notée.

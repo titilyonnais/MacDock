@@ -31,7 +31,6 @@
 #include "status_audio.h"
 #include "status_hub.h"
 #include "status_menus.h"
-#include "traffic_window.h"
 #include "window_look.h"
 #include "tray_model.h"
 #include "uia_menu.h"
@@ -139,9 +138,7 @@ private:
     void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
     // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
     // choisie vise cette fenêtre, même inactive.
-    void onZoomMenu(HWND window, POINT anchor);
     void onMaximized(HWND window);    // plan 72 : agrandie → remplie (ou rendue à sa taille d'avant si elle l'était)
-    void onGreenFullscreen(HWND window);   // plan 72 : pastille verte → plein écran, ou sortie
     void trayClickAt(Screen& s, std::size_t k, int button);
     void openSettingsFile();
     void execute(const MenuAction& a);
@@ -193,7 +190,6 @@ private:
     std::size_t activeScreen_ = 0;                   // barre pleine ; les autres sont atténuées
     RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
-    TrafficWindow lights_;   // feux tricolores de la fenêtre active
     HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
     ForegroundSettle settle_;         // premier plan de repli après une fenêtre fermée : on attend qu'il se pose
     HWND settleFrom_ = nullptr;       // dernière fenêtre adoptée au premier plan (settleAdopts)

@@ -2,10 +2,11 @@
 #include "minitest.h"
 #include "../src/menubar/menubar_settings.h"
 #include "../src/menubar/window_look.h"
+#include "../src/core/own_lights.h"
 
 namespace {
-md::LightsWindowInfo notepad() {
-    md::LightsWindowInfo w;
+md::WindowInfo notepad() {
+    md::WindowInfo w;
     w.style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
     w.className = L"Notepad";
     w.frame = RECT{100, 100, 900, 700};
@@ -115,4 +116,65 @@ TEST_CASE(window_look_leaves_system_backdrop_captions) {
     CHECK(!mica->caption);
     CHECK(md::macWindowLook(notepad(), false, 96, 1)->caption);   // DWMSBT_NONE : barre classique
     CHECK(md::macWindowLook(notepad(), false, 96, 0)->caption);   // auto (Win32 classique)
+}
+
+// Fenêtres habillées (reprend les tests de l'éligibilité des pastilles, retirées au plan 74).
+TEST_CASE(window_look_styles_classic_and_custom) {
+    CHECK(md::styledWindow(notepad()));
+    auto custom = notepad();
+    custom.client.top = 101;   // zone client dès le haut : barre de titre dessinée par l'app (Chromium, Electron…)
+    CHECK(md::styledWindow(custom));
+    auto electron = custom;   // Electron sans cadre (app Claude) : barre de titre et boutons, pas de menu système
+    electron.style = WS_VISIBLE | WS_CLIPSIBLINGS | WS_MAXIMIZE | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+    electron.className = L"Chrome_WidgetWin_1";
+    CHECK(md::styledWindow(electron));
+}
+
+TEST_CASE(window_look_styled_window_rules) {
+    auto tool = notepad();
+    tool.exStyle = WS_EX_TOOLWINDOW;
+    CHECK(!md::styledWindow(tool));
+    auto noSys = notepad();
+    noSys.style &= ~(WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+    CHECK(!md::styledWindow(noSys));
+    auto noCaption = notepad();
+    noCaption.style = WS_POPUP | WS_BORDER;
+    CHECK(!md::styledWindow(noCaption));
+    auto shell = notepad();
+    shell.className = L"Shell_TrayWnd";
+    CHECK(!md::styledWindow(shell));
+    auto mine = notepad();
+    mine.ownProcess = true;
+    CHECK(!md::styledWindow(mine));
+    auto min = notepad();
+    min.iconic = true;
+    CHECK(!md::styledWindow(min));
+    auto elevated = notepad();
+    elevated.elevated = true;
+    CHECK(!md::styledWindow(elevated));
+    auto own = notepad();   // Réglages MacDock, Forcer à quitter : leur cadre à elles (plan 56)
+    own.ownLights = true;
+    CHECK(!md::styledWindow(own));
+}
+
+TEST_CASE(window_look_own_lights_mark_on_a_real_window) {   // plan 56 : la propriété posée, lue puis retirée
+    const HWND h = CreateWindowExW(0, L"STATIC", L"essai", 0, 0, 0, 10, 10, HWND_MESSAGE, nullptr, nullptr, nullptr);
+    REQUIRE(h != nullptr);
+    CHECK(!md::drawsOwnLights(h));
+    md::markOwnLights(h);
+    CHECK(md::drawsOwnLights(h));
+    md::unmarkOwnLights(h);
+    CHECK(!md::drawsOwnLights(h));
+    DestroyWindow(h);
+}
+
+TEST_CASE(window_look_own_frame_round_without_border) {   // relecture du plan 56 : le liseré de Windows ne revient pas
+    const HWND h = CreateWindowExW(0, L"STATIC", L"essai", WS_OVERLAPPEDWINDOW, 0, 0, 120, 80, nullptr, nullptr, nullptr,
+                                   nullptr);
+    REQUIRE(h != nullptr);
+    CHECK(md::applyOwnFrame(h));
+    DWORD corner = 0;
+    CHECK(SUCCEEDED(DwmGetWindowAttribute(h, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof corner)));
+    CHECK(corner == 2);   // DWMWCP_ROUND
+    DestroyWindow(h);
 }

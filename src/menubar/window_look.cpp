@@ -6,7 +6,22 @@ namespace md {
 
 bool shouldRoundCorners(DWORD original) { return original != 1 && original != 3; }
 
-bool squareInFullscreen(const LightsWindowInfo& w) {
+namespace {
+constexpr const wchar_t* kShellClasses[] = {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd", L"Progman", L"WorkerW"};
+}
+
+bool styledWindow(const WindowInfo& w) {
+    if (w.iconic || w.ownProcess || w.elevated || w.ownLights) return false;
+    // Menu système, ou au moins un bouton réduire ou agrandir (Electron sans cadre n'a pas de menu système).
+    if ((w.style & WS_CAPTION) != WS_CAPTION || (w.style & WS_CHILD)) return false;
+    if (!(w.style & (WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX))) return false;
+    if (w.exStyle & WS_EX_TOOLWINDOW) return false;
+    for (const wchar_t* c : kShellClasses)
+        if (w.className == c) return false;
+    return true;
+}
+
+bool squareInFullscreen(const WindowInfo& w) {
     const RECT& m = w.monitor;
     return !w.zoomed && (w.style & WS_CAPTION) == WS_CAPTION && m.right > m.left && w.frame.left <= m.left &&
            w.frame.top <= m.top && w.frame.right >= m.right && w.frame.bottom >= m.bottom;
@@ -19,10 +34,10 @@ bool appsDarkMode() {
     return value == 0;
 }
 
-std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi, int backdrop) {
-    LightsWindowInfo any = w;
+std::optional<WindowLook> macWindowLook(const WindowInfo& w, bool dark, UINT dpi, int backdrop) {
+    WindowInfo any = w;
     any.iconic = false;   // une fenêtre réduite garde son apparence pour son retour
-    if (!wantsLights(any, LightsMode::All, dpi)) return std::nullopt;
+    if (!styledWindow(any)) return std::nullopt;
     // Plein écran sans être agrandie (vidéo, jeu sans bordure) : rendue à Windows, coins carrés.
     const RECT& m = w.monitor;
     if (!w.zoomed && m.right > m.left && w.frame.left <= m.left && w.frame.top <= m.top && w.frame.right >= m.right &&

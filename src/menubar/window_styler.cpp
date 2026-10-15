@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "../core/log.h"
-#include "traffic_window.h"
+#include "window_info.h"
 #include "window_look.h"
 
 namespace md {
@@ -38,7 +38,7 @@ void WindowStyler::restore(const Touched& t) {
     }
 }
 
-void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT dpi) {
+void WindowStyler::apply(HWND h, const WindowInfo& info, bool dark, UINT dpi) {
     if (!enabled_ || !h) return;
     const DWORD pid = processOf(h);
     Touched key;
