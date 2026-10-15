@@ -31,7 +31,6 @@
 #include "status_audio.h"
 #include "status_hub.h"
 #include "status_menus.h"
-#include "traffic_window.h"
 #include "window_look.h"
 #include "tray_model.h"
 #include "uia_menu.h"
@@ -137,11 +136,7 @@ private:
     void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
     void pollInput();           // menu de saisie : disposition de l'app suivie (500 ms), liste relue toutes les 10 s
     void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
-    // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
-    // choisie vise cette fenêtre, même inactive.
-    void onZoomMenu(HWND window, POINT anchor);
     void onMaximized(HWND window);    // plan 72 : agrandie → remplie (ou rendue à sa taille d'avant si elle l'était)
-    void onGreenFullscreen(HWND window);   // plan 72 : pastille verte → plein écran, ou sortie
     void trayClickAt(Screen& s, std::size_t k, int button);
     void openSettingsFile();
     void execute(const MenuAction& a);
@@ -155,7 +150,7 @@ private:
     void startSamples();
     void stopSamples();   // avant un menu : il capture l'écran à son tour (la pastille du HUD aussi)
     void abortSamples();  // capture d'écran du Dock : échantillons arrêtés, couleur du texte inchangée
-    void onScreenshotReveal(ShotReveal reveal);   // ⊞⇧3, ⊞⇧4 : barre et pastilles visibles aux captures, le temps de la copie
+    void onScreenshotReveal(ShotReveal reveal);   // ⊞⇧3, ⊞⇧4 : barre, menus et pastille du volume visibles aux captures
     void registerVolumeKeys();          // touches de volume reprises selon settings_.hud (échec journalisé)
     void onVolumeKey(int id);           // volume +, −, sourdine : réglage puis pastille
     void showHud(const HudContent& c);  // pastille sur l'écran du curseur, ravivée
@@ -193,7 +188,6 @@ private:
     std::size_t activeScreen_ = 0;                   // barre pleine ; les autres sont atténuées
     RebuildGate screensGate_;                        // écrans changés pendant un menu ou pendant leur reconstruction
 
-    TrafficWindow lights_;   // feux tricolores de la fenêtre active
     HWND lastForeground_ = nullptr;   // dernier premier plan traité (rattrapage périodique)
     ForegroundSettle settle_;         // premier plan de repli après une fenêtre fermée : on attend qu'il se pose
     HWND settleFrom_ = nullptr;       // dernière fenêtre adoptée au premier plan (settleAdopts)

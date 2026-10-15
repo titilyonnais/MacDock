@@ -1,12 +1,30 @@
 #include "window_look.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cwctype>
+#include <string>
 
 namespace md {
 
 bool shouldRoundCorners(DWORD original) { return original != 1 && original != 3; }
 
-bool squareInFullscreen(const LightsWindowInfo& w) {
+namespace {
+constexpr const wchar_t* kShellClasses[] = {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd", L"Progman", L"WorkerW"};
+}
+
+bool styledWindow(const WindowInfo& w) {
+    if (w.iconic || w.ownProcess || w.elevated || w.ownLights) return false;
+    // Menu système, ou au moins un bouton réduire ou agrandir (Electron sans cadre n'a pas de menu système).
+    if ((w.style & WS_CAPTION) != WS_CAPTION || (w.style & WS_CHILD)) return false;
+    if (!(w.style & (WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX))) return false;
+    if (w.exStyle & WS_EX_TOOLWINDOW) return false;
+    for (const wchar_t* c : kShellClasses)
+        if (w.className == c) return false;
+    return true;
+}
+
+bool squareInFullscreen(const WindowInfo& w) {
     const RECT& m = w.monitor;
     return !w.zoomed && (w.style & WS_CAPTION) == WS_CAPTION && m.right > m.left && w.frame.left <= m.left &&
            w.frame.top <= m.top && w.frame.right >= m.right && w.frame.bottom >= m.bottom;
@@ -19,10 +37,48 @@ bool appsDarkMode() {
     return value == 0;
 }
 
-std::optional<WindowLook> macWindowLook(const LightsWindowInfo& w, bool dark, UINT dpi, int backdrop) {
-    LightsWindowInfo any = w;
+bool useSmallCorners(const WindowInfo& w, UINT dpi, double modSmallPt) {
+    if (modSmallPt < 8 || w.iconic) return false;   // réduite : son cadre est celui de la miniature
+    if (!(w.style & WS_THICKFRAME)) return true;   // taille fixe : boîte de dialogue
+    const double k = (dpi ? dpi : 96) / 96.0;
+    const double side = std::min(w.frame.right - w.frame.left, w.frame.bottom - w.frame.top) / k;
+    return side < 300;
+}
+
+double cornerModSmallRadius() {
+    // Windhawk ne charge aucun mod dans DWM sans dwm.exe dans sa liste d'inclusion (Paramètres > Avancé).
+    wchar_t include[1024] = {};
+    DWORD bytes = sizeof include;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Windhawk\\Engine\\Settings", L"Include", RRF_RT_REG_SZ, nullptr,
+                     include, &bytes) != ERROR_SUCCESS)
+        return 0;
+    std::wstring list = include;
+    std::transform(list.begin(), list.end(), list.begin(), [](wchar_t c) { return wchar_t(towlower(c)); });
+    bool dwm = false;
+    for (std::size_t at = 0; at <= list.size();) {   // éléments séparés par « | »
+        const std::size_t end = std::min(list.find(L'|', at), list.size());
+        dwm = dwm || list.substr(at, end - at) == L"dwm.exe";
+        at = end + 1;
+    }
+    if (!dwm) return 0;
+    const wchar_t* key = L"SOFTWARE\\Windhawk\\Engine\\Mods\\custom-corner-radius";
+    DWORD disabled = 1, size = sizeof disabled;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"Disabled", RRF_RT_REG_DWORD, nullptr, &disabled, &size) != ERROR_SUCCESS ||
+        disabled)
+        return 0;
+    DWORD v = 0;
+    size = sizeof v;
+    const std::wstring settings = std::wstring(key) + L"\\Settings";
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, settings.c_str(), L"smallRadius", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS ||
+        int(v) < 0)
+        return 0;
+    return double(v);
+}
+
+std::optional<WindowLook> macWindowLook(const WindowInfo& w, bool dark, UINT dpi, int backdrop) {
+    WindowInfo any = w;
     any.iconic = false;   // une fenêtre réduite garde son apparence pour son retour
-    if (!wantsLights(any, LightsMode::All, dpi)) return std::nullopt;
+    if (!styledWindow(any)) return std::nullopt;
     // Plein écran sans être agrandie (vidéo, jeu sans bordure) : rendue à Windows, coins carrés.
     const RECT& m = w.monitor;
     if (!w.zoomed && m.right > m.left && w.frame.left <= m.left && w.frame.top <= m.top && w.frame.right >= m.right &&

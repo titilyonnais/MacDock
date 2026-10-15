@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "../core/log.h"
-#include "traffic_window.h"
+#include "window_info.h"
 #include "window_look.h"
 
 namespace md {
@@ -11,7 +11,7 @@ namespace md {
 namespace {
 // Attributs de Windows 11 (SDK 22000+) ; repris ici pour ne pas dépendre de la version des en-têtes.
 constexpr DWORD kDarkMode = 20, kCorner = 33, kBorderColor = 34, kCaptionColor = 35, kTextColor = 36, kBackdrop = 38;
-constexpr DWORD kRound = 2;
+constexpr DWORD kRound = 2, kRoundSmall = 3;
 constexpr COLORREF kColorNone = 0xFFFFFFFE, kColorDefault = 0xFFFFFFFF;
 
 bool set(HWND h, DWORD attr, DWORD value) { return SUCCEEDED(DwmSetWindowAttribute(h, attr, &value, sizeof value)); }
@@ -38,7 +38,7 @@ void WindowStyler::restore(const Touched& t) {
     }
 }
 
-void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT dpi) {
+void WindowStyler::apply(HWND h, const WindowInfo& info, bool dark, UINT dpi) {
     if (!enabled_ || !h) return;
     const DWORD pid = processOf(h);
     Touched key;
@@ -73,7 +73,9 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
         }
         return;
     }
-    if (it != touched_.end() && it->dark == dark && it->backdrop == backdrop && !it->squared) return;
+    const bool smallRound = look->round && useSmallCorners(info, dpi, cornerModSmallRadius());
+    if (it != touched_.end() && it->dark == dark && it->backdrop == backdrop && !it->squared && it->smallCorners == smallRound)
+        return;
     Touched t = it != touched_.end() ? *it : key;
     t.dark = dark;
     t.pid = pid;
@@ -87,7 +89,8 @@ void WindowStyler::apply(HWND h, const LightsWindowInfo& info, bool dark, UINT d
         t.squared = false;
     }
     bool ok = true;
-    if (t.rounded) ok &= set(h, kCorner, kRound);
+    t.smallCorners = smallRound;
+    if (t.rounded) ok &= set(h, kCorner, smallRound ? kRoundSmall : kRound);
     if (look->noBorder) ok &= set(h, kBorderColor, kColorNone);
     if (look->caption) {
         ok &= set(h, kCaptionColor, look->captionColor);

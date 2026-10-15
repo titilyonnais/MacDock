@@ -1,72 +1,85 @@
-﻿# Coins de macOS 26 sur toutes les fenêtres (plan 72) : active le mod « Custom Window Corner Radius » de Windhawk (m417z,
-# à installer depuis le catalogue de Windhawk) avec les valeurs de macOS 26 : rayon de 26 pt au lieu de 8 (celui des
-# fenêtres à barre d'outils de Tahoe : Safari, Finder, Xcode ; presque toutes les apps de Windows en ont une), fenêtres
-# ancrées (moitiés, quarts) arrondies elles aussi. Ce mod accroche le calcul du rayon dans dwm.exe et se retire tout
-# seul si DWM plante à répétition ; rien n'est modifié dans les fichiers de Windows.
+﻿# Coins de macOS 26 sur toutes les fenêtres (plans 72 et 74) : installe et active le mod « Custom Window Corner Radius »
+# de Windhawk (m417z) avec les valeurs de macOS. Grandes fenêtres : 26 pt au lieu de 8 (celui des fenêtres à barre
+# d'outils de Tahoe : Safari, Finder) ; petites fenêtres et boîtes de dialogue (Exécuter, alertes) : 12 pt, que MacDock
+# leur donne (un grand rayon y rend mal) ; fenêtres ancrées arrondies elles aussi. Ce mod accroche le calcul du rayon
+# dans dwm.exe et se retire tout seul si DWM plante à répétition ; rien n'est modifié dans les fichiers de Windows.
 #   Double-clic sur coins-macos.cmd (ou coins-windows.cmd pour revenir aux coins de Windows).
-#   Windows demande l'autorisation administrateur : Windhawk garde ses réglages dans HKLM.
-# -Off : désactive le mod. -DryRun : montre seulement ce qui serait écrit (sans droits administrateur).
+#   Windows demande l'autorisation administrateur : Windhawk garde ses mods et ses réglages dans HKLM.
+# Absent, le mod est téléchargé (dépôt officiel des mods de Windhawk, version figée et vérifiée par son empreinte) puis
+# compilé comme le fait Windhawk ; Windhawk lui-même est proposé par winget s'il manque.
+# -Off : désactive le mod. -DryRun : montre seulement ce qui serait fait (sans droits administrateur).
 param([switch]$Off, [switch]$DryRun)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windhawk-common.ps1')
 
-$engine = 'HKLM:\SOFTWARE\Windhawk\Engine'
-$key = "$engine\Mods\custom-corner-radius"
-$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $admin -and -not $DryRun) {
+$id = 'custom-corner-radius'
+# Version 1.3 du mod (commit du dépôt ramensoftware/windhawk-mods, 11 août 2026) : elle tourne dans dwm.exe, d'où
+# l'empreinte vérifiée.
+$sourceUrl = 'https://raw.githubusercontent.com/ramensoftware/windhawk-mods/16834cd873954cf8b2e19612c4841dc905f6e148/mods/custom-corner-radius.wh.cpp'
+$sourceSha256 = 'BB084BA83EF640428EDB41A7EA5778A964A8B6428982FA5AB8AE304C93AF985D'
+$settings = @{ radius = 26; smallRadius = 12; tooltipRadius = -1; roundMaximizedAndSnapped = 'snapped' }
+
+if (-not (Test-Admin) -and -not $DryRun) {
     $extra = if ($Off) { ' -Off' } else { '' }
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"$extra"
     exit
 }
 
-if (-not (Test-Path $key)) {
-    Write-Host 'Le mod « Custom Window Corner Radius » n''est pas installé.'
-    Write-Host 'Windhawk > Explorer : cherche « Custom Window Corner Radius », Installer, puis relance ce script.'
-    if (-not $DryRun) { Read-Host 'Entrée pour fermer' }
-    exit 1
-}
-
-# Liste d'inclusion de Windhawk : sans dwm.exe, le mod n'est jamais chargé dans DWM.
-$writes = [System.Collections.Generic.List[object]]::new()
-$include = [string](Get-ItemProperty "$engine\Settings" -ErrorAction SilentlyContinue).Include
-$list = @($include -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-if (-not $Off -and -not ($list | Where-Object { $_ -ieq 'dwm.exe' })) {
-    $writes.Add(@("$engine\Settings", 'Include', (($list + 'dwm.exe') -join '|'), 'String'))
-}
-# Windhawk ne se charge dans dwm.exe (déjà lancé) qu'en redémarrant : seulement si dwm.exe vient d'être ajouté ou si le
-# mod était coupé ; un simple changement de rayon est pris à chaud par le mod.
-$wasDisabled = [int](Get-ItemProperty $key -ErrorAction SilentlyContinue).Disabled -ne 0
-$restart = -not $Off -and ($writes.Count -gt 0 -or $wasDisabled)
-$writes.Add(@($key, 'Disabled', $(if ($Off) { 1 } else { 0 }), 'DWord'))
-if (-not $Off) {
-    $writes.Add(@("$key\Settings", 'radius', 26, 'DWord'))
-    $writes.Add(@("$key\Settings", 'smallRadius', 6, 'DWord'))
-    $writes.Add(@("$key\Settings", 'roundMaximizedAndSnapped', 'snapped', 'String'))
-}
-# Horodatage du changement : Windhawk recharge le mod dans DWM.
-$writes.Add(@($key, 'SettingsChangeTime', [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), 'DWord'))
-
-foreach ($w in $writes) {
-    if ($DryRun) {
-        Write-Host ("{0} : {1} = {2}" -f $w[0], $w[1], $w[2])
-        continue
-    }
-    if (-not (Test-Path $w[0])) { New-Item -Path $w[0] | Out-Null }
-    New-ItemProperty -Path $w[0] -Name $w[1] -Value $w[2] -PropertyType $w[3] -Force | Out-Null
-}
+$wh = Get-Windhawk
 if ($DryRun) {
-    if ($restart) { Write-Host 'Puis : redémarrage du service Windhawk (le mod est chargé dans dwm.exe, déjà lancé).' }
+    if (-not $wh) { Write-Host 'Windhawk absent : proposé par winget.'; exit 0 }
+    $key = "$($wh.Key)\Mods\$id"
+    if ($Off) { Write-Host "$key : Disabled = 1"; exit 0 }
+    $lib = (Get-ItemProperty $key -ErrorAction SilentlyContinue).LibraryFileName
+    if (-not ($lib -and (Test-Path (Join-Path $wh.Mods $lib)))) {
+        Write-Host "Mod absent : téléchargé ($sourceUrl), vérifié, compilé et enregistré."
+    }
+    foreach ($k in $settings.Keys) { Write-Host "$key\Settings : $k = $($settings[$k])" }
+    Write-Host "$key : Disabled = 0"
+    if (Add-DwmToWindhawk $wh -DryRun) { Write-Host 'dwm.exe ajouté à la liste d''inclusion de Windhawk.' }
     exit 0
 }
-# dwm.exe tourne depuis l'ouverture de la session : Windhawk ne s'y charge qu'en (re)démarrant. Les autres mods sont
-# rechargés au passage (la barre des tâches peut réapparaître un instant).
-if ($restart) {
-    try { Restart-Service -Name Windhawk -ErrorAction Stop }
-    catch { Write-Host "Le service Windhawk n'a pas redémarré ($($_.Exception.Message)) : redémarre Windhawk (ou la session)." }
-}
 
-Write-Host ''
-if ($Off) { Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).' }
-else { Write-Host 'Coins de macOS activés : rayon de 26 pt sur toutes les fenêtres, ancrées comprises.' }
-Write-Host 'Les fenêtres déjà ouvertes changent au prochain redessin (survol, déplacement, activation).'
+try {
+    if ($Off) {
+        if ($wh -and (Test-Path "$($wh.Key)\Mods\$id")) {
+            New-ItemProperty -Path "$($wh.Key)\Mods\$id" -Name Disabled -Value 1 -PropertyType DWord -Force | Out-Null
+            Update-WindhawkMod $wh $id
+            Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).'
+        } else {
+            Write-Host 'Le mod « Custom Window Corner Radius » n''est pas installé : les coins sont déjà ceux de Windows.'
+        }
+    } else {
+        if (-not (Install-WindhawkIfMissing)) { Read-Host 'Entrée pour fermer'; exit 1 }
+        $wh = Get-Windhawk
+        $key = "$($wh.Key)\Mods\$id"
+        $installed = (Test-Path $key) -and ($lib = (Get-ItemProperty $key).LibraryFileName) -and (Test-Path (Join-Path $wh.Mods $lib))
+        $wasDisabled = -not $installed -or ([int](Get-ItemProperty $key -ErrorAction SilentlyContinue).Disabled -ne 0)
+        if (-not $installed) {
+            Write-Host 'Mod « Custom Window Corner Radius » : téléchargement et compilation…'
+            $work = New-WorkDir 'coins'   # vérifié puis compilé dans un dossier des seuls administrateurs
+            try {
+                $tmp = Join-Path $work "$id.wh.cpp"
+                Get-Download $sourceUrl $tmp
+                Assert-Sha256 $tmp $sourceSha256
+                Install-WindhawkMod -Wh $wh -Id $id -Source $tmp -ForceSettings $settings
+            } finally {
+                Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            Set-WindhawkSettings "$key\Settings" $settings
+            New-ItemProperty -Path $key -Name Disabled -Value 0 -PropertyType DWord -Force | Out-Null
+            Update-WindhawkMod $wh $id
+        }
+        $added = Add-DwmToWindhawk $wh
+        # Windhawk ne se charge dans dwm.exe (déjà lancé) qu'en redémarrant : seulement si dwm.exe vient d'être ajouté
+        # ou si le mod était absent ou coupé ; un simple changement de rayon est pris à chaud par le mod.
+        if ($added -or $wasDisabled) { Restart-Windhawk }
+        Write-Host ''
+        Write-Host 'Coins de macOS activés : 26 pt sur les fenêtres, 12 pt sur les petites (MacDock lancé), ancrées comprises.'
+        Write-Host 'Les fenêtres déjà ouvertes changent au prochain redessin (survol, déplacement, activation).'
+    }
+} catch {
+    Write-Host "Échec : $($_.Exception.Message)"
+}
 Read-Host 'Entrée pour fermer'

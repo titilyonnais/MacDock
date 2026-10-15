@@ -1,7 +1,5 @@
 #include "window_fill.h"
 
-#include <cstdlib>
-
 namespace md {
 
 bool fillCandidate(LONG style, LONG exStyle, bool ownProcess) {
@@ -35,34 +33,10 @@ bool FillGuard::maximized(HWND h, unsigned long long now, unsigned long long las
     return quick;
 }
 
-void FillGuard::ownMaximize(HWND h, unsigned long long now) {
-    State& s = states_[h];
-    s.own = true;
-    s.ownAt = now;
-}
-
-bool FillGuard::ours(HWND h, unsigned long long now) {
-    const auto it = states_.find(h);
-    if (it == states_.end() || !it->second.own) return false;
-    it->second.own = false;
-    return now - it->second.ownAt < kOwnMs;
-}
-
 void FillGuard::forget(HWND h) { states_.erase(h); }
 
 void FillGuard::purge() {
     for (auto it = states_.begin(); it != states_.end();) it = IsWindow(it->first) ? std::next(it) : states_.erase(it);
-}
-
-FullscreenStep fullscreenStep(bool saved, const RECT& frame, const RECT& monitor) {
-    const bool covers = std::abs(frame.left - monitor.left) <= 1 && std::abs(frame.top - monitor.top) <= 1 &&
-                        std::abs(frame.right - monitor.right) <= 1 && std::abs(frame.bottom - monitor.bottom) <= 1;
-    return saved && covers ? FullscreenStep::Exit : FullscreenStep::Enter;
-}
-
-bool keepSavedFrame(bool saved, const RECT& frame, const RECT& monitor) {
-    return saved && std::abs((frame.right - frame.left) - (monitor.right - monitor.left)) <= 1 &&
-           std::abs((frame.bottom - frame.top) - (monitor.bottom - monitor.top)) <= 1;
 }
 
 bool ZoomTracker::changed(HWND h, bool zoomed, bool iconic) {

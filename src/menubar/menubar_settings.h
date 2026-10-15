@@ -7,9 +7,6 @@
 
 namespace md {
 
-// Feux tricolores : fenêtres à barre de titre Windows (défaut), toutes, ou aucune.
-enum class LightsMode { Standard, All, Off };
-
 struct MenuBarMetrics {   // points
     double height = 24, fontSize = 13, leftMargin = 10, titlePadding = 10, logoSize = 14;
     double highlightHeight = 22, highlightRadius = 6, statusWidth = 36, rightMargin = 8.4;
@@ -32,9 +29,8 @@ struct MenuBarSettings {
     bool volumeFeedback = true;   // « pop » quand le volume change au clavier, comme sur macOS
     bool hud = true;            // pastille du volume et de la luminosité ; reprend les touches de volume
     bool showAppIcons = true;   // icônes des autres apps (relayées par le mod Windhawk)
-    LightsMode trafficLights = LightsMode::Standard;   // pastilles fermer, réduire, zoom, à la place des boutons de Windows
     bool macWindows = true;     // coins arrondis, sans liseré coloré, barre de titre grise pour les autres apps
-    bool fillOnMaximize = true;   // agrandir remplit l'écran entre la barre et le Dock ; pastille verte : plein écran
+    bool fillOnMaximize = true;   // agrandir remplit l'écran entre la barre et le Dock, comme macOS
     MenuBarMetrics metrics;
 };
 

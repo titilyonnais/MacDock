@@ -323,7 +323,7 @@ ComPtr<ID2D1PathGeometry> smoothRectGeometry(ID2D1Factory* factory, D2D1_RECT_F 
 }
 
 void drawWindowLights(Painter& p, D2D1_POINT_2F first, bool active, bool hover, int pressed, int disabled) {
-    // Pastilles plates de macOS 26 Tahoe (comme traffic_lights.cpp) : remplissage et liseré.
+    // Pastilles plates de macOS 26 Tahoe (app Réglages, Forcer à quitter) : remplissage et liseré.
     static constexpr std::uint32_t kFill[3] = {0xFF5F57, 0xFEBC2E, 0x28C840}, kEdge[3] = {0xE0443E, 0xDEA123, 0x1AAB29};
     const bool dark = darkPalette(p.pal());
     for (int i = 0; i < 3; ++i) {
