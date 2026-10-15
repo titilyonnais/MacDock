@@ -45,6 +45,7 @@ std::vector<ActionCommand> actionCommands(PaneAction action, const ButtonContext
                 if (action == PaneAction::UninstallMod) params += L" -Uninstall";
                 params += L" -NoRestart";   // l'Explorateur : redémarré ensuite par l'app, sans droits élevés
                 std::vector<ActionCommand> out{ActionCommand{powershell(c), params, L"runas", true}};
+                out[0].waitMs = 30 * 60 * 1000;   // téléchargements possibles (relecture du plan 74)
                 if (action == PaneAction::InstallMod && c.restartExplorer) {
                     ActionCommand restart;
                     restart.restartExplorer = true;

@@ -26,8 +26,12 @@ if (-not (Test-Admin) -and -not $OutDir) {
 
 if ($Uninstall) {
     $wh = Get-Windhawk
-    if ($wh) { Remove-WindhawkMod $wh $id }
-    Write-Host 'Mod « MacDock - macOS Look » retiré. Les apps reprennent leur police à leur prochain lancement.'
+    if ($wh) {
+        Remove-WindhawkMod $wh $id
+        Write-Host 'Mod « MacDock - macOS Look » retiré. Les apps reprennent leur police à leur prochain lancement.'
+    } else {
+        Write-Host 'Windhawk est introuvable : le mod n''est pas installé.'
+    }
     if (-not $quiet) { Read-Host 'Entrée pour fermer' }
     exit
 }
@@ -51,7 +55,10 @@ Install-WindhawkMod -Wh $wh -Id $id -Source $source `
 Write-Host ''
 Write-Host 'Mod « MacDock - macOS Look » installé et activé dans Windhawk.'
 if ($fonts) { Write-Host 'Les apps prennent la police SF Pro à leur prochain lancement.' }
-else { Write-Host 'SF Pro n''est pas installée : le mod ne change rien tant qu''elle manque (relance ce script pour l''installer).' }
+else {
+    Write-Host 'SF Pro n''est pas installée : le mod ne change rien tant qu''elle manque (relance ce script pour l''installer).'
+    if ($quiet) { Read-Host 'Entrée pour fermer' }   # lancé par Réglages : le message ne disparaît pas aussitôt
+}
 Write-Host 'Jeux en ligne : ajoute-les aussi à Windhawk > Paramètres > Avancé > Process exclusion list.'
 Write-Host ''
 # L'Explorateur (fenêtres de dossiers, bureau) garde ses polices jusqu'à son redémarrage ; ses fenêtres se rouvrent vides.

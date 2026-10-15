@@ -7,7 +7,6 @@
 //                                 rendu hors écran de la barre (k : titre dont le menu est ouvert)
 //   MacMenuBar.exe --hud-snapshot f.png [--kind volume|brightness] [--level x] [--muted] [--theme light|dark]
 //                                 pastille du volume ou de la luminosité (aucune fenêtre, rien n'est réglé)
-//                                 menu de la pastille verte, hors écran (aucune fenêtre, aucun réglage)
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>

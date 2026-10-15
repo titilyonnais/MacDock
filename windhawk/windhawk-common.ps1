@@ -42,9 +42,30 @@ function Install-WindhawkIfMissing {
         Write-Host 'winget est introuvable : installe Windhawk depuis https://windhawk.net, puis relance ce script.'
         return $false
     }
-    & $winget.Source install --id RamenSoftware.Windhawk --exact --silent --accept-package-agreements --accept-source-agreements
+    & $winget.Source install --id RamenSoftware.Windhawk --exact --silent --accept-package-agreements --accept-source-agreements |
+        Out-Host
     if (-not (Get-Windhawk)) { Write-Host "Windhawk ne s'est pas installé (voir ci-dessus)."; return $false }
     return $true
+}
+
+# Dossier de travail. En administrateur : à la racine de ProgramData, modifiable par les seuls administrateurs et
+# SYSTEM ; ce qui y est vérifié puis exécuté ou compilé en administrateur ne peut pas être remplacé entre-temps par un
+# programme de la session, comme dans %TEMP%. Sans droits (essais) : %TEMP%.
+function New-WorkDir([string]$Name) {
+    $leaf = "macdock-$Name-" + [guid]::NewGuid().ToString('N')
+    if (-not (Test-Admin)) {
+        $dir = Join-Path $env:TEMP $leaf
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        return $dir
+    }
+    $dir = Join-Path $env:ProgramData $leaf   # à la racine : un dossier parent créé par la session ne le renomme pas
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    # Héritage coupé : Administrateurs (S-1-5-32-544) et SYSTEM (S-1-5-18) seuls, contrôle total.
+    & icacls.exe $dir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Droits du dossier de travail impossibles à poser ($dir)." }
+    # Rien n'a pu y être glissé avant la pose des droits (un fichier d'un autre garderait les siens).
+    if (@(Get-ChildItem -LiteralPath $dir -Force).Count -ne 0) { throw "Dossier de travail inattendu ($dir)." }
+    return $dir
 }
 
 # Téléchargement (curl.exe de Windows : rapide, avec sa barre de progression ; sinon Invoke-WebRequest).
@@ -80,8 +101,10 @@ function Install-WindhawkMod {
     New-Item -ItemType Directory -Force $target | Out-Null
     $dllName = "{0}_{1}_{2}.dll" -f $Id, $version, (Get-Random -Minimum 100000 -Maximum 999999)
     $dll = Join-Path $target $dllName
-    # Identifiant et version par un en-tête inclus d'abord (pas de guillemets à faire passer dans la ligne de commande).
-    $ids = Join-Path $env:TEMP ("macdock-wh-ids-{0}.h" -f ($Id -replace '[^\w-]', '_'))
+    # Identifiant et version par un en-tête inclus d'abord (pas de guillemets à faire passer dans la ligne de commande),
+    # dans un dossier de travail sûr (New-WorkDir), supprimé ensuite.
+    $idsDir = New-WorkDir 'wh-ids'
+    $ids = Join-Path $idsDir 'ids.h'
     Set-Content -Path $ids -Encoding ASCII -Value "#define WH_MOD_ID L`"$Id`"`r`n#define WH_MOD_VERSION L`"$version`""
     $options = @()
     $opt = [regex]::Match($text, '(?m)^// @compilerOptions\s+(.+?)\s*$')
@@ -91,7 +114,10 @@ function Install-WindhawkMod {
         $Source, '-include', $ids, '-include', 'windhawk_api.h', '-target', 'x86_64-w64-mingw32', '-Wl,--export-all-symbols',
         '-o', $dll) + $options
     Push-Location $Wh.Compiler
-    try { & $Wh.Clang @compileArgs } finally { Pop-Location }
+    try { & $Wh.Clang @compileArgs | Out-Host } finally {
+        Pop-Location
+        Remove-Item $idsDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dll)) { throw "La compilation du mod $Id a échoué (voir ci-dessus)." }
     if ($OutDir) { return $dll }
 
@@ -195,14 +221,16 @@ function Install-SFPro([switch]$Yes, [string]$ExtractOnly) {
     Write-Host ''
     Write-Host "La police SF Pro (Text et Display) n'est pas installée. Ce script peut la télécharger sur le site"
     Write-Host "d'Apple (developer.apple.com/fonts, environ 220 Mo) et l'installer pour tout le PC."
-    Write-Host "SF Pro appartient à Apple et reste soumise à son contrat de licence (texte complet dans le paquet"
-    Write-Host 'téléchargé) : en continuant, tu déclares l''accepter.'
+    Write-Host ''
+    Write-Host "ATTENTION, licence : SF Pro appartient à Apple. Son contrat (texte complet dans le paquet téléchargé)"
+    Write-Host "la réserve à la création de maquettes d'interfaces pour les systèmes d'Apple : l'utiliser comme police"
+    Write-Host "de Windows n'est pas prévu par ce contrat. MacDock ne la fournit pas ; c'est toi qui choisis de la"
+    Write-Host "télécharger chez Apple et de l'installer, en connaissance de cause. Sans elle, le mod ne change rien."
     if (-not $Yes) {
-        $answer = Read-Host 'Télécharger et installer SF Pro ? (O/N)'
+        $answer = Read-Host 'Télécharger et installer SF Pro malgré tout ? (O/N)'
         if ($answer -notmatch '^[oOyY]') { return $false }
     }
-    $work = Join-Path $env:TEMP ('macdock-sfpro-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Force $work | Out-Null
+    $work = New-WorkDir 'sfpro'
     try {
         Write-Host '7-Zip (pour ouvrir le paquet d''Apple), sans l''installer…'
         $msi = Join-Path $work '7z.msi'

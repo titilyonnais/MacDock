@@ -31,3 +31,26 @@ genre Windows R, ça rend pas très bien les contours » ; nouvelle version publ
 - Suite : 916 tests réussis. Sonde réelle de Remplir : exacte.
 - Scripts essayés sans droits administrateur : coins-macos.ps1 -DryRun, compilation des deux mods, empreinte fausse
   refusée, chaîne SF Pro complète (36 polices extraites, rien installé).
+
+## Relecture indépendante (opus : prêt avec corrections, aucun critique) et corrections
+- **Sortie de winget** (important) : elle se mêlait à la valeur renvoyée, un échec passait pour une réussite. Envoyée à
+  l'écran, vrai booléen.
+- **Délai de 3 min de l'app Réglages** (important) : trop court pour télécharger SF Pro ; 30 min pour l'installation d'un
+  mod (`ActionCommand::waitMs`, test).
+- **Fichiers vérifiés puis exécutés en administrateur depuis %TEMP%** (important) : remplaçables par un programme de la
+  session entre la vérification et l'usage. Dossier de travail à la racine de ProgramData, réservé aux administrateurs
+  et à SYSTEM, vérifié vide après la pose des droits (source du mod de coins, 7-Zip, SF Pro, en-tête de compilation).
+- **Licence de SF Pro** (important) : le message dit maintenant clairement que le contrat d'Apple la réserve aux
+  maquettes pour les systèmes d'Apple, et demande un accord en connaissance de cause.
+- **README** (important) : passages sur les feux tricolores et `trafficLights` retirés ou réécrits.
+- Mineurs corrigés au passage : fenêtres réduites exclues des petits coins (test), mod de coins actif seulement avec
+  dwm.exe dans l'inclusion de Windhawk, messages justes sans Windhawk, fichiers temporaires toujours supprimés, critère
+  « mod absent » identique à blanc et en vrai, commentaires orphelins.
+
+## Reportés
+- Petits coins recalculés seulement au premier plan (une fenêtre redimensionnée garde les siens jusque-là).
+- `smallRadius` à 12 touche aussi les menus contextuels de Windows (DWMWCP_ROUNDSMALL) : à regarder sur ton PC.
+- Restes morts côté Dock : classe `MacMenuBarLights`, messages de la pastille jaune (génie à l'appui) ;
+  `Builder::tile` et les rangées d'icônes des menus n'ont plus d'appelant hors tests.
+- La source du mod de police est dans le dossier de MacDock (modifiable par l'utilisateur) et compilée en
+  administrateur : comportement d'avant ce plan.

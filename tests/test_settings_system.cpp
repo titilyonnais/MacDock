@@ -226,6 +226,9 @@ TEST_CASE(settings_actions_build_their_commands) {
     CHECK(install[0].file == L"powershell.exe");   // sans dossier système connu : le nom seul
     CHECK(install[0].verb == L"runas");   // Windows demande l'autorisation administrateur
     CHECK(install[0].wait);
+    // L'installateur peut télécharger SF Pro (220 Mo) et Windhawk : attendu jusqu'à 30 min, pas 3 (relecture du plan 74).
+    CHECK(install[0].waitMs >= 30u * 60 * 1000);
+    CHECK(md::actionCommands(md::PaneAction::Restart, ctx)[0].waitMs == 180000u);
     CHECK(install[0].params.find(L"install-macdock-look.ps1") != std::wstring::npos);
     // L'Explorateur est redémarré par l'app, dans la session de l'utilisateur et sans droits élevés, une fois
     // l'installateur fini : jamais par le PowerShell administrateur (relecture du plan 42).

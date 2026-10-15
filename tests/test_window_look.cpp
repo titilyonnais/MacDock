@@ -196,4 +196,8 @@ TEST_CASE(window_look_small_corners_for_small_windows) {
     CHECK(!md::useSmallCorners(big, 192, 12));
     CHECK(!md::useSmallCorners(run, 96, 0));   // sans le mod : petits coins de Windows (4 pt), pires que les 8 pt
     CHECK(!md::useSmallCorners(run, 96, 6));   // petit rayon du mod trop petit pour une fenêtre
+    auto minimized = big;   // réduite : cadre de la miniature (160 × 28), rien à décider (relecture du plan 74)
+    minimized.iconic = true;
+    minimized.frame = RECT{0, 0, 160, 28};
+    CHECK(!md::useSmallCorners(minimized, 96, 12));
 }

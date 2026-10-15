@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 #include <string>
 
 namespace md {
@@ -37,7 +38,7 @@ bool appsDarkMode() {
 }
 
 bool useSmallCorners(const WindowInfo& w, UINT dpi, double modSmallPt) {
-    if (modSmallPt < 8) return false;
+    if (modSmallPt < 8 || w.iconic) return false;   // réduite : son cadre est celui de la miniature
     if (!(w.style & WS_THICKFRAME)) return true;   // taille fixe : boîte de dialogue
     const double k = (dpi ? dpi : 96) / 96.0;
     const double side = std::min(w.frame.right - w.frame.left, w.frame.bottom - w.frame.top) / k;
@@ -45,6 +46,21 @@ bool useSmallCorners(const WindowInfo& w, UINT dpi, double modSmallPt) {
 }
 
 double cornerModSmallRadius() {
+    // Windhawk ne charge aucun mod dans DWM sans dwm.exe dans sa liste d'inclusion (Paramètres > Avancé).
+    wchar_t include[1024] = {};
+    DWORD bytes = sizeof include;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Windhawk\\Engine\\Settings", L"Include", RRF_RT_REG_SZ, nullptr,
+                     include, &bytes) != ERROR_SUCCESS)
+        return 0;
+    std::wstring list = include;
+    std::transform(list.begin(), list.end(), list.begin(), [](wchar_t c) { return wchar_t(towlower(c)); });
+    bool dwm = false;
+    for (std::size_t at = 0; at <= list.size();) {   // éléments séparés par « | »
+        const std::size_t end = std::min(list.find(L'|', at), list.size());
+        dwm = dwm || list.substr(at, end - at) == L"dwm.exe";
+        at = end + 1;
+    }
+    if (!dwm) return 0;
     const wchar_t* key = L"SOFTWARE\\Windhawk\\Engine\\Mods\\custom-corner-radius";
     DWORD disabled = 1, size = sizeof disabled;
     if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"Disabled", RRF_RT_REG_DWORD, nullptr, &disabled, &size) != ERROR_SUCCESS ||

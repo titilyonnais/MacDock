@@ -33,6 +33,8 @@ struct ActionCommand {
     // Réglages qui se ferme n'attend plus sa fin (une recherche de mise à jour continue seule ; sinon l'app resterait
     // ouverte en coulisse jusqu'à 3 min, sans pouvoir se rouvrir, et l'installateur attendrait).
     bool abandonOnClose = false;
+    // Attente au plus (avec `wait`) : 3 min ; l'installateur d'un mod peut télécharger SF Pro (220 Mo) et Windhawk.
+    unsigned waitMs = 180000;
 };
 
 // Attend la fin d'un processus lancé par un bouton, au plus `timeoutMs` ; `abandon` levé (fermeture de Réglages) :

@@ -136,8 +136,6 @@ private:
     void updateStatusItems();   // icônes redessinées si le relevé ou le son ont changé
     void pollInput();           // menu de saisie : disposition de l'app suivie (500 ms), liste relue toutes les 10 s
     void onTray(WPARAM wp, LPARAM lp);   // message du mod (lp : ipc::Message*), ou wp = 1 : connexion ou départ du mod
-    // Pastille verte survolée (fil des pastilles) : menu « Déplacer et redimensionner » de macOS 26 sous elle ; l'action
-    // choisie vise cette fenêtre, même inactive.
     void onMaximized(HWND window);    // plan 72 : agrandie → remplie (ou rendue à sa taille d'avant si elle l'était)
     void trayClickAt(Screen& s, std::size_t k, int button);
     void openSettingsFile();
@@ -152,7 +150,7 @@ private:
     void startSamples();
     void stopSamples();   // avant un menu : il capture l'écran à son tour (la pastille du HUD aussi)
     void abortSamples();  // capture d'écran du Dock : échantillons arrêtés, couleur du texte inchangée
-    void onScreenshotReveal(ShotReveal reveal);   // ⊞⇧3, ⊞⇧4 : barre et pastilles visibles aux captures, le temps de la copie
+    void onScreenshotReveal(ShotReveal reveal);   // ⊞⇧3, ⊞⇧4 : barre, menus et pastille du volume visibles aux captures
     void registerVolumeKeys();          // touches de volume reprises selon settings_.hud (échec journalisé)
     void onVolumeKey(int id);           // volume +, −, sourdine : réglage puis pastille
     void showHud(const HudContent& c);  // pastille sur l'écran du curseur, ravivée

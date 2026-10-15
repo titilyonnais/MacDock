@@ -30,7 +30,10 @@ if ($DryRun) {
     if (-not $wh) { Write-Host 'Windhawk absent : proposé par winget.'; exit 0 }
     $key = "$($wh.Key)\Mods\$id"
     if ($Off) { Write-Host "$key : Disabled = 1"; exit 0 }
-    if (-not (Test-Path $key)) { Write-Host "Mod absent : téléchargé ($sourceUrl), vérifié, compilé et enregistré." }
+    $lib = (Get-ItemProperty $key -ErrorAction SilentlyContinue).LibraryFileName
+    if (-not ($lib -and (Test-Path (Join-Path $wh.Mods $lib)))) {
+        Write-Host "Mod absent : téléchargé ($sourceUrl), vérifié, compilé et enregistré."
+    }
     foreach ($k in $settings.Keys) { Write-Host "$key\Settings : $k = $($settings[$k])" }
     Write-Host "$key : Disabled = 0"
     if (Add-DwmToWindhawk $wh -DryRun) { Write-Host 'dwm.exe ajouté à la liste d''inclusion de Windhawk.' }
@@ -42,8 +45,10 @@ try {
         if ($wh -and (Test-Path "$($wh.Key)\Mods\$id")) {
             New-ItemProperty -Path "$($wh.Key)\Mods\$id" -Name Disabled -Value 1 -PropertyType DWord -Force | Out-Null
             Update-WindhawkMod $wh $id
+            Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).'
+        } else {
+            Write-Host 'Le mod « Custom Window Corner Radius » n''est pas installé : les coins sont déjà ceux de Windows.'
         }
-        Write-Host 'Coins de Windows rétablis (mod « Custom Window Corner Radius » désactivé).'
     } else {
         if (-not (Install-WindhawkIfMissing)) { Read-Host 'Entrée pour fermer'; exit 1 }
         $wh = Get-Windhawk
@@ -52,11 +57,15 @@ try {
         $wasDisabled = -not $installed -or ([int](Get-ItemProperty $key -ErrorAction SilentlyContinue).Disabled -ne 0)
         if (-not $installed) {
             Write-Host 'Mod « Custom Window Corner Radius » : téléchargement et compilation…'
-            $tmp = Join-Path $env:TEMP 'macdock-custom-corner-radius.wh.cpp'
-            Get-Download $sourceUrl $tmp
-            Assert-Sha256 $tmp $sourceSha256
-            Install-WindhawkMod -Wh $wh -Id $id -Source $tmp -ForceSettings $settings
-            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+            $work = New-WorkDir 'coins'   # vérifié puis compilé dans un dossier des seuls administrateurs
+            try {
+                $tmp = Join-Path $work "$id.wh.cpp"
+                Get-Download $sourceUrl $tmp
+                Assert-Sha256 $tmp $sourceSha256
+                Install-WindhawkMod -Wh $wh -Id $id -Source $tmp -ForceSettings $settings
+            } finally {
+                Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+            }
         } else {
             Set-WindhawkSettings "$key\Settings" $settings
             New-ItemProperty -Path $key -Name Disabled -Value 0 -PropertyType DWord -Force | Out-Null

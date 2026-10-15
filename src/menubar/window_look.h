@@ -27,7 +27,7 @@ std::optional<WindowLook> macWindowLook(const WindowInfo& w, bool dark, UINT dpi
 // Préférence de coins lue avant notre passage (DWMWA_WINDOW_CORNER_PREFERENCE) : carrés ou petits demandés par l'app
 // sont gardés.
 bool shouldRoundCorners(DWORD original);
-// Fenêtre à barre de titre, non agrandie, qui couvre son écran (plein écran de la pastille verte, plan 72) : coins
+// Fenêtre à barre de titre, non agrandie, qui couvre son écran (vidéo, présentation, F11) : coins
 // carrés comme sur macOS ; Windows 11 et le mod de coins arrondissent une fenêtre non agrandie.
 bool squareInFullscreen(const WindowInfo& w);
 // Petits coins (DWMWCP_ROUNDSMALL) pour une petite fenêtre : taille fixe (Exécuter, alertes) ou plus petit côté sous

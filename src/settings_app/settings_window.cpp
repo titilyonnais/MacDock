@@ -1575,7 +1575,7 @@ void SettingsWindow::runCommands(std::vector<ActionCommand> commands, bool refre
             if (sei.hProcess) {
                 if (c.wait) {
                     DWORD code = 0;
-                    if (waitForExit(sei.hProcess, 180000, c.abandonOnClose ? closing.get() : nullptr) &&
+                    if (waitForExit(sei.hProcess, c.waitMs, c.abandonOnClose ? closing.get() : nullptr) &&
                         GetExitCodeProcess(sei.hProcess, &code) && code != 0 &&
                         !c.ignoreExitCode) {   // l'installateur a échoué (compilation, Windhawk absent…)
                         log::warn(L"Réglages : %s a fini avec le code %lu", c.file.c_str(), code);
