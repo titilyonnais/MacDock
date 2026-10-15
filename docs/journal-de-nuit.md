@@ -1287,6 +1287,20 @@ J'ai piloté souris et clavier moi-même pendant que tu étais à distance, avec
   disparaissent, mais Windows refuse alors d’agrandir (double-clic, glisser en haut) et ignore « fermer » ; abandonné.
 - Vérifié sur ta fenêtre Claude : pastilles dans le coin, aucun bandeau visible.
 
+### Plan 74 — Fenêtres simplifiées, installateurs autonomes, version 0.54.0, 15 octobre (avec toi)
+
+- **Pastilles retirées** (« beaucoup trop compliqué ») : plus de calques sur les fenêtres des autres apps, ni de menu de
+  la pastille verte, ni de son plein écran ; les boutons de Windows restent tels quels. L'apparence des fenêtres (coins,
+  barre grise) et Remplir au lieu d'agrandir restent. Les Réglages et Forcer à quitter gardent leurs propres pastilles.
+- **Coins des petites fenêtres** (Exécuter : « ça rend pas très bien les contours ») : mesurés de 8 à 26 pt sur une
+  boîte de dialogue d'essai ; un grand rayon mange une petite fenêtre et son liseré. Comme macOS, qui arrondit moins les
+  fenêtres sans barre d'outils : petits coins (12 pt) sur les fenêtres de taille fixe ou de moins de 300 pt de côté,
+  quand le mod de coins est actif.
+- **Installateurs autonomes** : coins-macos.cmd installe le mod de coins s'il manque (source figée, empreinte vérifiée,
+  compilé comme Windhawk) ; installer-macdock-look.cmd télécharge SF Pro sur le site d'Apple après accord sur sa
+  licence (7-Zip portable pour ouvrir le paquet, rien d'installé de plus) ; Windhawk proposé par winget s'il manque.
+  Essayés sans rien installer : compilation des deux mods, empreinte fausse refusée, 36 polices extraites.
+
 ## Mineurs reportés — plan 72
 - Barre figée le temps d'un WM_SIZE lent pendant le remplissage ; Dock caché au plein écran après une seconde.
 - Plusieurs écrans (⊞⇧→ en plein écran, DPI différents) ; fenêtre agrandie quand son app est en arrière-plan.

@@ -60,8 +60,10 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 - **Poignée des séparateurs et cotes du Dock de macOS 26** mesurées à trois tailles dans ta VM (plan 70).
 - **Barre de menus fiable et vive** : plus de « Système » dans VMware ni de titres décalés, bascule instantanée d'un
   menu à l'autre, plus de clignotement en quittant une app (plan 71).
-- **Fenêtres de macOS 26** : agrandir remplit l'écran entre la barre et le Dock, pastille verte en vrai plein écran,
-  coins de 12 pt par le mod « Custom Window Corner Radius » de Windhawk (plan 72).
+- **Fenêtres de macOS 26** : agrandir remplit l'écran entre la barre et le Dock, coins arrondis par le mod « Custom
+  Window Corner Radius » de Windhawk (plan 72 ; pastille verte et son plein écran retirés au plan 74).
+- **Fenêtres simplifiées** : pastilles retirées (boutons de Windows gardés), coins de 26 pt et 12 pt sur les petites
+  fenêtres, installateurs qui téléchargent SF Pro, le mod de coins et Windhawk eux-mêmes (plan 74, version 0.54.0).
 
 ## À faire, par ordre d'effet
 - **Apparence Clair / Sombre / Automatique** (ta demande du 10 octobre, MacDock et Windows, automatique au lever et au
@@ -82,5 +84,4 @@ Ordre de travail en autonomie. Chaque étape suit le même chemin :
 4. **Captures, suite** : options de ⊞⇧5 (minuterie, dossier), annotations dans la vignette ; le Dock dans les vidéos ; le son dans les vidéos (option) ; ⊞Impr. écran et Alt+Impr. écran (capture immédiate, avant que MacDock se montre).
 
 ## Limites connues
-- Les pastilles sont un calque posé sur les boutons de la fenêtre : elles suivent la fenêtre avec un léger temps de retard quand on la déplace vite.
 - Restyler l'intérieur des apps (boutons, listes) demande d'injecter du code : c'est le rôle des mods Windhawk, que tu installes toi-même. Windhawk tourne en administrateur et ne peut pas être piloté depuis MacDock.
